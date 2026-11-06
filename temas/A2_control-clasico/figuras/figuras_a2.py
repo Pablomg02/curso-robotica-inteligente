@@ -58,6 +58,16 @@ for tau_ms in (0.5, 1, 2.5, 5, 10, 20, 50):
     f60 = (math.pi / 6) / (2 * math.pi * tau)
     print(f"  tau = {tau_ms:5.1f} ms -> cruce máximo {f45:6.1f} Hz (MF 45°), {f60:6.1f} Hz (MF 60°)")
 
+# Segundo orden estándar L = wn^2 / (s (s + 2 zeta wn)): margen de fase y sobrepaso exactos
+for pm_obj in (45, 60, 68):
+    lo, hi = 0.01, 2.0
+    for _ in range(80):
+        z = (lo + hi) / 2
+        pm = math.degrees(math.atan(2 * z / math.sqrt(math.sqrt(1 + 4 * z**4) - 2 * z * z)))
+        lo, hi = (z, hi) if pm < pm_obj else (lo, z)
+    os_ = 100 * math.exp(-math.pi * z / math.sqrt(1 - z * z)) if z < 1 else 0.0
+    print(f"  2.º orden estándar con MF {pm_obj}°: zeta = {z:.3f}, sobrepaso {os_:.1f} %")
+
 print("=" * 70)
 print("2. FILTRO DE BUTTERWORTH DE SEGUNDO ORDEN: retardo de grupo y fase")
 for fc in (20, 30, 40, 60, 80, 100, 150, 200):
@@ -69,6 +79,12 @@ for fc in (20, 30, 40, 60, 80, 100, 150, 200):
         ph = -math.degrees(math.atan2(math.sqrt(2) * wn * w, wn * wn - w * w))
         out.append(f"{ph:6.1f}° a {f} Hz")
     print(f"  fc = {fc:3d} Hz: retardo de grupo en baja frecuencia {1000*tg:4.2f} ms; fase " + ", ".join(out))
+
+print("  Filtro PT1 (Betaflight): retardo de grupo en baja frecuencia 1/(2 pi fc)")
+for fc in (20, 75, 150, 250, 500):
+    print(f"  PT1 fc = {fc:3d} Hz: {1000/(2*math.pi*fc):4.2f} ms")
+print("  Cadena de gyro por defecto de Betaflight: LPF1 dinámico 250-500 Hz + LPF2 500 Hz ->"
+      f" {1000/(2*math.pi*250)+1000/(2*math.pi*500):.2f} ms (ralentí), {2000/(2*math.pi*500):.2f} ms (a tope)")
 
 print("=" * 70)
 print("3. SEPARACIÓN DE ESCALAS: lazo interno de 2.º orden (zeta_i = 0,7) con externo P de ganancia k")
@@ -185,7 +201,7 @@ for L1 in (40.0, 80.0, 160.0):
 print("=" * 70)
 print("6. LAZO DE RATE DEL x500 (Gazebo) CON LAS GANANCIAS POR DEFECTO DE PX4")
 # Planta: x500 de PX4-gazebo-models (J, kT, tau motor) y airframe 4001_gz_x500 (CA_ROTOR, SIM_GZ_EC_MIN/MAX).
-JX = 0.02167
+JX = 0.02389                      # inercia compuesta de Gazebo: cuerpo (0,02167) + 4 rotores
 KT = 8.54858e-06
 M_X500 = 2.0 + 4 * 0.016076923076923075
 ARM = 0.174                       # |CA_ROTORn_PY|
@@ -220,7 +236,7 @@ def lazo_rate(w, tau_m, f_loop, extra=0.0, P=P_, I=I_, D=D_, K=K_):
 
 w = np.logspace(0, 3.5, 6000)
 casos = [("SITL 250 Hz, tau 12,5 ms", 0.0125, 250, 0.0), ("SITL 250 Hz, tau 25 ms", 0.025, 250, 0.0),
-         ("400 Hz (IMU_GYRO_RATEMAX), tau 12,5 ms", 0.0125, 400, 0.0),
+         ("800 Hz (rc.mc_defaults), tau 12,5 ms", 0.0125, 800, 0.0), ("SITL 250 Hz, tau 39 ms (Agilicious)", 0.039, 250, 0.0),
          ("250 Hz, tau 12,5 ms, +10 ms", 0.0125, 250, 0.010), ("250 Hz, tau 12,5 ms, +20 ms", 0.0125, 250, 0.020)]
 for nombre, tm, fl, ex in casos:
     wc, pm, wpc, gm = margenes(w, lazo_rate(w, tm, fl, ex))
@@ -275,7 +291,7 @@ def simula(ley, f_loop=250, extra=0.0, tau_m=0.0125, sp=lambda t: 0.0, tau_d=lam
     n_sub = int(round(1 / f_loop / h))
     n_ex = int(round(extra / h))
     lp = Biquad(f_loop, F_GYRO)
-    a_d = 1 - math.exp(-2 * math.pi * F_DGYRO / f_loop)
+    a_d = (1 / f_loop) / (1 / (2 * math.pi * F_DGYRO) + 1 / f_loop)   # AlphaFilter de PX4: dt / (tau + dt)
     st = dict(w=0.0, m=0.0, integ=0.0, wprev=0.0, acc_f=0.0, m_f=0.0)
     cmd_buf = [0.0] * (n_ex + n_sub + 1)   # una muestra de cómputo + retardo extra
     ts, ws = [], []
@@ -327,6 +343,13 @@ for nombre, ex in (("base", 0.0), ("+10ms", 0.010), ("+20ms", 0.020)):
     yy = wv[k]
     i90 = np.argmax(yy >= 0.9)
     print(f"  escalón de 1 rad/s, {nombre:6s}: subida al 90 % en {1000*tt[i90]:5.1f} ms, sobrepaso {max(0,100*(yy.max()-1)):5.1f} %")
+t20, w20 = res7["+20ms"]
+k = t20 >= 0.05
+yy = w20[k] - 1
+tt = t20[k]
+pk = [i for i in range(1, len(yy) - 1) if yy[i] > yy[i - 1] and yy[i] >= yy[i + 1] and yy[i] > 0.005]
+per = np.diff(tt[pk]).mean()
+print(f"  +20 ms: oscilación de {1/per:.2f} Hz; cociente entre picos sucesivos {np.mean(yy[pk][1:]/yy[pk][:-1]):.2f}")
 # Figura: viewBox 0 0 520 300; x de 0 a 0,5 s -> 60..500; y de 0 a 1,6 -> 250..30
 X7 = lin(0, 0.5, 60, 500)
 Y7 = lin(0, 1.6, 250, 30)
@@ -353,3 +376,106 @@ for nombre in res8:
     t, wv = res8[nombre]
     k = t >= 0.05
     print(f"path pert {nombre}:", path(t[k] - 0.05, np.degrees(wv[k]), X8, Y8))
+
+print("=" * 70)
+print("7b. PLANTA NO LINEAL: cuatro motores con k_T Omega^2 y constante asimétrica (12,5 ms al subir, 25 al bajar)")
+
+
+def simula_nl(f_loop=250, tup=0.0125, tdn=0.025, sp=lambda t: 0.0, dinj=lambda t: 0.0, T=0.6, J=JX):
+    h = 1e-4
+    n_sub = int(round(1 / f_loop / h))
+    lp = Biquad(f_loop, F_GYRO)
+    a_d = (1 / f_loop) / (1 / (2 * math.pi * F_DGYRO) + 1 / f_loop)
+    w_ = wprev = integ = acc_f = 0.0
+    Om = np.array([OM0, OM0])          # par de motores que sube (+) y par que baja (-)
+    cola = [None] * (n_sub + 1)
+    c_hold = 0.0
+    ts, ws, cs, us = [], [], [], []
+    for k in range(int(T / h)):
+        t = k * h
+        if k % n_sub == 0:
+            wf = lp(w_)
+            acc = (w_ - wprev) * f_loop
+            wprev = w_
+            acc_f += a_d * (acc - acc_f)
+            e = sp(t) - wf
+            c = K_ * (P_ * e + integ - D_ * acc_f)
+            integ += K_ * I_ * e / f_loop
+            cola.append(c)
+        else:
+            cola.append(None)
+        cola.pop(0)
+        if cola[0] is not None:
+            c_hold = cola[0]
+        u = c_hold + dinj(t)
+        m = MIX * u
+        cmd = np.array([OM_MIN + (OM_MAX - OM_MIN) * min(1, max(0, U0 + m)),
+                        OM_MIN + (OM_MAX - OM_MIN) * min(1, max(0, U0 - m))])
+        Om = Om + h * (cmd - Om) / np.where(cmd > Om, tup, tdn)
+        w_ += h * 2 * ARM * KT * (Om[0] ** 2 - Om[1] ** 2) / J
+        if k % 10 == 0:
+            ts.append(t); ws.append(w_); cs.append(c_hold); us.append(u)
+    return np.array(ts), np.array(ws), np.array(cs), np.array(us)
+
+
+def lazo_medido(tup, tdn, J=JX, fs_=(4, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9)):
+    Ls = []
+    for f in fs_:
+        t, wv, c, u = simula_nl(tup=tup, tdn=tdn, J=J, dinj=lambda t: 0.01 * math.sin(2 * math.pi * f * t),
+                                T=max(1.0, 12 / f) + 0.5)
+        k = t > 0.5
+        ph = np.exp(-2j * math.pi * f * t[k])
+        Ls.append(-np.sum(c[k] * ph) / np.sum(u[k] * ph))
+    mags, phs = np.abs(Ls), np.degrees(np.angle(Ls))
+    j = np.where((mags[:-1] >= 1) & (mags[1:] < 1))[0][0]
+    a = math.log(mags[j]) / (math.log(mags[j]) - math.log(mags[j + 1]))
+    return fs_[j] + a * (fs_[j + 1] - fs_[j]), 180 + phs[j] + a * (phs[j + 1] - phs[j])
+
+
+J_GZ = None
+for nombre, tup, tdn in (("simétrico 12,5 ms", 0.0125, 0.0125), ("asimétrico 12,5/25 ms (A1, Gazebo)", 0.0125, 0.025)):
+    t, wv, _, _ = simula_nl(sp=paso, tup=tup, tdn=tdn)
+    k = t >= 0.05
+    i90 = np.argmax(wv[k] >= 0.9)
+    fc_m, pm_m = lazo_medido(tup, tdn)
+    print(f"  {nombre:36s}: subida al 90 % en {1000*(t[k][i90]-0.05):5.1f} ms, sobrepaso {100*(wv[k].max()-1):4.1f} %;"
+          f" lazo medido: cruce {fc_m:.2f} Hz, MF {pm_m:.1f}°")
+
+print("=" * 70)
+print("8. ALA FIJA: lazo de alabeo y de rumbo del Aerosonde por cierre sucesivo (Beard y McLain, cap. 6)")
+# Parámetros de mavsim_public (aerosonde_parameters.py), como en A1
+Jx_a, Jz_a, Jxz_a = 0.8244, 1.759, 0.1204
+S_a, b_a, rho_a = 0.55, 2.8956, 1.2682
+Clp, Cnp, Clda, Cnda = -0.51, 0.069, 0.17, -0.011
+Gm = Jx_a * Jz_a - Jxz_a**2
+g3, g4 = Jz_a / Gm, Jxz_a / Gm
+Cpp = g3 * Clp + g4 * Cnp
+Cpda = g3 * Clda + g4 * Cnda
+Va = 25.0
+a1 = -0.5 * rho_a * Va**2 * S_a * b_a * Cpp * b_a / (2 * Va)
+a2 = 0.5 * rho_a * Va**2 * S_a * b_a * Cpda
+print(f"  Va = {Va} m/s: a_phi1 = {a1:.2f} 1/s, a_phi2 = {a2:.2f} 1/s^2  (phi''= -a1 phi' + a2 delta_a)")
+da_max, ephi_max, zeta = math.radians(45), math.radians(15), 0.707   # elección de diseño nuestra
+kp = da_max / ephi_max
+wn_phi = math.sqrt(abs(a2) * kp)
+kd = (2 * zeta * wn_phi - a1) / a2
+print(f"  diseño: delta_a max 45°, error de alabeo que satura 15° -> kp = {kp:.2f}, wn_phi = {wn_phi:.2f} rad/s"
+      f" ({wn_phi/2/math.pi:.2f} Hz), kd = {kd:.3f} s")
+for W in (5, 10, 20):
+    wn_chi = wn_phi / W
+    kp_chi = 2 * zeta * wn_chi * Va / G
+    ki_chi = wn_chi**2 * Va / G
+    print(f"  W = {W:2d}: wn_chi = {wn_chi:.3f} rad/s (periodo {2*math.pi/wn_chi:5.1f} s), kp_chi = {kp_chi:.2f}, ki_chi = {ki_chi:.3f}")
+
+print("=" * 70)
+print("9. CASCADA POR DEFECTO DE PX4: anchos de banda aproximados y separación entre lazos")
+# rate: cruce calculado en la sección 6; actitud: MC_ROLL_P; velocidad: MPC_XY_VEL_P_ACC; posición: MPC_XY_P
+w_rate = margenes(w, lazo_rate(w, 0.0125, 250, 0.0))[0]
+lazos = [("rate (cruce calculado)", w_rate), ("actitud MC_ROLL_P", 4.0), ("velocidad MPC_XY_VEL_P_ACC", 1.8),
+         ("posición MPC_XY_P", 0.95)]
+for i, (n, wb) in enumerate(lazos):
+    txt = f"  {n:28s}: {wb:6.2f} rad/s = {wb/2/math.pi:5.2f} Hz"
+    if i:
+        r = lazos[i - 1][1] / wb
+        txt += f"; r = {r:5.1f}; zeta (interno de 1.er orden) = {0.5*math.sqrt(r):.2f}"
+    print(txt)

@@ -32,7 +32,7 @@ Reutiliza `dinamica/so3.py` del laboratorio de M1 y `sim/integradores.py` (RK4) 
 En `src/proyecto_hilo/dinamica/cuadricoptero.py`:
 
 - Un `NamedTuple` de parámetros (es un pytree, así que `vmap` y `jit` lo aceptan): `m`, `J` (3,), `kT`, `kq_kt` (k_Q/k_T, en m), `rotores` (4, 3) en FLU, `sentidos` (4,) con +1 si el rotor gira en sentido antihorario visto desde arriba, `tau_sub`, `tau_baj`, `omega_max`, `D` (3,).
-- `x500()`: parámetros del modelo de Gazebo de PX4 (masa 2,0 kg más 4 rotores de 0,0161 kg; J = diag(0,02167; 0,02167; 0,04); k_T = 8,54858·10⁻⁶; momentConstant = 0,016; τ = 12,5 ms al subir y 25 ms al bajar; Ω_max = 1000 rad/s). Los rotores, con la numeración de PX4 (`CA_ROTOR0..3`), están en FRD en (0,174; 0,174), (−0,174; −0,174), (0,174; −0,174) y (−0,174; 0,174), y los dos primeros giran en sentido antihorario. **Conviértelos a FLU** (cambia el signo de y).
+- `x500()`: parámetros del modelo de Gazebo de PX4 (masa 2,0 kg más 4 rotores de 0,0161 kg; J = diag(0,0239; 0,0239; 0,0440): la inercia que calcula Gazebo al sumar a la del cuerpo, diag(0,02167; 0,02167; 0,04), la de los cuatro rotores a 0,174 m; k_T = 8,54858·10⁻⁶; momentConstant = 0,016; τ = 12,5 ms al subir y 25 ms al bajar; Ω_max = 1000 rad/s). Los rotores, con la numeración de PX4 (`CA_ROTOR0..3`), están en FRD en (0,174; 0,174), (−0,174; −0,174), (0,174; −0,174) y (−0,174; 0,174), y los dos primeros giran en sentido antihorario. **Conviértelos a FLU** (cambia el signo de y).
 - La matriz de asignación en FLU. Cada rotor empuja \(T_i\mathbf e_3\) desde \(\mathbf r_i\); el par es \(\mathbf r_i\times T_i\mathbf e_3 = (y_iT_i,\ -x_iT_i,\ 0)\), y la reacción de un rotor antihorario empuja al cuerpo en sentido horario, que con z hacia arriba es negativo:
 
 ```python

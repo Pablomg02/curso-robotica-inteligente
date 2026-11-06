@@ -218,7 +218,8 @@ plats = {
     # nombre: (masa kg, empuje máx por rotor N, brazo de alabeo m, Ixx kg m2, fuente)
     "Crazyflie 2.1": (0.027, 0.0213 - 0.0112 + 0.1201, 0.080 / 2 / math.sqrt(2), 1.4e-5),
     "Crazyflie Brushless": (0.044, -0.23 + 0.562 - 0.043, 0.0707 / 2, 3.3e-5),
-    "x500 (Gazebo)": (2.0 + 4 * 0.016077, 8.54858e-6 * 1000**2, 0.174, 0.021667),
+    # Ixx compuesta como la calcula Gazebo: base_link (0,021667) + 4 rotores a (±0,174; ±0,174; 0,06) m
+    "x500 (Gazebo)": (2.0 + 4 * 0.016077, 8.54858e-6 * 1000**2, 0.174, 0.02389),
 }
 for nm, (m, Tm, arm, Ixx) in plats.items():
     alpha = 2 * Tm * arm / Ixx

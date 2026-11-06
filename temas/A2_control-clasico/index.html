@@ -1,0 +1,1039 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A2 · Control clásico y jerarquía de lazos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A2" data-deck-title="Control clásico y jerarquía de lazos · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 1 · Jornada 4 · Curso de robótica inteligente</p>
+  <h1>Control clásico y jerarquía de lazos</h1>
+  <p class="subtitle">PID de verdad, márgenes y retardos, cascada y separación de escalas, actitud en SO(3), inversión dinámica incremental y ala fija. Y la pregunta que importa para tu tesis: qué lazo puede sustituir una red.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A1 (modelo del x500 y del Aerosonde), M1 (SO(3), cuaterniones)</span>
+    <span><b>Prepara</b> A3, A6b, A13, B4, C2, C4</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A2</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Dibujar la cascada real de un autopiloto (PX4, Betaflight, ArduPilot, Crazyflie) con la frecuencia de cada lazo, y explicar por qué el de velocidad angular es el más rápido.</li>
+    <li>Calcular cuánto retardo aguanta un lazo a partir de su cruce de ganancia, y cuánto retardo añaden el muestreo, el retenedor y los filtros del giróscopo.</li>
+    <li>Derivar la condición de separación de escalas de una cascada y elegir la relación de anchos de banda entre lazos.</li>
+    <li>Escribir un PID de autopiloto completo: derivada sobre la medida, filtros, prealimentación, anti-windup y salida normalizada.</li>
+    <li>Derivar el error de actitud geométrico y el de cuaternión, la prioridad a la inclinación e INDI, y decir cuándo conviene cada uno.</li>
+    <li>Decidir, con cuentas, a qué nivel de la cascada debe entrar una política aprendida.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>En ningún multirrotor es la actitud el lazo más rápido</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Autopiloto</th><th><em>Rate</em></th><th>Actitud</th><th>Posición</th><th style="width:36%">Detalle</th></tr>
+      <tr><td>PX4, multirrotor</td><td class="n"><span class="hz">800 Hz</span></td><td class="n"><span class="hz">200 Hz</span></td><td class="n"><span class="hz">≈ 100 Hz</span></td><td>Giróscopo a 8 kHz; navegador a 20 Hz</td></tr>
+      <tr><td>Betaflight</td><td class="n"><span class="hz">4–8 kHz</span></td><td class="n">—</td><td class="n"><span class="hz">100 Hz</span></td><td>PID a la frecuencia del giróscopo (4 kHz con DShot bidireccional en F4/F7/G4); actitud estimada a 100 Hz</td></tr>
+      <tr><td>ArduCopter</td><td class="n"><span class="hz">400 Hz</span></td><td class="n"><span class="hz">400 Hz</span></td><td class="n"><span class="hz">400 Hz</span></td><td>Todo en el lazo principal; desde la 4.7, hilo opcional de <em>rate</em> más rápido</td></tr>
+      <tr><td>Crazyflie (PID)</td><td class="n"><span class="hz">500 Hz</span></td><td class="n"><span class="hz">500 Hz</span></td><td class="n"><span class="hz">100 Hz</span></td><td>Con el controlador de Brescianini, <em>rate</em> a 1 kHz y actitud a 100 Hz</td></tr>
+      <tr><td>ArduPlane (ala fija)</td><td class="n"><span class="hz">50 Hz</span></td><td class="n"><span class="hz">50 Hz</span></td><td class="n"><span class="hz">10 Hz</span></td><td>TECS y navegación a 10 Hz</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Qué cambia para ti</span>En tu diagnóstico pusiste la actitud a 50 Hz como lazo más rápido: solo es así en ArduPlane. En todos los multirrotores el lazo de velocidad angular es el más rápido, o empata, a entre 400 Hz y 8 kHz. Y la jerarquía no es universal: el PID del Crazyflie cierra <em>rate</em> y actitud en el mismo instante, y ArduCopter corre hasta la posición a 400 Hz. Valores por defecto del código de cada proyecto en noviembre de 2026 <a class="cite" data-ref="px4gyro,betaflight,ardupilot,crazyflie"></a>.</div>
+    <div class="callout tesis"><span class="tag">Tu tesis</span>Dónde se rompe la cascada decide dónde puede entrar tu política, con qué latencia y qué parte del estado tiene que estimar su belief. Es la pregunta de la parte 6.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia breve</p>
+  <h2>Un siglo de realimentación, del timón de un barco al lazo de un microdrón</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">1922</span>Minorsky analiza uno de los primeros controladores de tres términos, para el gobierno automático de barcos <a class="cite" data-ref="minorsky1922"></a>.</div>
+      <div class="ev"><span class="yr">1927–34</span>Black inventa el amplificador realimentado negativamente (1927) y lo publica en 1934 <a class="cite" data-ref="black1934"></a>. Nyquist da su criterio de estabilidad en 1932 <a class="cite" data-ref="nyquist1932"></a>.</div>
+      <div class="ev"><span class="yr">1942–48</span>Reglas de ajuste de Ziegler y Nichols <a class="cite" data-ref="ziegler1942"></a>; Bode y su integral de sensibilidad <a class="cite" data-ref="bode1945"></a>; lugar de las raíces de Evans <a class="cite" data-ref="evans1948"></a>.</div>
+      <div class="ev"><span class="yr">1957</span>Predictor de Smith para lazos con retardo <a class="cite" data-ref="smith1957"></a>.</div>
+      <div class="ev"><span class="yr">1983–85</span>TECS de Lambregts para el control longitudinal de aviones <a class="cite" data-ref="lambregts1983"></a>; autoajuste por relé de Åström y Hägglund <a class="cite" data-ref="astrom1984"></a>; límites con polos inestables de Freudenberg y Looze <a class="cite" data-ref="freudenberg1985"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">2004</span>Guiado L1 de Park, Deyst y How; según Stastny y Siegwart, quizá el más usado en ala fija pequeña <a class="cite" data-ref="park2004,stastny2019"></a>.</div>
+      <div class="ev"><span class="yr">2010</span>Control geométrico en SE(3) de Lee, Leok y McClamroch <a class="cite" data-ref="lee2010"></a>.</div>
+      <div class="ev"><span class="yr">2016–21</span>INDI en microdrones (Smeur et al.) y seguimiento agresivo con INDI y planitud (Tal y Karaman) <a class="cite" data-ref="smeur2016,tal2021"></a>. Prioridad a la inclinación de Brescianini y D'Andrea <a class="cite" data-ref="brescianini2020"></a>.</div>
+      <div class="ev"><span class="yr">2022–23</span>NMPC frente a planitud: el lazo interno pesa más que el controlador de alto nivel <a class="cite" data-ref="sun2022"></a>. PX4 sustituye L1 por NPFG en la versión 1.14 <a class="cite" data-ref="px4fw"></a>.</div>
+      <div class="ev"><span class="yr">2024–26</span>Políticas aprendidas que dan mandos de motor y vuelan en la controladora o junto a ella, transfiriéndose entre drones distintos <a class="cite" data-ref="eschmann2024fly,ferede2025,raptor"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Mapa del tema</p>
+  <h2>La cascada de PX4, de fuera adentro</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 330" role="img" aria-label="Cascada de control de PX4 de multirrotor con la frecuencia de cada lazo">
+      <defs><marker id="flecha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-muted"/></marker></defs>
+      <g font-size="15">
+        <rect class="box-soft" x="20" y="70" width="140" height="78" rx="8"/>
+        <text x="90" y="100" text-anchor="middle" class="t-bold">Navegador</text>
+        <text x="90" y="128" text-anchor="middle" class="t-time t-mono">20 Hz</text>
+        <rect class="box" x="185" y="70" width="140" height="78" rx="8"/>
+        <text x="255" y="100" text-anchor="middle" class="t-bold">Posición</text>
+        <text x="255" y="128" text-anchor="middle" class="t-time t-mono">≈ 100 Hz</text>
+        <rect class="box" x="350" y="70" width="140" height="78" rx="8"/>
+        <text x="420" y="100" text-anchor="middle" class="t-bold">Velocidad</text>
+        <text x="420" y="128" text-anchor="middle" class="t-time t-mono">≈ 100 Hz</text>
+        <rect class="box" x="515" y="70" width="140" height="78" rx="8"/>
+        <text x="585" y="100" text-anchor="middle" class="t-bold">Actitud</text>
+        <text x="585" y="128" text-anchor="middle" class="t-time t-mono">200 Hz</text>
+        <rect class="box-accent" x="680" y="70" width="140" height="78" rx="8"/>
+        <text x="750" y="100" text-anchor="middle" class="t-bold">Rate</text>
+        <text x="750" y="128" text-anchor="middle" class="t-time t-mono">800 Hz</text>
+        <rect class="box" x="845" y="70" width="140" height="78" rx="8"/>
+        <text x="915" y="100" text-anchor="middle" class="t-bold">Asignador</text>
+        <text x="915" y="128" text-anchor="middle" class="t-time t-mono">800 Hz</text>
+        <rect class="box-time" x="1010" y="70" width="150" height="78" rx="8"/>
+        <text x="1085" y="100" text-anchor="middle" class="t-bold">ESC y motor</text>
+        <text x="1085" y="128" text-anchor="middle" class="t-time t-mono">τ 40–70 ms</text>
+      </g>
+      <g class="ln" fill="none" stroke-width="1.6" marker-end="url(#flecha)">
+        <line x1="160" y1="109" x2="183" y2="109"/><line x1="325" y1="109" x2="348" y2="109"/>
+        <line x1="490" y1="109" x2="513" y2="109"/><line x1="655" y1="109" x2="678" y2="109"/>
+        <line x1="820" y1="109" x2="843" y2="109"/><line x1="985" y1="109" x2="1008" y2="109"/>
+      </g>
+      <g class="t-mono t-muted" font-size="13" text-anchor="middle">
+        <text x="337" y="60">v_sp</text><text x="502" y="60">a_sp → R_d, T</text><text x="667" y="60">ω_sp</text>
+        <text x="832" y="60">τ (−1…1)</text><text x="997" y="60">u_i</text>
+      </g>
+      <g font-size="13">
+        <rect class="box-soft" x="680" y="200" width="305" height="44" rx="6"/>
+        <text x="832" y="227" text-anchor="middle">Giróscopo a 8 kHz → filtro de 40 Hz (5,6 ms)</text>
+        <rect class="box-soft" x="185" y="200" width="470" height="44" rx="6"/>
+        <text x="420" y="227" text-anchor="middle">EKF2: actitud a 200 Hz, posición y velocidad a ≈ 100 Hz</text>
+      </g>
+      <g class="ln-dash" fill="none"><line x1="750" y1="200" x2="750" y2="150"/><line x1="585" y1="200" x2="585" y2="150"/><line x1="300" y1="200" x2="300" y2="150"/></g>
+      <g font-size="14">
+        <text x="185" y="290" class="t-accent">Parte 2: separación de escalas entre lazos</text>
+        <text x="515" y="312" class="t-tesis">Parte 3: actitud en SO(3)</text>
+        <text x="680" y="290" class="t-time">Partes 1 y 4: PID, retardos, INDI</text>
+        <text x="20" y="30" class="t-tesis">Parte 6: ¿en qué flecha entra una red?</text>
+      </g>
+    </svg>
+    <figcaption>Frecuencias por defecto de PX4 en multirrotor (código de noviembre de 2026). La constante de tiempo del motor es la medida en drones reales, no la del simulador. El ala fija (parte 5) tiene la misma estructura con otros lazos.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ PARTE 1 · EL PID DE VERDAD ============ -->
+<section class="slide divider" data-section="1 · El PID de verdad">
+  <p class="num">Parte 1</p>
+  <h2>El PID que vuela de verdad</h2>
+  <p>Formas, derivada sobre la medida, discretización, anti-windup y, sobre todo, márgenes: cuánto retardo aguanta un lazo antes de oscilar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tres formas del mismo controlador</p>
+  <h2>Un PID de libro y el PID de un autopiloto no son la misma ecuación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Forma ideal</strong> (ISA) y <strong>forma paralela</strong>, con error \(e = r - y\):</p>
+      \[ u = K\Big(e + \frac1{T_i}\!\int e\,dt + T_d\,\dot e\Big) \]
+      \[ u = K_p e + K_i\!\int e\,dt + K_d\,\dot e \]
+      <p class="small">En un robot se añaden cuatro cosas <a class="cite" data-ref="astrom2021"></a>:</p>
+      <ul class="small">
+        <li><strong>Derivada filtrada:</strong> \(K_d s\) amplifica el ruido sin límite; se usa \(K_d s/(1 + s/\omega_d)\), que satura en \(K_d\omega_d\).</li>
+        <li><strong>Derivada sobre la medida</strong> (\(-K_d\dot y\) en vez de \(K_d\dot e\)): un escalón de consigna no produce un pico de mando (<em>derivative kick</em>).</li>
+        <li><strong>Prealimentación</strong> de la consigna (\(K_{ff}\,r\)): da la respuesta rápida sin pedírsela a la realimentación.</li>
+        <li><strong>Anti-windup:</strong> el integrador no debe seguir acumulando mientras el actuador está saturado.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Lazo de <em>rate</em> de PX4</strong>, por eje, con \(\boldsymbol\omega\) del giróscopo filtrado y \(\dot{\boldsymbol\omega}\) de su derivada filtrada <a class="cite" data-ref="px4ratectl"></a>:</p>
+      \[ \boldsymbol\tau_{\text{sp}} = K\big(P\,\mathbf e_\omega + I\!\int\!\mathbf e_\omega\,dt - D\,\dot{\boldsymbol\omega}\big) + FF\,\boldsymbol\omega_{\text{sp}} \]
+      <p class="small">La salida no es un par en N·m: es un par <strong>normalizado</strong> en \([-1, 1]\) que el asignador reparte entre motores. Las ganancias de PX4 no se pueden copiar entre drones sin reescalar por inercia, brazo y curva de empuje.</p>
+      <div class="callout clave"><span class="tag">Idea clave</span>El PID de un autopiloto es un PI sobre el error de velocidad angular, con amortiguamiento sobre la medida y prealimentación de la consigna. La «D» casi nunca deriva el error.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Del continuo al microcontrolador</p>
+  <h2>Discretizar cuesta medio periodo de retardo, y a veces uno entero</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con periodo \(T\), integrador por Euler hacia atrás y derivada filtrada de primer orden:</p>
+      \[ I_k = I_{k-1} + K_i T e_k \]
+      \[ D_k = \frac{\alpha\,D_{k-1} - K_d\,(y_k - y_{k-1})/T}{1+\alpha},\qquad \alpha = \frac{1}{\omega_d T} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">El filtro \(D(s) = -K_d s\,Y(s)/(1 + s/\omega_d)\) cumple \(\dot D/\omega_d + D = -K_d\dot y\). Con Euler hacia atrás, \((D_k - D_{k-1})/(\omega_d T) + D_k = -K_d(y_k - y_{k-1})/T\); despejando \(D_k\) sale la fórmula. Con Tustin, \(s \to \tfrac2T\tfrac{z-1}{z+1}\), se conserva la estabilidad y la fase cerca de \(\omega_d\) es más fiel.</p>
+      </details>
+      <p class="small"><strong>Retenedor de orden cero:</strong> el mando se mantiene constante entre muestras. Su respuesta, \((1 - e^{-sT})/s\), es en baja frecuencia un retardo puro de \(T/2\):</p>
+      \[ \frac{1-e^{-sT}}{sT} = e^{-sT/2}\,\frac{\sinh(sT/2)}{sT/2} \approx e^{-sT/2} \]
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Fuente de retardo</th><th>Retardo equivalente</th><th>A 1 kHz</th><th>A 250 Hz</th></tr>
+          <tr><td>Retenedor de orden cero</td><td>\(T/2\)</td><td class="n"><span class="hz">0,5 ms</span></td><td class="n"><span class="hz">2 ms</span></td></tr>
+          <tr><td>Cómputo (salida en la muestra siguiente)</td><td>hasta \(T\)</td><td class="n"><span class="hz">1 ms</span></td><td class="n"><span class="hz">4 ms</span></td></tr>
+          <tr><td>Muestreo asíncrono del sensor</td><td>en media \(T_s/2\)</td><td class="n"><span class="hz">0,5 ms</span></td><td class="n"><span class="hz">2 ms</span></td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Bajar la frecuencia de un lazo de 1 kHz a 250 Hz no solo empeora la resolución: pasa el retardo de muestreo y cómputo de <span class="hz">0,5–1,5 ms</span> a <span class="hz">2–6 ms</span>, que se comen el margen de fase. Por eso el lazo de <em>rate</em> corre tan rápido como se publica el giróscopo filtrado: 800 Hz en PX4, con el giróscopo muestreado a 8 kHz.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Diseñar en continuo, implementar a 50 Hz y sorprenderse de que oscile. La cuenta: para que el retenedor no quite más de 10° de fase en el cruce, \(\omega_c T/2 \le 0{,}17\) rad, es decir, \(f_s \ge 18\,f_c\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Saturación</p>
+  <h2>Anti-windup: que el integrador no acumule lo que el motor no puede dar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Si el actuador satura, el error persiste, el integrador sigue creciendo y, cuando el error cambia de signo, tarda en «descargarse»: sobrepaso grande y lento. Dos remedios clásicos <a class="cite" data-ref="astrom2021"></a>:</p>
+      <ul class="small">
+        <li><strong>Integración condicional</strong> (<em>clamping</em>): no integrar mientras el actuador esté saturado y el error empuje hacia la saturación.</li>
+        <li><strong>Cálculo hacia atrás</strong> (<em>back-calculation</em>): realimentar al integrador la diferencia entre el mando saturado y el pedido, con una constante de seguimiento \(T_t\):</li>
+      </ul>
+      \[ \dot I = K_i\,e + \frac{1}{T_t}\big(\operatorname{sat}(u) - u\big) \]
+      <details class="deriv"><summary>Por qué funciona</summary>
+        <p class="small">Mientras no hay saturación, \(\operatorname{sat}(u) = u\) y el término extra vale cero. Saturado, si \(u\) sigue creciendo, \(\operatorname{sat}(u) - u &lt; 0\) frena al integrador; en régimen, \(\dot I = 0\) da \(u - \operatorname{sat}(u) = K_iT_t\,e\): el mando pedido se queda a una distancia acotada del límite y el integrador sale de la saturación en cuanto el error cambia de signo, en un tiempo del orden de \(T_t\).</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Cómo lo hace PX4</strong> en el lazo de <em>rate</em> (<code>RateControl::updateIntegral</code>) <a class="cite" data-ref="px4ratectl"></a>:</p>
+      <ol class="small">
+        <li>El asignador publica, por eje y por signo, si el par pedido está saturado; el integrador solo acumula error que aleje de esa saturación (integración condicional).</li>
+        <li>Factor \(\max\!\big(0,\,1 - (e/400^\circ\mathrm{/s})^2\big)\) sobre la ganancia integral: con errores de <em>rate</em> grandes, como en una voltereta, el integrador casi no carga.</li>
+        <li>Integrador acotado a \(\pm 0{,}3\) de par normalizado (<code>MC_RR_INT_LIM</code>).</li>
+        <li>No integra mientras el dron está en el suelo.</li>
+      </ol>
+      <div class="callout realidad"><span class="tag">Cuenta con el x500</span>A empuje constante, el motor más cargado satura con un par normalizado de 0,38. Sin <em>airmode</em>, el asignador de PX4 baja entonces el empuje colectivo para conservar el par, hasta unos 0,71, y solo después recorta el par y avisa al integrador <a class="cite" data-ref="px4alloc"></a>. Aun sin esa ayuda, 50 ms de saturación con un error de 200 °/s cargarían 0,026 (con el factor de 0,75): en el lazo de <em>rate</em> el <em>windup</em> pesa poco. Muerde en los lazos lentos, que saturan durante segundos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Márgenes</p>
+  <h2>Cruce de ganancia, margen de fase y lo que no se puede tener a la vez</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con lazo abierto \(L = CP\), la sensibilidad y la sensibilidad complementaria:</p>
+      \[ S = \frac{1}{1+L},\qquad T = \frac{L}{1+L},\qquad S + T = 1 \]
+      <ul class="small">
+        <li>\(S\) multiplica las perturbaciones a la salida y el error de seguimiento; \(T\) deja pasar el ruido del sensor.</li>
+        <li><strong>Cruce de ganancia</strong> \(\omega_c\), donde \(|L| = 1\): aproxima el ancho de banda del lazo cerrado.</li>
+        <li><strong>Margen de fase</strong> \(\varphi_m = 180^\circ + \arg L(j\omega_c)\): cuánto retardo o desfase extra cabe antes de oscilar. En un segundo orden estándar, \(\varphi_m\) = 45° da \(\zeta\) = 0,42 y un 23 % de sobrepaso; 60° da \(\zeta\) = 0,61 y un 9 %.</li>
+        <li><strong>Margen de ganancia:</strong> factor de ganancia que falta para \(|L| = 1\) donde la fase vale −180°.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Integral de Bode:</strong> si el lazo cerrado es estable, \(L\) tiene grado relativo ≥ 2 y sus polos en el semiplano derecho son \(p_k\),</p>
+      \[ \int_0^\infty \ln|S(j\omega)|\,d\omega = \pi\sum_k \operatorname{Re}(p_k) \]
+      <details class="deriv"><summary>Idea de la demostración</summary>
+        <p class="small">\(\ln S(s)\) es analítica en el semiplano derecho salvo donde \(S\) se anula, que es en los polos inestables de \(L\). Se integra en un contorno que cierra el eje imaginario con un semicírculo grande. Con grado relativo ≥ 2, \(\ln S \approx -L = O(1/s^2)\) en el arco y su contribución se anula. Lo que queda es la integral sobre el eje, igual a la contribución de los ceros de \(S\) dentro del contorno, \(\pi\sum\operatorname{Re}\,p_k\). Bode (1945) dio el caso estable; la versión con polos inestables es de Freudenberg y Looze <a class="cite" data-ref="bode1945,freudenberg1985,stein2003"></a>.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Efecto «colchón de agua»</span>Así lo llaman Åström y Murray <a class="cite" data-ref="astrom2021"></a>: bajar \(|S|\) en una banda la sube en otra. Un dron sin polos en el semiplano derecho (solo integradores) reparte área cero; un ala fija inestable en espiral o un péndulo invertido pagan además \(\pi\sum\operatorname{Re}p_k\). Atenuar viento a baja frecuencia obliga a amplificar algo cerca del cruce.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El retardo</p>
+  <h2>Cada milisegundo de retardo es fase que se pierde en el cruce</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Un retardo puro \(e^{-s\tau}\) no cambia la ganancia y resta fase \(\omega\tau\). Para un lazo que cerca del cruce se comporta como un integrador, \(L \approx (\omega_c/s)\,e^{-s\tau}\):</p>
+      \[ \varphi_m = 90^\circ - \omega_c\tau\cdot\frac{180^\circ}{\pi}\quad\Rightarrow\quad f_c^{\max} = \frac{90^\circ - \varphi_m}{360^\circ\,\tau} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">\(|L(j\omega)| = \omega_c/\omega\), que vale 1 en \(\omega_c\). La fase es \(-90^\circ\) del integrador más \(-\omega\tau\) del retardo. El margen es \(180^\circ - 90^\circ - \omega_c\tau\). Para \(\varphi_m = 45^\circ\) sale \(\omega_c\tau = \pi/4\), es decir, \(f_c = 1/(8\tau)\).</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Un dron cuyo lazo de <em>rate</em> acumula <span class="hz">5 ms</span> entre giróscopo, filtro, cómputo y motor no puede cruzar por encima de <span class="hz">25 Hz</span> con 45° de margen. Con <span class="hz">20 ms</span>, el límite baja a <span class="hz">6 Hz</span>: es lo que pasa si una política en el ordenador de a bordo intenta cerrar ella misma ese lazo a través de un enlace serie.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Retardo total</th><th>\(f_c^{\max}\) con 45°</th><th>\(f_c^{\max}\) con 60°</th></tr>
+          <tr><td class="n"><span class="hz">0,5 ms</span></td><td class="n">250 Hz</td><td class="n">167 Hz</td></tr>
+          <tr><td class="n"><span class="hz">1 ms</span></td><td class="n">125 Hz</td><td class="n">83 Hz</td></tr>
+          <tr><td class="n"><span class="hz">2,5 ms</span></td><td class="n">50 Hz</td><td class="n">33 Hz</td></tr>
+          <tr><td class="n"><span class="hz">5 ms</span></td><td class="n">25 Hz</td><td class="n">17 Hz</td></tr>
+          <tr><td class="n"><span class="hz">10 ms</span></td><td class="n">12,5 Hz</td><td class="n">8,3 Hz</td></tr>
+          <tr><td class="n"><span class="hz">20 ms</span></td><td class="n">6,2 Hz</td><td class="n">4,2 Hz</td></tr>
+          <tr><td class="n"><span class="hz">50 ms</span></td><td class="n">2,5 Hz</td><td class="n">1,7 Hz</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Cota optimista: el resto del lazo (motor, filtros) también resta fase. Cálculo en <code>figuras/figuras_a2.py</code>.</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model que planifica a <span class="hz">10–50 Hz</span> con <span class="hz">20–100 ms</span> de latencia no puede estar dentro del lazo de <em>rate</em>. Su sitio está arriba de la cascada, o en una política rápida destilada de él.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Filtros del giróscopo</p>
+  <h2>Menos ruido cuesta más retardo, y cada autopiloto paga distinto</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Un Butterworth de 2.º orden a \(f_c\) retrasa unos \(\sqrt2/(2\pi f_c)\) en baja frecuencia; un PT1, \(1/(2\pi f_c)\). Con los valores por defecto:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Autopiloto</th><th>Filtro del giróscopo</th><th>Retardo</th></tr>
+          <tr><td>PX4</td><td>Butterworth a 40 Hz; derivada para la D a 20 Hz</td><td class="n"><span class="hz">5,6 ms</span>; <span class="hz">8,0 ms</span></td></tr>
+          <tr><td>ArduCopter</td><td>Butterworth a 20 Hz</td><td class="n"><span class="hz">11,3 ms</span></td></tr>
+          <tr><td>Crazyflie</td><td>Butterworth a 80 Hz</td><td class="n"><span class="hz">2,8 ms</span></td></tr>
+          <tr><td>Betaflight</td><td>PT1 dinámico de 250–500 Hz + PT1 a 500 Hz, con filtro de RPM</td><td class="n"><span class="hz">0,6–1,0 ms</span></td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Valores por defecto en el código de cada proyecto (noviembre de 2026) <a class="cite" data-ref="px4gyro,ardupilot,crazyflie,betaflight"></a>; retardos calculados en <code>figuras/figuras_a2.py</code>. La guía de PX4 da 8 ms a 30 Hz, 3,8 ms a 60 Hz y 1,9 ms a 120 Hz: es la misma fórmula <a class="cite" data-ref="px4filter"></a>.</p>
+      <ul class="small">
+        <li><strong>Notch dinámico por RPM:</strong> con la velocidad de cada motor (DShot bidireccional), un banco de filtros de banda eliminada sigue sus armónicos. En Betaflight son 36 (3 armónicos × 4 motores × 3 ejes), y eso le permite filtrar poco en paso bajo <a class="cite" data-ref="betaflight"></a>. En PX4 existe, pero viene desactivado.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">El motor manda</span>Constantes de tiempo medidas: <span class="hz">39 ms</span> (Agilicious), <span class="hz">50 ms</span> (Crazyflie Brushless) y <span class="hz">72 ms</span> (Crazyflie 2.1) <a class="cite" data-ref="agilicious,grafe2026,eschmann2024sysid"></a>. Del mando a la fuerza, Agilicious mide <span class="hz">35 ms</span> con su controladora, <span class="hz">40 ms</span> con Betaflight y más de <span class="hz">75 ms</span> mandando desde fuera de la controladora. El motor del x500 de Gazebo tiene <span class="hz">12,5 ms</span>.</div>
+      <div class="callout error"><span class="tag">Lee el código, no solo la documentación</span>La descripción de <code>IMU_DGYRO_CUTOFF</code> habla de un Butterworth de 2.º orden, pero el código actual de PX4 usa uno de 1.er orden (<code>AlphaFilter</code>). Y la guía de filtros aún da 30 Hz como valor por defecto del giróscopo, que hoy es 40 Hz.</div>
+      <div class="callout tesis"><span class="tag">Sim-to-real</span>Si tu simulador no filtra el giróscopo como el autopiloto ni modela el motor medido, la política se entrena contra un lazo interno con varias veces menos retardo del real.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Un lazo real, con cifras</p>
+  <h2>El lazo de <em>rate</em> del x500 con las ganancias por defecto de PX4</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Planta de alabeo linealizada en estacionario, con el motor de primer orden de A1:</p>
+      \[ \frac{\omega(s)}{u(s)} = \frac{b}{s\,(1+\tau_m s)},\qquad b = \frac{4\,\ell\,\tfrac{1}{\sqrt2}\,\tfrac{\partial T}{\partial u}}{J_x} = 230\ \mathrm{rad/s^2} \]
+      <details class="deriv"><summary>De dónde sale \(b\)</summary>
+        <p class="small">El asignador de PX4 normaliza la columna de alabeo de su pseudoinversa para que, en un cuadricóptero X, un par normalizado \(u\) suba dos motores \(u/\sqrt2\) y baje los otros dos lo mismo <a class="cite" data-ref="px4alloc"></a>. En Gazebo, la salida de motor \(0\ldots1\) se traduce linealmente en \(\Omega = 150\ldots1000\) rad/s (<code>SIM_GZ_EC_MIN/MAX</code>) <a class="cite" data-ref="px4x500"></a>. En estacionario \(\Omega_0 = 770\) rad/s y \(\partial T/\partial u = 2k_T\Omega_0\cdot 850 = 11{,}2\) N. Con brazo \(\ell = 0{,}174\) m y \(J_x = 0{,}0239\ \mathrm{kg\,m^2}\) (la que calcula Gazebo sumando los rotores al cuerpo) sale \(b = 230\ \mathrm{rad/s^2}\). A empuje constante, el motor más cargado satura con \(u = 0{,}38\): unos \(88\ \mathrm{rad/s^2}\) desde el estacionario.</p>
+      </details>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Caso</th><th>Cruce</th><th>MF</th><th>MG</th><th>Retardo que aguanta</th></tr>
+          <tr><td>Lazo a 250 Hz (como el SITL), \(\tau_m\) = 12,5 ms</td><td class="n">6,3 Hz</td><td class="n">71°</td><td class="n">11,3 dB</td><td class="n"><span class="hz">31 ms</span></td></tr>
+          <tr><td>Lazo a 800 Hz (placa real)</td><td class="n">6,3 Hz</td><td class="n">81°</td><td class="n">21,1 dB</td><td class="n"><span class="hz">35 ms</span></td></tr>
+          <tr><td>250 Hz, motor real: \(\tau_m\) = 39 ms</td><td class="n">4,3 Hz</td><td class="n">50°</td><td class="n">15,8 dB</td><td class="n"><span class="hz">32 ms</span></td></tr>
+          <tr><td>250 Hz + 10 ms de retardo</td><td class="n">6,3 Hz</td><td class="n">49°</td><td class="n">5,0 dB</td><td class="n"><span class="hz">21 ms</span></td></tr>
+          <tr><td>250 Hz + 20 ms de retardo</td><td class="n">6,3 Hz</td><td class="n">26°</td><td class="n">2,2 dB</td><td class="n"><span class="hz">11 ms</span></td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">PID de PX4 (P 0,15; I 0,2; D 0,003), giróscopo filtrado a 40 Hz (Butterworth de 2.º orden) y derivada a 20 Hz (1.er orden) <a class="cite" data-ref="px4ratectl,px4gyro"></a>. Supuestos: modelo lineal, motor simétrico, retardo de 1,5 periodos. Con motores no lineales y asimétricos como en Gazebo: 5,9 Hz y 64°.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Diagrama de Bode del lazo de rate del x500 con y sin 10 ms de retardo extra">
+        <line class="ln-rule" x1="60" y1="20" x2="60" y2="130"/>
+        <line class="ln-rule" x1="60" y1="160" x2="60" y2="270"/>
+        <line class="ln-dash" x1="60" y1="75" x2="500" y2="75"/>
+        <line class="ln-dash" x1="60" y1="215" x2="500" y2="215"/>
+        <line class="ln-rule" x1="60" y1="270" x2="500" y2="270"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M84.3,20.1 L85.4,20.5 L86.5,20.9 L87.6,21.3 L88.7,21.7 L89.8,22.1 L90.9,22.5 L92.0,22.8 L93.1,23.2 L94.2,23.6 L95.3,24.0 L96.4,24.4 L97.5,24.8 L98.6,25.1 L99.7,25.5 L100.8,25.9 L101.9,26.2 L103.0,26.6 L104.1,27.0 L105.2,27.3 L106.3,27.7 L107.4,28.1 L108.5,28.4 L109.6,28.8 L110.7,29.1 L111.8,29.5 L112.9,29.8 L114.0,30.2 L115.1,30.5 L116.2,30.9 L117.3,31.2 L118.4,31.5 L119.5,31.9 L120.7,32.2 L121.8,32.5 L122.9,32.9 L124.0,33.2 L125.1,33.5 L126.2,33.9 L127.3,34.2 L128.4,34.5 L129.5,34.8 L130.6,35.2 L131.7,35.5 L132.8,35.8 L133.9,36.1 L135.0,36.4 L136.1,36.8 L137.2,37.1 L138.3,37.4 L139.4,37.7 L140.5,38.0 L141.6,38.3 L142.7,38.6 L143.8,38.9 L144.9,39.2 L146.0,39.5 L147.1,39.8 L148.2,40.2 L149.3,40.5 L150.4,40.8 L151.5,41.1 L152.6,41.4 L153.7,41.7 L154.8,42.0 L155.9,42.3 L157.0,42.5 L158.1,42.8 L159.2,43.1 L160.4,43.4 L161.5,43.7 L162.6,44.0 L163.7,44.3 L164.8,44.6 L165.9,44.9 L167.0,45.2 L168.1,45.5 L169.2,45.8 L170.3,46.1 L171.4,46.3 L172.5,46.6 L173.6,46.9 L174.7,47.2 L175.8,47.5 L176.9,47.8 L178.0,48.1 L179.1,48.3 L180.2,48.6 L181.3,48.9 L182.4,49.2 L183.5,49.5 L184.6,49.7 L185.7,50.0 L186.8,50.3 L187.9,50.6 L189.0,50.9 L190.1,51.1 L191.2,51.4 L192.3,51.7 L193.4,52.0 L194.5,52.3 L195.6,52.5 L196.7,52.8 L197.8,53.1 L198.9,53.4 L200.1,53.6 L201.2,53.9 L202.3,54.2 L203.4,54.5 L204.5,54.7 L205.6,55.0 L206.7,55.3 L207.8,55.5 L208.9,55.8 L210.0,56.1 L211.1,56.4 L212.2,56.6 L213.3,56.9 L214.4,57.2 L215.5,57.4 L216.6,57.7 L217.7,58.0 L218.8,58.2 L219.9,58.5 L221.0,58.8 L222.1,59.0 L223.2,59.3 L224.3,59.6 L225.4,59.8 L226.5,60.1 L227.6,60.3 L228.7,60.6 L229.8,60.9 L230.9,61.1 L232.0,61.4 L233.1,61.6 L234.2,61.9 L235.3,62.2 L236.4,62.4 L237.5,62.7 L238.6,62.9 L239.7,63.2 L240.9,63.4 L242.0,63.7 L243.1,63.9 L244.2,64.2 L245.3,64.4 L246.4,64.7 L247.5,64.9 L248.6,65.2 L249.7,65.4 L250.8,65.7 L251.9,65.9 L253.0,66.2 L254.1,66.4 L255.2,66.7 L256.3,66.9 L257.4,67.2 L258.5,67.4 L259.6,67.7 L260.7,67.9 L261.8,68.1 L262.9,68.4 L264.0,68.6 L265.1,68.9 L266.2,69.1 L267.3,69.3 L268.4,69.6 L269.5,69.8 L270.6,70.0 L271.7,70.3 L272.8,70.5 L273.9,70.7 L275.0,71.0 L276.1,71.2 L277.2,71.4 L278.3,71.7 L279.4,71.9 L280.6,72.1 L281.7,72.4 L282.8,72.6 L283.9,72.8 L285.0,73.0 L286.1,73.3 L287.2,73.5 L288.3,73.7 L289.4,73.9 L290.5,74.2 L291.6,74.4 L292.7,74.6 L293.8,74.9 L294.9,75.1 L296.0,75.3 L297.1,75.5 L298.2,75.8 L299.3,76.0 L300.4,76.2 L301.5,76.4 L302.6,76.7 L303.7,76.9 L304.8,77.1 L305.9,77.4 L307.0,77.6 L308.1,77.8 L309.2,78.0 L310.3,78.3 L311.4,78.5 L312.5,78.8 L313.6,79.0 L314.7,79.2 L315.8,79.5 L316.9,79.7 L318.0,80.0 L319.1,80.2 L320.3,80.4 L321.4,80.7 L322.5,80.9 L323.6,81.2 L324.7,81.4 L325.8,81.7 L326.9,82.0 L328.0,82.2 L329.1,82.5 L330.2,82.8 L331.3,83.0 L332.4,83.3 L333.5,83.6 L334.6,83.8 L335.7,84.1 L336.8,84.4 L337.9,84.7 L339.0,85.0 L340.1,85.3 L341.2,85.6 L342.3,85.9 L343.4,86.2 L344.5,86.5 L345.6,86.8 L346.7,87.1 L347.8,87.5 L348.9,87.8 L350.0,88.1 L351.1,88.4 L352.2,88.8 L353.3,89.1 L354.4,89.5 L355.5,89.8 L356.6,90.2 L357.7,90.5 L358.8,90.9 L359.9,91.3 L361.1,91.7 L362.2,92.0 L363.3,92.4 L364.4,92.8 L365.5,93.2 L366.6,93.6 L367.7,94.0 L368.8,94.4 L369.9,94.8 L371.0,95.3 L372.1,95.7 L373.2,96.1 L374.3,96.6 L375.4,97.0 L376.5,97.5 L377.6,97.9 L378.7,98.4 L379.8,98.9 L380.9,99.3 L382.0,99.8 L383.1,100.3 L384.2,100.8 L385.3,101.3 L386.4,101.8 L387.5,102.3 L388.6,102.8 L389.7,103.3 L390.8,103.8 L391.9,104.3 L393.0,104.9 L394.1,105.4 L395.2,105.9 L396.3,106.5 L397.4,107.0 L398.5,107.6 L399.6,108.1 L400.8,108.7 L401.9,109.2 L403.0,109.8 L404.1,110.3 L405.2,110.9 L406.3,111.4 L407.4,112.0 L408.5,112.5 L409.6,113.1 L410.7,113.6 L411.8,114.2 L412.9,114.7 L414.0,115.3 L415.1,115.8 L416.2,116.4 L417.3,116.9 L418.4,117.4 L419.5,118.0 L420.6,118.5 L421.7,119.0 L422.8,119.5 L423.9,120.1 L425.0,120.6 L426.1,121.1 L427.2,121.6 L428.3,122.1 L429.4,122.6 L430.5,123.1 L431.6,123.6 L432.7,124.1 L433.8,124.5 L434.9,125.0 L436.0,125.5 L437.1,126.0 L438.2,126.5 L439.3,127.0 L440.5,127.4 L441.6,127.9 L442.7,128.4 L443.8,128.9 L444.9,129.4 L446.0,129.8"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M60.0,193.1 L61.1,192.8 L62.2,192.5 L63.3,192.2 L64.4,191.9 L65.5,191.6 L66.6,191.3 L67.7,191.0 L68.8,190.7 L69.9,190.4 L71.0,190.1 L72.1,189.8 L73.2,189.5 L74.3,189.2 L75.4,188.9 L76.5,188.6 L77.6,188.3 L78.7,188.0 L79.8,187.7 L81.0,187.4 L82.1,187.1 L83.2,186.8 L84.3,186.5 L85.4,186.2 L86.5,185.9 L87.6,185.6 L88.7,185.3 L89.8,185.0 L90.9,184.8 L92.0,184.5 L93.1,184.2 L94.2,183.9 L95.3,183.6 L96.4,183.3 L97.5,183.0 L98.6,182.7 L99.7,182.4 L100.8,182.1 L101.9,181.9 L103.0,181.6 L104.1,181.3 L105.2,181.0 L106.3,180.7 L107.4,180.5 L108.5,180.2 L109.6,179.9 L110.7,179.7 L111.8,179.4 L112.9,179.1 L114.0,178.9 L115.1,178.6 L116.2,178.4 L117.3,178.1 L118.4,177.9 L119.5,177.6 L120.7,177.4 L121.8,177.1 L122.9,176.9 L124.0,176.6 L125.1,176.4 L126.2,176.2 L127.3,175.9 L128.4,175.7 L129.5,175.5 L130.6,175.3 L131.7,175.0 L132.8,174.8 L133.9,174.6 L135.0,174.4 L136.1,174.2 L137.2,174.0 L138.3,173.8 L139.4,173.6 L140.5,173.4 L141.6,173.2 L142.7,173.0 L143.8,172.8 L144.9,172.6 L146.0,172.4 L147.1,172.3 L148.2,172.1 L149.3,171.9 L150.4,171.7 L151.5,171.6 L152.6,171.4 L153.7,171.2 L154.8,171.1 L155.9,170.9 L157.0,170.7 L158.1,170.6 L159.2,170.4 L160.4,170.3 L161.5,170.1 L162.6,170.0 L163.7,169.9 L164.8,169.7 L165.9,169.6 L167.0,169.4 L168.1,169.3 L169.2,169.2 L170.3,169.1 L171.4,168.9 L172.5,168.8 L173.6,168.7 L174.7,168.6 L175.8,168.5 L176.9,168.3 L178.0,168.2 L179.1,168.1 L180.2,168.0 L181.3,167.9 L182.4,167.8 L183.5,167.7 L184.6,167.6 L185.7,167.5 L186.8,167.4 L187.9,167.3 L189.0,167.3 L190.1,167.2 L191.2,167.1 L192.3,167.0 L193.4,166.9 L194.5,166.8 L195.6,166.8 L196.7,166.7 L197.8,166.6 L198.9,166.6 L200.1,166.5 L201.2,166.4 L202.3,166.4 L203.4,166.3 L204.5,166.2 L205.6,166.2 L206.7,166.1 L207.8,166.1 L208.9,166.0 L210.0,166.0 L211.1,165.9 L212.2,165.9 L213.3,165.8 L214.4,165.8 L215.5,165.8 L216.6,165.7 L217.7,165.7 L218.8,165.7 L219.9,165.6 L221.0,165.6 L222.1,165.6 L223.2,165.6 L224.3,165.5 L225.4,165.5 L226.5,165.5 L227.6,165.5 L228.7,165.5 L229.8,165.5 L230.9,165.5 L232.0,165.5 L233.1,165.5 L234.2,165.5 L235.3,165.5 L236.4,165.5 L237.5,165.5 L238.6,165.5 L239.7,165.5 L240.9,165.5 L242.0,165.5 L243.1,165.6 L244.2,165.6 L245.3,165.6 L246.4,165.7 L247.5,165.7 L248.6,165.7 L249.7,165.8 L250.8,165.8 L251.9,165.9 L253.0,165.9 L254.1,166.0 L255.2,166.0 L256.3,166.1 L257.4,166.2 L258.5,166.2 L259.6,166.3 L260.7,166.4 L261.8,166.5 L262.9,166.6 L264.0,166.6 L265.1,166.7 L266.2,166.8 L267.3,166.9 L268.4,167.1 L269.5,167.2 L270.6,167.3 L271.7,167.4 L272.8,167.6 L273.9,167.7 L275.0,167.8 L276.1,168.0 L277.2,168.1 L278.3,168.3 L279.4,168.5 L280.6,168.6 L281.7,168.8 L282.8,169.0 L283.9,169.2 L285.0,169.4 L286.1,169.6 L287.2,169.8 L288.3,170.1 L289.4,170.3 L290.5,170.5 L291.6,170.8 L292.7,171.0 L293.8,171.3 L294.9,171.5 L296.0,171.8 L297.1,172.1 L298.2,172.4 L299.3,172.7 L300.4,173.0 L301.5,173.3 L302.6,173.7 L303.7,174.0 L304.8,174.4 L305.9,174.7 L307.0,175.1 L308.1,175.5 L309.2,175.9 L310.3,176.3 L311.4,176.7 L312.5,177.1 L313.6,177.5 L314.7,177.9 L315.8,178.4 L316.9,178.9 L318.0,179.3 L319.1,179.8 L320.3,180.3 L321.4,180.8 L322.5,181.3 L323.6,181.8 L324.7,182.4 L325.8,182.9 L326.9,183.5 L328.0,184.0 L329.1,184.6 L330.2,185.2 L331.3,185.8 L332.4,186.4 L333.5,187.0 L334.6,187.6 L335.7,188.3 L336.8,188.9 L337.9,189.6 L339.0,190.2 L340.1,190.9 L341.2,191.6 L342.3,192.3 L343.4,193.0 L344.5,193.8 L345.6,194.5 L346.7,195.2 L347.8,196.0 L348.9,196.8 L350.0,197.5 L351.1,198.3 L352.2,199.1 L353.3,199.9 L354.4,200.7 L355.5,201.6 L356.6,202.4 L357.7,203.2 L358.8,204.1 L359.9,204.9 L361.1,205.8 L362.2,206.7 L363.3,207.6 L364.4,208.5 L365.5,209.4 L366.6,210.3 L367.7,211.2 L368.8,212.1 L369.9,213.1 L371.0,214.0 L372.1,215.0 L373.2,215.9 L374.3,216.9 L375.4,217.9 L376.5,218.8 L377.6,219.8 L378.7,220.8 L379.8,221.8 L380.9,222.8 L382.0,223.8 L383.1,224.8 L384.2,225.8 L385.3,226.8 L386.4,227.8 L387.5,228.9 L388.6,229.9 L389.7,230.9 L390.8,231.9 L391.9,233.0 L393.0,234.0 L394.1,235.0 L395.2,236.1 L396.3,237.1 L397.4,238.1 L398.5,239.2 L399.6,240.2 L400.8,241.2 L401.9,242.3 L403.0,243.3 L404.1,244.3 L405.2,245.4 L406.3,246.4 L407.4,247.4 L408.5,248.5 L409.6,249.5 L410.7,250.6 L411.8,251.6 L412.9,252.7 L414.0,253.7 L415.1,254.8 L416.2,255.8 L417.3,256.9 L418.4,258.0 L419.5,259.1 L420.6,260.2 L421.7,261.3 L422.8,262.5 L423.9,263.6 L425.0,264.8 L426.1,266.0 L427.2,267.2 L428.3,268.4 L429.4,269.7"/>
+        <path class="ln-tesis" fill="none" stroke-width="2" stroke-dasharray="6 4" d="M60.0,193.4 L61.1,193.1 L62.2,192.8 L63.3,192.6 L64.4,192.3 L65.5,192.0 L66.6,191.7 L67.7,191.4 L68.8,191.1 L69.9,190.8 L71.0,190.5 L72.1,190.3 L73.2,190.0 L74.3,189.7 L75.4,189.4 L76.5,189.1 L77.6,188.8 L78.7,188.5 L79.8,188.2 L81.0,187.9 L82.1,187.6 L83.2,187.3 L84.3,187.0 L85.4,186.8 L86.5,186.5 L87.6,186.2 L88.7,185.9 L89.8,185.6 L90.9,185.3 L92.0,185.0 L93.1,184.8 L94.2,184.5 L95.3,184.2 L96.4,183.9 L97.5,183.6 L98.6,183.4 L99.7,183.1 L100.8,182.8 L101.9,182.5 L103.0,182.3 L104.1,182.0 L105.2,181.7 L106.3,181.5 L107.4,181.2 L108.5,180.9 L109.6,180.7 L110.7,180.4 L111.8,180.2 L112.9,179.9 L114.0,179.7 L115.1,179.4 L116.2,179.2 L117.3,179.0 L118.4,178.7 L119.5,178.5 L120.7,178.3 L121.8,178.0 L122.9,177.8 L124.0,177.6 L125.1,177.4 L126.2,177.2 L127.3,176.9 L128.4,176.7 L129.5,176.5 L130.6,176.3 L131.7,176.1 L132.8,175.9 L133.9,175.7 L135.0,175.5 L136.1,175.3 L137.2,175.2 L138.3,175.0 L139.4,174.8 L140.5,174.6 L141.6,174.4 L142.7,174.3 L143.8,174.1 L144.9,173.9 L146.0,173.8 L147.1,173.6 L148.2,173.5 L149.3,173.3 L150.4,173.2 L151.5,173.0 L152.6,172.9 L153.7,172.7 L154.8,172.6 L155.9,172.5 L157.0,172.3 L158.1,172.2 L159.2,172.1 L160.4,172.0 L161.5,171.9 L162.6,171.7 L163.7,171.6 L164.8,171.5 L165.9,171.4 L167.0,171.3 L168.1,171.2 L169.2,171.1 L170.3,171.0 L171.4,170.9 L172.5,170.9 L173.6,170.8 L174.7,170.7 L175.8,170.6 L176.9,170.5 L178.0,170.5 L179.1,170.4 L180.2,170.3 L181.3,170.3 L182.4,170.2 L183.5,170.1 L184.6,170.1 L185.7,170.0 L186.8,170.0 L187.9,169.9 L189.0,169.9 L190.1,169.9 L191.2,169.8 L192.3,169.8 L193.4,169.8 L194.5,169.7 L195.6,169.7 L196.7,169.7 L197.8,169.7 L198.9,169.7 L200.1,169.6 L201.2,169.6 L202.3,169.6 L203.4,169.6 L204.5,169.6 L205.6,169.6 L206.7,169.6 L207.8,169.6 L208.9,169.7 L210.0,169.7 L211.1,169.7 L212.2,169.7 L213.3,169.7 L214.4,169.8 L215.5,169.8 L216.6,169.8 L217.7,169.9 L218.8,169.9 L219.9,169.9 L221.0,170.0 L222.1,170.0 L223.2,170.1 L224.3,170.2 L225.4,170.2 L226.5,170.3 L227.6,170.4 L228.7,170.4 L229.8,170.5 L230.9,170.6 L232.0,170.7 L233.1,170.8 L234.2,170.9 L235.3,171.0 L236.4,171.1 L237.5,171.2 L238.6,171.3 L239.7,171.4 L240.9,171.5 L242.0,171.6 L243.1,171.8 L244.2,171.9 L245.3,172.0 L246.4,172.2 L247.5,172.3 L248.6,172.5 L249.7,172.6 L250.8,172.8 L251.9,173.0 L253.0,173.2 L254.1,173.3 L255.2,173.5 L256.3,173.7 L257.4,173.9 L258.5,174.1 L259.6,174.3 L260.7,174.6 L261.8,174.8 L262.9,175.0 L264.0,175.3 L265.1,175.5 L266.2,175.8 L267.3,176.0 L268.4,176.3 L269.5,176.6 L270.6,176.9 L271.7,177.1 L272.8,177.5 L273.9,177.8 L275.0,178.1 L276.1,178.4 L277.2,178.7 L278.3,179.1 L279.4,179.4 L280.6,179.8 L281.7,180.2 L282.8,180.6 L283.9,181.0 L285.0,181.4 L286.1,181.8 L287.2,182.2 L288.3,182.7 L289.4,183.1 L290.5,183.6 L291.6,184.0 L292.7,184.5 L293.8,185.0 L294.9,185.5 L296.0,186.1 L297.1,186.6 L298.2,187.1 L299.3,187.7 L300.4,188.3 L301.5,188.9 L302.6,189.5 L303.7,190.1 L304.8,190.7 L305.9,191.4 L307.0,192.0 L308.1,192.7 L309.2,193.4 L310.3,194.1 L311.4,194.8 L312.5,195.5 L313.6,196.3 L314.7,197.0 L315.8,197.8 L316.9,198.6 L318.0,199.4 L319.1,200.3 L320.3,201.1 L321.4,202.0 L322.5,202.9 L323.6,203.8 L324.7,204.7 L325.8,205.6 L326.9,206.6 L328.0,207.5 L329.1,208.5 L330.2,209.5 L331.3,210.5 L332.4,211.6 L333.5,212.6 L334.6,213.7 L335.7,214.8 L336.8,215.9 L337.9,217.1 L339.0,218.2 L340.1,219.4 L341.2,220.6 L342.3,221.8 L343.4,223.0 L344.5,224.3 L345.6,225.5 L346.7,226.8 L347.8,228.1 L348.9,229.4 L350.0,230.8 L351.1,232.1 L352.2,233.5 L353.3,234.9 L354.4,236.4 L355.5,237.8 L356.6,239.3 L357.7,240.8 L358.8,242.3 L359.9,243.8 L361.1,245.3 L362.2,246.9 L363.3,248.5 L364.4,250.1 L365.5,251.7 L366.6,253.4 L367.7,255.1 L368.8,256.8 L369.9,258.5 L371.0,260.2 L372.1,262.0 L373.2,263.7 L374.3,265.5 L375.4,267.4 L376.5,269.2"/>
+        <line class="ln-time" x1="294.5" y1="20" x2="294.5" y2="270" stroke-dasharray="2 4"/>
+        <circle class="fill-time" cx="294.5" cy="171.5" r="4"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="52" y="24" text-anchor="end">30</text>
+          <text x="52" y="79" text-anchor="end">0 dB</text>
+          <text x="52" y="134" text-anchor="end">−30</text>
+          <text x="52" y="164" text-anchor="end">−90°</text>
+          <text x="52" y="219" text-anchor="end">−180°</text>
+          <text x="52" y="274" text-anchor="end">−270°</text>
+          <text x="60" y="288" text-anchor="middle">1</text>
+          <text x="206.7" y="288" text-anchor="middle">10</text>
+          <text x="353.3" y="288" text-anchor="middle">100</text>
+          <text x="500" y="288" text-anchor="end">1000 rad/s</text>
+        </g>
+        <g font-size="13">
+          <text x="302" y="40" class="t-time">cruce 6,3 Hz</text>
+          <text x="304" y="164" class="t-time">MF 71°</text>
+          <text x="110" y="100" class="t-accent">|L|</text>
+          <text x="400" y="190" class="t-accent">fase</text>
+          <text x="150" y="235" class="t-tesis">+10 ms: MF 49°</text>
+        </g>
+      </svg>
+      <figcaption>Ganancia y fase del lazo abierto, calculadas con <code>figuras/figuras_a2.py</code>. Diez milisegundos más de retardo no mueven el cruce, pero se comen 23° de margen.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En el tiempo</p>
+  <h2>Lo que el margen de fase significa en una respuesta al escalón</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Respuesta de la velocidad angular de alabeo a un escalón de consigna con distintos retardos">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <line class="ln-dash" x1="60" y1="112.5" x2="500" y2="112.5"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,250.0 L61.8,250.0 L63.5,250.0 L65.3,250.0 L67.0,249.2 L68.8,247.1 L70.6,243.8 L72.3,239.7 L74.1,234.7 L75.8,229.2 L77.6,223.1 L79.4,216.7 L81.1,210.1 L82.9,203.4 L84.6,196.8 L86.4,190.2 L88.2,183.9 L89.9,177.9 L91.7,172.2 L93.4,166.8 L95.2,161.9 L97.0,157.4 L98.7,153.3 L100.5,149.7 L102.2,146.4 L104.0,143.5 L105.8,141.0 L107.5,138.7 L109.3,136.8 L111.0,135.1 L112.8,133.6 L114.6,132.4 L116.3,131.2 L118.1,130.2 L119.8,129.3 L121.6,128.5 L123.4,127.7 L125.1,126.9 L126.9,126.2 L128.6,125.5 L130.4,124.8 L132.2,124.1 L133.9,123.3 L135.7,122.6 L137.4,121.9 L139.2,121.1 L141.0,120.4 L142.7,119.7 L144.5,118.9 L146.2,118.2 L148.0,117.5 L149.8,116.8 L151.5,116.1 L153.3,115.4 L155.0,114.8 L156.8,114.2 L158.6,113.6 L160.3,113.1 L162.1,112.5 L163.8,112.1 L165.6,111.6 L167.4,111.2 L169.1,110.8 L170.9,110.4 L172.6,110.1 L174.4,109.8 L176.2,109.5 L177.9,109.2 L179.7,108.9 L181.4,108.7 L183.2,108.5 L185.0,108.3 L186.7,108.1 L188.5,107.9 L190.2,107.8 L192.0,107.6 L193.8,107.5 L195.5,107.3 L197.3,107.2 L199.0,107.1 L200.8,106.9 L202.6,106.8 L204.3,106.7 L206.1,106.6 L207.8,106.5 L209.6,106.4 L211.4,106.3 L213.1,106.2 L214.9,106.2 L216.6,106.1 L218.4,106.0 L220.2,105.9 L221.9,105.9 L223.7,105.8 L225.4,105.7 L227.2,105.7 L229.0,105.6 L230.7,105.6 L232.5,105.5 L234.2,105.5 L236.0,105.5 L237.8,105.4 L239.5,105.4 L241.3,105.4 L243.0,105.3 L244.8,105.3 L246.6,105.3 L248.3,105.3 L250.1,105.3 L251.8,105.2 L253.6,105.2 L255.4,105.2 L257.1,105.2 L258.9,105.2 L260.6,105.2 L262.4,105.2 L264.2,105.2 L265.9,105.2 L267.7,105.2 L269.4,105.2 L271.2,105.2 L273.0,105.2 L274.7,105.2 L276.5,105.2 L278.2,105.2 L280.0,105.2 L281.8,105.2 L283.5,105.2 L285.3,105.2 L287.0,105.2 L288.8,105.2 L290.6,105.2 L292.3,105.2 L294.1,105.3 L295.8,105.3 L297.6,105.3 L299.4,105.3 L301.1,105.3 L302.9,105.3 L304.6,105.3 L306.4,105.3 L308.2,105.3 L309.9,105.4 L311.7,105.4 L313.4,105.4 L315.2,105.4 L317.0,105.4 L318.7,105.4 L320.5,105.4 L322.2,105.5 L324.0,105.5 L325.8,105.5 L327.5,105.5 L329.3,105.5 L331.0,105.5 L332.8,105.6 L334.6,105.6 L336.3,105.6 L338.1,105.6 L339.8,105.6 L341.6,105.6 L343.4,105.7 L345.1,105.7 L346.9,105.7 L348.6,105.7 L350.4,105.7 L352.2,105.7 L353.9,105.8 L355.7,105.8 L357.4,105.8 L359.2,105.8 L361.0,105.8 L362.7,105.8 L364.5,105.9 L366.2,105.9 L368.0,105.9 L369.8,105.9 L371.5,105.9 L373.3,106.0 L375.0,106.0 L376.8,106.0 L378.6,106.0 L380.3,106.0 L382.1,106.0 L383.8,106.1 L385.6,106.1 L387.4,106.1 L389.1,106.1 L390.9,106.1 L392.6,106.1 L394.4,106.2 L396.2,106.2 L397.9,106.2 L399.7,106.2 L401.4,106.2 L403.2,106.3 L405.0,106.3 L406.7,106.3 L408.5,106.3 L410.2,106.3 L412.0,106.3 L413.8,106.4 L415.5,106.4 L417.3,106.4 L419.0,106.4 L420.8,106.4 L422.6,106.4 L424.3,106.5 L426.1,106.5 L427.8,106.5 L429.6,106.5 L431.4,106.5 L433.1,106.5 L434.9,106.6 L436.6,106.6 L438.4,106.6 L440.2,106.6 L441.9,106.6 L443.7,106.6 L445.4,106.7 L447.2,106.7 L449.0,106.7 L450.7,106.7 L452.5,106.7 L454.2,106.7 L456.0,106.8 L457.8,106.8 L459.5,106.8 L461.3,106.8 L463.0,106.8 L464.8,106.8 L466.6,106.9 L468.3,106.9 L470.1,106.9 L471.8,106.9 L473.6,106.9 L475.4,106.9 L477.1,107.0 L478.9,107.0 L480.6,107.0 L482.4,107.0 L484.2,107.0 L485.9,107.0 L487.7,107.0 L489.4,107.1 L491.2,107.1 L493.0,107.1 L494.7,107.1 L496.5,107.1 L498.2,107.1 L500.0,107.2"/>
+        <path class="ln-time" fill="none" stroke-width="2" d="M60.0,250.0 L61.8,250.0 L63.5,250.0 L65.3,250.0 L67.0,250.0 L68.8,250.0 L70.6,250.0 L72.3,250.0 L74.1,250.0 L75.8,249.2 L77.6,247.1 L79.4,243.8 L81.1,239.7 L82.9,234.7 L84.6,229.1 L86.4,222.8 L88.2,216.1 L89.9,208.9 L91.7,201.4 L93.4,193.6 L95.2,185.6 L97.0,177.5 L98.7,169.5 L100.5,161.6 L102.2,153.9 L104.0,146.4 L105.8,139.3 L107.5,132.7 L109.3,126.5 L111.0,120.8 L112.8,115.6 L114.6,111.1 L116.3,107.1 L118.1,103.8 L119.8,101.0 L121.6,98.9 L123.4,97.3 L125.1,96.2 L126.9,95.7 L128.6,95.6 L130.4,95.9 L132.2,96.7 L133.9,97.7 L135.7,99.1 L137.4,100.6 L139.2,102.4 L141.0,104.2 L142.7,106.2 L144.5,108.1 L146.2,110.1 L148.0,111.9 L149.8,113.7 L151.5,115.4 L153.3,116.9 L155.0,118.2 L156.8,119.3 L158.6,120.2 L160.3,120.9 L162.1,121.3 L163.8,121.6 L165.6,121.6 L167.4,121.4 L169.1,121.0 L170.9,120.4 L172.6,119.6 L174.4,118.7 L176.2,117.7 L177.9,116.6 L179.7,115.3 L181.4,114.0 L183.2,112.7 L185.0,111.4 L186.7,110.0 L188.5,108.7 L190.2,107.4 L192.0,106.2 L193.8,105.1 L195.5,104.0 L197.3,103.1 L199.0,102.2 L200.8,101.5 L202.6,100.9 L204.3,100.4 L206.1,100.0 L207.8,99.7 L209.6,99.6 L211.4,99.6 L213.1,99.6 L214.9,99.8 L216.6,100.0 L218.4,100.3 L220.2,100.7 L221.9,101.2 L223.7,101.6 L225.4,102.1 L227.2,102.7 L229.0,103.2 L230.7,103.7 L232.5,104.3 L234.2,104.8 L236.0,105.3 L237.8,105.7 L239.5,106.1 L241.3,106.5 L243.0,106.8 L244.8,107.1 L246.6,107.3 L248.3,107.5 L250.1,107.6 L251.8,107.7 L253.6,107.7 L255.4,107.7 L257.1,107.6 L258.9,107.5 L260.6,107.4 L262.4,107.2 L264.2,107.0 L265.9,106.8 L267.7,106.5 L269.4,106.3 L271.2,106.0 L273.0,105.8 L274.7,105.5 L276.5,105.3 L278.2,105.1 L280.0,104.8 L281.8,104.7 L283.5,104.5 L285.3,104.3 L287.0,104.2 L288.8,104.1 L290.6,104.0 L292.3,104.0 L294.1,103.9 L295.8,103.9 L297.6,104.0 L299.4,104.0 L301.1,104.1 L302.9,104.1 L304.6,104.2 L306.4,104.3 L308.2,104.5 L309.9,104.6 L311.7,104.7 L313.4,104.9 L315.2,105.0 L317.0,105.1 L318.7,105.3 L320.5,105.4 L322.2,105.5 L324.0,105.7 L325.8,105.8 L327.5,105.9 L329.3,106.0 L331.0,106.0 L332.8,106.1 L334.6,106.2 L336.3,106.2 L338.1,106.2 L339.8,106.3 L341.6,106.3 L343.4,106.3 L345.1,106.3 L346.9,106.2 L348.6,106.2 L350.4,106.2 L352.2,106.2 L353.9,106.1 L355.7,106.1 L357.4,106.1 L359.2,106.0 L361.0,106.0 L362.7,105.9 L364.5,105.9 L366.2,105.9 L368.0,105.9 L369.8,105.8 L371.5,105.8 L373.3,105.8 L375.0,105.8 L376.8,105.8 L378.6,105.8 L380.3,105.8 L382.1,105.8 L383.8,105.8 L385.6,105.9 L387.4,105.9 L389.1,105.9 L390.9,106.0 L392.6,106.0 L394.4,106.0 L396.2,106.1 L397.9,106.1 L399.7,106.2 L401.4,106.2 L403.2,106.2 L405.0,106.3 L406.7,106.3 L408.5,106.4 L410.2,106.4 L412.0,106.5 L413.8,106.5 L415.5,106.5 L417.3,106.6 L419.0,106.6 L420.8,106.6 L422.6,106.6 L424.3,106.6 L426.1,106.7 L427.8,106.7 L429.6,106.7 L431.4,106.7 L433.1,106.7 L434.9,106.7 L436.6,106.7 L438.4,106.7 L440.2,106.7 L441.9,106.7 L443.7,106.7 L445.4,106.8 L447.2,106.8 L449.0,106.8 L450.7,106.8 L452.5,106.8 L454.2,106.8 L456.0,106.8 L457.8,106.8 L459.5,106.8 L461.3,106.8 L463.0,106.8 L464.8,106.8 L466.6,106.9 L468.3,106.9 L470.1,106.9 L471.8,106.9 L473.6,106.9 L475.4,106.9 L477.1,107.0 L478.9,107.0 L480.6,107.0 L482.4,107.0 L484.2,107.0 L485.9,107.1 L487.7,107.1 L489.4,107.1 L491.2,107.1 L493.0,107.1 L494.7,107.2 L496.5,107.2 L498.2,107.2 L500.0,107.2"/>
+        <path class="ln-tesis" fill="none" stroke-width="2" d="M60.0,250.0 L61.8,250.0 L63.5,250.0 L65.3,250.0 L67.0,250.0 L68.8,250.0 L70.6,250.0 L72.3,250.0 L74.1,250.0 L75.8,250.0 L77.6,250.0 L79.4,250.0 L81.1,250.0 L82.9,250.0 L84.6,249.2 L86.4,247.1 L88.2,243.8 L89.9,239.7 L91.7,234.7 L93.4,229.1 L95.2,222.8 L97.0,216.1 L98.7,208.9 L100.5,201.3 L102.2,193.4 L104.0,185.3 L105.8,176.9 L107.5,168.3 L109.3,159.5 L111.0,150.6 L112.8,141.7 L114.6,132.9 L116.3,124.2 L118.1,115.6 L119.8,107.3 L121.6,99.4 L123.4,91.9 L125.1,84.8 L126.9,78.3 L128.6,72.3 L130.4,66.9 L132.2,62.1 L133.9,58.0 L135.7,54.5 L137.4,51.8 L139.2,49.7 L141.0,48.3 L142.7,47.6 L144.5,47.6 L146.2,48.2 L148.0,49.4 L149.8,51.3 L151.5,53.7 L153.3,56.7 L155.0,60.1 L156.8,64.0 L158.6,68.2 L160.3,72.8 L162.1,77.7 L163.8,82.8 L165.6,88.0 L167.4,93.4 L169.1,98.8 L170.9,104.2 L172.6,109.5 L174.4,114.7 L176.2,119.7 L177.9,124.5 L179.7,129.1 L181.4,133.3 L183.2,137.1 L185.0,140.6 L186.7,143.7 L188.5,146.4 L190.2,148.6 L192.0,150.3 L193.8,151.5 L195.5,152.3 L197.3,152.6 L199.0,152.4 L200.8,151.7 L202.6,150.6 L204.3,149.0 L206.1,147.1 L207.8,144.7 L209.6,142.1 L211.4,139.0 L213.1,135.8 L214.9,132.2 L216.6,128.5 L218.4,124.6 L220.2,120.5 L221.9,116.4 L223.7,112.3 L225.4,108.2 L227.2,104.1 L229.0,100.1 L230.7,96.2 L232.5,92.5 L234.2,88.9 L236.0,85.6 L237.8,82.6 L239.5,79.8 L241.3,77.4 L243.0,75.2 L244.8,73.4 L246.6,72.0 L248.3,70.9 L250.1,70.2 L251.8,69.8 L253.6,69.8 L255.4,70.1 L257.1,70.8 L258.9,71.8 L260.6,73.2 L262.4,74.8 L264.2,76.7 L265.9,78.8 L267.7,81.2 L269.4,83.7 L271.2,86.5 L273.0,89.3 L274.7,92.3 L276.5,95.3 L278.2,98.4 L280.0,101.5 L281.8,104.5 L283.5,107.6 L285.3,110.5 L287.0,113.3 L288.8,116.0 L290.6,118.5 L292.3,120.9 L294.1,123.0 L295.8,125.0 L297.6,126.7 L299.4,128.1 L301.1,129.3 L302.9,130.2 L304.6,130.9 L306.4,131.3 L308.2,131.4 L309.9,131.3 L311.7,130.9 L313.4,130.2 L315.2,129.4 L317.0,128.3 L318.7,127.0 L320.5,125.5 L322.2,123.8 L324.0,122.0 L325.8,120.0 L327.5,118.0 L329.3,115.8 L331.0,113.6 L332.8,111.4 L334.6,109.1 L336.3,106.9 L338.1,104.7 L339.8,102.5 L341.6,100.4 L343.4,98.4 L345.1,96.5 L346.9,94.8 L348.6,93.2 L350.4,91.7 L352.2,90.4 L353.9,89.3 L355.7,88.4 L357.4,87.7 L359.2,87.1 L361.0,86.8 L362.7,86.7 L364.5,86.7 L366.2,87.0 L368.0,87.4 L369.8,88.0 L371.5,88.8 L373.3,89.8 L375.0,90.9 L376.8,92.1 L378.6,93.4 L380.3,94.9 L382.1,96.4 L383.8,98.0 L385.6,99.6 L387.4,101.3 L389.1,103.0 L390.9,104.7 L392.6,106.4 L394.4,108.1 L396.2,109.7 L397.9,111.2 L399.7,112.7 L401.4,114.1 L403.2,115.3 L405.0,116.5 L406.7,117.5 L408.5,118.4 L410.2,119.2 L412.0,119.8 L413.8,120.3 L415.5,120.6 L417.3,120.8 L419.0,120.8 L420.8,120.7 L422.6,120.5 L424.3,120.1 L426.1,119.6 L427.8,119.0 L429.6,118.2 L431.4,117.4 L433.1,116.4 L434.9,115.4 L436.6,114.3 L438.4,113.2 L440.2,112.0 L441.9,110.8 L443.7,109.6 L445.4,108.4 L447.2,107.1 L449.0,105.9 L450.7,104.7 L452.5,103.6 L454.2,102.5 L456.0,101.5 L457.8,100.6 L459.5,99.7 L461.3,99.0 L463.0,98.3 L464.8,97.7 L466.6,97.2 L468.3,96.9 L470.1,96.6 L471.8,96.5 L473.6,96.4 L475.4,96.5 L477.1,96.7 L478.9,96.9 L480.6,97.3 L482.4,97.8 L484.2,98.3 L485.9,98.9 L487.7,99.6 L489.4,100.4 L491.2,101.2 L493.0,102.1 L494.7,103.0 L496.5,103.9 L498.2,104.8 L500.0,105.8"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="236" y="268" text-anchor="middle">0,2</text>
+          <text x="412" y="268" text-anchor="middle">0,4 s</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="116" text-anchor="end">1 rad/s</text>
+          <text x="52" y="34" text-anchor="end">1,6</text>
+        </g>
+        <g font-size="13">
+          <text x="330" y="132" class="t-accent">base: 5 %</text>
+          <text x="300" y="58" class="t-time">+10 ms: 12 %</text>
+          <text x="400" y="40" class="t-tesis">+20 ms: 47 %</text>
+        </g>
+      </svg>
+      <figcaption>Escalón de 1 rad/s en la consigna de <em>rate</em> de alabeo del x500, con el PID de PX4 a 250 Hz. Modelo lineal con filtros discretos como los de PX4 y motor simétrico de 12,5 ms.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Base: subida al 90 % en <span class="hz">76 ms</span> y 5 % de sobrepaso (65 ms con los motores asimétricos de Gazebo).</li>
+        <li>Con 10 ms más, el sobrepaso pasa al 12 %; con 20 ms, al 47 %, con una oscilación de 8 Hz que pierde solo un 37 % de amplitud por ciclo.</li>
+        <li>A menos margen, más sobrepaso, aunque sin las cifras exactas de un segundo orden: el 5 % de la base lo produce el integrador.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Sim-to-real</span>El x500 de Gazebo publica la IMU a <span class="hz">250 Hz</span> <a class="cite" data-ref="px4x500"></a>, y el lazo de <em>rate</em> de PX4 corre a la frecuencia a la que llega el giróscopo. En una placa real con PX4 va a <span class="hz">800 Hz</span> por defecto, y los motores medidos en drones reales son de 3 a 6 veces más lentos que el de Gazebo. Una política entrenada contra el SITL ve otro lazo interno distinto del que tendrá en vuelo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 · CASCADA ============ -->
+<section class="slide divider" data-section="2 · Cascada y escalas">
+  <p class="num">Parte 2</p>
+  <h2>Cascada y separación de escalas</h2>
+  <p>Por qué el lazo de dentro tiene que ser varias veces más rápido que el de fuera, cuánto exactamente, y qué frecuencias usan los autopilotos reales.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Separación de escalas</p>
+  <h2>El lazo externo puede ignorar al interno solo si este es bastante más rápido</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Lazo de ángulo proporcional sobre un lazo de <em>rate</em> ya cerrado: \(\dot\theta = \omega\), \(\omega_{\text{sp}} = k(\theta_{\text{sp}} - \theta)\). Si el interno fuese instantáneo, \(\theta\) seguiría un primer orden de constante \(1/k\). Con un interno de primer orden de ancho de banda \(\omega_i\):</p>
+      \[ \frac{\theta}{\theta_{\text{sp}}} = \frac{k\,\omega_i}{s^2 + \omega_i s + k\,\omega_i},\qquad \zeta = \frac12\sqrt{\frac{\omega_i}{k}} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">\(\omega = \frac{\omega_i}{s+\omega_i}\,k(\theta_{\text{sp}} - \theta)\) y \(s\theta = \omega\). Sustituyendo, \(s(s+\omega_i)\theta = k\omega_i(\theta_{\text{sp}} - \theta)\). Comparando con \(s^2 + 2\zeta\omega_n s + \omega_n^2\): \(\omega_n^2 = k\omega_i\) y \(2\zeta\omega_n = \omega_i\), de donde \(\zeta = \tfrac12\sqrt{\omega_i/k}\). Con \(r = \omega_i/k\): \(r = 2\) da \(\zeta = 0{,}71\) y \(r = 4\), amortiguamiento crítico.</p>
+        <p class="small">En general es un problema de <strong>perturbaciones singulares</strong>: si el subsistema rápido es estable y su escala de tiempo es mucho menor, la dinámica lenta se analiza con el rápido en su equilibrio <a class="cite" data-ref="kokotovic1986"></a>.</p>
+      </details>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(r = \omega_i/k\)</th><th>1</th><th>2</th><th>4</th><th>8</th><th>∞</th></tr>
+          <tr><td>Sobrepaso</td><td class="n">60 %</td><td class="n">23 %</td><td class="n">0 %</td><td class="n">0 %</td><td class="n">0 %</td></tr>
+          <tr><td>Margen de fase externo</td><td class="n">15°</td><td class="n">48°</td><td class="n">70°</td><td class="n">80°</td><td class="n">90°</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Tabla y figura con el lazo interno de segundo orden, \(\zeta_i = 0{,}7\), más realista que el primer orden de la fórmula.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Respuesta al escalón del lazo de ángulo para distintas relaciones de ancho de banda entre el lazo interno y el externo">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <line class="ln-dash" x1="60" y1="127.8" x2="500" y2="127.8"/>
+        <text x="66" y="121" class="t-faint" font-size="12">consigna</text>
+        <path class="ln-tesis" fill="none" stroke-width="2" d="M60.0,250.0 L60.9,250.0 L61.8,250.0 L62.6,250.0 L63.5,250.0 L64.4,250.0 L65.3,250.0 L66.2,249.9 L67.0,249.9 L67.9,249.9 L68.8,249.8 L69.7,249.8 L70.6,249.7 L71.4,249.7 L72.3,249.6 L73.2,249.5 L74.1,249.4 L75.0,249.3 L75.8,249.2 L76.7,249.0 L77.6,248.9 L78.5,248.7 L79.4,248.5 L80.2,248.3 L81.1,248.1 L82.0,247.9 L82.9,247.6 L83.8,247.4 L84.6,247.1 L85.5,246.8 L86.4,246.5 L87.3,246.1 L88.2,245.8 L89.0,245.4 L89.9,245.0 L90.8,244.6 L91.7,244.1 L92.6,243.7 L93.4,243.2 L94.3,242.7 L95.2,242.2 L96.1,241.7 L97.0,241.1 L97.8,240.5 L98.7,239.9 L99.6,239.3 L100.5,238.7 L101.4,238.0 L102.2,237.3 L103.1,236.6 L104.0,235.9 L104.9,235.2 L105.8,234.4 L106.6,233.6 L107.5,232.8 L108.4,232.0 L109.3,231.1 L110.2,230.2 L111.0,229.4 L111.9,228.4 L112.8,227.5 L113.7,226.6 L114.6,225.6 L115.4,224.6 L116.3,223.6 L117.2,222.5 L118.1,221.5 L119.0,220.4 L119.8,219.3 L120.7,218.2 L121.6,217.1 L122.5,215.9 L123.4,214.8 L124.2,213.6 L125.1,212.4 L126.0,211.2 L126.9,209.9 L127.8,208.7 L128.6,207.4 L129.5,206.1 L130.4,204.8 L131.3,203.5 L132.2,202.2 L133.0,200.9 L133.9,199.5 L134.8,198.1 L135.7,196.8 L136.6,195.4 L137.4,193.9 L138.3,192.5 L139.2,191.1 L140.1,189.6 L141.0,188.2 L141.8,186.7 L142.7,185.2 L143.6,183.7 L144.5,182.2 L145.4,180.7 L146.2,179.2 L147.1,177.7 L148.0,176.2 L148.9,174.6 L149.8,173.1 L150.6,171.5 L151.5,170.0 L152.4,168.4 L153.3,166.8 L154.2,165.2 L155.0,163.7 L155.9,162.1 L156.8,160.5 L157.7,158.9 L158.6,157.3 L159.4,155.7 L160.3,154.1 L161.2,152.5 L162.1,150.9 L163.0,149.3 L163.8,147.7 L164.7,146.1 L165.6,144.5 L166.5,142.9 L167.4,141.3 L168.2,139.8 L169.1,138.2 L170.0,136.6 L170.9,135.0 L171.8,133.4 L172.6,131.9 L173.5,130.3 L174.4,128.7 L175.3,127.2 L176.2,125.6 L177.0,124.1 L177.9,122.6 L178.8,121.0 L179.7,119.5 L180.6,118.0 L181.4,116.5 L182.3,115.0 L183.2,113.5 L184.1,112.1 L185.0,110.6 L185.8,109.2 L186.7,107.7 L187.6,106.3 L188.5,104.9 L189.4,103.5 L190.2,102.1 L191.1,100.7 L192.0,99.4 L192.9,98.0 L193.8,96.7 L194.6,95.4 L195.5,94.1 L196.4,92.8 L197.3,91.6 L198.2,90.3 L199.0,89.1 L199.9,87.9 L200.8,86.7 L201.7,85.5 L202.6,84.3 L203.4,83.2 L204.3,82.1 L205.2,80.9 L206.1,79.9 L207.0,78.8 L207.8,77.7 L208.7,76.7 L209.6,75.7 L210.5,74.7 L211.4,73.8 L212.2,72.8 L213.1,71.9 L214.0,71.0 L214.9,70.1 L215.8,69.2 L216.6,68.4 L217.5,67.6 L218.4,66.8 L219.3,66.0 L220.2,65.3 L221.0,64.5 L221.9,63.8 L222.8,63.2 L223.7,62.5 L224.6,61.9 L225.4,61.3 L226.3,60.7 L227.2,60.1 L228.1,59.6 L229.0,59.1 L229.8,58.6 L230.7,58.1 L231.6,57.7 L232.5,57.3 L233.4,56.9 L234.2,56.5 L235.1,56.2 L236.0,55.8 L236.9,55.5 L237.8,55.3 L238.6,55.0 L239.5,54.8 L240.4,54.6 L241.3,54.4 L242.2,54.3 L243.0,54.2 L243.9,54.1 L244.8,54.0 L245.7,53.9 L246.6,53.9 L247.4,53.9 L248.3,53.9 L249.2,54.0 L250.1,54.0 L251.0,54.1 L251.8,54.2 L252.7,54.4 L253.6,54.5 L254.5,54.7 L255.4,54.9 L256.2,55.2 L257.1,55.4 L258.0,55.7 L258.9,56.0 L259.8,56.3 L260.6,56.6 L261.5,57.0 L262.4,57.4 L263.3,57.8 L264.2,58.2 L265.0,58.7 L265.9,59.2 L266.8,59.7 L267.7,60.2 L268.6,60.7 L269.4,61.3 L270.3,61.8 L271.2,62.4 L272.1,63.0 L273.0,63.7 L273.8,64.3 L274.7,65.0 L275.6,65.7 L276.5,66.4 L277.4,67.1 L278.2,67.8 L279.1,68.6 L280.0,69.4 L280.9,70.1 L281.8,70.9 L282.6,71.8 L283.5,72.6 L284.4,73.5 L285.3,74.3 L286.2,75.2 L287.0,76.1 L287.9,77.0 L288.8,77.9 L289.7,78.9 L290.6,79.8 L291.4,80.8 L292.3,81.7 L293.2,82.7 L294.1,83.7 L295.0,84.7 L295.8,85.8 L296.7,86.8 L297.6,87.8 L298.5,88.9 L299.4,89.9 L300.2,91.0 L301.1,92.1 L302.0,93.1 L302.9,94.2 L303.8,95.3 L304.6,96.4 L305.5,97.6 L306.4,98.7 L307.3,99.8 L308.2,100.9 L309.0,102.1 L309.9,103.2 L310.8,104.3 L311.7,105.5 L312.6,106.6 L313.4,107.8 L314.3,109.0 L315.2,110.1 L316.1,111.3 L317.0,112.4 L317.8,113.6 L318.7,114.8 L319.6,115.9 L320.5,117.1 L321.4,118.3 L322.2,119.4 L323.1,120.6 L324.0,121.8 L324.9,122.9 L325.8,124.1 L326.6,125.2 L327.5,126.4 L328.4,127.5 L329.3,128.7 L330.2,129.8 L331.0,131.0 L331.9,132.1 L332.8,133.2 L333.7,134.4 L334.6,135.5 L335.4,136.6 L336.3,137.7 L337.2,138.8 L338.1,139.9 L339.0,141.0 L339.8,142.1 L340.7,143.1 L341.6,144.2 L342.5,145.2 L343.4,146.3 L344.2,147.3 L345.1,148.4 L346.0,149.4 L346.9,150.4 L347.8,151.4 L348.6,152.4 L349.5,153.3 L350.4,154.3 L351.3,155.2 L352.2,156.2 L353.0,157.1 L353.9,158.0 L354.8,158.9 L355.7,159.8 L356.6,160.7 L357.4,161.6 L358.3,162.4 L359.2,163.2 L360.1,164.1 L361.0,164.9 L361.8,165.7 L362.7,166.4 L363.6,167.2 L364.5,167.9 L365.4,168.7 L366.2,169.4 L367.1,170.1 L368.0,170.8 L368.9,171.5 L369.8,172.1 L370.6,172.7 L371.5,173.4 L372.4,174.0 L373.3,174.6 L374.2,175.1 L375.0,175.7 L375.9,176.2 L376.8,176.7 L377.7,177.2 L378.6,177.7 L379.4,178.2 L380.3,178.7 L381.2,179.1 L382.1,179.5 L383.0,179.9 L383.8,180.3 L384.7,180.6 L385.6,181.0 L386.5,181.3 L387.4,181.6 L388.2,181.9 L389.1,182.2 L390.0,182.4 L390.9,182.6 L391.8,182.9 L392.6,183.1 L393.5,183.2 L394.4,183.4 L395.3,183.5 L396.2,183.7 L397.0,183.8 L397.9,183.8 L398.8,183.9 L399.7,184.0 L400.6,184.0 L401.4,184.0 L402.3,184.0 L403.2,184.0 L404.1,183.9 L405.0,183.9 L405.8,183.8 L406.7,183.7 L407.6,183.6 L408.5,183.5 L409.4,183.3 L410.2,183.1 L411.1,183.0 L412.0,182.8 L412.9,182.5 L413.8,182.3 L414.6,182.1 L415.5,181.8 L416.4,181.5 L417.3,181.2 L418.2,180.9 L419.0,180.6 L419.9,180.2 L420.8,179.9 L421.7,179.5 L422.6,179.1 L423.4,178.7 L424.3,178.2 L425.2,177.8 L426.1,177.4 L427.0,176.9 L427.8,176.4 L428.7,175.9 L429.6,175.4 L430.5,174.9 L431.4,174.3 L432.2,173.8 L433.1,173.2 L434.0,172.6 L434.9,172.0 L435.8,171.4 L436.6,170.8 L437.5,170.2 L438.4,169.6 L439.3,168.9 L440.2,168.2 L441.0,167.6 L441.9,166.9 L442.8,166.2 L443.7,165.5 L444.6,164.8 L445.4,164.1 L446.3,163.3 L447.2,162.6 L448.1,161.8 L449.0,161.1 L449.8,160.3 L450.7,159.5 L451.6,158.8 L452.5,158.0 L453.4,157.2 L454.2,156.4 L455.1,155.6 L456.0,154.7 L456.9,153.9 L457.8,153.1 L458.6,152.2 L459.5,151.4 L460.4,150.6 L461.3,149.7 L462.2,148.9 L463.0,148.0 L463.9,147.1 L464.8,146.3 L465.7,145.4 L466.6,144.5 L467.4,143.7 L468.3,142.8 L469.2,141.9 L470.1,141.0 L471.0,140.1 L471.8,139.3 L472.7,138.4 L473.6,137.5 L474.5,136.6 L475.4,135.7 L476.2,134.8 L477.1,133.9 L478.0,133.1 L478.9,132.2 L479.8,131.3 L480.6,130.4 L481.5,129.5 L482.4,128.7 L483.3,127.8 L484.2,126.9 L485.0,126.1 L485.9,125.2 L486.8,124.3 L487.7,123.5 L488.6,122.6 L489.4,121.8 L490.3,120.9 L491.2,120.1 L492.1,119.3 L493.0,118.4 L493.8,117.6 L494.7,116.8 L495.6,116.0 L496.5,115.2 L497.4,114.4 L498.2,113.6 L499.1,112.8 L500.0,112.0"/>
+        <path class="ln-time" fill="none" stroke-width="2" d="M60.0,250.0 L60.9,250.0 L61.8,250.0 L62.6,250.0 L63.5,250.0 L64.4,249.9 L65.3,249.9 L66.2,249.8 L67.0,249.7 L67.9,249.6 L68.8,249.4 L69.7,249.3 L70.6,249.1 L71.4,248.8 L72.3,248.5 L73.2,248.2 L74.1,247.9 L75.0,247.5 L75.8,247.1 L76.7,246.6 L77.6,246.1 L78.5,245.5 L79.4,245.0 L80.2,244.3 L81.1,243.6 L82.0,242.9 L82.9,242.2 L83.8,241.4 L84.6,240.5 L85.5,239.6 L86.4,238.7 L87.3,237.7 L88.2,236.7 L89.0,235.6 L89.9,234.5 L90.8,233.4 L91.7,232.2 L92.6,231.0 L93.4,229.7 L94.3,228.4 L95.2,227.1 L96.1,225.7 L97.0,224.3 L97.8,222.8 L98.7,221.4 L99.6,219.9 L100.5,218.3 L101.4,216.8 L102.2,215.2 L103.1,213.6 L104.0,211.9 L104.9,210.3 L105.8,208.6 L106.6,206.9 L107.5,205.1 L108.4,203.4 L109.3,201.6 L110.2,199.8 L111.0,198.0 L111.9,196.2 L112.8,194.4 L113.7,192.6 L114.6,190.7 L115.4,188.9 L116.3,187.0 L117.2,185.2 L118.1,183.3 L119.0,181.4 L119.8,179.6 L120.7,177.7 L121.6,175.8 L122.5,174.0 L123.4,172.1 L124.2,170.3 L125.1,168.4 L126.0,166.6 L126.9,164.8 L127.8,162.9 L128.6,161.1 L129.5,159.3 L130.4,157.6 L131.3,155.8 L132.2,154.1 L133.0,152.3 L133.9,150.6 L134.8,148.9 L135.7,147.2 L136.6,145.6 L137.4,143.9 L138.3,142.3 L139.2,140.7 L140.1,139.2 L141.0,137.6 L141.8,136.1 L142.7,134.6 L143.6,133.2 L144.5,131.7 L145.4,130.3 L146.2,128.9 L147.1,127.6 L148.0,126.3 L148.9,125.0 L149.8,123.7 L150.6,122.5 L151.5,121.3 L152.4,120.1 L153.3,119.0 L154.2,117.9 L155.0,116.8 L155.9,115.8 L156.8,114.8 L157.7,113.8 L158.6,112.9 L159.4,112.0 L160.3,111.1 L161.2,110.3 L162.1,109.5 L163.0,108.7 L163.8,107.9 L164.7,107.2 L165.6,106.6 L166.5,105.9 L167.4,105.3 L168.2,104.8 L169.1,104.2 L170.0,103.7 L170.9,103.2 L171.8,102.8 L172.6,102.4 L173.5,102.0 L174.4,101.6 L175.3,101.3 L176.2,101.0 L177.0,100.8 L177.9,100.6 L178.8,100.4 L179.7,100.2 L180.6,100.0 L181.4,99.9 L182.3,99.8 L183.2,99.8 L184.1,99.7 L185.0,99.7 L185.8,99.8 L186.7,99.8 L187.6,99.9 L188.5,99.9 L189.4,100.1 L190.2,100.2 L191.1,100.4 L192.0,100.5 L192.9,100.7 L193.8,100.9 L194.6,101.2 L195.5,101.4 L196.4,101.7 L197.3,102.0 L198.2,102.3 L199.0,102.7 L199.9,103.0 L200.8,103.4 L201.7,103.7 L202.6,104.1 L203.4,104.5 L204.3,104.9 L205.2,105.4 L206.1,105.8 L207.0,106.2 L207.8,106.7 L208.7,107.2 L209.6,107.7 L210.5,108.1 L211.4,108.6 L212.2,109.1 L213.1,109.6 L214.0,110.2 L214.9,110.7 L215.8,111.2 L216.6,111.7 L217.5,112.3 L218.4,112.8 L219.3,113.3 L220.2,113.9 L221.0,114.4 L221.9,115.0 L222.8,115.5 L223.7,116.1 L224.6,116.6 L225.4,117.1 L226.3,117.7 L227.2,118.2 L228.1,118.8 L229.0,119.3 L229.8,119.8 L230.7,120.4 L231.6,120.9 L232.5,121.4 L233.4,121.9 L234.2,122.4 L235.1,123.0 L236.0,123.5 L236.9,123.9 L237.8,124.4 L238.6,124.9 L239.5,125.4 L240.4,125.9 L241.3,126.3 L242.2,126.8 L243.0,127.2 L243.9,127.7 L244.8,128.1 L245.7,128.5 L246.6,128.9 L247.4,129.3 L248.3,129.7 L249.2,130.1 L250.1,130.5 L251.0,130.8 L251.8,131.2 L252.7,131.5 L253.6,131.9 L254.5,132.2 L255.4,132.5 L256.2,132.8 L257.1,133.1 L258.0,133.4 L258.9,133.7 L259.8,133.9 L260.6,134.2 L261.5,134.4 L262.4,134.7 L263.3,134.9 L264.2,135.1 L265.0,135.3 L265.9,135.5 L266.8,135.7 L267.7,135.8 L268.6,136.0 L269.4,136.1 L270.3,136.3 L271.2,136.4 L272.1,136.5 L273.0,136.6 L273.8,136.7 L274.7,136.8 L275.6,136.9 L276.5,137.0 L277.4,137.0 L278.2,137.1 L279.1,137.1 L280.0,137.1 L280.9,137.2 L281.8,137.2 L282.6,137.2 L283.5,137.2 L284.4,137.2 L285.3,137.2 L286.2,137.1 L287.0,137.1 L287.9,137.1 L288.8,137.0 L289.7,136.9 L290.6,136.9 L291.4,136.8 L292.3,136.7 L293.2,136.7 L294.1,136.6 L295.0,136.5 L295.8,136.4 L296.7,136.3 L297.6,136.2 L298.5,136.0 L299.4,135.9 L300.2,135.8 L301.1,135.7 L302.0,135.5 L302.9,135.4 L303.8,135.3 L304.6,135.1 L305.5,135.0 L306.4,134.8 L307.3,134.6 L308.2,134.5 L309.0,134.3 L309.9,134.2 L310.8,134.0 L311.7,133.8 L312.6,133.7 L313.4,133.5 L314.3,133.3 L315.2,133.1 L316.1,133.0 L317.0,132.8 L317.8,132.6 L318.7,132.4 L319.6,132.2 L320.5,132.1 L321.4,131.9 L322.2,131.7 L323.1,131.5 L324.0,131.3 L324.9,131.1 L325.8,131.0 L326.6,130.8 L327.5,130.6 L328.4,130.4 L329.3,130.3 L330.2,130.1 L331.0,129.9 L331.9,129.7 L332.8,129.6 L333.7,129.4 L334.6,129.2 L335.4,129.1 L336.3,128.9 L337.2,128.7 L338.1,128.6 L339.0,128.4 L339.8,128.3 L340.7,128.1 L341.6,128.0 L342.5,127.8 L343.4,127.7 L344.2,127.6 L345.1,127.4 L346.0,127.3 L346.9,127.2 L347.8,127.0 L348.6,126.9 L349.5,126.8 L350.4,126.7 L351.3,126.6 L352.2,126.4 L353.0,126.3 L353.9,126.2 L354.8,126.1 L355.7,126.0 L356.6,125.9 L357.4,125.8 L358.3,125.8 L359.2,125.7 L360.1,125.6 L361.0,125.5 L361.8,125.4 L362.7,125.4 L363.6,125.3 L364.5,125.2 L365.4,125.2 L366.2,125.1 L367.1,125.1 L368.0,125.0 L368.9,125.0 L369.8,124.9 L370.6,124.9 L371.5,124.9 L372.4,124.8 L373.3,124.8 L374.2,124.8 L375.0,124.8 L375.9,124.7 L376.8,124.7 L377.7,124.7 L378.6,124.7 L379.4,124.7 L380.3,124.7 L381.2,124.7 L382.1,124.7 L383.0,124.7 L383.8,124.7 L384.7,124.7 L385.6,124.7 L386.5,124.7 L387.4,124.7 L388.2,124.8 L389.1,124.8 L390.0,124.8 L390.9,124.8 L391.8,124.8 L392.6,124.9 L393.5,124.9 L394.4,124.9 L395.3,125.0 L396.2,125.0 L397.0,125.0 L397.9,125.1 L398.8,125.1 L399.7,125.2 L400.6,125.2 L401.4,125.3 L402.3,125.3 L403.2,125.4 L404.1,125.4 L405.0,125.5 L405.8,125.5 L406.7,125.6 L407.6,125.6 L408.5,125.7 L409.4,125.7 L410.2,125.8 L411.1,125.8 L412.0,125.9 L412.9,126.0 L413.8,126.0 L414.6,126.1 L415.5,126.1 L416.4,126.2 L417.3,126.2 L418.2,126.3 L419.0,126.4 L419.9,126.4 L420.8,126.5 L421.7,126.5 L422.6,126.6 L423.4,126.7 L424.3,126.7 L425.2,126.8 L426.1,126.8 L427.0,126.9 L427.8,127.0 L428.7,127.0 L429.6,127.1 L430.5,127.1 L431.4,127.2 L432.2,127.2 L433.1,127.3 L434.0,127.3 L434.9,127.4 L435.8,127.5 L436.6,127.5 L437.5,127.6 L438.4,127.6 L439.3,127.7 L440.2,127.7 L441.0,127.8 L441.9,127.8 L442.8,127.8 L443.7,127.9 L444.6,127.9 L445.4,128.0 L446.3,128.0 L447.2,128.1 L448.1,128.1 L449.0,128.1 L449.8,128.2 L450.7,128.2 L451.6,128.3 L452.5,128.3 L453.4,128.3 L454.2,128.4 L455.1,128.4 L456.0,128.4 L456.9,128.4 L457.8,128.5 L458.6,128.5 L459.5,128.5 L460.4,128.5 L461.3,128.6 L462.2,128.6 L463.0,128.6 L463.9,128.6 L464.8,128.7 L465.7,128.7 L466.6,128.7 L467.4,128.7 L468.3,128.7 L469.2,128.7 L470.1,128.7 L471.0,128.7 L471.8,128.8 L472.7,128.8 L473.6,128.8 L474.5,128.8 L475.4,128.8 L476.2,128.8 L477.1,128.8 L478.0,128.8 L478.9,128.8 L479.8,128.8 L480.6,128.8 L481.5,128.8 L482.4,128.8 L483.3,128.8 L484.2,128.8 L485.0,128.8 L485.9,128.8 L486.8,128.8 L487.7,128.8 L488.6,128.8 L489.4,128.8 L490.3,128.7 L491.2,128.7 L492.1,128.7 L493.0,128.7 L493.8,128.7 L494.7,128.7 L495.6,128.7 L496.5,128.7 L497.4,128.7 L498.2,128.6 L499.1,128.6 L500.0,128.6"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,250.0 L60.9,250.0 L61.8,250.0 L62.6,249.9 L63.5,249.9 L64.4,249.7 L65.3,249.5 L66.2,249.3 L67.0,248.9 L67.9,248.5 L68.8,248.0 L69.7,247.5 L70.6,246.8 L71.4,246.1 L72.3,245.2 L73.2,244.3 L74.1,243.3 L75.0,242.2 L75.8,241.0 L76.7,239.8 L77.6,238.4 L78.5,237.0 L79.4,235.5 L80.2,234.0 L81.1,232.4 L82.0,230.7 L82.9,228.9 L83.8,227.1 L84.6,225.3 L85.5,223.4 L86.4,221.5 L87.3,219.5 L88.2,217.5 L89.0,215.5 L89.9,213.5 L90.8,211.4 L91.7,209.3 L92.6,207.2 L93.4,205.1 L94.3,203.1 L95.2,201.0 L96.1,198.9 L97.0,196.8 L97.8,194.7 L98.7,192.7 L99.6,190.6 L100.5,188.6 L101.4,186.6 L102.2,184.7 L103.1,182.7 L104.0,180.8 L104.9,178.9 L105.8,177.1 L106.6,175.3 L107.5,173.5 L108.4,171.8 L109.3,170.1 L110.2,168.4 L111.0,166.8 L111.9,165.2 L112.8,163.7 L113.7,162.2 L114.6,160.8 L115.4,159.3 L116.3,158.0 L117.2,156.7 L118.1,155.4 L119.0,154.1 L119.8,152.9 L120.7,151.8 L121.6,150.7 L122.5,149.6 L123.4,148.6 L124.2,147.6 L125.1,146.6 L126.0,145.7 L126.9,144.8 L127.8,144.0 L128.6,143.2 L129.5,142.4 L130.4,141.7 L131.3,141.0 L132.2,140.3 L133.0,139.7 L133.9,139.1 L134.8,138.5 L135.7,137.9 L136.6,137.4 L137.4,136.9 L138.3,136.5 L139.2,136.0 L140.1,135.6 L141.0,135.2 L141.8,134.8 L142.7,134.5 L143.6,134.1 L144.5,133.8 L145.4,133.5 L146.2,133.2 L147.1,133.0 L148.0,132.7 L148.9,132.5 L149.8,132.3 L150.6,132.1 L151.5,131.9 L152.4,131.7 L153.3,131.5 L154.2,131.4 L155.0,131.2 L155.9,131.1 L156.8,131.0 L157.7,130.8 L158.6,130.7 L159.4,130.6 L160.3,130.5 L161.2,130.4 L162.1,130.3 L163.0,130.3 L163.8,130.2 L164.7,130.1 L165.6,130.0 L166.5,130.0 L167.4,129.9 L168.2,129.9 L169.1,129.8 L170.0,129.8 L170.9,129.7 L171.8,129.7 L172.6,129.6 L173.5,129.6 L174.4,129.6 L175.3,129.5 L176.2,129.5 L177.0,129.4 L177.9,129.4 L178.8,129.4 L179.7,129.4 L180.6,129.3 L181.4,129.3 L182.3,129.3 L183.2,129.2 L184.1,129.2 L185.0,129.2 L185.8,129.2 L186.7,129.1 L187.6,129.1 L188.5,129.1 L189.4,129.0 L190.2,129.0 L191.1,129.0 L192.0,129.0 L192.9,128.9 L193.8,128.9 L194.6,128.9 L195.5,128.9 L196.4,128.8 L197.3,128.8 L198.2,128.8 L199.0,128.8 L199.9,128.8 L200.8,128.7 L201.7,128.7 L202.6,128.7 L203.4,128.7 L204.3,128.6 L205.2,128.6 L206.1,128.6 L207.0,128.6 L207.8,128.5 L208.7,128.5 L209.6,128.5 L210.5,128.5 L211.4,128.5 L212.2,128.4 L213.1,128.4 L214.0,128.4 L214.9,128.4 L215.8,128.4 L216.6,128.3 L217.5,128.3 L218.4,128.3 L219.3,128.3 L220.2,128.3 L221.0,128.3 L221.9,128.2 L222.8,128.2 L223.7,128.2 L224.6,128.2 L225.4,128.2 L226.3,128.2 L227.2,128.1 L228.1,128.1 L229.0,128.1 L229.8,128.1 L230.7,128.1 L231.6,128.1 L232.5,128.1 L233.4,128.1 L234.2,128.0 L235.1,128.0 L236.0,128.0 L236.9,128.0 L237.8,128.0 L238.6,128.0 L239.5,128.0 L240.4,128.0 L241.3,128.0 L242.2,128.0 L243.0,128.0 L243.9,127.9 L244.8,127.9 L245.7,127.9 L246.6,127.9 L247.4,127.9 L248.3,127.9 L249.2,127.9 L250.1,127.9 L251.0,127.9 L251.8,127.9 L252.7,127.9 L253.6,127.9 L254.5,127.9 L255.4,127.9 L256.2,127.9 L257.1,127.9 L258.0,127.9 L258.9,127.9 L259.8,127.9 L260.6,127.9 L261.5,127.8 L262.4,127.8 L263.3,127.8 L264.2,127.8 L265.0,127.8 L265.9,127.8 L266.8,127.8 L267.7,127.8 L268.6,127.8 L269.4,127.8 L270.3,127.8 L271.2,127.8 L272.1,127.8 L273.0,127.8 L273.8,127.8 L274.7,127.8 L275.6,127.8 L276.5,127.8 L277.4,127.8 L278.2,127.8 L279.1,127.8 L280.0,127.8 L280.9,127.8 L281.8,127.8 L282.6,127.8 L283.5,127.8 L284.4,127.8 L285.3,127.8 L286.2,127.8 L287.0,127.8 L287.9,127.8 L288.8,127.8 L289.7,127.8 L290.6,127.8 L291.4,127.8 L292.3,127.8 L293.2,127.8 L294.1,127.8 L295.0,127.8 L295.8,127.8 L296.7,127.8 L297.6,127.8 L298.5,127.8 L299.4,127.8 L300.2,127.8 L301.1,127.8 L302.0,127.8 L302.9,127.8 L303.8,127.8 L304.6,127.8 L305.5,127.8 L306.4,127.8 L307.3,127.8 L308.2,127.8 L309.0,127.8 L309.9,127.8 L310.8,127.8 L311.7,127.8 L312.6,127.8 L313.4,127.8 L314.3,127.8 L315.2,127.8 L316.1,127.8 L317.0,127.8 L317.8,127.8 L318.7,127.8 L319.6,127.8 L320.5,127.8 L321.4,127.8 L322.2,127.8 L323.1,127.8 L324.0,127.8 L324.9,127.8 L325.8,127.8 L326.6,127.8 L327.5,127.8 L328.4,127.8 L329.3,127.8 L330.2,127.8 L331.0,127.8 L331.9,127.8 L332.8,127.8 L333.7,127.8 L334.6,127.8 L335.4,127.8 L336.3,127.8 L337.2,127.8 L338.1,127.8 L339.0,127.8 L339.8,127.8 L340.7,127.8 L341.6,127.8 L342.5,127.8 L343.4,127.8 L344.2,127.8 L345.1,127.8 L346.0,127.8 L346.9,127.8 L347.8,127.8 L348.6,127.8 L349.5,127.8 L350.4,127.8 L351.3,127.8 L352.2,127.8 L353.0,127.8 L353.9,127.8 L354.8,127.8 L355.7,127.8 L356.6,127.8 L357.4,127.8 L358.3,127.8 L359.2,127.8 L360.1,127.8 L361.0,127.8 L361.8,127.8 L362.7,127.8 L363.6,127.8 L364.5,127.8 L365.4,127.8 L366.2,127.8 L367.1,127.8 L368.0,127.8 L368.9,127.8 L369.8,127.8 L370.6,127.8 L371.5,127.8 L372.4,127.8 L373.3,127.8 L374.2,127.8 L375.0,127.8 L375.9,127.8 L376.8,127.8 L377.7,127.8 L378.6,127.8 L379.4,127.8 L380.3,127.8 L381.2,127.8 L382.1,127.8 L383.0,127.8 L383.8,127.8 L384.7,127.8 L385.6,127.8 L386.5,127.8 L387.4,127.8 L388.2,127.8 L389.1,127.8 L390.0,127.8 L390.9,127.8 L391.8,127.8 L392.6,127.8 L393.5,127.8 L394.4,127.8 L395.3,127.8 L396.2,127.8 L397.0,127.8 L397.9,127.8 L398.8,127.8 L399.7,127.8 L400.6,127.8 L401.4,127.8 L402.3,127.8 L403.2,127.8 L404.1,127.8 L405.0,127.8 L405.8,127.8 L406.7,127.8 L407.6,127.8 L408.5,127.8 L409.4,127.8 L410.2,127.8 L411.1,127.8 L412.0,127.8 L412.9,127.8 L413.8,127.8 L414.6,127.8 L415.5,127.8 L416.4,127.8 L417.3,127.8 L418.2,127.8 L419.0,127.8 L419.9,127.8 L420.8,127.8 L421.7,127.8 L422.6,127.8 L423.4,127.8 L424.3,127.8 L425.2,127.8 L426.1,127.8 L427.0,127.8 L427.8,127.8 L428.7,127.8 L429.6,127.8 L430.5,127.8 L431.4,127.8 L432.2,127.8 L433.1,127.8 L434.0,127.8 L434.9,127.8 L435.8,127.8 L436.6,127.8 L437.5,127.8 L438.4,127.8 L439.3,127.8 L440.2,127.8 L441.0,127.8 L441.9,127.8 L442.8,127.8 L443.7,127.8 L444.6,127.8 L445.4,127.8 L446.3,127.8 L447.2,127.8 L448.1,127.8 L449.0,127.8 L449.8,127.8 L450.7,127.8 L451.6,127.8 L452.5,127.8 L453.4,127.8 L454.2,127.8 L455.1,127.8 L456.0,127.8 L456.9,127.8 L457.8,127.8 L458.6,127.8 L459.5,127.8 L460.4,127.8 L461.3,127.8 L462.2,127.8 L463.0,127.8 L463.9,127.8 L464.8,127.8 L465.7,127.8 L466.6,127.8 L467.4,127.8 L468.3,127.8 L469.2,127.8 L470.1,127.8 L471.0,127.8 L471.8,127.8 L472.7,127.8 L473.6,127.8 L474.5,127.8 L475.4,127.8 L476.2,127.8 L477.1,127.8 L478.0,127.8 L478.9,127.8 L479.8,127.8 L480.6,127.8 L481.5,127.8 L482.4,127.8 L483.3,127.8 L484.2,127.8 L485.0,127.8 L485.9,127.8 L486.8,127.8 L487.7,127.8 L488.6,127.8 L489.4,127.8 L490.3,127.8 L491.2,127.8 L492.1,127.8 L493.0,127.8 L493.8,127.8 L494.7,127.8 L495.6,127.8 L496.5,127.8 L497.4,127.8 L498.2,127.8 L499.1,127.8 L500.0,127.8"/>
+        <path class="ln" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M60.0,250.0 L60.9,247.6 L61.8,245.2 L62.6,242.9 L63.5,240.6 L64.4,238.4 L65.3,236.2 L66.2,234.0 L67.0,231.9 L67.9,229.9 L68.8,227.8 L69.7,225.9 L70.6,223.9 L71.4,222.0 L72.3,220.2 L73.2,218.3 L74.1,216.5 L75.0,214.8 L75.8,213.0 L76.7,211.4 L77.6,209.7 L78.5,208.1 L79.4,206.5 L80.2,204.9 L81.1,203.4 L82.0,201.9 L82.9,200.4 L83.8,199.0 L84.6,197.6 L85.5,196.2 L86.4,194.9 L87.3,193.5 L88.2,192.2 L89.0,190.9 L89.9,189.7 L90.8,188.5 L91.7,187.3 L92.6,186.1 L93.4,184.9 L94.3,183.8 L95.2,182.7 L96.1,181.6 L97.0,180.5 L97.8,179.5 L98.7,178.5 L99.6,177.5 L100.5,176.5 L101.4,175.5 L102.2,174.6 L103.1,173.6 L104.0,172.7 L104.9,171.9 L105.8,171.0 L106.6,170.1 L107.5,169.3 L108.4,168.5 L109.3,167.7 L110.2,166.9 L111.0,166.1 L111.9,165.3 L112.8,164.6 L113.7,163.9 L114.6,163.1 L115.4,162.4 L116.3,161.8 L117.2,161.1 L118.1,160.4 L119.0,159.8 L119.8,159.1 L120.7,158.5 L121.6,157.9 L122.5,157.3 L123.4,156.7 L124.2,156.2 L125.1,155.6 L126.0,155.0 L126.9,154.5 L127.8,154.0 L128.6,153.5 L129.5,153.0 L130.4,152.5 L131.3,152.0 L132.2,151.5 L133.0,151.0 L133.9,150.6 L134.8,150.1 L135.7,149.7 L136.6,149.2 L137.4,148.8 L138.3,148.4 L139.2,148.0 L140.1,147.6 L141.0,147.2 L141.8,146.8 L142.7,146.4 L143.6,146.1 L144.5,145.7 L145.4,145.3 L146.2,145.0 L147.1,144.7 L148.0,144.3 L148.9,144.0 L149.8,143.7 L150.6,143.4 L151.5,143.0 L152.4,142.7 L153.3,142.4 L154.2,142.2 L155.0,141.9 L155.9,141.6 L156.8,141.3 L157.7,141.1 L158.6,140.8 L159.4,140.5 L160.3,140.3 L161.2,140.0 L162.1,139.8 L163.0,139.6 L163.8,139.3 L164.7,139.1 L165.6,138.9 L166.5,138.6 L167.4,138.4 L168.2,138.2 L169.1,138.0 L170.0,137.8 L170.9,137.6 L171.8,137.4 L172.6,137.2 L173.5,137.0 L174.4,136.9 L175.3,136.7 L176.2,136.5 L177.0,136.3 L177.9,136.2 L178.8,136.0 L179.7,135.8 L180.6,135.7 L181.4,135.5 L182.3,135.4 L183.2,135.2 L184.1,135.1 L185.0,134.9 L185.8,134.8 L186.7,134.6 L187.6,134.5 L188.5,134.4 L189.4,134.2 L190.2,134.1 L191.1,134.0 L192.0,133.9 L192.9,133.7 L193.8,133.6 L194.6,133.5 L195.5,133.4 L196.4,133.3 L197.3,133.2 L198.2,133.1 L199.0,133.0 L199.9,132.9 L200.8,132.8 L201.7,132.7 L202.6,132.6 L203.4,132.5 L204.3,132.4 L205.2,132.3 L206.1,132.2 L207.0,132.1 L207.8,132.0 L208.7,131.9 L209.6,131.9 L210.5,131.8 L211.4,131.7 L212.2,131.6 L213.1,131.5 L214.0,131.5 L214.9,131.4 L215.8,131.3 L216.6,131.3 L217.5,131.2 L218.4,131.1 L219.3,131.1 L220.2,131.0 L221.0,130.9 L221.9,130.9 L222.8,130.8 L223.7,130.7 L224.6,130.7 L225.4,130.6 L226.3,130.6 L227.2,130.5 L228.1,130.5 L229.0,130.4 L229.8,130.4 L230.7,130.3 L231.6,130.3 L232.5,130.2 L233.4,130.2 L234.2,130.1 L235.1,130.1 L236.0,130.0 L236.9,130.0 L237.8,129.9 L238.6,129.9 L239.5,129.8 L240.4,129.8 L241.3,129.8 L242.2,129.7 L243.0,129.7 L243.9,129.6 L244.8,129.6 L245.7,129.6 L246.6,129.5 L247.4,129.5 L248.3,129.5 L249.2,129.4 L250.1,129.4 L251.0,129.4 L251.8,129.3 L252.7,129.3 L253.6,129.3 L254.5,129.2 L255.4,129.2 L256.2,129.2 L257.1,129.2 L258.0,129.1 L258.9,129.1 L259.8,129.1 L260.6,129.1 L261.5,129.0 L262.4,129.0 L263.3,129.0 L264.2,129.0 L265.0,128.9 L265.9,128.9 L266.8,128.9 L267.7,128.9 L268.6,128.8 L269.4,128.8 L270.3,128.8 L271.2,128.8 L272.1,128.8 L273.0,128.7 L273.8,128.7 L274.7,128.7 L275.6,128.7 L276.5,128.7 L277.4,128.7 L278.2,128.6 L279.1,128.6 L280.0,128.6 L280.9,128.6 L281.8,128.6 L282.6,128.6 L283.5,128.5 L284.4,128.5 L285.3,128.5 L286.2,128.5 L287.0,128.5 L287.9,128.5 L288.8,128.5 L289.7,128.4 L290.6,128.4 L291.4,128.4 L292.3,128.4 L293.2,128.4 L294.1,128.4 L295.0,128.4 L295.8,128.4 L296.7,128.3 L297.6,128.3 L298.5,128.3 L299.4,128.3 L300.2,128.3 L301.1,128.3 L302.0,128.3 L302.9,128.3 L303.8,128.3 L304.6,128.2 L305.5,128.2 L306.4,128.2 L307.3,128.2 L308.2,128.2 L309.0,128.2 L309.9,128.2 L310.8,128.2 L311.7,128.2 L312.6,128.2 L313.4,128.2 L314.3,128.2 L315.2,128.1 L316.1,128.1 L317.0,128.1 L317.8,128.1 L318.7,128.1 L319.6,128.1 L320.5,128.1 L321.4,128.1 L322.2,128.1 L323.1,128.1 L324.0,128.1 L324.9,128.1 L325.8,128.1 L326.6,128.1 L327.5,128.1 L328.4,128.1 L329.3,128.0 L330.2,128.0 L331.0,128.0 L331.9,128.0 L332.8,128.0 L333.7,128.0 L334.6,128.0 L335.4,128.0 L336.3,128.0 L337.2,128.0 L338.1,128.0 L339.0,128.0 L339.8,128.0 L340.7,128.0 L341.6,128.0 L342.5,128.0 L343.4,128.0 L344.2,128.0 L345.1,128.0 L346.0,128.0 L346.9,128.0 L347.8,128.0 L348.6,128.0 L349.5,127.9 L350.4,127.9 L351.3,127.9 L352.2,127.9 L353.0,127.9 L353.9,127.9 L354.8,127.9 L355.7,127.9 L356.6,127.9 L357.4,127.9 L358.3,127.9 L359.2,127.9 L360.1,127.9 L361.0,127.9 L361.8,127.9 L362.7,127.9 L363.6,127.9 L364.5,127.9 L365.4,127.9 L366.2,127.9 L367.1,127.9 L368.0,127.9 L368.9,127.9 L369.8,127.9 L370.6,127.9 L371.5,127.9 L372.4,127.9 L373.3,127.9 L374.2,127.9 L375.0,127.9 L375.9,127.9 L376.8,127.9 L377.7,127.9 L378.6,127.9 L379.4,127.9 L380.3,127.9 L381.2,127.9 L382.1,127.9 L383.0,127.9 L383.8,127.9 L384.7,127.9 L385.6,127.9 L386.5,127.9 L387.4,127.8 L388.2,127.8 L389.1,127.8 L390.0,127.8 L390.9,127.8 L391.8,127.8 L392.6,127.8 L393.5,127.8 L394.4,127.8 L395.3,127.8 L396.2,127.8 L397.0,127.8 L397.9,127.8 L398.8,127.8 L399.7,127.8 L400.6,127.8 L401.4,127.8 L402.3,127.8 L403.2,127.8 L404.1,127.8 L405.0,127.8 L405.8,127.8 L406.7,127.8 L407.6,127.8 L408.5,127.8 L409.4,127.8 L410.2,127.8 L411.1,127.8 L412.0,127.8 L412.9,127.8 L413.8,127.8 L414.6,127.8 L415.5,127.8 L416.4,127.8 L417.3,127.8 L418.2,127.8 L419.0,127.8 L419.9,127.8 L420.8,127.8 L421.7,127.8 L422.6,127.8 L423.4,127.8 L424.3,127.8 L425.2,127.8 L426.1,127.8 L427.0,127.8 L427.8,127.8 L428.7,127.8 L429.6,127.8 L430.5,127.8 L431.4,127.8 L432.2,127.8 L433.1,127.8 L434.0,127.8 L434.9,127.8 L435.8,127.8 L436.6,127.8 L437.5,127.8 L438.4,127.8 L439.3,127.8 L440.2,127.8 L441.0,127.8 L441.9,127.8 L442.8,127.8 L443.7,127.8 L444.6,127.8 L445.4,127.8 L446.3,127.8 L447.2,127.8 L448.1,127.8 L449.0,127.8 L449.8,127.8 L450.7,127.8 L451.6,127.8 L452.5,127.8 L453.4,127.8 L454.2,127.8 L455.1,127.8 L456.0,127.8 L456.9,127.8 L457.8,127.8 L458.6,127.8 L459.5,127.8 L460.4,127.8 L461.3,127.8 L462.2,127.8 L463.0,127.8 L463.9,127.8 L464.8,127.8 L465.7,127.8 L466.6,127.8 L467.4,127.8 L468.3,127.8 L469.2,127.8 L470.1,127.8 L471.0,127.8 L471.8,127.8 L472.7,127.8 L473.6,127.8 L474.5,127.8 L475.4,127.8 L476.2,127.8 L477.1,127.8 L478.0,127.8 L478.9,127.8 L479.8,127.8 L480.6,127.8 L481.5,127.8 L482.4,127.8 L483.3,127.8 L484.2,127.8 L485.0,127.8 L485.9,127.8 L486.8,127.8 L487.7,127.8 L488.6,127.8 L489.4,127.8 L490.3,127.8 L491.2,127.8 L492.1,127.8 L493.0,127.8 L493.8,127.8 L494.7,127.8 L495.6,127.8 L496.5,127.8 L497.4,127.8 L498.2,127.8 L499.1,127.8 L500.0,127.8"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">5</text>
+          <text x="500" y="268" text-anchor="middle">10</text>
+          <text x="280" y="288" text-anchor="middle">tiempo × k</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="132" text-anchor="end">1</text>
+          <text x="52" y="34" text-anchor="end">1,8</text>
+        </g>
+        <g font-size="13">
+          <text x="150" y="48" class="t-tesis">r = 1</text>
+          <text x="214" y="88" class="t-time">r = 2</text>
+          <text x="330" y="134" class="t-accent">r = 4</text>
+          <text x="390" y="100" class="t-muted">interno ideal</text>
+        </g>
+      </svg>
+      <figcaption>Ángulo ante un escalón de consigna. Por debajo de 2, la cascada oscila aunque cada lazo por separado sea estable. La regla habitual en control de procesos es una separación de 4 a 10 entre lazos; con 3 o menos, los lazos empiezan a interactuar <a class="cite" data-ref="skogestad2023"></a>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La cascada de PX4, con números</p>
+  <h2>Diez veces entre <em>rate</em> y actitud, y solo dos entre los lazos de fuera</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Lazo</th><th>Ley y ganancia por defecto</th><th>Ancho de banda aprox.</th><th>\(r\)</th><th>\(\zeta\)</th></tr>
+          <tr><td><em>Rate</em></td><td>PID: P 0,15, I 0,2, D 0,003</td><td class="n"><span class="hz">6,3 Hz</span> (cruce, x500)</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td>Actitud</td><td>P sobre el cuaternión: 4 rad/s por rad</td><td class="n"><span class="hz">0,64 Hz</span></td><td class="n">9,9</td><td class="n">1,6</td></tr>
+          <tr><td>Velocidad</td><td>PID a aceleración: P 1,8, I 0,4, D 0,2</td><td class="n"><span class="hz">0,29 Hz</span></td><td class="n">2,2</td><td class="n">0,75</td></tr>
+          <tr><td>Posición</td><td>P a velocidad: 0,95</td><td class="n"><span class="hz">0,15 Hz</span></td><td class="n">1,9</td><td class="n">0,69</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ganancias por defecto de los módulos <code>mc_att_control</code> y <code>mc_pos_control</code> de PX4 <a class="cite" data-ref="px4attctl,px4posctl"></a>. \(r\): ancho de banda del lazo interno entre el del externo; \(\zeta = \tfrac12\sqrt r\) supone un interno de primer orden. Cálculo en <code>figuras/figuras_a2.py</code>.</p>
+      <div class="callout clave"><span class="tag">Lectura de la tabla</span>Los lazos de fuera están en \(r \approx 2\), justo lo que da \(\zeta \approx 0{,}7\) si el de dentro se comporta como un primer orden, que es lo que hace un lazo P sobre un integrador. Entre <em>rate</em> y actitud el margen es mucho mayor porque el lazo de <em>rate</em> no es de primer orden: lleva motor, filtros y retardos.</div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>De la aceleración a la actitud.</strong> El lazo de velocidad da \(\mathbf a_{\text{sp}}\); con la gravedad (ENU), el empuje deseado y su dirección son</p>
+      \[ \mathbf T_{\text{sp}} = m\,(\mathbf a_{\text{sp}} + g\mathbf e_3),\qquad \mathbf z_d = \frac{\mathbf T_{\text{sp}}}{\|\mathbf T_{\text{sp}}\|} \]
+      <details class="deriv"><summary>Actitud completa y empuje colectivo</summary>
+        <p class="small">Con el rumbo deseado \(\psi_d\), \(\mathbf x_c = (\cos\psi_d, \sin\psi_d, 0)\), \(\mathbf y_d = \mathbf z_d\times\mathbf x_c/\|\mathbf z_d\times\mathbf x_c\|\) y \(\mathbf x_d = \mathbf y_d\times\mathbf z_d\): \(R_d = [\mathbf x_d\ \mathbf y_d\ \mathbf z_d]\), igual que en la planitud de A1. En el control geométrico de Lee et al. el empuje colectivo es la proyección sobre el eje actual, \(T = \mathbf T_{\text{sp}}^\top R\mathbf e_3\) <a class="cite" data-ref="lee2010"></a>: mientras el dron no ha terminado de inclinarse, no empuja con toda su fuerza en la dirección equivocada.</p>
+      </details>
+      <ul class="small">
+        <li><strong>Límite de inclinación:</strong> 45° por defecto en vuelo (<code>MPC_TILTMAX_AIR</code>). Recortar \(\mathbf z_d\) es una saturación: el integrador del lazo de velocidad necesita su propio anti-windup.</li>
+        <li><strong>Límites de velocidad:</strong> 12 m/s en horizontal, 3 m/s al subir y 1,5 m/s al bajar. El descenso vertical rápido es donde aparece el anillo de vórtice de A1.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 · ACTITUD ============ -->
+<section class="slide divider" data-section="3 · Actitud en SO(3)">
+  <p class="num">Parte 3</p>
+  <h2>Controlar la actitud sin ángulos de Euler</h2>
+  <p>Error de actitud en SO(3) y con cuaterniones, prioridad a la inclinación sobre la guiñada, y por qué importa qué función de error eliges cuando el dron está casi boca abajo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Error de actitud</p>
+  <h2>Tres medidas del mismo error, y solo una se anula a 180°</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Control geométrico</strong> <a class="cite" data-ref="lee2010"></a>, con \(R\) la actitud y \(R_d\) la deseada:</p>
+      \[ \Psi = \tfrac12\operatorname{tr}\!\big(I - R_d^\top R\big),\qquad \mathbf e_R = \tfrac12\big(R_d^\top R - R^\top R_d\big)^\vee \]
+      <details class="deriv"><summary>Derivación: \(\Psi = 1-\cos\theta\) y \(\|\mathbf e_R\| = \sin\theta\)</summary>
+        <p class="small">Sea \(R_d^\top R = \operatorname{Exp}(\theta\mathbf n)\). Por Rodrigues (M1), \(\operatorname{Exp}(\theta\mathbf n) = I + \sin\theta\,\mathbf n^\wedge + (1-\cos\theta)(\mathbf n^\wedge)^2\). La traza es \(1 + 2\cos\theta\), así que \(\Psi = \tfrac12(3 - 1 - 2\cos\theta) = 1 - \cos\theta\). La parte antisimétrica, \(\tfrac12(\operatorname{Exp} - \operatorname{Exp}^\top) = \sin\theta\,\mathbf n^\wedge\), da \(\mathbf e_R = \sin\theta\,\mathbf n\).</p>
+      </details>
+      <p class="small"><strong>Cuaternión</strong>, como en PX4 <a class="cite" data-ref="px4attctl"></a>: \(\mathbf q_e = \mathbf q^{-1}\otimes\mathbf q_d\) (giro de la actitud actual a la deseada), en el hemisferio con \(q_{e,w} \ge 0\), y consigna de <em>rate</em> \(\boldsymbol\omega_{\text{sp}} = K\circ 2\,\mathbf q_{e,v}\), con \(\|2\mathbf q_{e,v}\| = 2\sin(\theta/2)\). En la rama actual, la consigna pasa antes por un modelo de referencia de 2.º orden a 50 rad/s.</p>
+      <div class="callout error"><span class="tag">Error frecuente: <em>unwinding</em></span>Sin escoger el hemisferio, \(\mathbf q\) y \(-\mathbf q\) (la misma actitud) dan consignas opuestas: el dron puede dar casi una vuelta entera para corregir un error pequeño.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Magnitud del error de actitud frente al ángulo de giro para tres definiciones">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M60.0,250.0 L64.9,247.6 L69.8,245.2 L74.7,242.8 L79.6,240.4 L84.4,238.1 L89.3,235.7 L94.2,233.4 L99.1,231.0 L104.0,228.8 L108.9,226.5 L113.8,224.2 L118.7,222.0 L123.6,219.9 L128.4,217.7 L133.3,215.6 L138.2,213.6 L143.1,211.6 L148.0,209.6 L152.9,207.7 L157.8,205.8 L162.7,204.0 L167.6,202.2 L172.4,200.5 L177.3,198.9 L182.2,197.3 L187.1,195.8 L192.0,194.4 L196.9,193.0 L201.8,191.7 L206.7,190.5 L211.6,189.3 L216.4,188.2 L221.3,187.2 L226.2,186.3 L231.1,185.4 L236.0,184.6 L240.9,183.9 L245.8,183.3 L250.7,182.8 L255.6,182.3 L260.4,181.9 L265.3,181.6 L270.2,181.4 L275.1,181.3 L280.0,181.2 L284.9,181.3 L289.8,181.4 L294.7,181.6 L299.6,181.9 L304.4,182.3 L309.3,182.8 L314.2,183.3 L319.1,183.9 L324.0,184.6 L328.9,185.4 L333.8,186.3 L338.7,187.2 L343.6,188.2 L348.4,189.3 L353.3,190.5 L358.2,191.7 L363.1,193.0 L368.0,194.4 L372.9,195.8 L377.8,197.3 L382.7,198.9 L387.6,200.5 L392.4,202.2 L397.3,204.0 L402.2,205.8 L407.1,207.7 L412.0,209.6 L416.9,211.6 L421.8,213.6 L426.7,215.6 L431.6,217.7 L436.4,219.9 L441.3,222.0 L446.2,224.2 L451.1,226.5 L456.0,228.8 L460.9,231.0 L465.8,233.4 L470.7,235.7 L475.6,238.1 L480.4,240.4 L485.3,242.8 L490.2,245.2 L495.1,247.6 L500.0,250.0"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,250.0 L64.9,247.6 L69.8,245.2 L74.7,242.8 L79.6,240.4 L84.4,238.0 L89.3,235.6 L94.2,233.2 L99.1,230.9 L104.0,228.5 L108.9,226.1 L113.8,223.8 L118.7,221.4 L123.6,219.1 L128.4,216.7 L133.3,214.4 L138.2,212.1 L143.1,209.8 L148.0,207.5 L152.9,205.2 L157.8,203.0 L162.7,200.7 L167.6,198.5 L172.4,196.3 L177.3,194.1 L182.2,191.9 L187.1,189.7 L192.0,187.6 L196.9,185.4 L201.8,183.3 L206.7,181.2 L211.6,179.2 L216.4,177.1 L221.3,175.1 L226.2,173.1 L231.1,171.1 L236.0,169.2 L240.9,167.3 L245.8,165.3 L250.7,163.5 L255.6,161.6 L260.4,159.8 L265.3,158.0 L270.2,156.2 L275.1,154.5 L280.0,152.8 L284.9,151.1 L289.8,149.4 L294.7,147.8 L299.6,146.2 L304.4,144.7 L309.3,143.1 L314.2,141.6 L319.1,140.2 L324.0,138.8 L328.9,137.4 L333.8,136.0 L338.7,134.7 L343.6,133.4 L348.4,132.1 L353.3,130.9 L358.2,129.7 L363.1,128.6 L368.0,127.5 L372.9,126.4 L377.8,125.4 L382.7,124.4 L387.6,123.4 L392.4,122.5 L397.3,121.6 L402.2,120.8 L407.1,120.0 L412.0,119.2 L416.9,118.5 L421.8,117.8 L426.7,117.2 L431.6,116.6 L436.4,116.0 L441.3,115.5 L446.2,115.0 L451.1,114.6 L456.0,114.2 L460.9,113.8 L465.8,113.5 L470.7,113.3 L475.6,113.0 L480.4,112.8 L485.3,112.7 L490.2,112.6 L495.1,112.5 L500.0,112.5"/>
+        <path class="ln" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M60.0,250.0 L64.9,247.6 L69.8,245.2 L74.7,242.8 L79.6,240.4 L84.4,238.0 L89.3,235.6 L94.2,233.2 L99.1,230.8 L104.0,228.4 L108.9,226.0 L113.8,223.6 L118.7,221.2 L123.6,218.8 L128.4,216.4 L133.3,214.0 L138.2,211.6 L143.1,209.2 L148.0,206.8 L152.9,204.4 L157.8,202.0 L162.7,199.6 L167.6,197.2 L172.4,194.8 L177.3,192.4 L182.2,190.0 L187.1,187.6 L192.0,185.2 L196.9,182.8 L201.8,180.4 L206.7,178.0 L211.6,175.6 L216.4,173.2 L221.3,170.8 L226.2,168.4 L231.1,166.0 L236.0,163.6 L240.9,161.2 L245.8,158.8 L250.7,156.4 L255.6,154.0 L260.4,151.6 L265.3,149.2 L270.2,146.8 L275.1,144.4 L280.0,142.0 L284.9,139.6 L289.8,137.2 L294.7,134.8 L299.6,132.4 L304.4,130.0 L309.3,127.6 L314.2,125.2 L319.1,122.8 L324.0,120.4 L328.9,118.0 L333.8,115.6 L338.7,113.2 L343.6,110.8 L348.4,108.4 L353.3,106.0 L358.2,103.6 L363.1,101.2 L368.0,98.8 L372.9,96.4 L377.8,94.0 L382.7,91.6 L387.6,89.2 L392.4,86.8 L397.3,84.4 L402.2,82.0 L407.1,79.6 L412.0,77.2 L416.9,74.8 L421.8,72.4 L426.7,70.0 L431.6,67.6 L436.4,65.2 L441.3,62.8 L446.2,60.4 L451.1,58.0 L456.0,55.6 L460.9,53.2 L465.8,50.8 L470.7,48.4 L475.6,46.0 L480.4,43.6 L485.3,41.2 L490.2,38.8 L495.1,36.4 L500.0,34.0"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0°</text>
+          <text x="280" y="268" text-anchor="middle">90°</text>
+          <text x="500" y="268" text-anchor="middle">180°</text>
+          <text x="280" y="288" text-anchor="middle">ángulo del error θ</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="181" text-anchor="end">1</text>
+          <text x="52" y="113" text-anchor="end">2</text>
+          <text x="52" y="44" text-anchor="end">3</text>
+        </g>
+        <g font-size="13">
+          <text x="300" y="212" class="t-tesis">‖e_R‖ = sen θ</text>
+          <text x="385" y="112" class="t-accent">2 sen(θ/2)</text>
+          <text x="330" y="52" class="t-muted">θ (eje-ángulo)</text>
+        </g>
+      </svg>
+      <figcaption>Con \(\mathbf e_R\), el par de corrección se anula a 180°: casi boca abajo el controlador empuja poco. El error de cuaternión crece hasta el final. Calculado en <code>figuras/figuras_a2.py</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Prioridad a la inclinación</p>
+  <h2>Primero apuntar el empuje, después corregir la guiñada</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El empuje va según \(\mathbf z = R\mathbf e_3\): la inclinación decide la aceleración horizontal, y la guiñada no. Se separa el error en dos <a class="cite" data-ref="brescianini2020,px4attctl"></a>:</p>
+      <ol class="small">
+        <li><strong>Actitud reducida:</strong> el giro mínimo que lleva \(\mathbf z\) a \(\mathbf z_d = R_d\mathbf e_3\), de eje \(\mathbf z\times\mathbf z_d/\|\mathbf z\times\mathbf z_d\|\) y ángulo \(\arccos(\mathbf z^\top\mathbf z_d)\). Aplicado a la actitud actual da \(\mathbf q_{d,\text{red}}\), con la inclinación deseada y sin cambiar el rumbo.</li>
+        <li><strong>Resto de guiñada:</strong> \(\mathbf q_{d,\text{red}}^{-1}\otimes\mathbf q_d = (\cos\tfrac{\psi_e}2, 0, 0, \sin\tfrac{\psi_e}2)\), un giro puro alrededor de \(\mathbf z_d\).</li>
+        <li>PX4 recompone \(\mathbf q_d' = \mathbf q_{d,\text{red}}\otimes(\cos\tfrac{w\psi_e}2, 0, 0, \sin\tfrac{w\psi_e}2)\) con \(w\) = <code>MC_YAW_WEIGHT</code> = 0,4 por defecto, y aplica el control de cuaternión de la hoja anterior.</li>
+      </ol>
+      <div class="callout realidad"><span class="tag">Por qué la guiñada va aparte</span>El par de guiñada sale de la reacción de los rotores: en el x500, \(k_Q/k_T = 0{,}016\) m frente a un brazo de 0,174 m, unas once veces menos par por newton de empuje diferencial que en alabeo. Brescianini et al. recomiendan diseñar el lazo de actitud con constantes de tiempo de 0,08–0,15 s en alabeo y cabeceo y de 0,2–0,4 s en guiñada <a class="cite" data-ref="brescianini2013"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué garantiza el control geométrico</span>Para la actitud sola, Lee et al. demuestran estabilidad exponencial con errores iniciales menores de 180°. Con la posición incluida, estabilidad exponencial por debajo de 90° y «atractividad exponencial casi global» (una noción más débil) por debajo de 180°. Lo validan en simulación, con recuperación desde 178° <a class="cite" data-ref="lee2010"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Tratar las tres componentes del error por igual. Con saturación de motores, la guiñada roba empuje diferencial que la inclinación necesitaba y el dron se desvía de la trayectoria al girar. Por eso PX4 la pondera menos y su asignador la sacrifica primero (A1).</div>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Todo el lazo de actitud depende de una estimación de \(R\). La guiñada es la componente peor observada (magnetómetro o visión). Un error de rumbo no se nota en vuelo estacionario, pero rota el error de posición en cuanto el dron acelera.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 · INDI ============ -->
+<section class="slide divider" data-section="4 · Inversión dinámica">
+  <p class="num">Parte 4</p>
+  <h2>Inversión dinámica incremental</h2>
+  <p>Cómo un lazo interno puede rechazar perturbaciones que no conoce midiendo su efecto en lugar de modelarlas, y por qué eso cambió el control de vuelo ágil.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">INDI</p>
+  <h2>Medir la aceleración angular para no tener que modelar lo que la causa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Dinámica de rotación afín en el mando, \(\dot{\boldsymbol\omega} = \mathbf f(\mathbf x) + G\,\mathbf u\), con \(\mathbf u\) el estado real de los actuadores. La inversión clásica (NDI) necesita \(\mathbf f\) entera. La incremental no:</p>
+      \[ \mathbf u = \mathbf u_0 + G^{-1}\big(\boldsymbol\nu - \dot{\boldsymbol\omega}_0\big),\qquad \boldsymbol\nu = K_\omega(\boldsymbol\omega_{\text{sp}} - \boldsymbol\omega) \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">En el instante anterior, \(\dot{\boldsymbol\omega}_0 = \mathbf f(\mathbf x_0) + G\mathbf u_0\). Restando, \(\dot{\boldsymbol\omega} - \dot{\boldsymbol\omega}_0 = \mathbf f(\mathbf x) - \mathbf f(\mathbf x_0) + G(\mathbf u - \mathbf u_0)\). En un paso de muestreo los actuadores cambian mucho más deprisa que \(\mathbf f\), así que \(\mathbf f(\mathbf x) - \mathbf f(\mathbf x_0) \approx 0\). Imponiendo \(\dot{\boldsymbol\omega} = \boldsymbol\nu\) y despejando sale la ley. Todo lo que no se modela (par de un centro de masas desplazado, viento, arrastre) está dentro de \(\dot{\boldsymbol\omega}_0\) y se cancela sin conocerlo <a class="cite" data-ref="smeur2016"></a>.</p>
+      </details>
+      <ul class="small">
+        <li><strong>Necesita:</strong> \(G\) (eficacia de control), \(\dot{\boldsymbol\omega}\) medida (giróscopo derivado y filtrado) y el estado del actuador \(\mathbf u_0\) (RPM por DShot bidireccional, o un modelo del motor).</li>
+        <li><strong>Condición clave:</strong> filtrar \(\dot{\boldsymbol\omega}\) y \(\mathbf u_0\) con el mismo filtro, para que estén sincronizados.</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Velocidad angular de alabeo tras un par de perturbación con el PID de PX4 y con INDI">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <line class="ln-dash" x1="60" y1="213.3" x2="500" y2="213.3"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M60.0,212.8 L60.9,202.3 L61.8,191.7 L62.6,181.1 L63.5,170.7 L64.4,160.5 L65.3,150.6 L66.2,141.2 L67.0,132.4 L67.9,124.2 L68.8,116.8 L69.7,110.2 L70.6,104.4 L71.4,99.3 L72.3,95.0 L73.2,91.5 L74.1,88.6 L75.0,86.3 L75.8,84.5 L76.7,83.2 L77.6,82.2 L78.5,81.6 L79.4,81.3 L80.2,81.1 L81.1,81.1 L82.0,81.1 L82.9,81.2 L83.8,81.3 L84.6,81.4 L85.5,81.4 L86.4,81.4 L87.3,81.4 L88.2,81.2 L89.0,81.0 L89.9,80.7 L90.8,80.4 L91.7,80.0 L92.6,79.6 L93.4,79.1 L94.3,78.6 L95.2,78.1 L96.1,77.6 L97.0,77.1 L97.8,76.7 L98.7,76.2 L99.6,75.8 L100.5,75.4 L101.4,75.1 L102.2,74.8 L103.1,74.6 L104.0,74.4 L104.9,74.2 L105.8,74.1 L106.6,74.0 L107.5,74.0 L108.4,74.0 L109.3,74.1 L110.2,74.1 L111.0,74.2 L111.9,74.4 L112.8,74.5 L113.7,74.7 L114.6,74.9 L115.4,75.1 L116.3,75.3 L117.2,75.5 L118.1,75.7 L119.0,76.0 L119.8,76.2 L120.7,76.5 L121.6,76.7 L122.5,77.0 L123.4,77.2 L124.2,77.5 L125.1,77.7 L126.0,78.0 L126.9,78.3 L127.8,78.5 L128.6,78.8 L129.5,79.1 L130.4,79.3 L131.3,79.6 L132.2,79.9 L133.0,80.2 L133.9,80.5 L134.8,80.8 L135.7,81.0 L136.6,81.3 L137.4,81.6 L138.3,82.0 L139.2,82.3 L140.1,82.6 L141.0,82.9 L141.8,83.2 L142.7,83.5 L143.6,83.8 L144.5,84.2 L145.4,84.5 L146.2,84.8 L147.1,85.1 L148.0,85.5 L148.9,85.8 L149.8,86.1 L150.6,86.5 L151.5,86.8 L152.4,87.1 L153.3,87.5 L154.2,87.8 L155.0,88.1 L155.9,88.5 L156.8,88.8 L157.7,89.1 L158.6,89.5 L159.4,89.8 L160.3,90.1 L161.2,90.5 L162.1,90.8 L163.0,91.1 L163.8,91.5 L164.7,91.8 L165.6,92.1 L166.5,92.5 L167.4,92.8 L168.2,93.1 L169.1,93.5 L170.0,93.8 L170.9,94.1 L171.8,94.5 L172.6,94.8 L173.5,95.1 L174.4,95.5 L175.3,95.8 L176.2,96.1 L177.0,96.5 L177.9,96.8 L178.8,97.1 L179.7,97.4 L180.6,97.8 L181.4,98.1 L182.3,98.4 L183.2,98.7 L184.1,99.1 L185.0,99.4 L185.8,99.7 L186.7,100.0 L187.6,100.3 L188.5,100.7 L189.4,101.0 L190.2,101.3 L191.1,101.6 L192.0,101.9 L192.9,102.3 L193.8,102.6 L194.6,102.9 L195.5,103.2 L196.4,103.5 L197.3,103.8 L198.2,104.1 L199.0,104.4 L199.9,104.8 L200.8,105.1 L201.7,105.4 L202.6,105.7 L203.4,106.0 L204.3,106.3 L205.2,106.6 L206.1,106.9 L207.0,107.2 L207.8,107.5 L208.7,107.8 L209.6,108.1 L210.5,108.4 L211.4,108.7 L212.2,109.0 L213.1,109.3 L214.0,109.6 L214.9,109.9 L215.8,110.2 L216.6,110.5 L217.5,110.8 L218.4,111.1 L219.3,111.4 L220.2,111.7 L221.0,112.0 L221.9,112.2 L222.8,112.5 L223.7,112.8 L224.6,113.1 L225.4,113.4 L226.3,113.7 L227.2,114.0 L228.1,114.3 L229.0,114.5 L229.8,114.8 L230.7,115.1 L231.6,115.4 L232.5,115.7 L233.4,115.9 L234.2,116.2 L235.1,116.5 L236.0,116.8 L236.9,117.1 L237.8,117.3 L238.6,117.6 L239.5,117.9 L240.4,118.2 L241.3,118.4 L242.2,118.7 L243.0,119.0 L243.9,119.2 L244.8,119.5 L245.7,119.8 L246.6,120.1 L247.4,120.3 L248.3,120.6 L249.2,120.9 L250.1,121.1 L251.0,121.4 L251.8,121.6 L252.7,121.9 L253.6,122.2 L254.5,122.4 L255.4,122.7 L256.2,123.0 L257.1,123.2 L258.0,123.5 L258.9,123.7 L259.8,124.0 L260.6,124.2 L261.5,124.5 L262.4,124.8 L263.3,125.0 L264.2,125.3 L265.0,125.5 L265.9,125.8 L266.8,126.0 L267.7,126.3 L268.6,126.5 L269.4,126.8 L270.3,127.0 L271.2,127.3 L272.1,127.5 L273.0,127.8 L273.8,128.0 L274.7,128.2 L275.6,128.5 L276.5,128.7 L277.4,129.0 L278.2,129.2 L279.1,129.5 L280.0,129.7 L280.9,129.9 L281.8,130.2 L282.6,130.4 L283.5,130.7 L284.4,130.9 L285.3,131.1 L286.2,131.4 L287.0,131.6 L287.9,131.8 L288.8,132.1 L289.7,132.3 L290.6,132.5 L291.4,132.8 L292.3,133.0 L293.2,133.2 L294.1,133.5 L295.0,133.7 L295.8,133.9 L296.7,134.1 L297.6,134.4 L298.5,134.6 L299.4,134.8 L300.2,135.0 L301.1,135.3 L302.0,135.5 L302.9,135.7 L303.8,135.9 L304.6,136.2 L305.5,136.4 L306.4,136.6 L307.3,136.8 L308.2,137.0 L309.0,137.3 L309.9,137.5 L310.8,137.7 L311.7,137.9 L312.6,138.1 L313.4,138.3 L314.3,138.6 L315.2,138.8 L316.1,139.0 L317.0,139.2 L317.8,139.4 L318.7,139.6 L319.6,139.8 L320.5,140.1 L321.4,140.3 L322.2,140.5 L323.1,140.7 L324.0,140.9 L324.9,141.1 L325.8,141.3 L326.6,141.5 L327.5,141.7 L328.4,141.9 L329.3,142.1 L330.2,142.3 L331.0,142.5 L331.9,142.7 L332.8,142.9 L333.7,143.1 L334.6,143.3 L335.4,143.5 L336.3,143.7 L337.2,143.9 L338.1,144.1 L339.0,144.3 L339.8,144.5 L340.7,144.7 L341.6,144.9 L342.5,145.1 L343.4,145.3 L344.2,145.5 L345.1,145.7 L346.0,145.9 L346.9,146.1 L347.8,146.3 L348.6,146.5 L349.5,146.7 L350.4,146.9 L351.3,147.1 L352.2,147.3 L353.0,147.4 L353.9,147.6 L354.8,147.8 L355.7,148.0 L356.6,148.2 L357.4,148.4 L358.3,148.6 L359.2,148.8 L360.1,148.9 L361.0,149.1 L361.8,149.3 L362.7,149.5 L363.6,149.7 L364.5,149.9 L365.4,150.0 L366.2,150.2 L367.1,150.4 L368.0,150.6 L368.9,150.8 L369.8,150.9 L370.6,151.1 L371.5,151.3 L372.4,151.5 L373.3,151.7 L374.2,151.8 L375.0,152.0 L375.9,152.2 L376.8,152.4 L377.7,152.5 L378.6,152.7 L379.4,152.9 L380.3,153.1 L381.2,153.2 L382.1,153.4 L383.0,153.6 L383.8,153.7 L384.7,153.9 L385.6,154.1 L386.5,154.3 L387.4,154.4 L388.2,154.6 L389.1,154.8 L390.0,154.9 L390.9,155.1 L391.8,155.3 L392.6,155.4 L393.5,155.6 L394.4,155.8 L395.3,155.9 L396.2,156.1 L397.0,156.3 L397.9,156.4 L398.8,156.6 L399.7,156.7 L400.6,156.9 L401.4,157.1 L402.3,157.2 L403.2,157.4 L404.1,157.6 L405.0,157.7 L405.8,157.9 L406.7,158.0 L407.6,158.2 L408.5,158.3 L409.4,158.5 L410.2,158.7 L411.1,158.8 L412.0,159.0 L412.9,159.1 L413.8,159.3 L414.6,159.4 L415.5,159.6 L416.4,159.8 L417.3,159.9 L418.2,160.1 L419.0,160.2 L419.9,160.4 L420.8,160.5 L421.7,160.7 L422.6,160.8 L423.4,161.0 L424.3,161.1 L425.2,161.3 L426.1,161.4 L427.0,161.6 L427.8,161.7 L428.7,161.9 L429.6,162.0 L430.5,162.2 L431.4,162.3 L432.2,162.5 L433.1,162.6 L434.0,162.7 L434.9,162.9 L435.8,163.0 L436.6,163.2 L437.5,163.3 L438.4,163.5 L439.3,163.6 L440.2,163.8 L441.0,163.9 L441.9,164.0 L442.8,164.2 L443.7,164.3 L444.6,164.5 L445.4,164.6 L446.3,164.7 L447.2,164.9 L448.1,165.0 L449.0,165.2 L449.8,165.3 L450.7,165.4 L451.6,165.6 L452.5,165.7 L453.4,165.8 L454.2,166.0 L455.1,166.1 L456.0,166.3 L456.9,166.4 L457.8,166.5 L458.6,166.7 L459.5,166.8 L460.4,166.9 L461.3,167.1 L462.2,167.2 L463.0,167.3 L463.9,167.5 L464.8,167.6 L465.7,167.7 L466.6,167.8 L467.4,168.0 L468.3,168.1 L469.2,168.2 L470.1,168.4 L471.0,168.5 L471.8,168.6 L472.7,168.8 L473.6,168.9 L474.5,169.0 L475.4,169.1 L476.2,169.3 L477.1,169.4 L478.0,169.5 L478.9,169.6 L479.8,169.8 L480.6,169.9 L481.5,170.0 L482.4,170.1 L483.3,170.3 L484.2,170.4 L485.0,170.5 L485.9,170.6 L486.8,170.8 L487.7,170.9 L488.6,171.0 L489.4,171.1 L490.3,171.2 L491.2,171.4 L492.1,171.5 L493.0,171.6 L493.8,171.7 L494.7,171.8 L495.6,172.0 L496.5,172.1 L497.4,172.2 L498.2,172.3 L499.1,172.4"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,212.8 L60.9,202.3 L61.8,191.7 L62.6,181.1 L63.5,170.8 L64.4,160.6 L65.3,151.0 L66.2,142.1 L67.0,134.1 L67.9,127.0 L68.8,120.9 L69.7,116.1 L70.6,112.4 L71.4,109.9 L72.3,108.7 L73.2,108.7 L74.1,109.9 L75.0,112.1 L75.8,115.4 L76.7,119.6 L77.6,124.6 L78.5,130.4 L79.4,136.8 L80.2,143.8 L81.1,151.1 L82.0,158.8 L82.9,166.6 L83.8,174.5 L84.6,182.4 L85.5,190.2 L86.4,197.8 L87.3,205.1 L88.2,212.0 L89.0,218.6 L89.9,224.6 L90.8,230.1 L91.7,235.1 L92.6,239.5 L93.4,243.3 L94.3,246.5 L95.2,249.0 L96.1,251.0 L97.0,252.3 L97.8,253.1 L98.7,253.3 L99.6,253.0 L100.5,252.2 L101.4,251.0 L102.2,249.4 L103.1,247.4 L104.0,245.1 L104.9,242.6 L105.8,239.8 L106.6,236.9 L107.5,233.8 L108.4,230.7 L109.3,227.6 L110.2,224.4 L111.0,221.4 L111.9,218.4 L112.8,215.5 L113.7,212.8 L114.6,210.2 L115.4,207.9 L116.3,205.7 L117.2,203.8 L118.1,202.1 L119.0,200.7 L119.8,199.5 L120.7,198.6 L121.6,197.9 L122.5,197.4 L123.4,197.2 L124.2,197.2 L125.1,197.4 L126.0,197.8 L126.9,198.3 L127.8,199.0 L128.6,199.9 L129.5,200.9 L130.4,201.9 L131.3,203.1 L132.2,204.3 L133.0,205.5 L133.9,206.8 L134.8,208.0 L135.7,209.3 L136.6,210.5 L137.4,211.7 L138.3,212.9 L139.2,213.9 L140.1,214.9 L141.0,215.9 L141.8,216.7 L142.7,217.4 L143.6,218.1 L144.5,218.6 L145.4,219.1 L146.2,219.4 L147.1,219.6 L148.0,219.8 L148.9,219.9 L149.8,219.8 L150.6,219.7 L151.5,219.5 L152.4,219.3 L153.3,219.0 L154.2,218.6 L155.0,218.2 L155.9,217.8 L156.8,217.3 L157.7,216.8 L158.6,216.3 L159.4,215.8 L160.3,215.3 L161.2,214.8 L162.1,214.3 L163.0,213.8 L163.8,213.4 L164.7,212.9 L165.6,212.5 L166.5,212.2 L167.4,211.9 L168.2,211.6 L169.1,211.3 L170.0,211.1 L170.9,211.0 L171.8,210.8 L172.6,210.8 L173.5,210.7 L174.4,210.7 L175.3,210.7 L176.2,210.8 L177.0,210.9 L177.9,211.0 L178.8,211.1 L179.7,211.3 L180.6,211.4 L181.4,211.6 L182.3,211.8 L183.2,212.0 L184.1,212.2 L185.0,212.4 L185.8,212.6 L186.7,212.8 L187.6,213.0 L188.5,213.2 L189.4,213.4 L190.2,213.5 L191.1,213.7 L192.0,213.8 L192.9,214.0 L193.8,214.1 L194.6,214.2 L195.5,214.2 L196.4,214.3 L197.3,214.4 L198.2,214.4 L199.0,214.4 L199.9,214.4 L200.8,214.4 L201.7,214.4 L202.6,214.3 L203.4,214.3 L204.3,214.2 L205.2,214.1 L206.1,214.1 L207.0,214.0 L207.8,213.9 L208.7,213.8 L209.6,213.8 L210.5,213.7 L211.4,213.6 L212.2,213.5 L213.1,213.4 L214.0,213.4 L214.9,213.3 L215.8,213.2 L216.6,213.2 L217.5,213.1 L218.4,213.1 L219.3,213.0 L220.2,213.0 L221.0,213.0 L221.9,212.9 L222.8,212.9 L223.7,212.9 L224.6,212.9 L225.4,212.9 L226.3,212.9 L227.2,212.9 L228.1,212.9 L229.0,213.0 L229.8,213.0 L230.7,213.0 L231.6,213.0 L232.5,213.1 L233.4,213.1 L234.2,213.1 L235.1,213.2 L236.0,213.2 L236.9,213.2 L237.8,213.3 L238.6,213.3 L239.5,213.3 L240.4,213.4 L241.3,213.4 L242.2,213.4 L243.0,213.4 L243.9,213.4 L244.8,213.5 L245.7,213.5 L246.6,213.5 L247.4,213.5 L248.3,213.5 L249.2,213.5 L250.1,213.5 L251.0,213.5 L251.8,213.5 L252.7,213.5 L253.6,213.5 L254.5,213.5 L255.4,213.5 L256.2,213.5 L257.1,213.4 L258.0,213.4 L258.9,213.4 L259.8,213.4 L260.6,213.4 L261.5,213.4 L262.4,213.4 L263.3,213.4 L264.2,213.3 L265.0,213.3 L265.9,213.3 L266.8,213.3 L267.7,213.3 L268.6,213.3 L269.4,213.3 L270.3,213.3 L271.2,213.3 L272.1,213.3 L273.0,213.3 L273.8,213.3 L274.7,213.3 L275.6,213.3 L276.5,213.3 L277.4,213.3 L278.2,213.3 L279.1,213.3 L280.0,213.3 L280.9,213.3 L281.8,213.3 L282.6,213.3 L283.5,213.3 L284.4,213.3 L285.3,213.3 L286.2,213.3 L287.0,213.3 L287.9,213.3 L288.8,213.3 L289.7,213.3 L290.6,213.3 L291.4,213.3 L292.3,213.3 L293.2,213.3 L294.1,213.4 L295.0,213.4 L295.8,213.4 L296.7,213.4 L297.6,213.4 L298.5,213.4 L299.4,213.4 L300.2,213.4 L301.1,213.4 L302.0,213.4 L302.9,213.4 L303.8,213.4 L304.6,213.4 L305.5,213.4 L306.4,213.4 L307.3,213.4 L308.2,213.4 L309.0,213.3 L309.9,213.3 L310.8,213.3 L311.7,213.3 L312.6,213.3 L313.4,213.3 L314.3,213.3 L315.2,213.3 L316.1,213.3 L317.0,213.3 L317.8,213.3 L318.7,213.3 L319.6,213.3 L320.5,213.3 L321.4,213.3 L322.2,213.3 L323.1,213.3 L324.0,213.3 L324.9,213.3 L325.8,213.3 L326.6,213.3 L327.5,213.3 L328.4,213.3 L329.3,213.3 L330.2,213.3 L331.0,213.3 L331.9,213.3 L332.8,213.3 L333.7,213.3 L334.6,213.3 L335.4,213.3 L336.3,213.3 L337.2,213.3 L338.1,213.3 L339.0,213.3 L339.8,213.3 L340.7,213.3 L341.6,213.3 L342.5,213.3 L343.4,213.3 L344.2,213.3 L345.1,213.3 L346.0,213.3 L346.9,213.3 L347.8,213.3 L348.6,213.3 L349.5,213.3 L350.4,213.3 L351.3,213.3 L352.2,213.3 L353.0,213.3 L353.9,213.3 L354.8,213.3 L355.7,213.3 L356.6,213.3 L357.4,213.3 L358.3,213.3 L359.2,213.3 L360.1,213.3 L361.0,213.3 L361.8,213.3 L362.7,213.3 L363.6,213.3 L364.5,213.3 L365.4,213.3 L366.2,213.3 L367.1,213.3 L368.0,213.3 L368.9,213.3 L369.8,213.3 L370.6,213.3 L371.5,213.3 L372.4,213.3 L373.3,213.3 L374.2,213.3 L375.0,213.3 L375.9,213.3 L376.8,213.3 L377.7,213.3 L378.6,213.3 L379.4,213.3 L380.3,213.3 L381.2,213.3 L382.1,213.3 L383.0,213.3 L383.8,213.3 L384.7,213.3 L385.6,213.3 L386.5,213.3 L387.4,213.3 L388.2,213.3 L389.1,213.3 L390.0,213.3 L390.9,213.3 L391.8,213.3 L392.6,213.3 L393.5,213.3 L394.4,213.3 L395.3,213.3 L396.2,213.3 L397.0,213.3 L397.9,213.3 L398.8,213.3 L399.7,213.3 L400.6,213.3 L401.4,213.3 L402.3,213.3 L403.2,213.3 L404.1,213.3 L405.0,213.3 L405.8,213.3 L406.7,213.3 L407.6,213.3 L408.5,213.3 L409.4,213.3 L410.2,213.3 L411.1,213.3 L412.0,213.3 L412.9,213.3 L413.8,213.3 L414.6,213.3 L415.5,213.3 L416.4,213.3 L417.3,213.3 L418.2,213.3 L419.0,213.3 L419.9,213.3 L420.8,213.3 L421.7,213.3 L422.6,213.3 L423.4,213.3 L424.3,213.3 L425.2,213.3 L426.1,213.3 L427.0,213.3 L427.8,213.3 L428.7,213.3 L429.6,213.3 L430.5,213.3 L431.4,213.3 L432.2,213.3 L433.1,213.3 L434.0,213.3 L434.9,213.3 L435.8,213.3 L436.6,213.3 L437.5,213.3 L438.4,213.3 L439.3,213.3 L440.2,213.3 L441.0,213.3 L441.9,213.3 L442.8,213.3 L443.7,213.3 L444.6,213.3 L445.4,213.3 L446.3,213.3 L447.2,213.3 L448.1,213.3 L449.0,213.3 L449.8,213.3 L450.7,213.3 L451.6,213.3 L452.5,213.3 L453.4,213.3 L454.2,213.3 L455.1,213.3 L456.0,213.3 L456.9,213.3 L457.8,213.3 L458.6,213.3 L459.5,213.3 L460.4,213.3 L461.3,213.3 L462.2,213.3 L463.0,213.3 L463.9,213.3 L464.8,213.3 L465.7,213.3 L466.6,213.3 L467.4,213.3 L468.3,213.3 L469.2,213.3 L470.1,213.3 L471.0,213.3 L471.8,213.3 L472.7,213.3 L473.6,213.3 L474.5,213.3 L475.4,213.3 L476.2,213.3 L477.1,213.3 L478.0,213.3 L478.9,213.3 L479.8,213.3 L480.6,213.3 L481.5,213.3 L482.4,213.3 L483.3,213.3 L484.2,213.3 L485.0,213.3 L485.9,213.3 L486.8,213.3 L487.7,213.3 L488.6,213.3 L489.4,213.3 L490.3,213.3 L491.2,213.3 L492.1,213.3 L493.0,213.3 L493.8,213.3 L494.7,213.3 L495.6,213.3 L496.5,213.3 L497.4,213.3 L498.2,213.3 L499.1,213.3"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">0,5</text>
+          <text x="500" y="268" text-anchor="end">1 s</text>
+          <text x="52" y="217" text-anchor="end">0</text>
+          <text x="52" y="144" text-anchor="end">10</text>
+          <text x="52" y="34" text-anchor="end">25 °/s</text>
+        </g>
+        <g font-size="13">
+          <text x="200" y="110" class="t-tesis">PID de PX4: deriva 11,7°</text>
+          <text x="300" y="236" class="t-accent">INDI: 0,4°</text>
+        </g>
+      </svg>
+      <figcaption>Par de perturbación de 0,3 N·m (centro de masas desplazado 1,5 cm) en el x500, solo con el lazo de <em>rate</em>, ambos con el mismo ancho de banda (45 rad/s). El PID depende de su integrador lento; INDI cancela la perturbación en unos 200 ms. Calculado en <code>figuras/figuras_a2.py</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">INDI en vuelo</p>
+  <h2>El lazo interno pesa más que elegir entre NMPC y planitud</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:21%">Trabajo</th><th style="width:30%">Plataforma y frecuencias</th><th>Resultado en vuelo real</th></tr>
+      <tr><td>Smeur et al. (2016) <a class="cite" data-ref="smeur2016"></a></td><td>Bebop de 396 g, Paparazzi; IMU y lazos a <span class="hz">512 Hz</span></td><td>Con un peso en el morro, INDI recupera el cabeceo en <span class="hz">0,3 s</span> y el PID en unos <span class="hz">1,5 s</span>. En seguimiento nominal, según los autores, solo «mejora marginalmente» al PID.</td></tr>
+      <tr><td>Smeur et al. (2018) <a class="cite" data-ref="smeur2018"></a></td><td>INDI también en el lazo de posición; posición a solo <span class="hz">4 Hz</span>, como un GPS</td><td>Entrando y saliendo de un chorro de túnel de viento de 10 m/s: desviación máxima de 0,21 m frente a 1,51 m del PID.</td></tr>
+      <tr><td>Tal y Karaman (2021) <a class="cite" data-ref="tal2021"></a></td><td>609 g; STM32H7, control a <span class="hz">2 kHz</span> en <span class="hz">16 µs</span>; RPM por encóder</td><td>12,9 m/s y 2,1 g con 6,6 cm de error RMS. En otra trayectoria, sin la prealimentación de <em>jerk</em> y <em>snap</em>, el error sube de 9,0 a 16,8 cm.</td></tr>
+      <tr><td>Sun et al. (2022) <a class="cite" data-ref="sun2022"></a></td><td>Jetson TX2: INDI y planitud a <span class="hz">300 Hz</span>, NMPC a <span class="hz">100 Hz</span>; RPM a <span class="hz">500 Hz</span></td><td>Hasta 19,4 m/s. Error RMS medio: NMPC+INDI 0,102 m, planitud+INDI 0,122 m, NMPC+PID 0,343 m. Quitar INDI empeora el error un 364 % (NMPC) y un 705 % (planitud); quitar el modelo de arrastre, un 144 % y un 122 %.</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Conclusión de Sun et al.</span>Con un lazo interno INDI, NMPC y control por planitud siguen trayectorias muy agresivas con precisión parecida mientras sean dinámicamente factibles. NMPC se distancia sobre todo con referencias no factibles (0,55 m frente a 1,33 m en vuelo), y cuesta <span class="hz">2,7 ms</span> por mando frente a <span class="hz">0,02 ms</span>.</div>
+    <div class="callout error"><span class="tag">Lo que INDI no hace</span>No es más rápido que un PID bien ajustado en vuelo nominal. Necesita aceleración angular limpia, el estado real del motor y sincronizar sus filtros: sin compensar el retardo del filtro, Smeur et al. observan oscilaciones fuertes.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 · ALA FIJA ============ -->
+<section class="slide divider" data-section="5 · Ala fija">
+  <p class="num">Parte 5</p>
+  <h2>La cascada del ala fija</h2>
+  <p>Cierre sucesivo de lazos, control por energía total (TECS) y guiado no lineal de trayectoria (L1 y su sucesor en PX4).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cierre sucesivo de lazos</p>
+  <h2>Alabeo dentro, rumbo fuera: la misma separación de escalas, con otra física</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Lazos de Beard y McLain <a class="cite" data-ref="beard2012"></a>. Lateral: alerón → alabeo → rumbo → seguimiento de trayectoria. Longitudinal: timón de profundidad → cabeceo → altitud, y motor → velocidad. Modelo de diseño del alabeo:</p>
+      \[ \ddot\phi = -a_{\phi_1}\dot\phi + a_{\phi_2}\,\delta_a \]
+      \[ a_{\phi_1} = -\tfrac12\rho V_a^2 S b\,C_{p_p}\tfrac{b}{2V_a},\qquad a_{\phi_2} = \tfrac12\rho V_a^2 S b\,C_{p_{\delta_a}} \]
+      <ul class="small">
+        <li>Ganancia proporcional fijada por la saturación: \(k_{p_\phi} = \delta_a^{\max}/e_\phi^{\max}\), de donde \(\omega_{n_\phi} = \sqrt{a_{\phi_2}k_{p_\phi}}\) y \(k_{d_\phi} = (2\zeta\omega_{n_\phi} - a_{\phi_1})/a_{\phi_2}\).</li>
+        <li>Rumbo con giro coordinado, \(\dot\chi \approx (g/V_g)\,\phi\): un PI cuyo \(\omega_{n_\chi} = \omega_{n_\phi}/W_\chi\). Los autores recomiendan una separación \(W\) de 5 a 10, y en rumbo mayor que 5 <a class="cite" data-ref="beard2012"></a> (cifras de su borrador de 2.ª edición; no hemos podido leer la de 2012).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Aerosonde, \(V_a\) = 25 m/s</th><th>Valor</th></tr>
+          <tr><td>\(a_{\phi_1}\)</td><td class="n">22,6 s⁻¹</td></tr>
+          <tr><td>\(a_{\phi_2}\)</td><td class="n">130,9 s⁻²</td></tr>
+          <tr><td>\(k_{p_\phi}\) (45° de alerón para 15° de error)</td><td class="n">3,0</td></tr>
+          <tr><td>\(\omega_{n_\phi}\), con \(\zeta\) = 0,707</td><td class="n">19,8 rad/s (<span class="hz">3,2 Hz</span>)</td></tr>
+          <tr><td>\(k_{d_\phi}\)</td><td class="n">0,041 s</td></tr>
+          <tr><td>\(\omega_{n_\chi}\) con \(W_\chi\) = 10</td><td class="n">1,98 rad/s (periodo <span class="hz">3,2 s</span>)</td></tr>
+          <tr><td>\(\omega_{n_\chi}\) con \(W_\chi\) = 20</td><td class="n">0,99 rad/s (periodo <span class="hz">6,3 s</span>)</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Coeficientes de <code>aerosonde_parameters.py</code> (mavsim); elección de saturación nuestra. Cálculo en <code>figuras/figuras_a2.py</code>.</p>
+      <div class="callout clave"><span class="tag">Comprobación cruzada con A1</span>\(a_{\phi_1} = 22{,}6\ \mathrm{s^{-1}}\) es el amortiguamiento de alabeo: coincide con el modo de convergencia en alabeo de A1 (autovalor −22,4). El modelo de diseño de un lazo es el modo del modelo completo que corresponde a ese lazo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">TECS</p>
+  <h2>Motor para la energía total, cabeceo para repartirla</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Energía específica \(E_s = h + V^2/2g\). Con la ecuación longitudinal \(m\dot V = T - D - mg\sin\gamma\) y \(\dot h = V\sin\gamma\):</p>
+      \[ \frac{\dot E_s}{V} = \sin\gamma + \frac{\dot V}{g} = \frac{T - D}{mg},\qquad \frac{\dot L_s}{V} = \sin\gamma - \frac{\dot V}{g} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">\(\dot E_s = \dot h + V\dot V/g = V\sin\gamma + V\dot V/g\). Sustituyendo \(\dot V = (T-D)/m - g\sin\gamma\) se cancela \(\sin\gamma\) y queda \(\dot E_s = V(T-D)/(mg)\): solo el empuje neto cambia la energía total. Con \(\dot L_s\) (la diferencia entre potencial y cinética) se mide cómo está repartida. A empuje fijo, tirar del mando sube \(\gamma\) a costa de \(\dot V\): \(\dot E_s\) no cambia. Es el acoplamiento que confunde al piloto novato: subir sin dar motor hace perder velocidad.</p>
+      </details>
+      <p class="small">TECS <a class="cite" data-ref="lambregts1983"></a> cierra dos lazos desacoplados: el empuje corrige el error de \(\dot E_s\) y el cabeceo, el de \(\dot L_s\). Altitud y velocidad dejan de pelear por el mismo mando.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En autopilotos reales</span>PX4 usa TECS para altitud y velocidad, y NPFG para el guiado horizontal, a unos <span class="hz">100 Hz</span>, sobre lazos de actitud a 200 Hz y de <em>rate</em> a 400 Hz <a class="cite" data-ref="px4fw"></a>. ArduPlane estabiliza a <span class="hz">50 Hz</span> y corre TECS y navegación a <span class="hz">10 Hz</span> <a class="cite" data-ref="ardupilot"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Ajustar altitud (cabeceo) y velocidad (motor) como lazos independientes: intercambian energía, al subir se pierde velocidad que el otro lazo corrige tarde y se excita la fugoide (A1: 13 s en el Aerosonde). TECS desacopla por construcción.</div>
+      <div class="callout tesis"><span class="tag">Latencia y frecuencia</span>Los lazos de energía son lentos (segundos) y los de alabeo y cabeceo rápidos (décimas): una política aprendida para ala fija suele entrar a nivel de actitud o de consignas de TECS, no de superficies.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Guiado de trayectoria</p>
+  <h2>L1: perseguir un punto que va por delante en la trayectoria</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Se elige un punto de la trayectoria a distancia \(L_1\) del avión y se pide una aceleración lateral hacia él <a class="cite" data-ref="park2004"></a> (ley contrastada en tres fuentes secundarias; el original no estaba accesible):</p>
+      \[ a_{\text{cmd}} = \frac{2V^2}{L_1}\sin\eta \]
+      <details class="deriv" open><summary>Linealización en una recta</summary>
+        <p class="small">Con separación lateral \(d\) pequeña, el ángulo \(\eta\) entre la velocidad y la línea al punto es \(\eta \approx d/L_1 + \dot d/V\). Como \(\ddot d = -a_{\text{cmd}}\): \(\ddot d + 2\tfrac{V}{L_1}\dot d + 2\tfrac{V^2}{L_1^2}d = 0\). Es un segundo orden con \(\omega_n = \sqrt2\,V/L_1\) y \(\zeta = 1/\sqrt2\): el amortiguamiento no depende de \(L_1\) ni de \(V\), y \(L_1\) fija el ancho de banda.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">En PX4</span>El guiado L1 se sustituyó por NPFG (<em>nonlinear path following guidance</em>), que conserva la idea de un punto de referencia y añade el manejo de viento fuerte, incluso más rápido que el propio avión <a class="cite" data-ref="stastny2019,px4fw"></a>.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 220" role="img" aria-label="Trayectorias de un avión que converge a una recta con el guiado L1 para tres valores de L1">
+        <line class="ln-rule" x1="60" y1="156" x2="500" y2="156"/>
+        <line class="ln-rule" x1="60" y1="20" x2="60" y2="190"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M60.0,54.0 L63.4,56.4 L66.7,62.5 L69.8,71.1 L72.9,80.9 L75.9,91.3 L78.9,101.6 L81.9,111.4 L85.1,120.5 L88.2,128.6 L91.5,135.7 L94.8,141.8 L98.1,146.8 L101.5,150.9 L104.9,154.1 L108.3,156.5 L111.7,158.3 L115.1,159.5 L118.6,160.2 L122.0,160.5 L125.5,160.6 L128.9,160.5 L132.3,160.2 L135.8,159.8 L139.2,159.3 L142.6,158.9 L146.1,158.4 L149.5,158.0 L152.9,157.6 L156.4,157.2 L159.8,156.9 L163.3,156.6 L166.7,156.4 L170.1,156.2 L173.6,156.1 L177.0,156.0 L180.4,155.9 L183.9,155.9 L187.3,155.8 L190.8,155.8 L194.2,155.8 L197.6,155.8 L201.1,155.8 L204.5,155.8 L207.9,155.9 L211.4,155.9 L214.8,155.9 L218.3,155.9 L221.7,155.9 L225.1,155.9 L228.6,156.0 L232.0,156.0 L235.4,156.0 L238.9,156.0 L242.3,156.0 L245.8,156.0 L249.2,156.0 L252.6,156.0 L256.1,156.0 L259.5,156.0 L262.9,156.0 L266.4,156.0 L269.8,156.0 L273.3,156.0 L276.7,156.0 L280.1,156.0 L283.6,156.0 L287.0,156.0 L290.4,156.0 L293.9,156.0 L297.3,156.0 L300.8,156.0 L304.2,156.0 L307.6,156.0 L311.1,156.0 L314.5,156.0 L317.9,156.0 L321.4,156.0 L324.8,156.0 L328.3,156.0 L331.7,156.0 L335.1,156.0 L338.6,156.0 L342.0,156.0 L345.4,156.0 L348.9,156.0 L352.3,156.0 L355.8,156.0 L359.2,156.0 L362.6,156.0 L366.1,156.0 L369.5,156.0 L372.9,156.0 L376.4,156.0 L379.8,156.0 L383.3,156.0 L386.7,156.0 L390.1,156.0 L393.6,156.0 L397.0,156.0 L400.4,156.0 L403.9,156.0 L407.3,156.0 L410.8,156.0 L414.2,156.0 L417.6,156.0 L421.1,156.0 L424.5,156.0 L427.9,156.0 L431.4,156.0 L434.8,156.0 L438.3,156.0 L441.7,156.0 L445.1,156.0 L448.6,156.0 L452.0,156.0 L455.4,156.0 L458.9,156.0 L462.3,156.0 L465.8,156.0 L469.2,156.0 L472.6,156.0 L476.1,156.0 L479.5,156.0 L482.9,156.0 L486.4,156.0 L489.8,156.0 L493.3,156.0 L496.7,156.0"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,54.0 L63.4,54.6 L66.9,56.3 L70.3,58.9 L73.7,62.2 L77.0,66.1 L80.4,70.5 L83.8,75.2 L87.1,80.1 L90.4,85.2 L93.8,90.3 L97.1,95.5 L100.5,100.6 L103.8,105.5 L107.1,110.4 L110.5,115.0 L113.9,119.4 L117.2,123.6 L120.6,127.6 L124.0,131.3 L127.4,134.8 L130.8,138.0 L134.2,140.9 L137.6,143.6 L141.0,146.0 L144.4,148.2 L147.9,150.2 L151.3,151.9 L154.7,153.5 L158.1,154.8 L161.6,156.0 L165.0,157.0 L168.4,157.8 L171.9,158.5 L175.3,159.1 L178.7,159.5 L182.2,159.9 L185.6,160.1 L189.1,160.3 L192.5,160.4 L195.9,160.4 L199.4,160.4 L202.8,160.3 L206.2,160.2 L209.7,160.1 L213.1,159.9 L216.6,159.7 L220.0,159.5 L223.4,159.3 L226.9,159.1 L230.3,158.9 L233.7,158.7 L237.2,158.4 L240.6,158.2 L244.1,158.0 L247.5,157.8 L250.9,157.6 L254.4,157.4 L257.8,157.3 L261.2,157.1 L264.7,156.9 L268.1,156.8 L271.6,156.7 L275.0,156.6 L278.4,156.4 L281.9,156.4 L285.3,156.3 L288.7,156.2 L292.2,156.1 L295.6,156.1 L299.1,156.0 L302.5,156.0 L305.9,155.9 L309.4,155.9 L312.8,155.9 L316.2,155.9 L319.7,155.8 L323.1,155.8 L326.6,155.8 L330.0,155.8 L333.4,155.8 L336.9,155.8 L340.3,155.8 L343.7,155.8 L347.2,155.8 L350.6,155.8 L354.1,155.8 L357.5,155.8 L360.9,155.9 L364.4,155.9 L367.8,155.9 L371.2,155.9 L374.7,155.9 L378.1,155.9 L381.6,155.9 L385.0,155.9 L388.4,155.9 L391.9,155.9 L395.3,155.9 L398.7,156.0 L402.2,156.0 L405.6,156.0 L409.1,156.0 L412.5,156.0 L415.9,156.0 L419.4,156.0 L422.8,156.0 L426.2,156.0 L429.7,156.0 L433.1,156.0 L436.6,156.0 L440.0,156.0 L443.4,156.0 L446.9,156.0 L450.3,156.0 L453.7,156.0 L457.2,156.0 L460.6,156.0 L464.1,156.0 L467.5,156.0 L470.9,156.0 L474.4,156.0 L477.8,156.0 L481.2,156.0 L484.7,156.0 L488.1,156.0 L491.6,156.0 L495.0,156.0 L498.4,156.0"/>
+        <path class="ln-time" fill="none" stroke-width="2.2" d="M60.0,54.0 L63.4,54.2 L66.9,54.6 L70.3,55.3 L73.7,56.3 L77.2,57.4 L80.6,58.8 L84.0,60.4 L87.5,62.1 L90.9,64.0 L94.3,66.0 L97.7,68.1 L101.1,70.3 L104.6,72.6 L108.0,75.0 L111.4,77.4 L114.8,79.9 L118.2,82.4 L121.6,85.0 L125.0,87.5 L128.5,90.1 L131.9,92.7 L135.3,95.2 L138.7,97.8 L142.1,100.3 L145.5,102.8 L148.9,105.3 L152.4,107.7 L155.8,110.1 L159.2,112.4 L162.6,114.7 L166.0,117.0 L169.4,119.2 L172.9,121.3 L176.3,123.4 L179.7,125.4 L183.1,127.4 L186.5,129.3 L190.0,131.1 L193.4,132.8 L196.8,134.5 L200.3,136.2 L203.7,137.8 L207.1,139.3 L210.5,140.7 L214.0,142.1 L217.4,143.4 L220.8,144.6 L224.3,145.8 L227.7,147.0 L231.1,148.0 L234.6,149.1 L238.0,150.0 L241.4,150.9 L244.9,151.8 L248.3,152.6 L251.7,153.3 L255.2,154.0 L258.6,154.7 L262.0,155.3 L265.5,155.9 L268.9,156.4 L272.4,156.9 L275.8,157.3 L279.2,157.7 L282.7,158.1 L286.1,158.4 L289.5,158.7 L293.0,159.0 L296.4,159.3 L299.9,159.5 L303.3,159.7 L306.7,159.8 L310.2,160.0 L313.6,160.1 L317.0,160.2 L320.5,160.3 L323.9,160.3 L327.4,160.4 L330.8,160.4 L334.2,160.4 L337.7,160.4 L341.1,160.4 L344.5,160.4 L348.0,160.3 L351.4,160.3 L354.9,160.2 L358.3,160.2 L361.7,160.1 L365.2,160.0 L368.6,159.9 L372.0,159.8 L375.5,159.7 L378.9,159.6 L382.4,159.5 L385.8,159.4 L389.2,159.3 L392.7,159.2 L396.1,159.1 L399.5,159.0 L403.0,158.9 L406.4,158.8 L409.8,158.7 L413.3,158.6 L416.7,158.4 L420.2,158.3 L423.6,158.2 L427.0,158.1 L430.5,158.0 L433.9,157.9 L437.3,157.8 L440.8,157.7 L444.2,157.6 L447.7,157.5 L451.1,157.4 L454.5,157.4 L458.0,157.3 L461.4,157.2 L464.8,157.1 L468.3,157.0 L471.7,157.0 L475.2,156.9 L478.6,156.8 L482.0,156.7 L485.5,156.7 L488.9,156.6 L492.3,156.6 L495.8,156.5 L499.2,156.5"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="206" text-anchor="middle">0</text>
+          <text x="280" y="206" text-anchor="middle">400</text>
+          <text x="500" y="206" text-anchor="end">800 m</text>
+          <text x="52" y="160" text-anchor="end">0</text>
+          <text x="52" y="58" text-anchor="end">30 m</text>
+          <text x="470" y="148" text-anchor="end">trayectoria</text>
+        </g>
+        <g font-size="13">
+          <text x="130" y="188" class="t-tesis">L1 = 40 m</text>
+          <text x="190" y="104" class="t-accent">L1 = 80 m</text>
+          <text x="330" y="80" class="t-time">L1 = 160 m</text>
+        </g>
+      </svg>
+      <figcaption>A 25 m/s desde 30 m de separación. Llega al 5 % en 3,3, 6,6 y 13,3 s, igual que la predicción lineal, pero con L1 = 40 m pide 67° de alabeo frente a 31° y 8,5°. Calculado en <code>figuras/figuras_a2.py</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ PARTE 6 · REDES EN LA CASCADA ============ -->
+<section class="slide divider" data-section="6 · Redes en la cascada">
+  <p class="num">Parte 6</p>
+  <h2>¿Qué lazo puede sustituir una red?</h2>
+  <p>Abstracciones de acción, qué se ha volado de verdad a cada nivel y el criterio para decidir dónde entra una política aprendida.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Abstracciones de acción</p>
+  <h2>Más abajo en la cascada: más rápido y más que simular</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">La política da…</th><th style="width:16%">Lazos que sustituye</th><th>Qué se ha volado</th></tr>
+      <tr><td><strong>Velocidad lineal</strong> (LV)</td><td>Posición</td><td>Kaufmann et al.: vuela en real, con 6 cm de error en estacionario pero 201 cm en una trayectoria de carreras <a class="cite" data-ref="kaufmann2022"></a>.</td></tr>
+      <tr><td><strong>Empuje colectivo y <em>body rates</em></strong> (CTBR)</td><td>Posición, velocidad y actitud</td><td>Kaufmann et al.: con 60 ms de latencia sigue la trayectoria de carreras con 53 cm de error, a más de 45 km/h y 3 g. Song et al.: política a <span class="hz">100 Hz</span> sobre un lazo de <em>rate</em> más rápido, 108,7 km/h y 12,6 g, mejor vuelta 5,12 s frente a 5,57 s del mejor piloto <a class="cite" data-ref="song2023"></a>.</td></tr>
+      <tr><td><strong>Mandos de motor</strong> desde el error de <em>rate</em> o CTBR</td><td>Lazo de <em>rate</em> y asignador</td><td>Neuroflight: 1344 pesos a <span class="hz">2 kHz</span> en un STM32F7, <span class="hz">210 µs</span> por evaluación <a class="cite" data-ref="neuroflight"></a>. Zhang et al.: de CTBR a velocidades de motor a <span class="hz">500 Hz</span> en un ordenador de a bordo <a class="cite" data-ref="zhang2025"></a>.</td></tr>
+      <tr><td><strong>Mandos de motor</strong> desde el estado (SRT)</td><td>Toda la cascada y el asignador</td><td>Eschmann et al.: Crazyflie de 27 g, 18 s de entrenamiento <a class="cite" data-ref="eschmann2024fly"></a>. Ferede et al.: STM32H7 a <span class="hz">1 kHz</span>, cuadricópteros de 3 y 5″ <a class="cite" data-ref="ferede2025"></a>. RAPTOR: 2084 parámetros, 10 drones de 32 g a 2,4 kg <a class="cite" data-ref="raptor"></a>.</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Las políticas de mando de motor (SRT) de Kaufmann et al. no se pudieron desplegar por los 60 ms de latencia del sistema real; LV y CTBR sí volaron. Las que sí vuelan a ese nivel (Neuroflight, Ferede et al., Zhang et al.) corren a 0,5–2 kHz en la controladora o en un ordenador conectado directamente a ella.</div>
+    <div class="callout error"><span class="tag">Sim-to-real</span>Eschmann et al. entrenando sin simular el retardo de los rotores: 0 de 10 políticas útiles. Y su controlador geométrico gana a la política en las trayectorias lenta y normal (0,06 frente a 0,08 m y 0,16 frente a 0,17 m); la red solo gana en la rápida.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El criterio</p>
+  <h2>Cuatro preguntas antes de meter una red en un lazo</h2>
+  <div class="cols">
+    <ol class="small">
+      <li><strong>¿Llega a tiempo?</strong> Retardo total de la política (observación, inferencia, bus) convertido en fase en el cruce del lazo que sustituye: \(\Delta\varphi = \omega_c\tau\). Una política de <span class="hz">50 Hz</span> con <span class="hz">20 ms</span> de latencia no puede cerrar un lazo que cruza a 6 Hz.</li>
+      <li><strong>¿Ve lo que necesita?</strong> Por debajo del lazo de <em>rate</em>, el estado incluye las velocidades de motor, que la política no suele observar. Eschmann et al. le dan el historial de acciones precisamente por esa observabilidad parcial.</li>
+      <li><strong>¿Qué tiene que simular?</strong> Cada lazo clásico que quitas pasa a ser responsabilidad del simulador: motor, ESC, filtros del giróscopo, saturación y asignador. Los autores de RAPTOR sostienen que lo que más pesa en la transferencia no es el error de parámetros, sino diferencias cualitativas como retardos y artefactos del firmware.</li>
+      <li><strong>¿Qué ganas?</strong> Optimizar la tarea directamente (Song et al.: en su simulador realista, seguir la trayectoria con MPC da 0 % de éxito y el <em>contouring control</em>, 20 %, frente al 100 % de RL) o adaptarse a otros drones sin reajustar (RAPTOR).</li>
+    </ol>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Regla práctica</span>CTBR sobre un lazo de <em>rate</em> clásico (o INDI) es el compromiso dominante: la política va a 50–100 Hz y el lazo rápido absorbe motor, filtros y perturbaciones. Bajar a motores es posible, pero obliga a correr en la controladora y a simular todo lo que había debajo.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model con belief que planifica a decenas de Hz debe dar consignas de nivel CTBR o más alto. Si quieres una política destilada a nivel de motor, el modelo de motor y de retardos de B2 y B4 deja de ser opcional.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>El lazo interno se está volviendo aprendido, pero no desaparece</h2>
+  <div class="cols">
+    <div class="stack small">
+      <p><strong>Lo que ya se ve en 2024–2026:</strong></p>
+      <ul>
+        <li>Políticas pequeñas que dan mandos de motor desde la controladora (a 1 kHz en Ferede et al.), con transferencia entre drones de masas muy distintas <a class="cite" data-ref="ferede2025,raptor"></a>.</li>
+        <li>INDI como lazo interno robusto bajo controladores de alto nivel, clásicos o aprendidos <a class="cite" data-ref="sun2022,ferede2024"></a>.</li>
+        <li>CTBR a 50–100 Hz como interfaz dominante entre la política y el autopiloto <a class="cite" data-ref="kaufmann2022,song2023,hanover2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <p><strong>Previsión nuestra para 2027 y después:</strong></p>
+      <ul>
+        <li>Lazos de <em>rate</em> híbridos: un núcleo clásico o INDI con garantías, más una corrección aprendida acotada, verificada contra un filtro de seguridad (A14).</li>
+        <li>Ajuste automático por identificación en vuelo, como ya intentan los autopilotos, extendido a la planta completa de motor, ESC y filtros.</li>
+        <li>Simuladores que reproducen el firmware real del lazo interno (SITL o su equivalente diferenciable), porque la política se entrena contra él (B4, B5).</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Lo estable</span>La separación de escalas y la cuenta de fase por retardo no caducan: valen para un PID, para INDI y para una red.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Dónde encaja una política con belief en la cascada</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model con belief planifica despacio y con incertidumbre. La cascada clásica le ofrece una interfaz rápida y estable (CTBR o consignas de actitud) que absorbe motor, filtros y perturbaciones de alta frecuencia. La pregunta de diseño es qué parte del estado debe estimar el belief y qué parte puede quedarse escondida dentro de los lazos rápidos.</div>
+      <p class="small">El belief del nivel alto ve el sistema cerrado por los lazos internos. Si cambian sus ganancias, filtros o frecuencia (SITL a 250 Hz frente a placa a 800 Hz), cambia la planta que tu política aprendió.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol class="small">
+        <li>Con el retardo real de tu política, ¿qué cruce de ganancia puede sostener y, por tanto, qué lazos puede sustituir?</li>
+        <li>¿Debe el belief incluir el estado de los lazos internos (integradores, filtros, motores) o tratarlos como parte del entorno?</li>
+        <li>INDI estima la perturbación midiendo su efecto. ¿Puede tu world model hacer lo mismo en el latente y pasarle esa estimación al lazo rápido?</li>
+        <li>¿Cómo reproduces en tu simulador JAX el lazo interno de PX4 o Betaflight con la fidelidad suficiente para que la política no lo explote?</li>
+        <li>En ala fija, ¿TECS y el guiado de trayectoria como capa fija bajo la política, o aprender también el reparto de energía?</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A2</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>La cascada real va de dentro afuera: <em>rate</em> (cientos de Hz a kHz), actitud, velocidad, posición y planificador. Cada lazo debe ser varias veces más rápido que el de fuera; con un interno de primer orden, \(\zeta = \tfrac12\sqrt{\omega_i/k}\).</li>
+    <li>El PID de un autopiloto es un PI sobre el error de <em>rate</em> con derivada sobre la medida, prealimentación, anti-windup ligado al asignador y salida normalizada.</li>
+    <li>El retardo resta \(\omega_c\tau\) de fase: con un lazo tipo integrador y 45° de margen, \(f_c \le 1/(8\tau)\). El retenedor cuesta \(T/2\) y un Butterworth de 2.º orden de corte \(f_f\), unos \(\sqrt2/(2\pi f_f)\) en baja frecuencia.</li>
+    <li>El lazo de <em>rate</em> del x500 con las ganancias de PX4 cruza a 6,3 Hz con 71° de margen y aguanta unos 31 ms de retardo extra.</li>
+    <li>Actitud sin ángulos de Euler: error de cuaternión con hemisferio, prioridad a la inclinación, y cuidado con \(\|\mathbf e_R\| = \sin\theta\) cerca de 180°.</li>
+    <li>INDI mide en vez de modelar: rechaza perturbaciones mucho mejor que un PID, y en vuelo ágil el lazo interno pesa más que elegir entre NMPC y planitud.</li>
+    <li>Ala fija: cierre sucesivo, TECS (motor para la energía, cabeceo para el reparto) y guiado L1 con \(\omega_n = \sqrt2V/L_1\), \(\zeta = 1/\sqrt2\).</li>
+    <li>Una red puede sustituir cualquier lazo si llega a tiempo, observa lo que necesita y el simulador reproduce todo lo que había debajo. CTBR es el compromiso habitual.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Retardos y frecuencias</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Un lazo se comporta como un integrador cerca del cruce y acumula 4 ms de retardo total. ¿Cuál es el cruce máximo con 45° de margen de fase?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 7,8 Hz</button></li>
+        <li><button type="button">≈ 31 Hz</button></li>
+        <li><button type="button">≈ 125 Hz</button></li>
+        <li><button type="button">≈ 250 Hz</button></li>
+      </ol>
+      <p class="explain">\(\varphi_m = 90^\circ - \omega_c\tau\). Con 45°, \(\omega_c\tau = \pi/4\): \(f_c = 1/(8\tau) = 1/(8\cdot 0{,}004) \approx 31\) Hz. En la práctica menos, porque motor y filtros también restan fase.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. En una placa real con PX4 y parámetros por defecto, ¿a qué frecuencia corre el lazo de velocidad angular?</p>
+      <ol class="opts">
+        <li><button type="button">50 Hz, como el de actitud</button></li>
+        <li><button type="button">250 Hz, la frecuencia del SITL de Gazebo</button></li>
+        <li><button type="button">800 Hz</button></li>
+        <li><button type="button">8 kHz, como Betaflight</button></li>
+      </ol>
+      <p class="explain">El lazo de <em>rate</em> corre cada vez que se publica una muestra filtrada del giróscopo, a <code>IMU_GYRO_RATEMAX</code>. El parámetro vale 400 Hz, pero <code>rc.mc_defaults</code> lo sube a 800 Hz en multirrotores. En el SITL de Gazebo, la IMU del x500 va a 250 Hz y el lazo la sigue. Betaflight sí llega a 4–8 kHz.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Cascada y actitud</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">3. El lazo de <em>rate</em> cerrado se comporta como un primer orden de 40 rad/s. ¿Qué ganancia \(k\) del lazo de ángulo da \(\zeta\) = 0,707?</p>
+      <ol class="opts">
+        <li><button type="button">5 rad/s por rad</button></li>
+        <li><button type="button">10 rad/s por rad</button></li>
+        <li><button type="button">20 rad/s por rad</button></li>
+        <li><button type="button">40 rad/s por rad</button></li>
+      </ol>
+      <p class="explain">\(\zeta = \tfrac12\sqrt{\omega_i/k}\). Para \(\zeta = 1/\sqrt2\) hace falta \(\omega_i/k = 2\), así que \(k = 20\). Con \(k = 40\), \(\zeta = 0{,}5\) y sobrepaso del 16 %.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. El dron está girado 170° respecto a la actitud deseada. ¿Qué pasa con el error geométrico \(\|\mathbf e_R\|\)?</p>
+      <ol class="opts">
+        <li><button type="button">Es máximo, así que la corrección es la más fuerte</button></li>
+        <li><button type="button">Vale sen 170° ≈ 0,17: la corrección es débil y la recuperación lenta</button></li>
+        <li><button type="button">No está definido</button></li>
+        <li><button type="button">Vale lo mismo que el error de cuaternión, 2 sen 85°</button></li>
+      </ol>
+      <p class="explain">\(\|\mathbf e_R\| = \sin\theta\) crece hasta 90° y luego decae: a 180° es cero (punto crítico). El error de cuaternión, \(2\sin(\theta/2) \approx 1{,}99\), sigue siendo grande. Por eso, con la posición incluida, Lee et al. solo garantizan estabilidad exponencial por debajo de 90°.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Lo que dicen los vuelos reales</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. Según Sun et al. (2022), ¿qué pieza pesa más en el error de seguimiento a alta velocidad?</p>
+      <ol class="opts">
+        <li><button type="button">Elegir NMPC en lugar de control por planitud</button></li>
+        <li><button type="button">El modelo de arrastre</button></li>
+        <li><button type="button">Tener un lazo interno INDI</button></li>
+        <li><button type="button">Subir la frecuencia del NMPC de 100 a 300 Hz</button></li>
+      </ol>
+      <p class="explain">Quitar INDI empeora el error un 364 % (NMPC) y un 705 % (planitud); quitar el modelo de arrastre, un 144 % y un 122 %. Con INDI, NMPC y planitud quedan en 0,10 y 0,12 m.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu política con world model corre a 30 Hz y tarda 40 ms en dar la acción. ¿Qué lazos puede cerrar ella misma y cuáles debe dejar a un controlador clásico? Haz la cuenta.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Retardo total: 40 ms más el retenedor a 30 Hz (17 ms de media), unos 57 ms. Con 45° de margen, \(f_c \le 1/(8\cdot 0{,}057) \approx 2{,}2\) Hz, y menos en la práctica. Caben los lazos de posición y velocidad (décimas de Hz) y también el de actitud de PX4 (\(k\) = 4 rad/s, 0,64 Hz, donde el retardo solo resta unos 13°). El de <em>rate</em> (6,3 Hz en el x500) no cabe. La política puede dar CTBR, cerrando ella la actitud, sobre un lazo de <em>rate</em> clásico o INDI a cientos de Hz. Conviene además compensar el retardo prediciendo el estado en el instante de actuación (B4).</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ACCESO ABIERTO</span>
+      <h3>Feedback Systems, caps. 11–15 <a class="cite" data-ref="astrom2021"></a></h3>
+      <p><strong>Lee:</strong> el cap. 11 (PID, con <em>windup</em> e implementación) y las secciones 12.3 (<em>loop shaping</em>), 14.2 (integral de Bode) y 15.4 (cascada y predictor de Smith).</p>
+      <p><strong>Busca:</strong> la integral de Bode y por qué un retardo limita el ancho de banda alcanzable aunque la planta sea estable.</p>
+      <p><strong>Responde:</strong> con el retardo de tu propia pila (sensor, filtro, cómputo, enlace), ¿qué ancho de banda puede tener el lazo más rápido que pienses cerrar con una red?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · ARXIV</span>
+      <h3>NMPC frente a control por planitud <a class="cite" data-ref="sun2022"></a></h3>
+      <p><strong>Lee:</strong> los controladores (NMPC, planitud e INDI) y los experimentos reales, con las tablas de ablación.</p>
+      <p><strong>Busca:</strong> por qué quitar INDI pesa más que quitar el modelo de arrastre, y qué pasa con 50 ms de latencia.</p>
+      <p><strong>Responde:</strong> ¿en qué condiciones compensa pagar 2,7 ms por mando de NMPC frente a 0,02 ms de planitud?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 40 MIN · ARXIV</span>
+      <h3>Abstracciones de control aprendidas <a class="cite" data-ref="kaufmann2022"></a></h3>
+      <p><strong>Lee:</strong> el artículo entero; es corto.</p>
+      <p><strong>Busca:</strong> por qué las políticas de mando de motor no se pudieron desplegar y qué ocurre con CTBR al añadir retardo.</p>
+      <p><strong>Responde:</strong> ¿qué abstracción elegirías para tu política con belief, y qué tendrías que añadir a tu simulador si eligieras otra?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Lee et al., control geométrico (arXiv, primera versión) <a class="cite" data-ref="lee2010"></a>; Smeur et al., INDI <a class="cite" data-ref="smeur2016"></a>; Beard y McLain, cap. 6 <a class="cite" data-ref="beard2012"></a>; el survey de carreras de drones de Hanover et al. <a class="cite" data-ref="hanover2024"></a>; los diagramas de controladores de PX4 <a class="cite" data-ref="px4diagrams"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>La cascada de PX4 en el proyecto hilo, a frecuencias reales</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Simulador multifrecuencia</strong> en JAX: física a 2 kHz, cada controlador a su frecuencia, retenedor y cola de retardo.</li>
+        <li><strong>Lazo de <em>rate</em> como el de PX4:</strong> PID con filtros, anti-windup ligado al asignador y asignación normalizada; escalón de 1 rad/s.</li>
+        <li><strong>Respuesta en frecuencia medida</strong> inyectando senoides: cruce y margen de fase frente a la presentación.</li>
+        <li><strong>Retardo:</strong> de 0 a 30 ms; dónde deja de amortiguarse.</li>
+        <li><strong>Actitud y posición:</strong> error de cuaternión, prioridad a la inclinación y barrido de la separación de escalas.</li>
+        <li><strong>INDI</strong> frente al PID ante un par de perturbación (opcional).</li>
+        <li><strong>Guiado L1</strong> en ala fija (opcional).</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Cruce de 6,3 Hz y 71° de margen del lazo de <em>rate</em> del x500; 31 ms de margen de retardo; 23 % de sobrepaso con \(r\) = 2; deriva de 11,7° con PID frente a 0,4° con INDI; 6,6 s de convergencia del L1 con \(L_1\) = 80 m.</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo corre en CPU. El barrido en frecuencia se vectoriza con <code>vmap</code> y en una GPU tarda segundos. No hace falta PX4 instalado: se leen tres ficheros de su código para imitarlos.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a2.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-px4gyro">PX4. <code>sensors/vehicle_angular_velocity</code>, <code>imu_gyro_parameters.yaml</code> y <code>rc.mc_defaults</code> (rama main, commit 95a0c23, noviembre de 2026). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-betaflight">Betaflight. Código fuente (<code>gyro</code>, <code>pid</code>, <code>rpm_filter</code>; master dda87bf) y documentación (DShot RPM filtering). <a href="https://github.com/betaflight/betaflight">github.com/betaflight/betaflight</a></li>
+    <li id="ref-ardupilot">ArduPilot. Código fuente de Copter y Plane (<code>AP_Scheduler</code>, <code>Copter.cpp</code>, <code>Plane.cpp</code>; Copter-4.7.2 y Plane-4.7.2). <a href="https://github.com/ArduPilot/ardupilot">github.com/ArduPilot/ardupilot</a></li>
+    <li id="ref-crazyflie">Bitcraze. <code>crazyflie-firmware</code> (estabilizador, <code>controller_pid</code>, <code>controller_brescianini</code>; master e828ed2). <a href="https://github.com/bitcraze/crazyflie-firmware">github.com/bitcraze/crazyflie-firmware</a></li>
+    <li id="ref-minorsky1922">Minorsky, N. (1922). Directional stability of automatically steered bodies. <span class="venue">Journal of the American Society for Naval Engineers</span>, 34(2), 280–309. <a href="https://doi.org/10.1111/j.1559-3584.1922.tb04958.x">doi:10.1111/j.1559-3584.1922.tb04958.x</a></li>
+    <li id="ref-black1934">Black, H. S. (1934). Stabilized feedback amplifiers. <span class="venue">Bell System Technical Journal</span>, 13(1), 1–18. <a href="https://doi.org/10.1002/j.1538-7305.1934.tb00652.x">doi:10.1002/j.1538-7305.1934.tb00652.x</a></li>
+    <li id="ref-nyquist1932">Nyquist, H. (1932). Regeneration theory. <span class="venue">Bell System Technical Journal</span>, 11(1), 126–147.</li>
+    <li id="ref-ziegler1942">Ziegler, J. G., Nichols, N. B. (1942). Optimum settings for automatic controllers. <span class="venue">Transactions of the ASME</span>, 64(8), 759–768.</li>
+    <li id="ref-bode1945">Bode, H. W. (1945). <em>Network Analysis and Feedback Amplifier Design</em>. Van Nostrand.</li>
+    <li id="ref-evans1948">Evans, W. R. (1948). Graphical analysis of control systems. <span class="venue">Transactions of the AIEE</span>, 67(1), 547–551. <a href="https://doi.org/10.1109/T-AIEE.1948.5059708">doi:10.1109/T-AIEE.1948.5059708</a></li>
+    <li id="ref-smith1957">Smith, O. J. M. (1957). Closer control of loops with dead time. <span class="venue">Chemical Engineering Progress</span>, 53, 217–219.</li>
+    <li id="ref-lambregts1983">Lambregts, A. A. (1983). Vertical flight path and speed control autopilot design using total energy principles. <span class="venue">AIAA Guidance and Control Conference</span>, AIAA 83-2239. <a href="https://doi.org/10.2514/6.1983-2239">doi:10.2514/6.1983-2239</a></li>
+    <li id="ref-astrom1984">Åström, K. J., Hägglund, T. (1984). Automatic tuning of simple regulators with specifications on phase and amplitude margins. <span class="venue">Automatica</span>, 20(5), 645–651. <a href="https://doi.org/10.1016/0005-1098(84)90014-1">doi:10.1016/0005-1098(84)90014-1</a></li>
+    <li id="ref-freudenberg1985">Freudenberg, J. S., Looze, D. P. (1985). Right half plane poles and zeros and design tradeoffs in feedback systems. <span class="venue">IEEE Transactions on Automatic Control</span>, 30(6), 555–565. <a href="https://doi.org/10.1109/TAC.1985.1104004">doi:10.1109/TAC.1985.1104004</a></li>
+    <li id="ref-park2004">Park, S., Deyst, J., How, J. P. (2004). A new nonlinear guidance logic for trajectory tracking. <span class="venue">AIAA Guidance, Navigation, and Control Conference</span>, AIAA 2004-4900. <a href="https://doi.org/10.2514/6.2004-4900">doi:10.2514/6.2004-4900</a></li>
+    <li id="ref-stastny2019">Stastny, T., Siegwart, R. (2019). On flying backwards: Preventing run-away of small, low-speed, fixed-wing UAVs in strong winds. <span class="venue">IROS 2019</span>, 5198–5205. <a href="https://arxiv.org/abs/1908.01381">arXiv:1908.01381</a></li>
+    <li id="ref-lee2010">Lee, T., Leok, M., McClamroch, N. H. (2010). Geometric tracking control of a quadrotor UAV on SE(3). <span class="venue">IEEE CDC 2010</span>, 5420–5425. <a href="https://arxiv.org/abs/1003.2005v1">arXiv:1003.2005v1</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="18">
+    <li id="ref-smeur2016">Smeur, E. J. J., Chu, Q., de Croon, G. C. H. E. (2016). Adaptive incremental nonlinear dynamic inversion for attitude control of micro air vehicles. <span class="venue">Journal of Guidance, Control, and Dynamics</span>, 39(3), 450–461. <a href="https://doi.org/10.2514/1.G001490">doi:10.2514/1.G001490</a></li>
+    <li id="ref-tal2021">Tal, E., Karaman, S. (2021). Accurate tracking of aggressive quadrotor trajectories using incremental nonlinear dynamic inversion and differential flatness. <span class="venue">IEEE Transactions on Control Systems Technology</span>, 29(3), 1203–1218. <a href="https://arxiv.org/abs/1809.04048">arXiv:1809.04048</a></li>
+    <li id="ref-brescianini2020">Brescianini, D., D'Andrea, R. (2020). Tilt-prioritized quadrocopter attitude control. <span class="venue">IEEE Transactions on Control Systems Technology</span>, 28(2), 376–387. <a href="https://doi.org/10.1109/TCST.2018.2873224">doi:10.1109/TCST.2018.2873224</a></li>
+    <li id="ref-sun2022">Sun, S., Romero, A., Foehn, P., Kaufmann, E., Scaramuzza, D. (2022). A comparative study of nonlinear MPC and differential-flatness-based control for quadrotor agile flight. <span class="venue">IEEE Transactions on Robotics</span>, 38(6), 3357–3373. <a href="https://arxiv.org/abs/2109.01365">arXiv:2109.01365</a></li>
+    <li id="ref-px4fw">PX4. Guía de ajuste de posición de ala fija (TECS y NPFG), diagramas de controladores y notas de la versión 1.14. <a href="https://docs.px4.io/main/en/config_fw/position_tuning_guide_fixedwing.html">docs.px4.io</a></li>
+    <li id="ref-eschmann2024fly">Eschmann, J., Albani, D., Loianno, G. (2024). Learning to fly in seconds. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(7), 6336–6343. <a href="https://arxiv.org/abs/2311.13081">arXiv:2311.13081</a></li>
+    <li id="ref-ferede2025">Ferede, R., Blaha, T., Lucassen, E., De Wagter, C., de Croon, G. C. H. E. (2025). One net to rule them all: Domain randomization in quadcopter racing across different platforms. <span class="venue">ICRA 2025</span>, 6357–6363. <a href="https://arxiv.org/abs/2504.21586">arXiv:2504.21586</a></li>
+    <li id="ref-raptor">Eschmann, J., Albani, D., Loianno, G. (2026). RAPTOR: A foundation policy for quadrotor control. <span class="venue">Science Robotics</span>, 11(114), eaec1481. <a href="https://arxiv.org/abs/2509.11481">arXiv:2509.11481</a></li>
+    <li id="ref-astrom2021">Åström, K. J., Murray, R. M. (2021). <em>Feedback Systems: An Introduction for Scientists and Engineers</em>, 2.ª ed. Princeton University Press. Versión electrónica gratuita para uso personal. <a href="https://www.cds.caltech.edu/~murray/books/AM08/pdf/fbs-public_24Jul2020.pdf">cds.caltech.edu</a></li>
+    <li id="ref-px4ratectl">PX4. <code>src/lib/rate_control/rate_control.cpp</code> y <code>mc_rate_control_params.yaml</code> (rama main, noviembre de 2026). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4alloc">PX4. <code>ControlAllocationPseudoInverse.cpp</code> (normalización del asignador; rama main, noviembre de 2026). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-stein2003">Stein, G. (2003). Respect the unstable. <span class="venue">IEEE Control Systems Magazine</span>, 23(4), 12–25. <a href="https://doi.org/10.1109/MCS.2003.1213600">doi:10.1109/MCS.2003.1213600</a></li>
+    <li id="ref-px4filter">PX4. MC Filter/Control Latency Tuning. <a href="https://docs.px4.io/main/en/config_mc/filter_tuning.html">docs.px4.io</a></li>
+    <li id="ref-agilicious">Foehn, P., Kaufmann, E., Romero, A., Penicka, R., Sun, S., Bauersfeld, L., Laengle, T., Cioffi, G., Song, Y., Loquercio, A., Scaramuzza, D. (2022). Agilicious: Open-source and open-hardware agile quadrotor for vision-based flight. <span class="venue">Science Robotics</span>, 7(67). <a href="https://arxiv.org/abs/2307.06100">arXiv:2307.06100</a></li>
+    <li id="ref-grafe2026">Gräfe, A., Scherer, C., Hönig, W., Trimpe, S. (2026). How to model your Crazyflie Brushless. <a href="https://arxiv.org/abs/2603.05944">arXiv:2603.05944</a></li>
+    <li id="ref-eschmann2024sysid">Eschmann, J., Albani, D., Loianno, G. (2024). Data-driven system identification of quadrotors subject to motor delays. <span class="venue">IROS 2024</span>. <a href="https://arxiv.org/abs/2404.07837">arXiv:2404.07837</a></li>
+    <li id="ref-px4x500">PX4. Modelo x500 para Gazebo (<code>x500_base</code>, <code>x500</code>) y airframe <code>4001_gz_x500</code>. <a href="https://github.com/PX4/PX4-gazebo-models">github.com/PX4/PX4-gazebo-models</a>, <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a> (noviembre de 2026).</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="35">
+    <li id="ref-kokotovic1986">Kokotović, P., Khalil, H. K., O'Reilly, J. (1999). <em>Singular Perturbation Methods in Control: Analysis and Design</em>. SIAM, Classics in Applied Mathematics 25 (ed. original: Academic Press, 1986). <a href="https://doi.org/10.1137/1.9781611971118">doi:10.1137/1.9781611971118</a></li>
+    <li id="ref-skogestad2023">Skogestad, S. (2023). Advanced control using decomposition and simple elements. <span class="venue">Annual Reviews in Control</span>, 56, 100903. <a href="https://doi.org/10.1016/j.arcontrol.2023.100903">doi:10.1016/j.arcontrol.2023.100903</a></li>
+    <li id="ref-px4attctl">PX4. <code>mc_att_control</code>: <code>AttitudeControl.cpp</code> y <code>mc_att_control_params.yaml</code> (rama main, noviembre de 2026). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4posctl">PX4. <code>mc_pos_control</code>: parámetros de ganancias y límites (rama main, noviembre de 2026). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-brescianini2013">Brescianini, D., Hehn, M., D'Andrea, R. (2013). Nonlinear quadrocopter attitude control: Technical report. ETH Zürich. <a href="https://doi.org/10.3929/ethz-a-009970340">doi:10.3929/ethz-a-009970340</a></li>
+    <li id="ref-smeur2018">Smeur, E. J. J., de Croon, G. C. H. E., Chu, Q. (2018). Cascaded incremental nonlinear dynamic inversion for MAV disturbance rejection. <span class="venue">Control Engineering Practice</span>, 73, 79–90. <a href="https://arxiv.org/abs/1701.07254">arXiv:1701.07254</a></li>
+    <li id="ref-beard2012">Beard, R. W., McLain, T. W. (2012). <em>Small Unmanned Aircraft: Theory and Practice</em>. Princeton University Press. Cap. 6, Autopilot design using successive loop closure.</li>
+    <li id="ref-kaufmann2022">Kaufmann, E., Bauersfeld, L., Scaramuzza, D. (2022). A benchmark comparison of learned control policies for agile quadrotor flight. <span class="venue">ICRA 2022</span>, 10504–10510. <a href="https://arxiv.org/abs/2202.10796">arXiv:2202.10796</a></li>
+    <li id="ref-song2023">Song, Y., Romero, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Reaching the limit in autonomous racing: Optimal control versus reinforcement learning. <span class="venue">Science Robotics</span>, 8(82), eadg1462. <a href="https://arxiv.org/abs/2310.10943">arXiv:2310.10943</a></li>
+    <li id="ref-neuroflight">Koch, W., Mancuso, R., Bestavros, A. (2019). Neuroflight: Next generation flight control firmware. <a href="https://arxiv.org/abs/1901.06553">arXiv:1901.06553</a></li>
+    <li id="ref-zhang2025">Zhang, D., Loquercio, A., Tang, J., Wang, T.-H., Malik, J., Mueller, M. W. (2025). A learning-based quadcopter controller with extreme adaptation. <span class="venue">IEEE Transactions on Robotics</span>, 41, 3948–3964. <a href="https://arxiv.org/abs/2409.12949">arXiv:2409.12949</a></li>
+    <li id="ref-ferede2024">Ferede, R., De Wagter, C., Izzo, D., de Croon, G. C. H. E. (2024). End-to-end reinforcement learning for time-optimal quadcopter flight. <span class="venue">ICRA 2024</span>, 6172–6177. <a href="https://arxiv.org/abs/2311.16948">arXiv:2311.16948</a></li>
+    <li id="ref-hanover2024">Hanover, D., Loquercio, A., Bauersfeld, L., Romero, A., Penicka, R., Song, Y., Cioffi, G., Kaufmann, E., Scaramuzza, D. (2024). Autonomous drone racing: A survey. <span class="venue">IEEE Transactions on Robotics</span>, 40, 3044–3067. <a href="https://arxiv.org/abs/2301.01755">arXiv:2301.01755</a></li>
+    <li id="ref-px4diagrams">PX4. Controller Diagrams. <a href="https://docs.px4.io/main/en/flight_stack/controller_diagrams.html">docs.px4.io</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
