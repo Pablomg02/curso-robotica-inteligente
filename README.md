@@ -22,14 +22,14 @@ Dentro de una presentación: flechas o espacio para avanzar, `L` para el modo le
 
 ## Estado
 
-Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo) y **M1** (herramientas matemáticas).
+Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo), **M1** (herramientas matemáticas) y **A1** (dinámica y modelado).
 
 ## Estructura
 
 ```
 00_plan/        análisis de la petición, diagnóstico, temario, estado y prompt de continuación
 assets/         motor de presentaciones compartido (CSS y JS)
-temas/<ID>_*/   una presentación por tema (index.html) y su laboratorio (lab/README.md)
+temas/<ID>_*/   una presentación por tema (index.html), su laboratorio (lab/README.md) y, desde A1, el script de figuras (figuras/)
 index.html      índice del curso
 CONTINUAR.md    manual para producir los temas que faltan
 CLAUDE.md       reglas para Claude Code

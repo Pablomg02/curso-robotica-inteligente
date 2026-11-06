@@ -15,7 +15,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| A1 | Dinámica y modelado de multirrotor y ala fija | ⬜ 🛑 | | Primera parada: revisar el formato en un tema técnico |
+| A1 | Dinámica y modelado de multirrotor y ala fija | ✅ 🛑 | 2026-11-06 | 49 hojas + lab. Primera parada: revisar el formato en un tema técnico. Figuras y cifras calculadas en `figuras/figuras_a1.py`. Sin verificar en la fuente primaria: el texto completo de Kumar y Michael (2012) y de Mahony et al. (2012), de acceso cerrado (la ley de escala se deriva en la hoja y no se atribuye a ellos); la fórmula de Cheeseman y Bennett se toma de Sanchez-Cuevas et al. (2017); las fechas de Euler (1765) y Rankine y Froude (1865–89) no se han contrastado de nuevo. Supuestos marcados: figura de mérito 0,5–0,7; unidades de `vbat` en NeuroBEM; consecuencia del desajuste KM del x500 (inferencia). Los modos del Aerosonde son cálculo propio con los coeficientes del libro. Motor: arreglo de `assets/` (css v=7, js v=3) para que `cols … body` sea rejilla y `checkOverflow()` detecte recortes internos; corregidas dos fórmulas cortadas de M1 (hojas 30 y 34). |
 | A2 | Control clásico y jerarquía de lazos | ⬜ | | |
 | A3a | Control óptimo: LQR, NMPC, MPCC, RTI | ⬜ | | |
 | A3b | MPC por muestreo, MPC con aprendizaje, MPC frente a RL | ⬜ | | |

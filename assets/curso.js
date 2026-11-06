@@ -182,7 +182,12 @@
       s.style.display = "flex";
       s.style.visibility = s.classList.contains("is-current") ? "" : "hidden";
       s.classList.remove("is-overflowing");
-      const o = s.scrollHeight > s.clientHeight + 2 || s.scrollWidth > s.clientWidth + 2;
+      let o = s.scrollHeight > s.clientHeight + 2 || s.scrollWidth > s.clientWidth + 2;
+      /* Contenido recortado dentro de la hoja: tablas, bloques .body y fórmulas en bloque */
+      if (!o) {
+        o = Array.from(s.querySelectorAll(".table-wrap, .body, .fig-scroll, mjx-container[display='true']"))
+          .some((e) => e.scrollHeight > e.clientHeight + 2 || e.scrollWidth > e.clientWidth + 2);
+      }
       if (o) { s.classList.add("is-overflowing"); over.push(i + 1); }
       s.style.display = was;
       s.style.visibility = "";

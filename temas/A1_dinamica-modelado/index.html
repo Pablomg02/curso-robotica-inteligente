@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A1 · Dinámica y modelado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A1" data-deck-title="Dinámica y modelado · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 1 · Jornada 3 · Curso de robótica inteligente</p>
+  <h1>Dinámica y modelado del dron</h1>
+  <p class="subtitle">Del cuerpo rígido en SE(3) al rotor, el motor y el ala: qué hay que modelar, con cuánto detalle, qué parte se puede identificar y qué parte conviene aprender. Multirrotor y ala fija.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> M1 (SO(3), Exp, cuaterniones)</span>
+    <span><b>Prepara</b> A2, A3, A4, A5, B2, B6, A8, A9</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A1</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Derivar las ecuaciones de Newton-Euler en SE(3), con el término giroscópico, y explicar por qué el giro alrededor del eje de inercia intermedia es inestable.</li>
+    <li>Derivar empuje y potencia de un rotor con la teoría de la cantidad de movimiento y decir dónde deja de valer: anillos de vórtice, efecto suelo, vuelo de avance.</li>
+    <li>Montar el modelo completo de un cuadricóptero: motor de primer orden, asignación con la geometría y la numeración reales de PX4 y arrastre de rotor.</li>
+    <li>Derivar la planitud diferencial: empuje, actitud y velocidades angulares a partir de la trayectoria y sus derivadas.</li>
+    <li>Escribir el modelo de ala fija, calcular su equilibrio y sus modos (periodo corto, fugoide, balanceo holandés, espiral).</li>
+    <li>Calcular qué parámetros son identificables con IMU y RPM, y situar los modelos híbridos de física y red de 2021–2026.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>El mismo modelo aparece en cinco sitios del curso, con exigencias distintas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Uso</th><th>Qué le pide al modelo</th><th style="width:16%">Nivel típico</th><th style="width:10%">Tema</th></tr>
+      <tr><td><strong>Simulador para entrenar</strong></td><td>Fidelidad en todo lo que una política puede explotar: motores, retardos, arrastre, saturación</td><td>N2–N4</td><td>B2, B6</td></tr>
+      <tr><td><strong>MPC</strong></td><td>Diferenciable y barato: se evalúa miles de veces por segundo dentro del optimizador</td><td>N1–N2 (+ residuo)</td><td>A3</td></tr>
+      <tr><td><strong>Estimador</strong></td><td>Predicción entre medidas; con arrastre, el acelerómetro informa de la velocidad</td><td>N1–N2</td><td>A4</td></tr>
+      <tr><td><strong>Planificador</strong></td><td>Planitud: de la trayectoria a empuje y velocidades angulares, y límites de actuación</td><td>N0–N1</td><td>A5</td></tr>
+      <tr><td><strong>World model</strong></td><td>Estructura física como prior; lo que no se sabe modelar, se aprende</td><td>N1 + latente</td><td>A8, A9</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Qué cambia para ti</span>Ya dominas la dinámica 6DoF (nivel 3 en tu diagnóstico), así que el cuerpo rígido va rápido. El tema se centra en lo que suele faltar: el rotor y el motor por dentro, la asignación real de un autopiloto, la planitud, el ala fija y qué parte del modelo se puede identificar con los sensores de a bordo.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia breve</p>
+  <h2>De Euler a los modelos que se aprenden en vuelo</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">1765</span>Euler publica la teoría del giro del sólido rígido: las ecuaciones que integra cualquier simulador de drones.</div>
+      <div class="ev"><span class="yr">1865–89</span>Rankine y Froude: el disco actuador, base de la teoría de la cantidad de movimiento de un rotor <a class="cite" data-ref="leishman2006"></a>.</div>
+      <div class="ev"><span class="yr">1908–11</span>Lanchester describe la fugoide; Bryan publica las ecuaciones de estabilidad del avión que, salvo notación, se siguen usando <a class="cite" data-ref="magraner2014"></a>.</div>
+      <div class="ev"><span class="yr">1955</span>Cheeseman y Bennett: modelo del efecto suelo por el método de las imágenes <a class="cite" data-ref="cheeseman1955"></a>.</div>
+      <div class="ev"><span class="yr">2004–09</span>OS4 y STARMAC: primeros cuadricópteros de investigación con modelo dinámico y efectos aerodinámicos medidos en vuelo <a class="cite" data-ref="bouabdallah2004,hoffmann2007,huang2009"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">2010</span>El arrastre de rotor explica qué mide de verdad el acelerómetro <a class="cite" data-ref="martin2010"></a>. Control geométrico en SE(3) <a class="cite" data-ref="lee2010"></a>.</div>
+      <div class="ev"><span class="yr">2011–12</span>Planitud diferencial y minimum snap <a class="cite" data-ref="mellinger2011"></a>. Tutorial de referencia de modelado multirrotor <a class="cite" data-ref="mahony2012"></a> y libro de ala fija pequeña <a class="cite" data-ref="beard2012"></a>.</div>
+      <div class="ev"><span class="yr">2018</span>Planitud con arrastre de rotor para vuelo rápido <a class="cite" data-ref="faessler2018"></a>.</div>
+      <div class="ev"><span class="yr">2021</span>NeuroBEM: teoría del elemento de pala más una red residual <a class="cite" data-ref="neurobem"></a>.</div>
+      <div class="ev"><span class="yr">2024–26</span>Identificación solo con datos de a bordo, políticas que infieren la dinámica y residuos aprendidos durante el vuelo <a class="cite" data-ref="eschmann2024,raptor,ren2026"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Mapa del tema</p>
+  <h2>Una escalera de modelos: cada peldaño añade física y coste</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 400" role="img" aria-label="Seis niveles de modelo de multirrotor, de la masa puntual al CFD, con lo que añade cada uno y para qué se usa">
+      <defs>
+        <marker id="a1m0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <g font-size="14">
+        <rect class="box" x="10" y="250" width="176" height="130" rx="4"/>
+        <text x="22" y="274" class="t-mono t-accent" font-size="13">N0</text>
+        <text x="22" y="298" class="t-bold" font-size="16">Masa puntual</text>
+        <text x="22" y="322" class="t-muted">empuje en la dirección</text>
+        <text x="22" y="340" class="t-muted">del cuerpo y gravedad</text>
+        <text x="22" y="368" class="t-mono t-faint" font-size="12">planificación (A5)</text>
+
+        <rect class="box" x="200" y="214" width="176" height="166" rx="4"/>
+        <text x="212" y="238" class="t-mono t-accent" font-size="13">N1</text>
+        <text x="212" y="262" class="t-bold" font-size="16">Cuerpo rígido</text>
+        <text x="212" y="286" class="t-muted">SE(3), empuje kΩ²,</text>
+        <text x="212" y="304" class="t-muted">matriz de asignación</text>
+        <text x="212" y="350" class="t-mono t-faint" font-size="12">control geométrico,</text>
+        <text x="212" y="368" class="t-mono t-faint" font-size="12">MPC, planitud</text>
+
+        <rect class="box-accent" x="390" y="178" width="176" height="202" rx="4"/>
+        <text x="402" y="202" class="t-mono t-accent" font-size="13">N2</text>
+        <text x="402" y="226" class="t-bold" font-size="16">+ motor y arrastre</text>
+        <text x="402" y="250" class="t-muted">motor de 1.er orden,</text>
+        <text x="402" y="268" class="t-muted">arrastre lineal de rotor,</text>
+        <text x="402" y="286" class="t-muted">retardos, saturación</text>
+        <text x="402" y="350" class="t-mono t-faint" font-size="12">RL sim-to-real,</text>
+        <text x="402" y="368" class="t-mono t-faint" font-size="12">estimación (A4)</text>
+
+        <rect class="box" x="580" y="142" width="176" height="238" rx="4"/>
+        <text x="592" y="166" class="t-mono t-accent" font-size="13">N3</text>
+        <text x="592" y="190" class="t-bold" font-size="16">+ elemento de pala</text>
+        <text x="592" y="214" class="t-muted">BEM, flapping, efecto</text>
+        <text x="592" y="232" class="t-muted">suelo, viento, batería</text>
+        <text x="592" y="350" class="t-mono t-faint" font-size="12">simulación fiel</text>
+        <text x="592" y="368" class="t-mono t-faint" font-size="12">(Agilicious, RotorPy)</text>
+
+        <rect class="box-tesis" x="770" y="106" width="176" height="274" rx="4"/>
+        <text x="782" y="130" class="t-mono t-tesis" font-size="13">N4</text>
+        <text x="782" y="154" class="t-bold" font-size="16">Híbrido</text>
+        <text x="782" y="178" class="t-muted">física + red o GP</text>
+        <text x="782" y="196" class="t-muted">para el residuo</text>
+        <text x="782" y="350" class="t-mono t-faint" font-size="12">NeuroBEM,</text>
+        <text x="782" y="368" class="t-mono t-faint" font-size="12">MPC con residuo</text>
+
+        <rect class="box-soft" x="960" y="70" width="176" height="310" rx="4"/>
+        <text x="972" y="94" class="t-mono t-accent" font-size="13">N5</text>
+        <text x="972" y="118" class="t-bold" font-size="16">CFD</text>
+        <text x="972" y="142" class="t-muted">Navier-Stokes</text>
+        <text x="972" y="160" class="t-muted">alrededor del dron</text>
+        <text x="972" y="350" class="t-mono t-faint" font-size="12">diseño; horas en</text>
+        <text x="972" y="368" class="t-mono t-faint" font-size="12">un clúster</text>
+      </g>
+      <path class="ln" d="M30 40 H1120" marker-end="url(#a1m0)"/>
+      <text x="30" y="28" class="t-mono t-faint" font-size="12">MÁS FÍSICA, MÁS DATOS Y MÁS CÓMPUTO POR PASO →</text>
+    </svg>
+    <figcaption>Elaboración propia. Los niveles son acumulativos. El coste del CFD («horas de cómputo en un clúster») es el que citan Bauersfeld et al. para justificar NeuroBEM <a class="cite" data-ref="neurobem"></a>. Los simuladores de N3 citados implementan BEM o arrastre, flujo inducido y viento <a class="cite" data-ref="agilicious,rotorpy"></a>.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ PARTE 1 · CUERPO RÍGIDO ============ -->
+<section class="slide divider" data-section="1 · Cuerpo rígido">
+  <p class="num">Parte 1</p>
+  <h2>El cuerpo rígido</h2>
+  <p>Newton-Euler en SE(3): seis grados de libertad, cuatro entradas y un término giroscópico que acopla los tres ejes.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Newton-Euler</p>
+  <h2>Traslación en el mundo, rotación en el cuerpo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Estado de 13 componentes: posición \(\mathbf p\) y velocidad \(\mathbf v\) en el mundo, orientación \(R\) (o \(\mathbf q\)) y velocidad angular \(\boldsymbol\omega\) en ejes cuerpo:</p>
+      \[ \dot{\mathbf p} = \mathbf v,\qquad m\,\dot{\mathbf v} = -mg\,\mathbf e_3 + R\,\mathbf f_B \]
+      \[ \dot R = R\,[\boldsymbol\omega]_\times,\qquad J\dot{\boldsymbol\omega} = \boldsymbol\tau_B - \boldsymbol\omega\times J\boldsymbol\omega \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">El momento angular en ejes mundo es \(\mathbf L = RJ\boldsymbol\omega\), y su derivada es el par en ejes mundo, \(R\boldsymbol\tau_B\). Derivando el producto con \(\dot R = R[\boldsymbol\omega]_\times\) (M1): \(\dot{\mathbf L} = R[\boldsymbol\omega]_\times J\boldsymbol\omega + RJ\dot{\boldsymbol\omega} = R\boldsymbol\tau_B\). Multiplicando por \(R^\top\): \(J\dot{\boldsymbol\omega} + \boldsymbol\omega\times J\boldsymbol\omega = \boldsymbol\tau_B\). Es el teorema de transporte: la derivada inercial de un vector expresado en ejes cuerpo es su derivada en el cuerpo más \(\boldsymbol\omega\times(\cdot)\). La traslación es la segunda ley de Newton en un marco inercial; si \(\mathbf v\) se expresa en ejes cuerpo, el mismo teorema añade \(\boldsymbol\omega\times\mathbf v_B\).</p>
+      </details>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Convenio del proyecto hilo</span>Mundo con z hacia arriba (ENU), cuerpo FLU y cuaterniones de Hamilton en orden w, x, y, z, como jaxlie. PX4 usa NED y FRD: se convierte solo en la frontera, como se fijó en M1.</div>
+      <p class="small">En ala fija se suele escribir la velocidad en ejes cuerpo, \(m(\dot{\mathbf v}_B + \boldsymbol\omega\times\mathbf v_B) = \mathbf f_B + mR^\top\mathbf g\), porque las fuerzas aerodinámicas dependen de \(\mathbf v_B\) <a class="cite" data-ref="beard2012"></a>. Es la misma física.</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>Quitar \(\boldsymbol\omega\times J\boldsymbol\omega\) porque «es pequeño». En estacionario lo es; en una voltereta a cientos de grados por segundo no, y además acopla los tres ejes de rotación.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El término giroscópico</p>
+  <h2>Girar alrededor del eje intermedio es inestable</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 600 260" role="img" aria-label="Velocidades angulares de un cuerpo rígido sin par que gira alrededor de su eje intermedio: la componente x se invierte periódicamente">
+        <g class="ln-rule">
+          <path d="M50 29.1 H580"/><path d="M50 74.5 H580"/><path d="M50 165.5 H580"/><path d="M50 210.9 H580"/>
+          <path d="M182.5 20 V220"/><path d="M315 20 V220"/><path d="M447.5 20 V220"/>
+        </g>
+        <path class="ln" d="M50 120 H580"/><path class="ln" d="M50 20 V220"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="44" y="33">20</text><text x="44" y="79">10</text><text x="44" y="124">0</text><text x="44" y="170">−10</text><text x="44" y="215">−20</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="50" y="238">0</text><text x="182.5" y="238">1</text><text x="315" y="238">2</text><text x="447.5" y="238">3</text><text x="580" y="238">4 s</text>
+        </g>
+        <text x="14" y="16" class="t-mono t-faint" font-size="12">rad/s</text>
+        <path d="M50.0,29.1 L52.6,29.1 L55.3,29.1 L58.0,29.1 L60.6,29.1 L63.2,29.1 L65.9,29.1 L68.5,29.1 L71.2,29.1 L73.8,29.1 L76.5,29.1 L79.2,29.1 L81.8,29.1 L84.5,29.1 L87.1,29.1 L89.8,29.1 L92.4,29.1 L95.1,29.1 L97.7,29.1 L100.3,29.1 L103.0,29.1 L105.7,29.1 L108.3,29.1 L111.0,29.1 L113.6,29.1 L116.2,29.1 L118.9,29.2 L121.6,29.2 L124.2,29.2 L126.9,29.2 L129.5,29.3 L132.2,29.3 L134.8,29.4 L137.4,29.4 L140.1,29.5 L142.8,29.6 L145.4,29.7 L148.1,29.9 L150.7,30.1 L153.4,30.4 L156.0,30.7 L158.7,31.1 L161.3,31.6 L163.9,32.2 L166.6,32.9 L169.2,33.9 L171.9,35.1 L174.6,36.5 L177.2,38.3 L179.9,40.5 L182.5,43.2 L185.2,46.4 L187.8,50.3 L190.5,54.9 L193.1,60.3 L195.8,66.6 L198.4,73.8 L201.1,81.8 L203.7,90.7 L206.4,100.2 L209.0,110.1 L211.7,120.4 L214.3,130.6 L216.9,140.6 L219.6,150.0 L222.2,158.8 L224.9,166.8 L227.6,173.9 L230.2,180.1 L232.9,185.5 L235.5,190.0 L238.2,193.8 L240.8,197.0 L243.4,199.7 L246.1,201.8 L248.8,203.6 L251.4,205.0 L254.1,206.2 L256.7,207.1 L259.4,207.9 L262.0,208.5 L264.6,209.0 L267.3,209.4 L270.0,209.7 L272.6,209.9 L275.2,210.1 L277.9,210.3 L280.6,210.4 L283.2,210.5 L285.9,210.6 L288.5,210.7 L291.1,210.7 L293.8,210.7 L296.5,210.8 L299.1,210.8 L301.8,210.8 L304.4,210.8 L307.1,210.9 L309.7,210.9 L312.4,210.9 L315.0,210.9 L317.6,210.9 L320.3,210.9 L322.9,210.9 L325.6,210.9 L328.2,210.9 L330.9,210.9 L333.6,210.9 L336.2,210.9 L338.9,210.9 L341.5,210.9 L344.2,210.9 L346.8,210.9 L349.5,210.9 L352.1,210.9 L354.8,210.9 L357.4,210.9 L360.1,210.9 L362.7,210.9 L365.3,210.9 L368.0,210.9 L370.6,210.9 L373.3,210.9 L375.9,210.9 L378.6,210.9 L381.2,210.9 L383.9,210.9 L386.6,210.9 L389.2,210.9 L391.9,210.9 L394.5,210.9 L397.2,210.9 L399.8,210.9 L402.5,210.9 L405.1,210.9 L407.8,210.9 L410.4,210.9 L413.1,210.9 L415.7,210.9 L418.4,210.9 L421.0,210.9 L423.7,210.9 L426.3,210.9 L429.0,210.9 L431.6,210.9 L434.3,210.9 L436.9,210.9 L439.6,210.9 L442.2,210.9 L444.9,210.9 L447.5,210.9 L450.1,210.9 L452.8,210.9 L455.4,210.9 L458.1,210.8 L460.8,210.8 L463.4,210.8 L466.1,210.8 L468.7,210.7 L471.4,210.7 L474.0,210.6 L476.7,210.6 L479.3,210.5 L482.0,210.4 L484.6,210.3 L487.3,210.1 L489.9,209.9 L492.6,209.6 L495.2,209.3 L497.9,208.9 L500.5,208.4 L503.2,207.8 L505.8,207.0 L508.4,206.1 L511.1,204.9 L513.8,203.4 L516.4,201.7 L519.0,199.5 L521.7,196.8 L524.4,193.5 L527.0,189.6 L529.7,185.0 L532.3,179.6 L535.0,173.3 L537.6,166.1 L540.2,158.1 L542.9,149.2 L545.5,139.7 L548.2,129.7 L550.9,119.5 L553.5,109.3 L556.2,99.3 L558.8,89.9 L561.5,81.1 L564.1,73.1 L566.8,66.0 L569.4,59.8 L572.1,54.5 L574.7,49.9 L577.4,46.1 L580.0,42.9" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <path d="M50.0,119.9 L52.6,119.9 L55.3,119.8 L58.0,119.8 L60.6,119.8 L63.2,119.7 L65.9,119.7 L68.5,119.6 L71.2,119.6 L73.8,119.5 L76.5,119.5 L79.2,119.4 L81.8,119.3 L84.5,119.2 L87.1,119.1 L89.8,119.0 L92.4,118.9 L95.1,118.8 L97.7,118.6 L100.3,118.4 L103.0,118.3 L105.7,118.0 L108.3,117.8 L111.0,117.5 L113.6,117.2 L116.2,116.9 L118.9,116.5 L121.6,116.1 L124.2,115.7 L126.9,115.2 L129.5,114.6 L132.2,113.9 L134.8,113.2 L137.4,112.4 L140.1,111.5 L142.8,110.5 L145.4,109.3 L148.1,108.1 L150.7,106.7 L153.4,105.1 L156.0,103.3 L158.7,101.4 L161.3,99.2 L163.9,96.8 L166.6,94.1 L169.2,91.2 L171.9,88.0 L174.6,84.5 L177.2,80.6 L179.9,76.5 L182.5,72.0 L185.2,67.3 L187.8,62.4 L190.5,57.4 L193.1,52.3 L195.8,47.4 L198.4,42.7 L201.1,38.6 L203.7,35.1 L206.4,32.4 L209.0,30.8 L211.7,30.3 L214.3,30.9 L216.9,32.6 L219.6,35.3 L222.2,38.9 L224.9,43.1 L227.6,47.7 L230.2,52.7 L232.9,57.7 L235.5,62.8 L238.2,67.7 L240.8,72.4 L243.4,76.8 L246.1,80.9 L248.8,84.7 L251.4,88.2 L254.1,91.4 L256.7,94.4 L259.4,97.0 L262.0,99.4 L264.6,101.5 L267.3,103.5 L270.0,105.2 L272.6,106.8 L275.2,108.2 L277.9,109.4 L280.6,110.5 L283.2,111.6 L285.9,112.5 L288.5,113.3 L291.1,114.0 L293.8,114.6 L296.5,115.2 L299.1,115.7 L301.8,116.2 L304.4,116.6 L307.1,116.9 L309.7,117.3 L312.4,117.6 L315.0,117.8 L317.6,118.1 L320.3,118.3 L322.9,118.5 L325.6,118.6 L328.2,118.8 L330.9,118.9 L333.6,119.0 L336.2,119.1 L338.9,119.2 L341.5,119.3 L344.2,119.4 L346.8,119.5 L349.5,119.5 L352.1,119.6 L354.8,119.6 L357.4,119.7 L360.1,119.7 L362.7,119.8 L365.3,119.8 L368.0,119.8 L370.6,119.9 L373.3,119.9 L375.9,119.9 L378.6,120.0 L381.2,120.0 L383.9,120.0 L386.6,120.1 L389.2,120.1 L391.9,120.1 L394.5,120.2 L397.2,120.2 L399.8,120.2 L402.5,120.3 L405.1,120.3 L407.8,120.4 L410.4,120.4 L413.1,120.5 L415.7,120.5 L418.4,120.6 L421.0,120.7 L423.7,120.8 L426.3,120.9 L429.0,121.0 L431.6,121.1 L434.3,121.2 L436.9,121.4 L439.6,121.6 L442.2,121.7 L444.9,122.0 L447.5,122.2 L450.1,122.5 L452.8,122.8 L455.4,123.1 L458.1,123.5 L460.8,123.9 L463.4,124.3 L466.1,124.9 L468.7,125.4 L471.4,126.1 L474.0,126.8 L476.7,127.6 L479.3,128.5 L482.0,129.5 L484.6,130.7 L487.3,131.9 L489.9,133.4 L492.6,134.9 L495.2,136.7 L497.9,138.6 L500.5,140.8 L503.2,143.2 L505.8,145.9 L508.4,148.8 L511.1,152.1 L513.8,155.6 L516.4,159.4 L519.0,163.6 L521.7,168.0 L524.4,172.8 L527.0,177.7 L529.7,182.7 L532.3,187.8 L535.0,192.7 L537.6,197.3 L540.2,201.5 L542.9,205.0 L545.5,207.6 L548.2,209.2 L550.9,209.7 L553.5,209.1 L556.2,207.4 L558.8,204.6 L561.5,201.1 L564.1,196.9 L566.8,192.2 L569.4,187.2 L572.1,182.2 L574.7,177.2 L577.4,172.3 L580.0,167.6" fill="none" class="ln-time" stroke-width="1.8"/>
+        <path d="M50.0,119.9 L52.6,119.9 L55.3,119.9 L58.0,119.9 L60.6,119.9 L63.2,119.9 L65.9,119.9 L68.5,119.9 L71.2,119.8 L73.8,119.8 L76.5,119.8 L79.2,119.8 L81.8,119.8 L84.5,119.7 L87.1,119.7 L89.8,119.7 L92.4,119.6 L95.1,119.6 L97.7,119.5 L100.3,119.5 L103.0,119.4 L105.7,119.3 L108.3,119.3 L111.0,119.2 L113.6,119.1 L116.2,119.0 L118.9,118.9 L121.6,118.7 L124.2,118.6 L126.9,118.4 L129.5,118.2 L132.2,118.0 L134.8,117.8 L137.4,117.5 L140.1,117.2 L142.8,116.9 L145.4,116.5 L148.1,116.1 L150.7,115.6 L153.4,115.1 L156.0,114.5 L158.7,113.9 L161.3,113.2 L163.9,112.4 L166.6,111.5 L169.2,110.5 L171.9,109.5 L174.6,108.3 L177.2,107.0 L179.9,105.7 L182.5,104.2 L185.2,102.6 L187.8,101.0 L190.5,99.4 L193.1,97.7 L195.8,96.1 L198.4,94.5 L201.1,93.2 L203.7,92.0 L206.4,91.2 L209.0,90.6 L211.7,90.4 L214.3,90.6 L216.9,91.2 L219.6,92.1 L222.2,93.3 L224.9,94.7 L227.6,96.2 L230.2,97.8 L232.9,99.5 L235.5,101.1 L238.2,102.8 L240.8,104.3 L243.4,105.8 L246.1,107.1 L248.8,108.4 L251.4,109.5 L254.1,110.6 L256.7,111.6 L259.4,112.4 L262.0,113.2 L264.6,113.9 L267.3,114.6 L270.0,115.1 L272.6,115.6 L275.2,116.1 L277.9,116.5 L280.6,116.9 L283.2,117.2 L285.9,117.5 L288.5,117.8 L291.1,118.0 L293.8,118.2 L296.5,118.4 L299.1,118.6 L301.8,118.7 L304.4,118.9 L307.1,119.0 L309.7,119.1 L312.4,119.2 L315.0,119.3 L317.6,119.4 L320.3,119.4 L322.9,119.5 L325.6,119.5 L328.2,119.6 L330.9,119.6 L333.6,119.7 L336.2,119.7 L338.9,119.7 L341.5,119.8 L344.2,119.8 L346.8,119.8 L349.5,119.8 L352.1,119.8 L354.8,119.9 L357.4,119.9 L360.1,119.9 L362.7,119.9 L365.3,119.9 L368.0,119.9 L370.6,119.9 L373.3,119.9 L375.9,119.9 L378.6,119.9 L381.2,119.9 L383.9,119.9 L386.6,119.9 L389.2,119.9 L391.9,119.9 L394.5,119.9 L397.2,119.9 L399.8,119.9 L402.5,119.9 L405.1,119.9 L407.8,119.9 L410.4,119.8 L413.1,119.8 L415.7,119.8 L418.4,119.8 L421.0,119.8 L423.7,119.7 L426.3,119.7 L429.0,119.7 L431.6,119.6 L434.3,119.6 L436.9,119.5 L439.6,119.5 L442.2,119.4 L444.9,119.3 L447.5,119.3 L450.1,119.2 L452.8,119.1 L455.4,119.0 L458.1,118.9 L460.8,118.7 L463.4,118.6 L466.1,118.4 L468.7,118.2 L471.4,118.0 L474.0,117.8 L476.7,117.5 L479.3,117.2 L482.0,116.9 L484.6,116.5 L487.3,116.1 L489.9,115.6 L492.6,115.1 L495.2,114.5 L497.9,113.9 L500.5,113.1 L503.2,112.3 L505.8,111.5 L508.4,110.5 L511.1,109.4 L513.8,108.3 L516.4,107.0 L519.0,105.6 L521.7,104.2 L524.4,102.6 L527.0,101.0 L529.7,99.3 L532.3,97.7 L535.0,96.1 L537.6,94.5 L540.2,93.2 L542.9,92.0 L545.5,91.1 L548.2,90.6 L550.9,90.4 L553.5,90.6 L556.2,91.2 L558.8,92.1 L561.5,93.3 L564.1,94.7 L566.8,96.2 L569.4,97.8 L572.1,99.5 L574.7,101.2 L577.4,102.8 L580.0,104.3" fill="none" class="ln-tesis ln-dash" stroke-width="1.8"/>
+        <g font-size="13" class="t-mono">
+          <text x="60" y="256" class="t-accent">ωx (alabeo, eje intermedio)</text>
+          <text x="300" y="256" class="t-time">ωy</text>
+          <text x="350" y="256" class="t-tesis">ωz</text>
+        </g>
+      </svg>
+      <figcaption>Integración RK4 (Δt = 0,1 ms) de Euler sin par con la inercia del dron de NeuroBEM y \(\boldsymbol\omega_0 = (20;\ 0{,}02;\ 0{,}02)\) rad/s. Energía y \(\|J\boldsymbol\omega\|\) se conservan con error relativo de 10⁻¹⁴; el primer volteo llega a 1,2 s.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>Sin par externo, \(J\dot{\boldsymbol\omega} = -\boldsymbol\omega\times J\boldsymbol\omega\): energía y \(\|J\boldsymbol\omega\|\) se conservan, pero el giro alrededor del eje de inercia intermedia no es estable.</p>
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Con \(\boldsymbol\omega = (\omega_0 + \delta_x,\,\delta_y,\,\delta_z)\) y perturbaciones pequeñas, las componentes \(y\), \(z\) de Euler dan \(J_y\dot\delta_y = (J_z - J_x)\,\omega_0\delta_z\) y \(J_z\dot\delta_z = (J_x - J_y)\,\omega_0\delta_y\). Derivando la primera y sustituyendo la segunda: \(\ddot\delta_y = \omega_0^2\,\frac{(J_z-J_x)(J_x-J_y)}{J_yJ_z}\,\delta_y\). Si \(J_x\) está entre \(J_y\) y \(J_z\), el coeficiente es positivo y la perturbación crece como \(e^{\lambda t}\), \(\lambda = \omega_0\sqrt{(J_z-J_x)(J_x-J_y)/(J_yJ_z)}\). Si \(J_x\) es el mayor o el menor, oscila.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">En un dron real</span>El de NeuroBEM tiene \(J = \mathrm{diag}(2{,}5;\ 2{,}1;\ 4{,}3)\cdot 10^{-3}\ \mathrm{kg\,m^2}\) <a class="cite" data-ref="neurobemdata"></a>: el alabeo es el eje intermedio. A 20 rad/s, \(\lambda = 5{,}65\ \mathrm{s^{-1}}\): la perturbación se multiplica por e cada <span class="hz">177 ms</span>. El lazo de rate lo corrige, pero tu simulador tiene que reproducirlo.</div>
+      <p class="xsmall muted">Los rotores añaden un par giroscópico, que se cancela en estacionario con dos rotores en cada sentido, y una reacción \(J_r\dot\Omega_i\) en guiñada que sí cuenta en transitorios rápidos <a class="cite" data-ref="grafe2026"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El modelo completo</p>
+  <h2>Un cuadricóptero son 17 estados y cuatro motores</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Convenio ENU/FLU. \(D\) es la matriz de arrastre de rotor normalizada por la masa (en s⁻¹); \(M\) es la matriz de asignación de la parte 3.</p>
+      \[ \begin{aligned}
+        \dot{\mathbf p} &= \mathbf v\\
+        \dot{\mathbf v} &= -g\,\mathbf e_3 + \tfrac{T}{m}\,R\,\mathbf e_3 - R\,D\,R^\top\mathbf v\\
+        \dot{\mathbf q} &= \tfrac12\,\mathbf q\otimes(0,\boldsymbol\omega)\\
+        \dot{\boldsymbol\omega} &= J^{-1}\big(\boldsymbol\tau - \boldsymbol\omega\times J\boldsymbol\omega\big)\\
+        \dot\Omega_i &= (\Omega_i^{\mathrm{cmd}} - \Omega_i)/\tau_m\\
+        (T,\ \boldsymbol\tau) &= M\,\big(k_T\Omega_1^2,\ \dots,\ k_T\Omega_4^2\big)
+      \end{aligned} \]
+      <p class="small">Entradas: las cuatro consignas de motor o, si hay un lazo de rate debajo, empuje colectivo y velocidades angulares.</p>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Parámetro del x500 de PX4 (Gazebo)</th><th>Valor</th></tr>
+        <tr><td>Masa (cuerpo + 4 rotores)</td><td class="n">2,064 kg</td></tr>
+        <tr><td>Inercia \(J_{xx}, J_{yy}, J_{zz}\)</td><td class="n">0,0217; 0,0217; 0,040 kg m²</td></tr>
+        <tr><td>\(k_T\) (motorConstant)</td><td class="n">8,55·10⁻⁶ N/(rad/s)²</td></tr>
+        <tr><td>Par/empuje (momentConstant)</td><td class="n">0,016 m</td></tr>
+        <tr><td>Rotores en x, y</td><td class="n">±0,174 m</td></tr>
+        <tr><td>\(\tau_m\) subida / bajada</td><td class="n">12,5 / 25 ms</td></tr>
+        <tr><td>\(\Omega_{\max}\) · \(\Omega\) en estacionario</td><td class="n">1000 · 770 rad/s</td></tr>
+      </table>
+      <p class="xsmall muted">Valores de los ficheros del modelo <a class="cite" data-ref="px4x500"></a>; la velocidad en estacionario sale de \(m g/4 = k_T\Omega^2\).</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Cada línea es una decisión de diseño del simulador: modelarla, aleatorizarla o aprenderla. Y cada parámetro que el dron no conoce es una variable oculta del POMDP.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Transferencia a otros robots</p>
+  <h2>La misma ecuación para brazos, patas y drones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cualquier sistema de sólidos rígidos con coordenadas generalizadas \(\mathbf q\) cumple la ecuación de los multicuerpo <a class="cite" data-ref="lynch2017,featherstone2008"></a>:</p>
+      \[ M(\mathbf q)\,\ddot{\mathbf q} + C(\mathbf q,\dot{\mathbf q})\,\dot{\mathbf q} + \mathbf g(\mathbf q) = B\,\mathbf u + J_c^\top(\mathbf q)\,\boldsymbol\lambda \]
+      <ul class="small">
+        <li><strong>Brazo:</strong> \(\mathbf q\) son ángulos articulares; totalmente actuado, \(B = I\).</li>
+        <li><strong>Robot con patas:</strong> base flotante de 6 grados de libertad sin actuar más las articulaciones; las fuerzas de contacto \(\boldsymbol\lambda\), con conos de fricción, son lo difícil.</li>
+        <li><strong>Cuadricóptero:</strong> base flotante sin articulaciones. \(B\) lleva 4 empujes a una llave de 6 componentes con rango 4: <strong>subactuado</strong>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cómo se calcula</span>Los algoritmos recursivos de Featherstone (RNEA, ABA) resuelven la dinámica directa e inversa en \(O(n)\) para \(n\) cuerpos <a class="cite" data-ref="featherstone2008"></a>. MuJoCo trabaja en coordenadas generalizadas con un modelo de contacto blando y convexo <a class="cite" data-ref="mujoco"></a>. Lynch y Park formulan la cinemática con exponenciales de SE(3): el lenguaje de M1 <a class="cite" data-ref="lynch2017"></a>.</div>
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>Un dron solo necesita contacto para aterrizar, posarse o chocar; lo caro está en la aerodinámica, los sensores y el tiempo. En un robot con patas es al revés. Esa asimetría decide qué motor de física te sirve (B1).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 · ROTOR Y MOTOR ============ -->
+<section class="slide divider" data-section="2 · Rotor y motor">
+  <p class="num">Parte 2</p>
+  <h2>El rotor y el motor</h2>
+  <p>De dónde sale \(T = k_T\Omega^2\), dónde deja de valer y qué retardo mete el motor en el lazo de control.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Teoría de la cantidad de movimiento</p>
+  <h2>Empuje, velocidad inducida y potencia de un rotor ideal</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El rotor es un disco de área \(A\) que acelera el aire. En estacionario, con velocidad inducida \(v_i\) en el disco:</p>
+      \[ T = 2\rho A\,v_i^2 \;\Rightarrow\; v_h = \sqrt{\frac{T}{2\rho A}},\qquad P_{\text{ideal}} = T\,v_h = \frac{T^{3/2}}{\sqrt{2\rho A}} \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">Flujo másico por el disco: \(\dot m = \rho A v_i\). Lejos, aguas abajo, la estela va a \(w\). Cantidad de movimiento: \(T = \dot m\,w\). Energía: la potencia entregada es \(T v_i = \tfrac12\dot m\,w^2\). Igualando, \(w = 2v_i\), así que \(T = 2\rho A v_i^2\) y \(P = T v_i\) <a class="cite" data-ref="leishman2006"></a>.</p>
+      </details>
+      <p class="small">En subida axial a \(V_c\): \(T = 2\rho A(V_c + v_i)v_i\), de donde \(\dfrac{v_i}{v_h} = -\dfrac{V_c}{2v_h} + \sqrt{\Big(\dfrac{V_c}{2v_h}\Big)^2 + 1}\).</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cuenta con un dron real</span>Dron de NeuroBEM: 752 g y hélices de 5 pulgadas <a class="cite" data-ref="neurobem"></a>. Cada rotor da 1,84 N, \(A = 127\ \mathrm{cm^2}\): \(v_h = 7{,}7\) m/s y \(P_{\text{ideal}} = 57\) W para los cuatro. Con una figura de mérito de 0,5–0,7 (supuesta, no medida), harían falta 80–115 W mecánicos para mantenerse.</div>
+      <ul class="small">
+        <li><strong>Figura de mérito:</strong> \(\mathrm{FM} = P_{\text{ideal}}/P_{\text{real}}\); recoge pérdidas de perfil, punta y rotación de la estela.</li>
+        <li>\(P\propto T^{3/2}/R\) a igual empuje: <strong>rotores grandes, más autonomía</strong>. Un microdrón paga en eficiencia lo que gana en agilidad (parte 6).</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Cómputo limitado</span>La potencia de hover marca la autonomía, y cada vatio de cómputo a bordo se descuenta de ahí. Es el lado energético del SWaP de C1.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Subir y bajar</p>
+  <h2>Al bajar deprisa, el rotor se mete en su propia estela</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Velocidad inducida normalizada frente a velocidad de subida normalizada según la teoría de la cantidad de movimiento, con la zona sin solución en descenso">
+        <rect x="185.7" y="30" width="125.7" height="220" class="box-time" opacity="0.55"/>
+        <g class="ln-rule">
+          <path d="M60 195 H500"/><path d="M60 140 H500"/><path d="M60 85 H500"/><path d="M60 30 H500"/>
+        </g>
+        <path class="ln" d="M60 250 H500"/><path class="ln" d="M311.4 30 V250"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="268">−4</text><text x="122.9" y="268">−3</text><text x="185.7" y="268">−2</text><text x="248.6" y="268">−1</text><text x="311.4" y="268">0</text><text x="374.3" y="268">1</text><text x="437.1" y="268">2</text><text x="500" y="268">3</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="54" y="254">0</text><text x="54" y="199">0,4</text><text x="54" y="144">0,8</text><text x="54" y="89">1,2</text><text x="54" y="34">1,6</text>
+        </g>
+        <text x="280" y="290" class="t-mono t-muted" font-size="12" text-anchor="middle">V_c / v_h   (negativo = descenso)</text>
+        <text x="66" y="22" class="t-mono t-muted" font-size="12">v_i / v_h</text>
+        <path d="M311.4,112.5 L314.6,115.9 L317.7,119.2 L320.9,122.4 L324.0,125.6 L327.1,128.6 L330.3,131.6 L333.4,134.5 L336.6,137.3 L339.7,140.0 L342.9,142.6 L346.0,145.2 L349.1,147.7 L352.3,150.1 L355.4,152.4 L358.6,154.7 L361.7,156.9 L364.9,159.0 L368.0,161.1 L371.1,163.1 L374.3,165.0 L377.4,166.9 L380.6,168.7 L383.7,170.5 L386.9,172.1 L390.0,173.8 L393.1,175.4 L396.3,176.9 L399.4,178.4 L402.6,179.9 L405.7,181.2 L408.9,182.6 L412.0,183.9 L415.1,185.2 L418.3,186.4 L421.4,187.6 L424.6,188.8 L427.7,189.9 L430.9,191.0 L434.0,192.0 L437.1,193.0 L440.3,194.0 L443.4,195.0 L446.6,195.9 L449.7,196.8 L452.9,197.7 L456.0,198.6 L459.1,199.4 L462.3,200.2 L465.4,201.0 L468.6,201.8 L471.7,202.5 L474.9,203.2 L478.0,203.9 L481.1,204.6 L484.3,205.3 L487.4,205.9 L490.6,206.6 L493.7,207.2 L496.9,207.8 L500.0,208.4" fill="none" class="ln-accent" stroke-width="2.6"/>
+        <path d="M60.0,213.2 L63.1,212.6 L66.3,212.1 L69.4,211.5 L72.6,210.9 L75.7,210.3 L78.9,209.6 L82.0,209.0 L85.1,208.3 L88.3,207.6 L91.4,206.8 L94.6,206.1 L97.7,205.3 L100.9,204.5 L104.0,203.6 L107.1,202.7 L110.3,201.7 L113.4,200.7 L116.6,199.7 L119.7,198.6 L122.9,197.5 L126.0,196.3 L129.1,195.0 L132.3,193.7 L135.4,192.2 L138.6,190.7 L141.7,189.1 L144.9,187.3 L148.0,185.5 L151.1,183.4 L154.3,181.2 L157.4,178.9 L160.6,176.2 L163.7,173.3 L166.9,170.0 L170.0,166.2 L173.1,161.8 L176.3,156.4 L179.4,149.6 L182.6,140.0 L185.7,112.5" fill="none" class="ln-accent" stroke-width="2.6"/>
+        <text x="248.6" y="64" text-anchor="middle" class="t-time t-bold" font-size="13">sin solución:</text>
+        <text x="248.6" y="82" text-anchor="middle" class="t-time" font-size="13">anillos de vórtice</text>
+        <text x="248.6" y="100" text-anchor="middle" class="t-time" font-size="13">y estela turbulenta</text>
+        <text x="425" y="150" class="t-accent" font-size="13">subida</text>
+        <text x="70" y="186" class="t-accent" font-size="13">molinete</text>
+      </svg>
+      <figcaption>Curvas calculadas con la teoría de la cantidad de movimiento <a class="cite" data-ref="leishman2006"></a>. En la banda sombreada la teoría no tiene solución física.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>En descenso, el flujo que atraviesa el disco cambia de sentido. Entre \(V_c = 0\) y \(V_c = -2v_h\) la teoría simple no tiene solución: el aire recircula, se forma el <strong>estado de anillos de vórtice</strong> (VRS) y el empuje fluctúa con pérdida de control <a class="cite" data-ref="leishman2006"></a>.</p>
+      <p>Para el dron de NeuroBEM (\(v_h \approx 7{,}7\) m/s), esa banda abarca los descensos verticales de 0 a unos 15 m/s; el VRS propiamente dicho ocupa una parte de ella.</p>
+      <div class="callout realidad"><span class="tag">En drones</span>Talaeizadeh et al. formalizan la restricción de velocidad por VRS y la esquivan girando en guiñada durante el descenso, que crea flujo horizontal sobre el disco: bajan unas tres veces más rápido sin inestabilidad <a class="cite" data-ref="talaeizadeh2021"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Un simulador con \(T = k_T\Omega^2\) no tiene VRS. Una política entrenada ahí aprenderá a bajar en vertical a toda velocidad.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Teoría del elemento de pala</p>
+  <h2>Por qué \(T \propto \Omega^2\), y por qué la curva real no es exactamente una parábola</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cada sección de pala a radio \(r\) ve \(U_T = \Omega r\) y da \(dL = \tfrac12\rho\,U_T^2\,c\,C_l(\alpha)\,dr\). Integrando en las \(b\) palas:</p>
+      \[ T = C_T\,\rho A(\Omega R)^2 = k_T\,\Omega^2 \]
+      \[ Q = C_Q\,\rho A(\Omega R)^2 R = k_Q\,\Omega^2 \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Con paso \(\theta(r)\) y ángulo de entrada \(\phi \approx v_i/(\Omega r)\), \(\alpha = \theta - \phi\). Si \(C_l = a\alpha\): \(T = \tfrac b2\rho a\,\Omega^2\!\int_0^R c\,(\theta r^2 - r\,v_i/\Omega)\,dr\). En estacionario \(v_i\propto\sqrt T\propto\Omega\), así que el integrando entero escala con \(\Omega^2\). La resistencia de perfil y la inducida dan \(Q\propto\Omega^2\). Combinar elemento de pala y cantidad de movimiento anillo a anillo es la BEMT <a class="cite" data-ref="leishman2006"></a>.</p>
+      </details>
+      <p class="small">Semejanza: \(T\propto\rho n^2D^4\) y \(P\propto\rho n^3D^5\), con coeficientes que dependen del avance \(J = V/(nD)\) y del número de Reynolds.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>PX4</strong> modela el empuje relativo como \(f s^2 + (1-f)s\), con \(f\) = <code>THR_MDL_FAC</code>, porque la señal al ESC no es proporcional a \(\Omega\) <a class="cite" data-ref="px4params"></a>.</li>
+        <li>Gräfe et al. ajustan un polinomio de tercer grado en \(\Omega\) para el Crazyflie Brushless <a class="cite" data-ref="grafe2026"></a>; Eschmann et al., uno de segundo grado completo <a class="cite" data-ref="eschmann2024"></a>.</li>
+        <li>En avance, el rotor da <strong>más</strong> empuje con la misma orden (sustentación de traslación): Faessler et al. usan \(c = c_{\text{cmd}} + k_h v_h^2\), con \(k_h = 0{,}009\ \mathrm{m^{-1}}\) y \(v_h\) la velocidad horizontal en ejes cuerpo <a class="cite" data-ref="faessler2018"></a>. En subida axial da menos.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Identificar \(k_T\) en un banco estático con la batería llena y usarlo en todo el envolvente. El empuje cambia con la velocidad respecto al aire y con la tensión de la batería; Faessler et al. compensan esta última en sus experimentos <a class="cite" data-ref="faessler2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Vuelo de avance</p>
+  <h2>Flapping y arrastre inducido: el rotor frena al dron en proporción a su velocidad</h2>
+  <div class="cols w40 center">
+    <figure class="fig">
+      <svg viewBox="0 0 420 330" role="img" aria-label="Rotor en vuelo de avance visto de lado: el disco se inclina hacia atrás, el empuje se inclina y aparece una fuerza horizontal que se opone a la velocidad">
+        <defs>
+          <marker id="a1m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a1m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a1m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+        </defs>
+        <path class="ln-rule" d="M60 200 H360"/>
+        <rect class="box-soft" x="185" y="200" width="50" height="40" rx="4"/>
+        <path class="ln" d="M210 200 V170"/>
+        <path class="ln-accent" d="M95 182 L325 158" stroke-width="5"/>
+        <text x="80" y="212" class="t-muted" font-size="13">plano del cuerpo</text>
+        <path class="ln-dash ln" d="M210 170 V60"/>
+        <path class="ln-accent" d="M210 170 L188 62" marker-end="url(#a1m2)" stroke-width="2.4"/>
+        <text x="150" y="56" class="t-accent t-bold" font-size="15">T</text>
+        <text x="220" y="80" class="t-faint" font-size="13">eje del rotor</text>
+        <path class="ln-time" d="M210 170 L130 170" marker-end="url(#a1m3)" stroke-width="2.4"/>
+        <text x="60" y="140" class="t-time t-mono" font-size="14">−|Ω| λ₁ v⊥</text>
+        <path class="ln" d="M250 250 H350" marker-end="url(#a1m1)" stroke-width="2"/>
+        <text x="300" y="274" class="t-bold" font-size="14">v (avance)</text>
+        <text x="330" y="140" class="t-muted" font-size="12">el disco se</text>
+        <text x="330" y="156" class="t-muted" font-size="12">inclina atrás</text>
+      </svg>
+      <figcaption>Esquema propio, exagerado, visto de lado. La pala que avanza, a un costado, ve más velocidad que la que retrocede, al otro; el flapping resultante inclina el disco hacia atrás y aparece una fuerza horizontal opuesta a la velocidad.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>Flapping de pala y arrastre inducido dan, a primer orden, una fuerza por rotor proporcional a su velocidad de giro y a la velocidad respecto al aire perpendicular al eje <a class="cite" data-ref="martin2010,bristeau2009,mahony2012"></a>. Sumados los rotores, y normalizado por la masa <a class="cite" data-ref="faessler2018"></a>:</p>
+      \[ \mathbf f_{\text{drag}}/m = -R\,D\,R^\top\mathbf v,\qquad D = \mathrm{diag}(d_x, d_y, d_z) \]
+      <div class="callout realidad"><span class="tag">Cifras identificadas</span>Faessler et al., dron de 610 g: \(d_x = 0{,}544\) y \(d_y = 0{,}386\ \mathrm{s^{-1}}\) en un círculo; \(d_z\) no mejoraba el seguimiento y lo fijaron a 0 <a class="cite" data-ref="faessler2018"></a>. En Gazebo, el x500 da \(d \approx 0{,}12\ \mathrm{s^{-1}}\) en estacionario <a class="cite" data-ref="gzmotor,px4x500"></a>.</div>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Con arrastre, el acelerómetro mide \(a^B_x \approx -d_x v^B_x\): es un <strong>sensor de velocidad respecto al aire</strong>, no un inclinómetro <a class="cite" data-ref="martin2010"></a>. Leishman et al. lo usan para reducir la dependencia de la cámara al estimar velocidad <a class="cite" data-ref="leishman2014"></a>. Con viento, la diferencia con el GNSS informa del viento: una variable oculta que tu belief puede estimar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cerca de superficies y de otros drones</p>
+  <h2>Efecto suelo, efecto fuente y estelas ajenas</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Cociente entre empuje en efecto suelo y fuera de él frente a la altura normalizada por el radio del rotor">
+        <g class="ln-rule">
+          <path d="M60 187.1 H500"/><path d="M60 124.3 H500"/><path d="M60 61.4 H500"/>
+          <path d="M122.9 30 V250"/><path d="M248.6 30 V250"/><path d="M374.3 30 V250"/>
+        </g>
+        <path class="ln" d="M60 250 H500"/><path class="ln" d="M60 30 V250"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="268">0,5</text><text x="122.9" y="268">1</text><text x="248.6" y="268">2</text><text x="374.3" y="268">3</text><text x="500" y="268">4</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="54" y="254">1,0</text><text x="54" y="191">1,1</text><text x="54" y="128">1,2</text><text x="54" y="65">1,3</text>
+        </g>
+        <text x="280" y="290" class="t-mono t-muted" font-size="12" text-anchor="middle">z / R  (altura del rotor sobre el suelo / radio)</text>
+        <text x="66" y="22" class="t-mono t-muted" font-size="12">T_IGE / T_OGE</text>
+        <path d="M60.0,40.5 L66.3,86.3 L72.6,117.9 L78.9,140.9 L85.1,158.1 L91.4,171.4 L97.7,182.0 L104.0,190.5 L110.3,197.4 L116.6,203.2 L122.9,208.1 L129.1,212.2 L135.4,215.8 L141.7,218.8 L148.0,221.5 L154.3,223.8 L160.6,225.9 L166.9,227.7 L173.1,229.3 L179.4,230.7 L185.7,232.0 L192.0,233.2 L198.3,234.3 L204.6,235.2 L210.9,236.1 L217.1,236.9 L223.4,237.6 L229.7,238.3 L236.0,238.9 L242.3,239.5 L248.6,240.0 L254.9,240.5 L261.1,241.0 L267.4,241.4 L273.7,241.8 L280.0,242.1 L286.3,242.5 L292.6,242.8 L298.9,243.1 L305.1,243.4 L311.4,243.7 L317.7,243.9 L324.0,244.1 L330.3,244.4 L336.6,244.6 L342.9,244.8 L349.1,244.9 L355.4,245.1 L361.7,245.3 L368.0,245.5 L374.3,245.6 L380.6,245.7 L386.9,245.9 L393.1,246.0 L399.4,246.1 L405.7,246.3 L412.0,246.4 L418.3,246.5 L424.6,246.6 L430.9,246.7 L437.1,246.8 L443.4,246.9 L449.7,247.0 L456.0,247.0 L462.3,247.1 L468.6,247.2 L474.9,247.3 L481.1,247.3 L487.4,247.4 L493.7,247.5 L500.0,247.5" fill="none" class="ln-accent" stroke-width="2.6"/>
+        <circle cx="122.9" cy="208.1" r="4.5" class="fill-accent"/>
+        <text x="134" y="200" class="t-mono t-accent" font-size="13">+6,7 % a z = R</text>
+        <circle cx="248.6" cy="240.0" r="4.5" class="fill-accent"/>
+        <text x="258" y="232" class="t-mono t-accent" font-size="13">+1,6 % a z = 2R</text>
+        <text x="300" y="80" class="t-muted" font-size="13">T_IGE/T_OGE = 1 / (1 − (R/4z)²)</text>
+      </svg>
+      <figcaption>Modelo de Cheeseman y Bennett para un rotor aislado <a class="cite" data-ref="cheeseman1955"></a>, calculado con la fórmula.</figcaption>
+    </figure>
+    <div class="stack small">
+      <ul>
+        <li><strong>Un rotor solo</strong> sigue bien la fórmula de Cheeseman y Bennett, también a escala de multirrotor, según medidas en banco de Sanchez-Cuevas et al. <a class="cite" data-ref="sanchez2017"></a>.</li>
+        <li><strong>El cuadricóptero entero</strong> sufre un aumento de empuje mayor que el previsto: entre rotores, las estelas chocan con el suelo y suben contra el cuerpo (efecto fuente) <a class="cite" data-ref="sanchez2017"></a>.</li>
+        <li><strong>Aprenderlo:</strong> Neural Lander aprende el efecto suelo con una red de normalización espectral y aterriza con menos error <a class="cite" data-ref="neurallander"></a>.</li>
+        <li><strong>Otros drones:</strong> Neural-Swarm aprende la fuerza que la estela de un vecino ejerce sobre cada dron en vuelo cercano <a class="cite" data-ref="neuralswarm"></a>.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Multiagente</span>La estela de un compañero es un acoplamiento físico entre las dinámicas de los agentes, no solo entre sus recompensas. En un Dec-POMDP con drones cercanos, la transición de cada uno depende de los demás (A15).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El motor</p>
+  <h2>El actuador es el primer retardo del lazo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Motor sin escobillas con resistencia \(R_m\), constante de par \(k_t\), de fuerza contraelectromotriz \(k_e\) e inercia \(J_m\) (más la hélice):</p>
+      \[ J_m\dot\Omega = k_t\,i - k_Q\Omega^2,\qquad v = R_m\,i + k_e\,\Omega \]
+      <details class="deriv"><summary>Derivación del primer orden</summary>
+        <p class="small">Despejando \(i = (v - k_e\Omega)/R_m\) y linealizando alrededor de \(\Omega_0\): \(J_m\,\delta\dot\Omega = \tfrac{k_t}{R_m}\delta v - \big(\tfrac{k_tk_e}{R_m} + 2k_Q\Omega_0\big)\delta\Omega\). Es un primer orden con \(\tau_m = J_m\big/\big(\tfrac{k_tk_e}{R_m} + 2k_Q\Omega_0\big)\): <strong>depende del punto de trabajo</strong> y es menor a más vueltas. Al frenar sin frenado activo solo actúa el par aerodinámico, de ahí que la bajada sea más lenta que la subida. Si el ESC cierra un lazo de RPM, \(\tau_m\) lo fija ese lazo.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Modelo de trabajo</span>\(\dot\Omega = (\Omega^{\text{cmd}} - \Omega)/\tau_m\), con constantes distintas para subir y bajar. RAPTOR las aleatoriza entre 30–100 ms (subida) y 30–300 ms (bajada) <a class="cite" data-ref="raptor"></a>.</div>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Plataforma</th><th>\(\tau_m\)</th><th>\(f_{-3\,\mathrm{dB}}\)</th><th>Fase a 10 Hz</th></tr>
+        <tr><td>x500, Gazebo (subida / bajada) <a class="cite" data-ref="px4x500"></a></td><td class="n">12,5 / 25 ms</td><td class="n">12,7 / 6,4 Hz</td><td class="n">−38° / −58°</td></tr>
+        <tr><td>Agilicious, medido en banco <a class="cite" data-ref="agilicious"></a></td><td class="n">39,1 ms</td><td class="n">4,1 Hz</td><td class="n">−68°</td></tr>
+        <tr><td>Crazyflie Brushless <a class="cite" data-ref="grafe2026"></a></td><td class="n">50 ms</td><td class="n">3,2 Hz</td><td class="n">−72°</td></tr>
+        <tr><td>Crazyflie 2.1 <a class="cite" data-ref="eschmann2024"></a></td><td class="n">72 ms</td><td class="n">2,2 Hz</td><td class="n">−78°</td></tr>
+      </table>
+      <p class="xsmall muted">\(f_{-3\,\mathrm{dB}} = 1/(2\pi\tau_m)\) y fase \(-\arctan(2\pi f\tau_m)\), calculadas a partir de las \(\tau_m\) publicadas. Eschmann et al. estiman 72 ms solo con datos de vuelo, frente a ≈73 ms de la respuesta al escalón del fabricante.</p>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Un motor de <span class="hz">40 ms</span> resta 68° de fase a <span class="hz">10 Hz</span>. El ancho de banda del lazo de rate lo limita el actuador, no la CPU: correr el PID a <span class="hz">8 kHz</span> reduce el retardo del muestreo, pero no hace al motor más rápido (A2).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">De la orden al empuje</p>
+  <h2>La cadena completa que tu simulador tiene que reproducir</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 230" role="img" aria-label="Cadena desde la orden del controlador hasta el empuje: asignador, protocolo digital, ESC, motor y hélice, con la batería alimentando al ESC">
+      <defs>
+        <marker id="a1m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <g font-size="15">
+        <rect class="box" x="10" y="30" width="160" height="78" rx="4"/>
+        <text x="90" y="62" text-anchor="middle" class="t-bold">Controlador</text>
+        <text x="90" y="84" text-anchor="middle" class="t-muted" font-size="13">o política</text>
+        <rect class="box-accent" x="200" y="30" width="170" height="78" rx="4"/>
+        <text x="285" y="62" text-anchor="middle" class="t-bold">Asignador</text>
+        <text x="285" y="84" text-anchor="middle" class="t-muted" font-size="13">llave → 4 motores</text>
+        <rect class="box" x="400" y="30" width="160" height="78" rx="4"/>
+        <text x="480" y="62" text-anchor="middle" class="t-bold">Protocolo</text>
+        <text x="480" y="84" text-anchor="middle" class="t-muted" font-size="13">PWM o DShot</text>
+        <rect class="box" x="590" y="30" width="160" height="78" rx="4"/>
+        <text x="670" y="62" text-anchor="middle" class="t-bold">ESC</text>
+        <text x="670" y="84" text-anchor="middle" class="t-muted" font-size="13">conmutación, RPM</text>
+        <rect class="box-time" x="780" y="30" width="160" height="78" rx="4"/>
+        <text x="860" y="62" text-anchor="middle" class="t-bold">Motor</text>
+        <text x="860" y="84" text-anchor="middle" class="t-mono t-time" font-size="13">τm 12–72 ms</text>
+        <rect class="box" x="970" y="30" width="170" height="78" rx="4"/>
+        <text x="1055" y="62" text-anchor="middle" class="t-bold">Hélice</text>
+        <text x="1055" y="84" text-anchor="middle" class="t-muted" font-size="13">T(Ω, v_aire)</text>
+        <rect class="box-soft" x="590" y="150" width="160" height="60" rx="4"/>
+        <text x="670" y="176" text-anchor="middle" class="t-bold">Batería</text>
+        <text x="670" y="196" text-anchor="middle" class="t-muted" font-size="13">tensión que cae</text>
+      </g>
+      <path class="ln" d="M170 69 H198" marker-end="url(#a1m4)"/>
+      <path class="ln" d="M370 69 H398" marker-end="url(#a1m4)"/>
+      <path class="ln" d="M560 69 H588" marker-end="url(#a1m4)"/>
+      <path class="ln" d="M750 69 H778" marker-end="url(#a1m4)"/>
+      <path class="ln" d="M940 69 H968" marker-end="url(#a1m4)"/>
+      <path class="ln" d="M670 150 V110" marker-end="url(#a1m4)"/>
+      <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+        <text x="285" y="132">saturación, prioridades</text>
+        <text x="480" y="132">cuantización</text>
+        <text x="860" y="132">subida ≠ bajada</text>
+        <text x="1055" y="132">BEM, suelo, VRS</text>
+      </g>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Qué hacen los sistemas reales</span>Agilicious mide velocidad de motor, IMU y tensión a 500 Hz por DShot bidireccional y cierra el lazo de RPM en su controladora <a class="cite" data-ref="agilicious"></a>. Bangura y Mahony controlan el empuje en el ESC con un modelo de la potencia aerodinámica del rotor <a class="cite" data-ref="bangura2017"></a>. El dataset de NeuroBEM incluye velocidades de motor y tensión de batería <a class="cite" data-ref="neurobemdata"></a>.</div>
+    <div class="callout error"><span class="tag">Sim-to-real</span>Entrenar con la orden convertida directamente en empuje se salta cuatro cajas. Lo mínimo que necesita un simulador para RL es saturación, primer orden asimétrico y una curva de empuje con incertidumbre; lo que no modeles, aleatorízalo (B7a).</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 · ASIGNACIÓN ============ -->
+<section class="slide divider" data-section="3 · Asignación">
+  <p class="num">Parte 3</p>
+  <h2>De motores a fuerzas</h2>
+  <p>La matriz de asignación con la geometría real de PX4, qué pasa cuando los motores saturan y qué simula de verdad Gazebo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asignación de control</p>
+  <h2>Cuatro empujes, una fuerza y tres pares</h2>
+  <div class="cols w40 center">
+    <figure class="fig">
+      <svg viewBox="0 0 420 420" style="max-height:440px" role="img" aria-label="Vista superior de un cuadricóptero en X con la numeración de motores de PX4, sus posiciones y sentidos de giro, y los ejes FRD">
+        <defs>
+          <marker id="a1m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a1m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+          <marker id="a1m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <path class="ln" d="M100 100 L320 320 M320 100 L100 320" stroke-width="6"/>
+        <rect class="box-soft" x="180" y="180" width="60" height="60" rx="6"/>
+        <circle cx="320" cy="100" r="58" class="box"/><circle cx="100" cy="320" r="58" class="box"/>
+        <circle cx="100" cy="100" r="58" class="box"/><circle cx="320" cy="320" r="58" class="box"/>
+        <path class="ln-time" d="M362 100 A42,42 0 0,0 320,58" marker-end="url(#a1m6)" stroke-width="2.2"/>
+        <path class="ln-time" d="M142 320 A42,42 0 0,0 100,278" marker-end="url(#a1m6)" stroke-width="2.2"/>
+        <path class="ln-tesis" d="M58 100 A42,42 0 0,1 100,58" marker-end="url(#a1m7)" stroke-width="2.2"/>
+        <path class="ln-tesis" d="M278 320 A42,42 0 0,1 320,278" marker-end="url(#a1m7)" stroke-width="2.2"/>
+        <g font-size="15" text-anchor="middle">
+          <text x="320" y="106" class="t-bold">1</text><text x="100" y="326" class="t-bold">2</text>
+          <text x="100" y="106" class="t-bold">3</text><text x="320" y="326" class="t-bold">4</text>
+        </g>
+        <g font-size="12" class="t-mono" text-anchor="middle">
+          <text x="320" y="128" class="t-time">CCW</text><text x="100" y="348" class="t-time">CCW</text>
+          <text x="100" y="128" class="t-tesis">CW</text><text x="320" y="348" class="t-tesis">CW</text>
+        </g>
+        <path class="ln-accent" d="M210 210 V140" marker-end="url(#a1m5)" stroke-width="2.4"/>
+        <path class="ln-accent" d="M210 210 H280" marker-end="url(#a1m5)" stroke-width="2.4"/>
+        <text x="218" y="150" class="t-accent t-mono" font-size="14">x</text>
+        <text x="270" y="228" class="t-accent t-mono" font-size="14">y</text>
+        <text x="210" y="408" class="t-muted" font-size="13" text-anchor="middle">vista desde arriba · FRD: z hacia abajo</text>
+        <text x="210" y="24" class="t-muted" font-size="13" text-anchor="middle">morro</text>
+      </svg>
+      <figcaption>Numeración de PX4: motor \(i\) = <code>CA_ROTOR(i−1)</code>. En el x500, rotores en (±0,174; ±0,174) m <a class="cite" data-ref="px4x500"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small">En FRD cada rotor empuja \(-T_i\mathbf e_3\) desde \(\mathbf r_i = (x_i, y_i, 0)\). Con \(\kappa_i = \pm k_Q/k_T\) (positivo si gira en sentido antihorario visto desde arriba, como <code>CA_ROTORn_KM</code> de PX4 <a class="cite" data-ref="px4params"></a>):</p>
+      \[ \begin{bmatrix} T\\ \tau_x\\ \tau_y\\ \tau_z\end{bmatrix} = \underbrace{\begin{bmatrix} 1 & 1 & 1 & 1\\ -y_1 & -y_2 & -y_3 & -y_4\\ x_1 & x_2 & x_3 & x_4\\ \kappa_1 & \kappa_2 & \kappa_3 & \kappa_4\end{bmatrix}}_{M}\begin{bmatrix}T_1\\ T_2\\ T_3\\ T_4\end{bmatrix} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Par de un rotor: \(\mathbf r_i\times(-T_i\mathbf e_3) = (-y_iT_i,\ x_iT_i,\ 0)\). La reacción del motor que gira en sentido antihorario visto desde arriba empuja al cuerpo en sentido horario, que en FRD es \(+z\): \(\tau_{z,i} = \kappa_iT_i\). Sumando los cuatro sale \(M\). Para el x500, con \(\kappa = 0{,}05\) m (valor del asignador), \(M^{-1}\) da cada motor como \(0{,}25\,T \mp 1{,}44\,\tau_x \pm 1{,}44\,\tau_y \pm 5\,\tau_z\). En ENU/FLU cambian los signos de \(y\) y de \(z\): la física es la misma.</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente: la numeración</span>En PX4 el motor 1 es el delantero derecho. En el dataset de NeuroBEM, que vuela con Betaflight, el motor 1 es el trasero derecho <a class="cite" data-ref="neurobemdata"></a>. Leer datos con la numeración de otro firmware intercambia motores sin dar error.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Saturación y subactuación</p>
+  <h2>Cuando no se puede todo, alguien decide qué se sacrifica</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Subactuado:</strong> el empuje va siempre según \(\mathbf z_B\). Para acelerar en horizontal hay que inclinarse primero; la posición responde a través de la actitud. De ahí la cascada de lazos (A2) y la planitud (parte 4).</li>
+        <li><strong>Conjunto factible:</strong> la caja \(0 \le T_i \le T_{\max}\) se transforma por \(M\) en un poliedro de llaves alcanzables. Una orden fuera de él no se puede cumplir entera.</li>
+        <li><strong>Hexa y octo:</strong> \(M\) tiene más columnas que filas; se usa la pseudoinversa y queda redundancia para tolerar el fallo de un motor. PX4 ofrece pseudoinversa con recorte o con desaturación secuencial (<code>CA_METHOD</code>) <a class="cite" data-ref="px4params"></a>.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Cómo desatura PX4</span>El asignador secuencial da prioridad a alabeo y cabeceo frente a guiñada. En guiñada solo permite bajar el empuje hasta un 15 % para conservar algo de control arriba. Con <code>MC_AIRMODE</code> puede subir o bajar el empuje total para mantener el control de actitud con el mando al mínimo o al máximo <a class="cite" data-ref="px4desat,px4params"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Sim-to-real</span>Si tu política da comandos de motor directos, como MonoRace o RAPTOR, ella misma hace de asignador y tu simulador debe saturar igual que el hardware. Si da empuje y velocidades angulares, hereda las prioridades del asignador y los lazos de PX4 o Betaflight, que tu simulador también tiene que reproducir. Tu diagnóstico ya apuntaba esta diferencia.</div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Las prioridades del asignador no son un detalle de implementación: deciden qué pasa en las maniobras al límite, que son las que una política aprendida busca. Escríbelas explícitamente en el simulador y en el informe de tus experimentos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Realidad</p>
+  <h2>Qué simula exactamente Gazebo para el x500 de PX4</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Del código del sistema <code>MulticopterMotorModel</code> de gz-sim y del modelo x500 <a class="cite" data-ref="gzmotor,px4x500"></a>:</p>
+      <table class="t">
+        <tr><th>Efecto</th><th>Implementación</th></tr>
+        <tr><td>Empuje</td><td>\(T_i = k\,\Omega_i^2\), \(k = 8{,}55\cdot10^{-6}\); 8,55 N máximo por rotor; empuje/peso 1,69</td></tr>
+        <tr><td>Par de guiñada</td><td>\(-s_i\cdot 0{,}016\ \mathrm m\cdot T_i\)</td></tr>
+        <tr><td>Arrastre de rotor</td><td>\(-|\Omega_i|\,\lambda_1\,\mathbf v_A^\perp\), con viento, según Martin y Salaün; \(\lambda_1 = 8{,}06\cdot10^{-5}\)</td></tr>
+        <tr><td>Momento de balanceo</td><td>\(-|\Omega_i|\,\mu_1\,\mathbf v_A^\perp\), \(\mu_1 = 10^{-6}\)</td></tr>
+        <tr><td>Motor</td><td>Filtro de primer orden: 12,5 ms al subir, 25 ms al bajar</td></tr>
+        <tr><td>No incluye</td><td>BEM, efecto suelo, VRS, batería, interacción entre rotores</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Un desajuste dentro del propio PX4</span>El airframe <code>4001_gz_x500</code> configura el asignador con <code>CA_ROTORn_KM</code> = 0,05, pero la planta usa momentConstant = 0,016 <a class="cite" data-ref="px4x500"></a>. La eficacia de guiñada real es 3,1 veces menor que la que supone el asignador. La realimentación lo absorbe; un controlador basado en modelo, o una política entrenada con el valor del asignador, lo notaría (inferencia nuestra).</div>
+      <div class="callout realidad"><span class="tag">Cuenta</span>Estacionario del x500: \(\Omega_h = \sqrt{mg/(4k)} = 770\) rad/s (7350 rpm), el 77 % de \(\Omega_{\max}\). Con un empuje/peso de 1,69 en simulación, el margen para maniobrar es pequeño: un MPC o una política que lo ignoren saturarán.</div>
+      <p class="xsmall muted">Que el simulador de referencia simplifique no es un fallo: es una elección de nivel N2. Lo grave es no saber cuál es.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 · PLANITUD ============ -->
+<section class="slide divider" data-section="4 · Planitud">
+  <p class="num">Parte 4</p>
+  <h2>Planitud diferencial</h2>
+  <p>La trayectoria lo dice todo: de la posición, el rumbo y sus derivadas salen el empuje, la actitud, las velocidades angulares y los pares.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Planitud · 1</p>
+  <h2>De la aceleración al empuje y la actitud</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un sistema es <strong>diferencialmente plano</strong> si existen tantas salidas \(\boldsymbol\sigma\) como entradas tales que estado y entradas son funciones de \(\boldsymbol\sigma\) y de un número finito de sus derivadas <a class="cite" data-ref="murray1995"></a>. Para el cuadricóptero, \(\boldsymbol\sigma = (x, y, z, \psi)\) <a class="cite" data-ref="mellinger2011"></a>.</p>
+      <p>De \(m\ddot{\mathbf p} = -mg\,\mathbf e_3 + T\,\mathbf z_B\):</p>
+      \[ \mathbf t = \ddot{\mathbf p} + g\,\mathbf e_3,\qquad T = m\,\|\mathbf t\|,\qquad \mathbf z_B = \frac{\mathbf t}{\|\mathbf t\|} \]
+      \[ \mathbf x_C = (\cos\psi,\ \sin\psi,\ 0),\qquad \mathbf y_B = \frac{\mathbf z_B\times\mathbf x_C}{\|\mathbf z_B\times\mathbf x_C\|} \]
+      \[ \mathbf x_B = \mathbf y_B\times\mathbf z_B,\qquad R = [\,\mathbf x_B\ \ \mathbf y_B\ \ \mathbf z_B\,] \]
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea clave</span>La aceleración deseada fija <strong>el módulo del empuje y la dirección del eje z</strong> del cuerpo. El rumbo solo elige el giro alrededor de ese eje. Por eso un cuadricóptero «es» un vector de empuje orientable.</div>
+      <ul class="small">
+        <li>\(R = [\mathbf x_B\ \mathbf y_B\ \mathbf z_B]\) queda definida salvo cuando \(\mathbf z_B \parallel \mathbf x_C\): inclinarse 90° hacia el rumbo. Es una singularidad de la parametrización con \(\psi\), no de la física; se evita eligiendo otra referencia de rumbo.</li>
+        <li>\(\|\mathbf t\| \to 0\) (caída libre) deja \(\mathbf z_B\) indefinido: sin empuje no hay actitud que deducir.</li>
+        <li>Mismo cálculo que el lazo de posición del control geométrico <a class="cite" data-ref="lee2010"></a>: lo verás como controlador en A2.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Planitud · 2</p>
+  <h2>El jerk da las velocidades angulares; el snap, los pares</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Derivando \(m\ddot{\mathbf p} = -mg\mathbf e_3 + T\mathbf z_B\) aparece el jerk \(\mathbf j = \dddot{\mathbf p}\). Con \(\mathbf h_\omega = \frac{m}{T}\big(\mathbf j - (\mathbf z_B\!\cdot\!\mathbf j)\,\mathbf z_B\big)\):</p>
+      \[ \omega_x = -\mathbf h_\omega\!\cdot\mathbf y_B,\qquad \omega_y = \mathbf h_\omega\!\cdot\mathbf x_B,\qquad \omega_z = \dot\psi\,\mathbf e_3\!\cdot\mathbf z_B \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">\(m\mathbf j = \dot T\,\mathbf z_B + T\,\dot{\mathbf z}_B\). Como \(\mathbf z_B = R\mathbf e_3\) y \(\dot R = R[\boldsymbol\omega]_\times\): \(\dot{\mathbf z}_B = R(\boldsymbol\omega\times\mathbf e_3) = \omega_y\mathbf x_B - \omega_x\mathbf y_B\), perpendicular a \(\mathbf z_B\). Proyectando sobre \(\mathbf z_B\): \(\dot T = m\,\mathbf z_B\!\cdot\mathbf j\). Lo que queda es \(T\dot{\mathbf z}_B = m\mathbf j - \dot T\mathbf z_B\), es decir, \(\mathbf h_\omega = \omega_y\mathbf x_B - \omega_x\mathbf y_B\), y se leen \(\omega_x\), \(\omega_y\). La componente \(\omega_z\) sale de derivar la definición de \(\mathbf x_C\) con el rumbo <a class="cite" data-ref="mellinger2011"></a>.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p>Derivando otra vez, el <strong>snap</strong> \(\mathbf p^{(4)}\) da \(\dot{\boldsymbol\omega}\), y con Euler los pares: \(\boldsymbol\tau = J\dot{\boldsymbol\omega} + \boldsymbol\omega\times J\boldsymbol\omega\). Con \(M^{-1}\), los cuatro empujes.</p>
+      <div class="callout clave"><span class="tag">Por qué «minimum snap»</span>Los empujes de los motores dependen del snap. Minimizar \(\int\|\mathbf p^{(4)}\|^2dt\) da trayectorias cuyos mandos de motor son suaves y realizables, y como la planitud convierte el problema en un polinomio por tramos en las salidas planas, se resuelve como un QP <a class="cite" data-ref="mellinger2011"></a>. Lo construirás en A5.</div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Para seguir una trayectoria hay que entregar \(\boldsymbol\omega\) y \(\dot{\boldsymbol\omega}\) como prealimentación. Si el planificador corre a <span class="hz">10–50 Hz</span>, el resto de la cadena interpola: los mandos que llegan al motor dependen de cómo se interpole el snap.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Planitud con arrastre</p>
+  <h2>A partir de pocos m/s, ignorar el arrastre equivoca la actitud en decenas de grados</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 700 280" role="img" aria-label="Dos gráficas frente a la velocidad máxima en una lemniscata: empuje máximo necesario con y sin arrastre y límite del dron, y error de actitud por ignorar el arrastre">
+        <g>
+          <g class="ln-rule">
+            <path d="M50 188 H330"/><path d="M50 146 H330"/><path d="M50 104 H330"/><path d="M50 62 H330"/><path d="M50 20 H330"/>
+            <path d="M106 20 V230"/><path d="M162 20 V230"/><path d="M218 20 V230"/><path d="M274 20 V230"/><path d="M330 20 V230"/>
+          </g>
+          <path class="ln" d="M50 230 H330"/><path class="ln" d="M50 20 V230"/>
+          <g class="t-mono t-faint" font-size="12" text-anchor="end">
+            <text x="44" y="234">0</text><text x="44" y="192">20</text><text x="44" y="150">40</text><text x="44" y="108">60</text><text x="44" y="66">80</text><text x="44" y="24">100</text>
+          </g>
+          <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+            <text x="50" y="248">0</text><text x="106" y="248">4</text><text x="162" y="248">8</text><text x="218" y="248">12</text><text x="274" y="248">16</text><text x="330" y="248">20</text>
+          </g>
+          <text x="190" y="270" class="t-mono t-muted" font-size="12" text-anchor="middle">velocidad máxima (m/s)</text>
+          <text x="50" y="12" class="t-mono t-muted" font-size="12">empuje/masa máximo, c (m/s²)</text>
+          <path class="ln-time ln-dash" d="M50 123.9 H330"/>
+          <text x="56" y="117" class="t-time t-mono" font-size="12">límite 50,5 m/s²</text>
+          <path d="M64.0,209.4 L71.0,209.4 L78.0,209.3 L85.0,209.2 L92.0,209.0 L99.0,208.7 L106.0,208.2 L113.0,207.5 L120.0,206.6 L127.0,205.4 L134.0,203.9 L141.0,202.1 L148.0,200.0 L155.0,197.5 L162.0,194.8 L169.0,191.7 L176.0,188.4 L183.0,184.8 L190.0,180.8 L197.0,176.7 L204.0,172.2 L211.0,167.5 L218.0,162.5 L225.0,157.3 L232.0,151.8 L239.0,146.1 L246.0,140.1 L253.0,133.9 L260.0,127.5 L267.0,120.8 L274.0,113.9 L281.0,106.8 L288.0,99.4 L295.0,91.8 L302.0,84.0 L309.0,75.9 L316.0,67.6 L323.0,59.1 L330.0,50.3" fill="none" class="ln-accent" stroke-width="2.4"/>
+          <path d="M64.0,209.4 L71.0,209.3 L78.0,209.2 L85.0,209.1 L92.0,208.8 L99.0,208.4 L106.0,207.8 L113.0,206.9 L120.0,205.9 L127.0,204.6 L134.0,202.9 L141.0,201.0 L148.0,198.8 L155.0,196.2 L162.0,193.4 L169.0,190.2 L176.0,186.8 L183.0,183.0 L190.0,179.0 L197.0,174.8 L204.0,170.2 L211.0,165.4 L218.0,160.4 L225.0,155.1 L232.0,149.5 L239.0,143.8 L246.0,137.7 L253.0,131.5 L260.0,124.9 L267.0,118.2 L274.0,111.2 L281.0,104.0 L288.0,96.6 L295.0,88.9 L302.0,81.0 L309.0,72.9 L316.0,64.5 L323.0,55.9 L330.0,47.1" fill="none" class="ln-tesis ln-dash" stroke-width="2.2"/>
+          <circle cx="263.8" cy="123.9" r="4.5" class="fill-time"/>
+          <text x="270" y="146" class="t-time t-mono" font-size="12">≈15 m/s</text>
+          <text x="58" y="40" class="t-accent" font-size="13">sin arrastre</text>
+          <text x="58" y="58" class="t-tesis" font-size="13">con arrastre</text>
+        </g>
+        <g transform="translate(350,0)">
+          <g class="ln-rule">
+            <path d="M50 177.5 H330"/><path d="M50 125 H330"/><path d="M50 72.5 H330"/><path d="M50 20 H330"/>
+            <path d="M106 20 V230"/><path d="M162 20 V230"/><path d="M218 20 V230"/><path d="M274 20 V230"/><path d="M330 20 V230"/>
+          </g>
+          <path class="ln" d="M50 230 H330"/><path class="ln" d="M50 20 V230"/>
+          <g class="t-mono t-faint" font-size="12" text-anchor="end">
+            <text x="44" y="234">0</text><text x="44" y="181.5">15</text><text x="44" y="129">30</text><text x="44" y="76.5">45</text><text x="44" y="24">60</text>
+          </g>
+          <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+            <text x="50" y="248">0</text><text x="106" y="248">4</text><text x="162" y="248">8</text><text x="218" y="248">12</text><text x="274" y="248">16</text><text x="330" y="248">20</text>
+          </g>
+          <text x="190" y="270" class="t-mono t-muted" font-size="12" text-anchor="middle">velocidad máxima (m/s)</text>
+          <text x="50" y="12" class="t-mono t-muted" font-size="12">error de actitud sin modelo de arrastre (°)</text>
+          <path d="M52.8,228.1 L55.6,226.2 L58.4,224.3 L61.2,222.4 L64.0,220.5 L66.8,218.6 L69.6,216.7 L72.4,214.8 L75.2,212.9 L78.0,211.0 L80.8,209.2 L83.6,207.3 L86.4,205.4 L89.2,203.5 L92.0,201.7 L94.8,199.8 L97.6,197.9 L100.4,196.1 L103.2,194.2 L106.0,192.4" fill="none" class="ln-tesis" stroke-width="2.6"/>
+          <path d="M106.0,192.4 L108.8,190.5 L111.6,188.7 L114.4,186.8 L117.2,185.0 L120.0,183.1 L122.8,181.3 L125.6,179.4 L128.4,177.6 L131.2,175.7 L134.0,173.9 L136.8,172.0 L139.6,170.2 L142.4,168.4 L145.2,166.5 L148.0,164.7 L150.8,162.9 L153.6,161.1 L156.4,159.2 L159.2,157.4 L162.0,155.6 L164.8,153.8 L167.6,152.0 L170.4,150.2 L173.2,148.4 L176.0,146.6 L178.8,144.8 L181.6,143.0 L184.4,141.3 L187.2,139.5 L190.0,137.7 L192.8,136.0 L195.6,134.2 L198.4,132.5 L201.2,130.7 L204.0,129.0 L206.8,127.3 L209.6,125.5 L212.4,123.8 L215.2,122.1 L218.0,120.4 L220.8,118.7 L223.6,117.0 L226.4,115.3 L229.2,113.6 L232.0,112.0 L234.8,110.3 L237.6,108.6 L240.4,107.0 L243.2,105.3 L246.0,103.7 L248.8,102.0 L251.6,100.4 L254.4,98.8 L257.2,97.2 L260.0,95.5 L262.8,93.9 L265.6,92.3 L268.4,90.8 L271.2,89.2 L274.0,87.6 L276.8,86.0 L279.6,84.5 L282.4,82.9 L285.2,81.4 L288.0,79.8 L290.8,78.3 L293.6,76.8 L296.4,75.2 L299.2,73.7 L302.0,72.2 L304.8,70.7 L307.6,69.2 L310.4,67.7 L313.2,66.3 L316.0,64.8 L318.8,63.3 L321.6,61.9 L324.4,60.4 L327.2,59.0 L330.0,57.6" fill="none" class="ln-tesis ln-dash" stroke-width="2"/>
+          <circle cx="106" cy="192.4" r="4.5" class="fill-tesis"/>
+          <text x="112" y="216" class="t-tesis t-mono" font-size="12">10,8° a 4 m/s</text>
+          <text x="236" y="198" class="t-muted" font-size="12">discontinuo:</text>
+          <text x="236" y="214" class="t-muted" font-size="12">extrapolación</text>
+        </g>
+      </svg>
+      <figcaption>Lemniscata de Gerono horizontal de 5 m de amplitud, por planitud. Arrastre isótropo \(d = 0{,}465\ \mathrm{s^{-1}}\), media de \(d_x\) y \(d_y\) de Faessler et al., identificados hasta unos 4 m/s <a class="cite" data-ref="faessler2018"></a>. Límite: 4 × 9,5 N continuos para 752 g, clase Agilicious <a class="cite" data-ref="agilicious"></a>.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>Con arrastre lineal, la dinámica sigue siendo plana en posición y rumbo <a class="cite" data-ref="faessler2018"></a>. Si el arrastre es isótropo:</p>
+      \[ T\,\mathbf z_B = m\big(\ddot{\mathbf p} + g\,\mathbf e_3 + d\,\mathbf v\big) \]
+      <ul>
+        <li>El <strong>módulo</strong> del empuje apenas cambia: manda la aceleración centrípeta y satura hacia 15 m/s en ambos casos.</li>
+        <li>La <strong>dirección</strong> sí: en crucero, toda la inclinación sirve para vencer el arrastre. A 10 m/s el error pasa de 20°.</li>
+        <li>Velocidades angulares necesarias (cálculo nuestro): unos 340°/s a 10 m/s y 1150°/s a 15 m/s.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Por eso</span>Faessler et al. reducen mucho el error de seguimiento al meter el arrastre en la prealimentación en vez de tratarlo como perturbación <a class="cite" data-ref="faessler2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 · ALA FIJA ============ -->
+<section class="slide divider" data-section="5 · Ala fija">
+  <p class="num">Parte 5</p>
+  <h2>Ala fija</h2>
+  <p>Las fuerzas dependen de la velocidad respecto al aire y de dos ángulos. El modelo se recorta, se linealiza y se descompone en modos con escalas de tiempo muy distintas.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ángulos aerodinámicos y viento</p>
+  <h2>Lo que importa es la velocidad respecto al aire</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 640 320" role="img" aria-label="Vista lateral de un avión con el eje x del cuerpo, la velocidad aerodinámica, el ángulo de ataque, la sustentación y la resistencia; a la derecha, el triángulo de velocidades con el viento">
+        <defs>
+          <marker id="a1m8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a1m9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a1m10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <g transform="rotate(-12 200 170)">
+          <ellipse cx="200" cy="170" rx="140" ry="20" class="box-soft"/>
+          <path class="box" d="M300 165 L345 120 L362 120 L340 168 Z"/>
+          <rect x="170" y="164" width="80" height="10" rx="3" class="box"/>
+          <path class="ln-accent" d="M200 170 H390" marker-end="url(#a1m9)" stroke-width="2.2"/>
+          <text x="384" y="160" class="t-accent t-mono" font-size="14">x<tspan dy="4" font-size="11">B</tspan></text>
+        </g>
+        <path class="ln-tesis" d="M200 170 L385 170" marker-end="url(#a1m10)" stroke-width="2.4"/>
+        <text x="392" y="176" class="t-tesis t-mono" font-size="14">V<tspan dy="4" font-size="11">a</tspan></text>
+        <path class="ln-time" d="M300 170 A100,100 0 0,0 297.8,149.2" stroke-width="2"/>
+        <text x="308" y="158" class="t-time t-bold" font-size="15">α</text>
+        <path class="ln" d="M200 170 V60" marker-end="url(#a1m8)" stroke-width="2"/>
+        <text x="208" y="70" class="t-bold" font-size="14">L ⟂ V<tspan dy="4" font-size="11">a</tspan></text>
+        <path class="ln" d="M200 170 H110" marker-end="url(#a1m8)" stroke-width="2"/>
+        <text x="96" y="160" class="t-bold" font-size="14">D</text>
+        <text x="40" y="300" class="t-muted" font-size="13">vista lateral, velocidad respecto al aire</text>
+        <g transform="translate(450,60)">
+          <path class="ln-accent" d="M20 200 L150 40" marker-end="url(#a1m9)" stroke-width="2.2"/>
+          <text x="40" y="104" class="t-accent t-mono" font-size="14">V<tspan dy="4" font-size="11">g</tspan></text>
+          <path class="ln-tesis" d="M20 200 L170 150" marker-end="url(#a1m10)" stroke-width="2.2"/>
+          <text x="100" y="196" class="t-tesis t-mono" font-size="14">V<tspan dy="4" font-size="11">a</tspan></text>
+          <path class="ln-time" d="M170 150 L150 40" marker-end="url(#a1m8)" stroke-width="2.2"/>
+          <text x="166" y="96" class="t-time t-mono" font-size="14">V<tspan dy="4" font-size="11">w</tspan></text>
+          <text x="0" y="240" class="t-muted" font-size="13">V<tspan dy="4" font-size="10">g</tspan><tspan dy="-4"> = V</tspan><tspan dy="4" font-size="10">a</tspan><tspan dy="-4"> + V</tspan><tspan dy="4" font-size="10">w</tspan></text>
+        </g>
+      </svg>
+      <figcaption>Esquema propio. Sustentación \(L\) perpendicular a \(V_a\) y resistencia \(D\) opuesta. A la derecha, triángulo de velocidades: suelo, aire y viento.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>Con \(\mathbf v_r = \mathbf v_B - R^\top\mathbf w\) la velocidad relativa al aire en ejes cuerpo:</p>
+      \[ V_a = \|\mathbf v_r\|,\quad \alpha = \operatorname{atan2}(w_r, u_r),\quad \beta = \arcsin\frac{v_r}{V_a} \]
+      <p>Marcos intermedios: <strong>estabilidad</strong> (girado \(\alpha\) respecto al cuerpo) y <strong>viento</strong> (girado además \(\beta\)): sustentación y resistencia se definen en ellos <a class="cite" data-ref="beard2012,stevens2015"></a>.</p>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>El GNSS da \(V_g\) y el tubo de Pitot, \(V_a\). El viento no se mide: se infiere de la diferencia. Es la misma variable oculta que en el multirrotor, pero aquí domina todas las fuerzas.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Controlar con la velocidad respecto al suelo. Con viento de cara de media velocidad de crucero, el alcance se reduce a la mitad; el margen de pérdida depende solo de \(V_a\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuerzas y momentos</p>
+  <h2>Coeficientes, derivadas de estabilidad y un modelo de pérdida</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ F_L = \tfrac12\rho V_a^2S\Big[C_L(\alpha) + C_{L_q}\tfrac{c}{2V_a}q + C_{L_{\delta_e}}\delta_e\Big] \]
+      \[ m_y = \tfrac12\rho V_a^2Sc\Big[C_{m_0} + C_{m_\alpha}\alpha + C_{m_q}\tfrac{c}{2V_a}q + C_{m_{\delta_e}}\delta_e\Big] \]
+      <p class="small">\(F_D\) igual con \(C_D(\alpha) = C_{D_p} + (C_{L_0} + C_{L_\alpha}\alpha)^2/(\pi e\,\mathit{AR})\); lateral: \(F_Y\), \(\ell\), \(n\) con \(\beta\), \(p\), \(r\), \(\delta_a\), \(\delta_r\). En ejes cuerpo, \(f_x = -D\cos\alpha + L\sin\alpha\) y \(f_z = -D\sin\alpha - L\cos\alpha\), más empuje y gravedad <a class="cite" data-ref="beard2012"></a>.</p>
+      <details class="deriv"><summary>Pérdida: el modelo de mezcla</summary>
+        <p class="small">\(C_L(\alpha) = (1-\sigma)(C_{L_0} + C_{L_\alpha}\alpha) + \sigma\,2\,\mathrm{sign}(\alpha)\sin^2\!\alpha\cos\alpha\), con \(\sigma(\alpha) = \frac{1 + e^{-M(\alpha-\alpha_0)} + e^{M(\alpha+\alpha_0)}}{(1 + e^{-M(\alpha-\alpha_0)})(1 + e^{M(\alpha+\alpha_0)})}\). Pasa del régimen lineal al de placa plana alrededor de \(\pm\alpha_0\) con pendiente \(M\) <a class="cite" data-ref="beard2012"></a>. En el Aerosonde, \(\alpha_0 = 0{,}47\) rad (27°) y \(M = 50\).</p>
+      </details>
+      <div class="callout tesis"><span class="tag">Para modelos aprendidos</span>Las derivadas de estabilidad son el jacobiano del modelo aerodinámico. Una red que sustituya al modelo tiene que reproducirlas en torno al vuelo normal, o el controlador de encima dejará de ser estable.</div>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Aerosonde</th><th>Valor</th><th>Significado</th></tr>
+        <tr><td>\(C_{L_\alpha}\)</td><td class="n">5,61 /rad</td><td>pendiente de sustentación</td></tr>
+        <tr><td>\(C_{m_\alpha}\)</td><td class="n">−2,74 /rad</td><td>estable en cabeceo si &lt; 0</td></tr>
+        <tr><td>\(C_{m_q}\)</td><td class="n">−38,2</td><td>amortiguamiento en cabeceo</td></tr>
+        <tr><td>\(C_{\ell_p}\)</td><td class="n">−0,51</td><td>amortiguamiento en alabeo</td></tr>
+        <tr><td>\(C_{n_\beta}\)</td><td class="n">0,073 /rad</td><td>estabilidad de veleta</td></tr>
+        <tr><td>\(m\), \(S\), \(b\)</td><td class="n">11 kg, 0,55 m², 2,90 m</td><td>masa, superficie, envergadura</td></tr>
+      </table>
+      <p class="xsmall muted">Coeficientes del Aerosonde en el repositorio del libro de Beard y McLain <a class="cite" data-ref="mavsim"></a>. Un coeficiente negativo de \(C_{m_\alpha}\) significa que el avión tiende a volver a su ángulo de ataque de equilibrio.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equilibrio, linealización y modos</p>
+  <h2>Dos subsistemas y cinco modos con escalas de tiempo muy distintas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Equilibrio</strong> (trim) en vuelo recto y nivelado a \(V_a = 25\) m/s: \(\alpha = 2{,}85°\), \(\delta_e = -7{,}1°\), mando de motor 0,77 y 10,3 N de empuje. Linealizando \(\dot{\mathbf x} = A\mathbf x + B\mathbf u\), el modelo se separa en longitudinal \((u, w, q, \theta)\) y lateral \((v, p, r, \phi)\).</p>
+      <details class="deriv"><summary>Por qué se desacoplan</summary>
+        <p class="small">El avión es simétrico respecto a su plano \(x\)–\(z\), y el equilibrio también lo es (\(\beta = p = r = \phi = 0\)). Las fuerzas longitudinales son pares en \(v, p, r, \phi\) y las laterales, impares; al linealizar alrededor de un punto simétrico, las derivadas cruzadas se anulan y \(A\) queda diagonal por bloques. El par de la hélice y \(J_{xz}\) rompen un poco la simetría: aquí exigen \(\delta_a = 0{,}34°\) en el equilibrio, y el acoplamiento que dejan es pequeño.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>El periodo corto, a unos <span class="hz">1,8 Hz</span>, marca el ancho de banda del lazo de cabeceo; la fugoide, a <span class="hz">0,08 Hz</span>, la gestiona un lazo de energía mucho más lento (TECS, en A2). En ala fija la escalera de lazos sale de los modos.</div>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Modo</th><th>Autovalor</th><th>\(\omega_n\), \(\zeta\) o \(\tau\)</th><th>Periodo</th></tr>
+        <tr><td>Periodo corto</td><td class="n">−4,89 ± 9,87j</td><td class="n">11,0 rad/s · 0,44</td><td class="n">0,64 s</td></tr>
+        <tr><td>Fugoide</td><td class="n">−0,143 ± 0,478j</td><td class="n">0,50 rad/s · 0,29</td><td class="n">13,1 s</td></tr>
+        <tr><td>Convergencia en alabeo</td><td class="n">−22,4</td><td class="n">τ = 45 ms</td><td class="n">—</td></tr>
+        <tr><td>Balanceo holandés</td><td class="n">−1,14 ± 4,66j</td><td class="n">4,79 rad/s · 0,24</td><td class="n">1,35 s</td></tr>
+        <tr><td>Espiral</td><td class="n">+0,089</td><td class="n">inestable</td><td class="n">dobla en 7,8 s</td></tr>
+      </table>
+      <p class="xsmall muted">Calculado con nuestra implementación del modelo de Beard y McLain y los coeficientes del Aerosonde <a class="cite" data-ref="beard2012,mavsim"></a>, linealizando por diferencias finitas (script del tema). El laboratorio lo repite con <code>jax.jacfwd</code>.</p>
+      <p class="small">La espiral inestable es habitual y lenta: el piloto, o el lazo de rumbo, la corrige sin notarlo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La fugoide de Lanchester</p>
+  <h2>Un intercambio de energía cinética y potencial</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 880 270" role="img" aria-label="Respuesta lineal del Aerosonde: a la izquierda, velocidad de cabeceo tras un doblete de profundidad; a la derecha, variación de la velocidad aerodinámica tras una perturbación de velocidad">
+        <g>
+          <g class="ln-rule"><path d="M55 20 H415"/><path d="M55 65 H415"/><path d="M55 155 H415"/><path d="M55 200 H415"/><path d="M145 20 V200"/><path d="M235 20 V200"/><path d="M325 20 V200"/></g>
+          <path class="ln" d="M55 110 H415"/><path class="ln" d="M55 20 V200"/>
+          <g class="t-mono t-faint" font-size="14" text-anchor="end"><text x="49" y="24">10</text><text x="49" y="69">5</text><text x="49" y="114">0</text><text x="49" y="159">−5</text><text x="49" y="204">−10</text></g>
+          <g class="t-mono t-faint" font-size="14" text-anchor="middle"><text x="55" y="218">0</text><text x="145" y="218">1</text><text x="235" y="218">2</text><text x="325" y="218">3</text><text x="415" y="218">4 s</text></g>
+          <text x="58" y="13" class="t-mono t-muted" font-size="14">q (°/s), doblete de ±2° en δe</text>
+          <path d="M55.0,110.0 L58.6,132.7 L62.2,148.1 L65.8,156.0 L69.4,157.6 L73.0,154.8 L76.6,149.3 L80.2,142.9 L83.8,137.0 L87.4,132.2 L91.0,129.0 L94.6,127.3 L98.2,126.9 L101.8,103.1 L105.4,65.9 L109.0,44.0 L112.6,36.0 L116.2,38.6 L119.8,47.9 L123.4,60.3 L127.0,72.8 L130.6,83.4 L134.2,91.0 L137.8,95.4 L141.4,96.9 L145.0,96.3 L148.6,117.0 L152.2,129.7 L155.8,135.0 L159.4,134.4 L163.0,130.0 L166.6,123.7 L170.2,117.1 L173.8,111.3 L177.4,107.1 L181.0,104.5 L184.6,103.5 L188.2,103.7 L191.8,104.6 L195.4,106.0 L199.0,107.4 L202.6,108.6 L206.2,109.5 L209.8,110.1 L213.4,110.3 L217.0,110.3 L220.6,110.1 L224.2,109.9 L227.8,109.6 L231.4,109.4 L235.0,109.2 L238.6,109.1 L242.2,109.1 L245.8,109.1 L249.4,109.2 L253.0,109.3 L256.6,109.4 L260.2,109.4 L263.8,109.5 L267.4,109.6 L271.0,109.6 L274.6,109.6 L278.2,109.6 L281.8,109.6 L285.4,109.6 L289.0,109.6 L292.6,109.7 L296.2,109.7 L299.8,109.7 L303.4,109.7 L307.0,109.7 L310.6,109.8 L314.2,109.8 L317.8,109.8 L321.4,109.8 L325.0,109.9 L328.6,109.9 L332.2,109.9 L335.8,109.9 L339.4,109.9 L343.0,110.0 L346.6,110.0 L350.2,110.0 L353.8,110.0 L357.4,110.0 L361.0,110.0 L364.6,110.1 L368.2,110.1 L371.8,110.1 L375.4,110.1 L379.0,110.1 L382.6,110.2 L386.2,110.2 L389.8,110.2 L393.4,110.2 L397.0,110.2 L400.6,110.2 L404.2,110.3 L407.8,110.3 L411.4,110.3 L415.0,110.3" fill="none" class="ln-accent" stroke-width="2.4"/>
+          <text x="235" y="252" class="t-accent" font-size="15" text-anchor="middle">periodo corto: se amortigua en ≈1 s</text>
+        </g>
+        <g transform="translate(440,0)">
+          <g class="ln-rule"><path d="M55 20 H415"/><path d="M55 65 H415"/><path d="M55 155 H415"/><path d="M55 200 H415"/><path d="M115 20 V200"/><path d="M175 20 V200"/><path d="M235 20 V200"/><path d="M295 20 V200"/><path d="M355 20 V200"/></g>
+          <path class="ln" d="M55 110 H415"/><path class="ln" d="M55 20 V200"/>
+          <g class="t-mono t-faint" font-size="14" text-anchor="end"><text x="49" y="24">2</text><text x="49" y="69">1</text><text x="49" y="114">0</text><text x="49" y="159">−1</text><text x="49" y="204">−2</text></g>
+          <g class="t-mono t-faint" font-size="14" text-anchor="middle"><text x="55" y="218">0</text><text x="115" y="218">10</text><text x="175" y="218">20</text><text x="235" y="218">30</text><text x="295" y="218">40</text><text x="355" y="218">50</text><text x="415" y="218">60 s</text></g>
+          <text x="58" y="13" class="t-mono t-muted" font-size="14">ΔVa (m/s) tras Δu₀ = +2 m/s</text>
+          <path d="M55.0,20.1 L58.0,35.2 L61.0,52.7 L64.0,71.1 L67.0,89.3 L70.0,106.3 L73.0,121.3 L76.0,133.6 L79.0,142.9 L82.0,149.1 L85.0,152.2 L88.0,152.4 L91.0,150.2 L94.0,146.0 L97.0,140.2 L100.0,133.5 L103.0,126.3 L106.0,119.1 L109.0,112.4 L112.0,106.4 L115.0,101.4 L118.0,97.6 L121.0,95.0 L124.0,93.6 L127.0,93.3 L130.0,94.1 L133.0,95.6 L136.0,97.8 L139.0,100.4 L142.0,103.2 L145.0,106.0 L148.0,108.7 L151.0,111.1 L154.0,113.1 L157.0,114.7 L160.0,115.8 L163.0,116.4 L166.0,116.5 L169.0,116.3 L172.0,115.7 L175.0,114.9 L178.0,113.9 L181.0,112.8 L184.0,111.7 L187.0,110.6 L190.0,109.7 L193.0,108.9 L196.0,108.2 L199.0,107.8 L202.0,107.5 L205.0,107.4 L208.0,107.5 L211.0,107.7 L214.0,108.0 L217.0,108.4 L220.0,108.8 L223.0,109.3 L226.0,109.7 L229.0,110.1 L232.0,110.4 L235.0,110.7 L238.0,110.8 L241.0,111.0 L244.0,111.0 L247.0,111.0 L250.0,110.9 L253.0,110.8 L256.0,110.6 L259.0,110.5 L262.0,110.3 L265.0,110.1 L268.0,110.0 L271.0,109.9 L274.0,109.8 L277.0,109.7 L280.0,109.6 L283.0,109.6 L286.0,109.6 L289.0,109.6 L292.0,109.7 L295.0,109.7 L298.0,109.8 L301.0,109.9 L304.0,109.9 L307.0,110.0 L310.0,110.0 L313.0,110.1 L316.0,110.1 L319.0,110.1 L322.0,110.2 L325.0,110.2 L328.0,110.1 L331.0,110.1 L334.0,110.1 L337.0,110.1 L340.0,110.1 L343.0,110.0 L346.0,110.0 L349.0,110.0 L352.0,110.0 L355.0,110.0 L358.0,109.9 L361.0,109.9 L364.0,109.9 L367.0,109.9 L370.0,109.9 L373.0,110.0 L376.0,110.0 L379.0,110.0 L382.0,110.0 L385.0,110.0 L388.0,110.0 L391.0,110.0 L394.0,110.0 L397.0,110.0 L400.0,110.0 L403.0,110.0 L406.0,110.0 L409.0,110.0 L412.0,110.0 L415.0,110.0" fill="none" class="ln-tesis" stroke-width="2.4"/>
+          <text x="235" y="252" class="t-tesis" font-size="15" text-anchor="middle">fugoide: periodo de 13 s</text>
+        </g>
+      </svg>
+      <figcaption>Modelo longitudinal lineal del Aerosonde a 25 m/s, integrado con RK4. Ejes de tiempo distintos: 4 s frente a 60 s.</figcaption>
+    </figure>
+    <div class="stack small">
+      <p>Lanchester (1908): con ángulo de ataque constante y sin resistencia, el avión cambia velocidad por altura <a class="cite" data-ref="magraner2014"></a>.</p>
+      \[ \omega_{ph} = \sqrt2\,\frac{g}{V_0},\qquad T_{ph} = \frac{\sqrt2\,\pi V_0}{g} \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">Sin resistencia y con empuje que la compensa, la energía se conserva: \(V^2 = V_0^2 - 2g(h - h_0)\). Con \(\alpha\) fijo, \(L = W\,V^2/V_0^2\). En vertical, para ángulos de trayectoria pequeños, \(m\ddot h = L - W = W\big(V^2/V_0^2 - 1\big) = -\tfrac{2gW}{V_0^2}(h - h_0)\). Con \(W = mg\): \(\ddot h = -\tfrac{2g^2}{V_0^2}(h - h_0)\), un oscilador de frecuencia \(\sqrt2\,g/V_0\).</p>
+      </details>
+      <p>A 25 m/s: \(\omega_{ph} = 0{,}555\) rad/s y <span class="hz">11,3 s</span>, frente a los <span class="hz">13,1 s</span> del modelo completo: la diferencia la ponen la resistencia y la variación del empuje con la velocidad.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado del arte en ala fija y VTOL</p>
+  <h2>Modelos globales para híbridos y RL que transfiere al avión real</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">TAILSITTERS · 2019–2024</span>
+      <h3>Un modelo sin singularidades</h3>
+      <p>Un tailsitter despega en vertical y vuela en horizontal: la transición recorre ángulos de ataque enormes, donde el modelo de la hoja anterior no vale.</p>
+      <p>La «teoría φ» de Lustosa et al. da un modelo aerodinámico global, consistente para ángulos de ataque y derrape de 360°, con ecuaciones casi polinómicas aptas para sintetizar control por optimización <a class="cite" data-ref="lustosa2019"></a>. Validado en vuelo en 2024 <a class="cite" data-ref="murali2024"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">RL EN VUELO REAL · 2024</span>
+      <h3>Actitud de ala fija aprendida</h3>
+      <p>Bøhn et al. parten de un modelo del Skywalker X8 obtenido sobre todo en túnel de viento, lo ajustan con lo aprendido en vuelo y vuelan el controlador en el avión: rendimiento comparable al PID de ArduPlane, con unos 3 minutos de datos de vuelo.</p>
+      <p><strong>Claves de la transferencia:</strong> modelar un retardo de actuación significativo y diversificar la dinámica simulada <a class="cite" data-ref="bohn2024"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">SIMULACIÓN · PX4</span>
+      <h3>SIH: física dentro del autopiloto</h3>
+      <p>El simulador SIH de PX4 corre el modelo físico dentro del propio PX4, en lockstep, y admite cuadricóptero (estable), ala fija, tailsitter y VTOL estándar (experimentales) <a class="cite" data-ref="px4sih"></a>.</p>
+      <p>Lo usarás en B5 y C3; su modelo es de nivel N1–N2.</p>
+    </div>
+  </div>
+  <div class="callout tesis"><span class="tag">Tu ala fija</span>En UVigo Aerotech los coeficientes salen de XFLR5, del túnel o del vuelo. El modelo de Beard y McLain es la plantilla para meterlos en tu simulador JAX, y las derivadas de estabilidad son los primeros parámetros sobre los que tu belief tendrá incertidumbre.</div>
+</section>
+
+<!-- ============ PARTE 6 · ESCALA, IDENTIFICACIÓN, HÍBRIDOS ============ -->
+<section class="slide divider" data-section="6 · Escala e identificación">
+  <p class="num">Parte 6</p>
+  <h2>Escala, identificabilidad y modelos híbridos</h2>
+  <p>Qué cambia al encoger el dron, qué parámetros se pueden conocer con los sensores de a bordo y cómo se aprende lo que la física no explica.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Leyes de escala</p>
+  <h2>Cuanto más pequeño, más rápido gira y menos tiempo hay para reaccionar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con una longitud característica \(L\) y densidad constante: \(m\propto L^3\), \(J\propto mL^2\propto L^5\), \(T\propto\rho n^2D^4\) con \(D\propto L\), y \(\tau\propto TL\). Kumar y Michael discuten dos leyes de semejanza para microdrones <a class="cite" data-ref="kumar2012"></a>:</p>
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small"><strong>Mach</strong> (velocidad de punta \(nD\) constante, \(n\propto L^{-1}\)): \(T\propto L^2\) y \(\tau\propto L^3\), luego \(\alpha = \tau/J\propto L^{-2}\) y el empuje/peso crece como \(L^{-1}\). <strong>Froude</strong> (\(n\propto L^{-1/2}\)): \(T\propto L^3\), empuje/peso constante, \(\tau\propto L^4\) y \(\alpha\propto L^{-1}\). El tiempo característico de actitud, \(t\propto\alpha^{-1/2}\), escala como \(L\) (Mach) o \(\sqrt L\) (Froude).</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Latencia y cómputo</span>Del x500 al Crazyflie 2.1, \(L\) se divide por 4,2. Froude predice \(\alpha\times 4{,}2\) y Mach \(\times 18\); los datos dan \(\times 3{,}8\): los drones reales se parecen más a Froude. El microdrón gira a 90° en <span class="hz">77 ms</span> frente a <span class="hz">151 ms</span>: necesita lazos y sensores más rápidos justo cuando tiene menos cómputo a bordo.</div>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Plataforma</th><th>Masa</th><th>Empuje/peso</th><th>\(\alpha_{\max}\)</th><th>90° en</th></tr>
+        <tr><td>Crazyflie 2.1</td><td class="n">27 g</td><td class="n">1,97</td><td class="n">526 rad/s²</td><td class="n">77 ms</td></tr>
+        <tr><td>Crazyflie Brushless</td><td class="n">44 g</td><td class="n">2,68</td><td class="n">619 rad/s²</td><td class="n">71 ms</td></tr>
+        <tr><td>x500 (Gazebo)</td><td class="n">2064 g</td><td class="n">1,69</td><td class="n">137 rad/s²</td><td class="n">151 ms</td></tr>
+      </table>
+      <p class="xsmall muted">Cálculo nuestro: \(\alpha_{\max} = 2T_{\max}\ell/J_{xx}\) (dos motores a tope y dos parados, brazo de alabeo \(\ell\)) y tiempo a 90° desde reposo \(\sqrt{\pi/\alpha_{\max}}\). Crazyflie 2.1: masa, inercia mediana de la literatura y curva de empuje de Eschmann et al. <a class="cite" data-ref="eschmann2024"></a>, distancia entre ejes de 80 mm de RAPTOR <a class="cite" data-ref="raptor"></a>. Brushless: Gräfe et al. <a class="cite" data-ref="grafe2026"></a>. x500: modelo de Gazebo <a class="cite" data-ref="px4x500"></a>.</p>
+      <div class="callout clave"><span class="tag">Cómo lo usan los sistemas reales</span>RAPTOR no aleatoriza masas e inercias al azar: muestrea el tamaño de forma uniforme, deriva la masa con su cubo y fija la inercia mediante una relación par/inercia entre 40 y 1200 tomada de la literatura <a class="cite" data-ref="raptor"></a>. Es una ley de escala hecha distribución.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificabilidad</p>
+  <h2>Con IMU y RPM se identifican cocientes, no masas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El acelerómetro mide fuerza específica y el giróscopo velocidad angular. Con el modelo de la parte 1, en ejes cuerpo:</p>
+      \[ \mathbf a_m = \frac{k_T}{m}\sum_i\Omega_i^2\,\mathbf e_3 - D\,R^\top\mathbf v \]
+      \[ \dot{\boldsymbol\omega} = J^{-1}\big(\boldsymbol\tau(k_T,k_Q,\boldsymbol\Omega) - \boldsymbol\omega\times J\boldsymbol\omega\big) \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">Cambia \((m, J, k_T, k_Q)\) por \((s\,m,\ s\,J,\ s\,k_T,\ s\,k_Q)\) con \(s>0\). \(k_T/m\) no cambia; \(\boldsymbol\tau\) es lineal en \(k_T, k_Q\) y escala con \(s\), igual que \(J\); y \(J^{-1}(\boldsymbol\omega\times J\boldsymbol\omega)\) es invariante. Las medidas son idénticas para todo \(s\): esa dirección del espacio de parámetros no es observable y la información de Fisher (M1) es singular en ella. Pesar el dron fija \(s\).</p>
+      </details>
+      <p class="small">Se identifican <strong>empuje/peso, par/inercia, \(k_Q/k_T\), \(D\) y \(\tau_m\)</strong>. Eschmann et al. piden solo la masa y la posición de los rotores, más un minuto de tres maniobras sencillas; y notan que en guiñada basta el cociente \(I_{zz}/K_\tau\), así que fijan \(I_{zz}\) con una relación empírica con \(I_{xx}\) e \(I_{yy}\) <a class="cite" data-ref="eschmann2024"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cuánto se sabe de verdad</span>Cinco valores publicados para la inercia del mismo Crazyflie de 27 g: \(J_{xx}\) va de 1,25 a 2,40·10⁻⁵ kg m², casi un factor 2 <a class="cite" data-ref="eschmann2024"></a>. Es el parámetro más citado del dron más usado en investigación.</div>
+      <div class="callout clave"><span class="tag">Identificación implícita</span>RAPTOR aleatoriza en cocientes y su política recurrente estima de la historia lo que necesita: una sonda lineal sobre su estado oculto predice el empuje/peso del dron que vuela <a class="cite" data-ref="raptor"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un belief sobre la dinámica vive en el cociente identificable. Si tu world model aprende parámetros físicos explícitos, fija la masa o regulariza la dirección no observable. Si son latentes, comprueba con sondas lineales qué ha aprendido. Y para identificar rápido, elige maniobras que hagan grande la información de Fisher en lo que te importa.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación en 2021–2026</p>
+  <h2>Del banco de empuje a un minuto de vuelo y a los benchmarks abiertos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Trabajo</th><th style="width:18%">Plataforma</th><th>Datos y método</th><th style="width:30%">Qué aporta</th></tr>
+      <tr><td>NeuroBEM, dataset (2021) <a class="cite" data-ref="neurobem,neurobemdata"></a></td><td>Dron de carreras, 752 g</td><td>96 vuelos, 1 h 15 min, 1,8 millones de muestras; captura de movimiento a 400 Hz, IMU y motores a 1 kHz; hasta 18 m/s y 46,8 m/s²</td><td>Datos públicos con velocidades de motor y tensión: los usarás en el laboratorio</td></tr>
+      <tr><td>Eschmann et al. (IROS 2024) <a class="cite" data-ref="eschmann2024"></a></td><td>Crazyflie 2.1 y un dron de 3,35 kg</td><td>Unos 60 s de vuelo, tres maniobras; estimación MAP de \(\tau_m\) sin medir RPM</td><td>Inercia, curva de empuje, \(k_Q\) y retardo de motor solo con datos propioceptivos</td></tr>
+      <tr><td>Gräfe et al. (2026) <a class="cite" data-ref="grafe2026"></a></td><td>Crazyflie Brushless, 44 g</td><td>Banco de empuje y par, sensor de RPM; simulador en JAX y MuJoCo XLA</td><td>Modelo completo con parámetros; RL de una voltereta doble que transfiere al dron real</td></tr>
+      <tr><td>Busetto et al. (2026) <a class="cite" data-ref="busetto2026"></a></td><td>Crazyflie Brushless</td><td>75 000 muestras reales, cuatro trayectorias agresivas; métricas a uno y varios pasos</td><td>Benchmark abierto de identificación no lineal con modelos de referencia</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Tendencia</span>Menos equipo y más datos de vuelo: el banco de empuje deja paso a la identificación con lo que el dron ya mide, y aparecen benchmarks para comparar métodos con las mismas métricas. Es lo que hará falta para evaluar el world model de tu tesis frente a un modelo físico identificado (D1).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos híbridos</p>
+  <h2>La física da la estructura; una red o un GP aprende el residuo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Sistema</th><th>Qué se aprende y con qué datos</th><th style="width:34%">Resultado publicado</th></tr>
+      <tr><td>Swift (2023) <a class="cite" data-ref="swift"></a></td><td>Aceleración residual con k vecinos (k = 5) y error de percepción con GP; ≈50 s de vuelo real</td><td>Gana 15 de 25 carreras a campeones humanos</td></tr>
+      <tr><td>Neural-Fly (2022) <a class="cite" data-ref="neuralfly"></a></td><td>Base de la fuerza residual invariante al viento (DAIML) y coeficientes lineales adaptados en vuelo; 12 min de datos</td><td>Vuelo preciso con viento de hasta 12,1 m/s</td></tr>
+      <tr><td>NeuroBEM (2021) <a class="cite" data-ref="neurobem"></a></td><td>Residuo sobre un modelo BEM con una red temporal convolucional</td><td>Errores de predicción un 50 % menores</td></tr>
+      <tr><td>Data-driven MPC (2021) <a class="cite" data-ref="torrente2021"></a></td><td>Residuo aerodinámico con procesos gaussianos dentro del MPC</td><td>Hasta un 70 % menos error de seguimiento; hasta 14 m/s y más de 4 g</td></tr>
+      <tr><td>Neural MPC (2023) <a class="cite" data-ref="salzmann2023"></a></td><td>Redes grandes como residuo, en tiempo real dentro del MPC</td><td>Capacidad de modelo antes inviable a bordo</td></tr>
+      <tr><td>Ren et al. (2026) <a class="cite" data-ref="ren2026"></a></td><td>Residuo aprendido <strong>durante el vuelo</strong> sobre un modelo nominal sencillo</td><td>De 1,9 a 7,3 m/s de velocidad máxima en unos 100 s de vuelo</td></tr>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">Cómputo limitado</span>El residuo se evalúa a la frecuencia del MPC o del simulador, y un GP o una red grande cuestan órdenes de magnitud más que el modelo físico: buena parte del trabajo de Torrente et al. y Salzmann et al. es que quepan en tiempo real. Un modelo híbrido es un world model con prior físico; revisión de referencia en Saviolo y Loianno <a class="cite" data-ref="saviolo2023"></a>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Limitaciones y errores frecuentes</p>
+  <h2>Ocho formas de que el modelo te engañe</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Convenciones mezcladas:</strong> NED/FRD frente a ENU/FLU, Hamilton frente a JPL, numeración de motores de PX4 frente a Betaflight.</li>
+      <li><strong>Sin dinámica de motor</strong>, o con un paso de integración del orden de \(\tau_m\). Integra el motor con \(\Delta t \lesssim \tau_m/5\) o de forma exacta, que es lineal (así lo hacen Gräfe et al. <a class="cite" data-ref="grafe2026"></a>).</li>
+      <li><strong>Creer que el acelerómetro ve la gravedad:</strong> mide fuerza específica. Sin arrastre en el modelo, sus ejes x e y darían siempre cero.</li>
+      <li><strong>Inercia mal conocida</strong> y tratada como exacta: la literatura discrepa casi un factor 2 para el mismo dron.</li>
+    </ul>
+    <ul class="small">
+      <li><strong>Extrapolar el arrastre lineal</strong> identificado a pocos m/s a vuelo de carreras, donde domina el arrastre parásito cuadrático.</li>
+      <li><strong>Un simulador sin VRS, efecto suelo ni estelas</strong> que entrena políticas que bajan en vertical a toda velocidad, aterrizan mal o vuelan pegadas a otro dron.</li>
+      <li><strong>Confundir velocidad respecto al aire y respecto al suelo</strong>, sobre todo en ala fija.</li>
+      <li><strong>Ángulos de Euler</strong> en un tailsitter o en volteretas: singularidades justo donde la maniobra es interesante (M1).</li>
+    </ul>
+  </div>
+  <div class="callout clave"><span class="tag">Regla del proyecto hilo</span>Cada efecto que añadas al simulador entra con un test contra una solución conocida: estacionario exacto, conservación sin par, empuje y periodo de la fugoide frente a la fórmula. Es el primer laboratorio de la fase.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va (previsión, no hechos)</p>
+  <h2>El modelo deja de ser una ecuación fija y pasa a ser una creencia</h2>
+  <div class="cols">
+    <div class="stack small">
+      <p><strong>Lo que ya se ve en 2025–2026:</strong></p>
+      <ul>
+        <li>Residuos aprendidos durante el vuelo sobre modelos nominales simples <a class="cite" data-ref="ren2026"></a>.</li>
+        <li>Identificación implícita: políticas que infieren la dinámica de la historia en vez de recibirla <a class="cite" data-ref="raptor"></a>.</li>
+        <li>Modelos identificados publicados junto a simuladores masivos en JAX y MJX <a class="cite" data-ref="grafe2026"></a>, y benchmarks abiertos de identificación <a class="cite" data-ref="busetto2026"></a>.</li>
+        <li>Modelos locales de viento a partir de sensores de a bordo, usados para planificar <a class="cite" data-ref="folk2026"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <p><strong>Previsión nuestra para 2027 y después:</strong></p>
+      <ul>
+        <li>World models con estructura física explícita (Newton-Euler en SE(3)) y latentes para aerodinámica, parámetros y viento, entrenados en simulación y ajustados en vuelo.</li>
+        <li>La incertidumbre del modelo como salida de primera clase: residuos con varianza calibrada que alimentan MPC robusto y filtros de seguridad (A14).</li>
+        <li>Modelos de estela entre drones para enjambres en vuelo cercano, más allá de pares de vehículos.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Con cautela</span>Casi todo lo anterior se ha demostrado en interiores, con captura de movimiento y un solo tipo de dron. Exteriores, viento real y ala fija van por detrás.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con la tesis</p>
+  <h2>La dinámica es la transición de tu POMDP: qué se sabe y qué se cree</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Lo que fija la física</span>Cuerpo rígido en SE(3), gravedad, empuje según \(\mathbf z_B\), estructura de la asignación. Se conocen con certeza y conviene escribirlos, no aprenderlos.</div>
+      <div class="callout tesis"><span class="tag">Lo que hay que creer</span>Parámetros identificables (empuje/peso, par/inercia, \(\tau_m\), \(D\)), viento, tensión de batería, cercanía del suelo y estelas de los compañeros. Son las variables ocultas sobre las que tu belief debe tener una distribución.</div>
+      <div class="callout tesis"><span class="tag">Lo que observa el dron</span>Fuerza específica y velocidad angular. Con arrastre, el acelerómetro informa de la velocidad respecto al aire; con GNSS, del viento. La observabilidad depende del modelo que supongas.</div>
+    </div>
+    <div class="stack">
+      <h3>Preguntas abiertas</h3>
+      <ol class="small">
+        <li>¿Qué estructura física fijar en un world model latente para que generalice entre drones, sin impedirle aprender aerodinámica que no sabes modelar?</li>
+        <li>¿Cómo mantener calibrado el belief sobre la dinámica si el residuo se aprende en vuelo y los datos no son i.i.d.?</li>
+        <li>¿Cómo elegir maniobras que hagan identificable lo que importa para la tarea, sin gastar energía ni riesgo en lo que no?</li>
+        <li>¿Cómo se modela, para un equipo de drones, que la transición de cada uno dependa de la posición de los demás por las estelas?</li>
+        <li>¿Qué parte del modelo de ala fija se transfiere a un VTOL, y cuál hay que reaprender en la transición?</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A1</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Newton-Euler: traslación en el mundo y \(J\dot{\boldsymbol\omega} = \boldsymbol\tau - \boldsymbol\omega\times J\boldsymbol\omega\) en el cuerpo. El eje de inercia intermedia es inestable.</li>
+    <li>Cantidad de movimiento: \(v_h = \sqrt{T/2\rho A}\), \(P = T^{3/2}/\sqrt{2\rho A}\). Falla en descenso entre 0 y \(-2v_h\) (VRS) y cambia cerca del suelo.</li>
+    <li>\(T = k_T\Omega^2\) sale del elemento de pala, pero la curva real depende de la orden, de la velocidad respecto al aire y de la batería. El motor es un primer orden asimétrico de 12–72 ms.</li>
+    <li>Asignación: \(M\) con la geometría y la numeración del firmware; la desaturación decide qué se sacrifica. El arrastre de rotor, \(-RDR^\top\mathbf v\), hace del acelerómetro un sensor de velocidad respecto al aire.</li>
+    <li>Planitud: la aceleración da empuje y \(\mathbf z_B\); el jerk, \(\boldsymbol\omega\); el snap, los pares. Por eso minimum snap.</li>
+    <li>Ala fija: \(V_a\), \(\alpha\), \(\beta\) y coeficientes; equilibrio, linealización y cinco modos, de 45 ms a 13 s.</li>
+    <li>Con IMU y RPM se identifican cocientes. Los modelos híbridos aprenden el residuo, cada vez más durante el vuelo.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Sensores y cuentas</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. En el modelo sin arrastre de rotor (empuje solo según \(\mathbf z_B\)), ¿qué miden los ejes x e y del acelerómetro de un cuadricóptero en vuelo?</p>
+      <ol class="opts">
+        <li><button type="button">La proyección de la gravedad, como un inclinómetro</button></li>
+        <li><button type="button">Siempre cero</button></li>
+        <li><button type="button">La velocidad respecto al suelo</button></li>
+        <li><button type="button">La aceleración centrípeta de la trayectoria</button></li>
+      </ol>
+      <p class="explain">El acelerómetro mide fuerza específica: la suma de las fuerzas que no son la gravedad, dividida por la masa. En ese modelo solo hay empuje según \(\mathbf z_B\), así que x e y dan cero y no sirven como inclinómetro. Con arrastre miden \(-DR^\top\mathbf v\) y vuelven a informar, de la velocidad respecto al aire.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. El x500 de Gazebo pesa 2,064 kg y tiene \(k_T = 8{,}55\cdot10^{-6}\ \mathrm{N/(rad/s)^2}\). ¿A qué velocidad gira cada motor en estacionario?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 385 rad/s</button></li>
+        <li><button type="button">≈ 770 rad/s (unas 7350 rpm)</button></li>
+        <li><button type="button">≈ 1540 rad/s</button></li>
+        <li><button type="button">≈ 5920 rad/s</button></li>
+      </ol>
+      <p class="explain">\(\Omega_h = \sqrt{mg/(4k_T)} = \sqrt{2{,}064\cdot9{,}81/(4\cdot8{,}55\cdot10^{-6})} \approx 770\) rad/s: el 77 % de los 1000 rad/s máximos.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Planitud y escala</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">3. ¿Por qué los planificadores de cuadricópteros minimizan el snap?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el snap es una de las salidas planas</button></li>
+        <li><button type="button">Porque minimizarlo minimiza el tiempo de vuelo</button></li>
+        <li><button type="button">Porque los empujes de los motores dependen del snap, así que minimizarlo da mandos suaves y realizables</button></li>
+        <li><button type="button">Porque la IMU mide el snap directamente</button></li>
+      </ol>
+      <p class="explain">Aceleración → empuje y \(\mathbf z_B\); jerk → \(\boldsymbol\omega\); snap → \(\dot{\boldsymbol\omega}\) → pares → empujes de cada motor. Las salidas planas son posición y rumbo, no sus derivadas.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">4. Reduces un dron a la mitad de tamaño con semejanza de Froude. ¿Qué le pasa a su aceleración angular máxima?</p>
+      <ol class="opts">
+        <li><button type="button">Se reduce a la mitad</button></li>
+        <li><button type="button">No cambia</button></li>
+        <li><button type="button">Se duplica</button></li>
+        <li><button type="button">Se multiplica por 8</button></li>
+      </ol>
+      <p class="explain">Froude: \(\alpha\propto L^{-1}\), así que se duplica. Con semejanza de Mach (\(\alpha\propto L^{-2}\)) se multiplicaría por 4.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Ala fija y conexión con tu tesis</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. Según la aproximación de Lanchester, ¿qué periodo tiene la fugoide de un avión que vuela a 25 m/s?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 0,64 s</button></li>
+        <li><button type="button">≈ 4,5 s</button></li>
+        <li><button type="button">≈ 11,3 s</button></li>
+        <li><button type="button">≈ 35 s</button></li>
+      </ol>
+      <p class="explain">\(T = \sqrt2\,\pi V_0/g = \sqrt2\cdot\pi\cdot25/9{,}81 \approx 11{,}3\) s. El modelo completo del Aerosonde da 13,1 s; 0,64 s es su periodo corto.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: ¿por qué no puedes identificar a la vez la masa y \(k_T\) de un dron solo con IMU y velocidades de motor? ¿Qué hacen RAPTOR y Eschmann et al. al respecto?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">El acelerómetro solo ve \(k_T/m\), y el giróscopo, pares divididos por inercias. Escalar a la vez \(m\), \(J\), \(k_T\) y \(k_Q\) por el mismo factor deja todas las medidas iguales: es una dirección no observable, con información de Fisher nula. Eschmann et al. resuelven la escala midiendo la masa y la posición de los rotores y estiman el resto con un minuto de vuelo. RAPTOR no la necesita: aleatoriza en cocientes (empuje/peso, par/inercia) y su política infiere de la historia esos cocientes, que son lo que el control necesita.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN</span>
+      <h3>Multirotor aerial vehicles <a class="cite" data-ref="mahony2012"></a></h3>
+      <p><strong>Lee:</strong> el modelado (cuerpo rígido, empuje y par del rotor, efectos aerodinámicos de segundo orden) y la parte de estimación.</p>
+      <p><strong>Busca:</strong> por qué el flapping y el arrastre inducido dan una fuerza proporcional a la velocidad.</p>
+      <p><strong>Responde:</strong> ¿qué mide el acelerómetro en vuelo de avance según ese modelo, y qué cambia eso para estimar la actitud?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN</span>
+      <h3>Planitud con arrastre de rotor <a class="cite" data-ref="faessler2018"></a></h3>
+      <p><strong>Lee:</strong> el modelo, la demostración de planitud y la identificación de los coeficientes.</p>
+      <p><strong>Busca:</strong> por qué \(d_x > d_y\) en su dron y por qué acaban fijando \(d_z = 0\).</p>
+      <p><strong>Responde:</strong> ¿qué parte del arrastre corrige la prealimentación y qué parte queda para la realimentación?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 60 MIN</span>
+      <h3>Small Unmanned Aircraft, caps. 3–5 <a class="cite" data-ref="beard2012"></a></h3>
+      <p><strong>Lee:</strong> cinemática y dinámica, fuerzas y momentos, y modelos lineales de diseño.</p>
+      <p><strong>Busca:</strong> cómo se obtienen las funciones de transferencia del periodo corto y del balanceo a partir del modelo completo.</p>
+      <p><strong>Responde:</strong> ¿qué derivadas de estabilidad dominan el amortiguamiento del periodo corto?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Leishman, capítulos de cantidad de movimiento y elemento de pala <a class="cite" data-ref="leishman2006"></a>; Stevens et al. para simulación de aeronaves <a class="cite" data-ref="stevens2015"></a>; NeuroBEM <a class="cite" data-ref="neurobem"></a>; identificación con retardos de motor <a class="cite" data-ref="eschmann2024"></a>; revisión de dinámica aprendida <a class="cite" data-ref="saviolo2023"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio A1 · ≈ 3,5 h</p>
+  <h2>El cuadricóptero del proyecto hilo, verificado contra la física y contra datos reales</h2>
+  <div class="cols w60">
+    <ol class="small">
+      <li><strong>Modelo de 17 estados en JAX</strong> con parámetros del x500, asignación de PX4 convertida a ENU/FLU y motor de primer orden asimétrico. Tests: estacionario exacto a 770 rad/s y caída libre.</li>
+      <li><strong>Euler sin par:</strong> conservación de energía y de \(\|J\boldsymbol\omega\|\), y tasa de crecimiento del eje intermedio frente a \(\lambda = 5{,}65\ \mathrm{s^{-1}}\).</li>
+      <li><strong>Vectorizar con <code>vmap</code></strong> 4096 drones con parámetros muestreados como RAPTOR y medir pasos por segundo (compara con el lab 0).</li>
+      <li><strong>Planitud:</strong> de una lemniscata a empuje y \(\boldsymbol\omega\); integrar el modelo con esos mandos y recuperar la trayectoria.</li>
+      <li><strong>Datos reales de NeuroBEM:</strong> ajustar \(k_T/m\) y el arrastre \(D\) y comprobar la no identificabilidad de la escala.</li>
+      <li><strong>Ala fija:</strong> equilibrio del Aerosonde, <code>jax.jacfwd</code> y modos; fugoide frente a Lanchester.</li>
+    </ol>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Entregable</span>Módulo <code>dinamica/cuadricoptero.py</code> con sus tests en verde, un cuaderno con las figuras del eje intermedio, la planitud y el ajuste a NeuroBEM, y la tabla de modos del Aerosonde.</div>
+      <p class="small">Enunciado completo en <code>temas/A1_dinamica-modelado/lab/README.md</code>. Funciona en CPU; la GPU solo acelera el paso 3. El script que genera las figuras de esta presentación está en <code>figuras/figuras_a1.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-leishman2006">Leishman, J. G. (2006). <em>Principles of Helicopter Aerodynamics</em>, 2.ª ed. Cambridge University Press.</li>
+    <li id="ref-magraner2014">Magraner, J. P., Martínez-Val, R. (2014). The birth of airplane stability theory. <span class="venue">Proc. IMechE, Part G: J. Aerospace Engineering</span>, 228(9), 1498–1506.</li>
+    <li id="ref-cheeseman1955">Cheeseman, I. C., Bennett, W. E. (1955). The effect of the ground on a helicopter rotor in forward flight. <span class="venue">Aeronautical Research Council, R&amp;M 3021</span>. <a href="https://aerade.cranfield.ac.uk/handle/1826.2/3590">aerade.cranfield.ac.uk</a></li>
+    <li id="ref-bouabdallah2004">Bouabdallah, S., Murrieri, P., Siegwart, R. (2004). Design and control of an indoor micro quadrotor. <span class="venue">ICRA 2004</span>, 4393–4398.</li>
+    <li id="ref-hoffmann2007">Hoffmann, G. M., Huang, H., Waslander, S. L., Tomlin, C. J. (2007). Quadrotor helicopter flight dynamics and control: Theory and experiment. <span class="venue">AIAA GNC Conference 2007</span>.</li>
+    <li id="ref-huang2009">Huang, H., Hoffmann, G. M., Waslander, S. L., Tomlin, C. J. (2009). Aerodynamics and control of autonomous quadrotor helicopters in aggressive maneuvering. <span class="venue">ICRA 2009</span>, 3277–3282.</li>
+    <li id="ref-martin2010">Martin, P., Salaün, E. (2010). The true role of accelerometer feedback in quadrotor control. <span class="venue">ICRA 2010</span>, 1623–1629.</li>
+    <li id="ref-lee2010">Lee, T., Leok, M., McClamroch, N. H. (2010). Geometric tracking control of a quadrotor UAV on SE(3). <span class="venue">IEEE CDC 2010</span>, 5420–5425.</li>
+    <li id="ref-mellinger2011">Mellinger, D., Kumar, V. (2011). Minimum snap trajectory generation and control for quadrotors. <span class="venue">ICRA 2011</span>, 2520–2525.</li>
+    <li id="ref-mahony2012">Mahony, R., Kumar, V., Corke, P. (2012). Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor. <span class="venue">IEEE Robotics &amp; Automation Magazine</span>, 19(3), 20–32. <a href="https://doi.org/10.1109/MRA.2012.2206474">doi:10.1109/MRA.2012.2206474</a></li>
+    <li id="ref-beard2012">Beard, R. W., McLain, T. W. (2012). <em>Small Unmanned Aircraft: Theory and Practice</em>. Princeton University Press.</li>
+    <li id="ref-faessler2018">Faessler, M., Franchi, A., Scaramuzza, D. (2018). Differential flatness of quadrotor dynamics subject to rotor drag for accurate tracking of high-speed trajectories. <span class="venue">IEEE RA-L</span>, 3(2), 620–626. <a href="https://arxiv.org/abs/1712.02402">arXiv:1712.02402</a></li>
+    <li id="ref-neurobem">Bauersfeld, L., Kaufmann, E., Foehn, P., Sun, S., Scaramuzza, D. (2021). NeuroBEM: Hybrid aerodynamic quadrotor model. <span class="venue">RSS 2021</span>. <a href="https://arxiv.org/abs/2106.08015">arXiv:2106.08015</a></li>
+    <li id="ref-eschmann2024">Eschmann, J., Albani, D., Loianno, G. (2024). Data-driven system identification of quadrotors subject to motor delays. <span class="venue">IROS 2024</span>. <a href="https://arxiv.org/abs/2404.07837">arXiv:2404.07837</a></li>
+    <li id="ref-raptor">Eschmann, J., Albani, D., Loianno, G. (2025). RAPTOR: A foundation policy for quadrotor control. <a href="https://arxiv.org/abs/2509.11481">arXiv:2509.11481</a></li>
+    <li id="ref-ren2026">Ren, Y., Zhu, Z., Xing, J., Scaramuzza, D. (2026). Learning agile quadrotor flight in the real world. <span class="venue">RSS 2026</span>. <a href="https://arxiv.org/abs/2602.10111">arXiv:2602.10111</a></li>
+    <li id="ref-agilicious">Foehn, P., Kaufmann, E., Romero, A., Penicka, R., Sun, S., Bauersfeld, L., Laengle, T., Cioffi, G., Song, Y., Loquercio, A., Scaramuzza, D. (2022). Agilicious: Open-source and open-hardware agile quadrotor for vision-based flight. <span class="venue">Science Robotics</span>, 7(67). <a href="https://arxiv.org/abs/2307.06100">arXiv:2307.06100</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="18">
+    <li id="ref-rotorpy">Folk, S., Paulos, J., Kumar, V. (2023). RotorPy: A Python-based multirotor simulator with aerodynamics for education and research. <span class="venue">ICRA 2023 Workshop on UAV simulators</span>. <a href="https://arxiv.org/abs/2306.04485">arXiv:2306.04485</a></li>
+    <li id="ref-neurobemdata">Robotics and Perception Group, Univ. de Zúrich. NeuroBEM dataset y Readme (masa, inercia, columnas, numeración de motores). <a href="https://rpg.ifi.uzh.ch/NeuroBEM.html">rpg.ifi.uzh.ch/NeuroBEM.html</a></li>
+    <li id="ref-grafe2026">Gräfe, A., Scherer, C., Hönig, W., Trimpe, S. (2026). How to model your Crazyflie Brushless. <a href="https://arxiv.org/abs/2603.05944">arXiv:2603.05944</a></li>
+    <li id="ref-px4x500">PX4. Modelo x500 para Gazebo (<code>x500_base</code>, <code>x500</code>) y airframe <code>4001_gz_x500</code>. <a href="https://github.com/PX4/PX4-gazebo-models">github.com/PX4/PX4-gazebo-models</a>, <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a> (consultados en noviembre de 2026).</li>
+    <li id="ref-lynch2017">Lynch, K. M., Park, F. C. (2017). <em>Modern Robotics: Mechanics, Planning, and Control</em>. Cambridge University Press.</li>
+    <li id="ref-featherstone2008">Featherstone, R. (2008). <em>Rigid Body Dynamics Algorithms</em>. Springer.</li>
+    <li id="ref-mujoco">Todorov, E., Erez, T., Tassa, Y. (2012). MuJoCo: A physics engine for model-based control. <span class="venue">IROS 2012</span>, 5026–5033.</li>
+    <li id="ref-talaeizadeh2021">Talaeizadeh, A., Pishkenari, H. N., Alasty, A. (2021). Quadcopter fast pure descent maneuver avoiding vortex ring state using yaw-rate control scheme. <span class="venue">IEEE RA-L</span>, 6(2), 927–934.</li>
+    <li id="ref-px4params">PX4. Parameter reference: <code>CA_ROTORn_KM</code>, <code>CA_ROTORn_CT</code>, <code>THR_MDL_FAC</code>, <code>CA_METHOD</code>, <code>MC_AIRMODE</code>. <a href="https://docs.px4.io/main/en/advanced_config/parameter_reference">docs.px4.io</a></li>
+    <li id="ref-bristeau2009">Bristeau, P.-J., Martin, P., Salaün, E., Petit, N. (2009). The role of propeller aerodynamics in the model of a quadrotor UAV. <span class="venue">European Control Conference 2009</span>, 683–688.</li>
+    <li id="ref-gzmotor">Gazebo. Sistema <code>MulticopterMotorModel</code> de gz-sim (código fuente). <a href="https://github.com/gazebosim/gz-sim/tree/main/src/systems/multicopter_motor_model">github.com/gazebosim/gz-sim</a></li>
+    <li id="ref-leishman2014">Leishman, R. C., Macdonald, J. C., Beard, R. W., McLain, T. W. (2014). Quadrotors and accelerometers: State estimation with an improved dynamic model. <span class="venue">IEEE Control Systems Magazine</span>, 34(1), 28–41.</li>
+    <li id="ref-sanchez2017">Sanchez-Cuevas, P. J., Heredia, G., Ollero, A. (2017). Characterization of the aerodynamic ground effect and its influence in multirotor control. <span class="venue">Int. J. Aerospace Engineering</span>, 2017, 1823056.</li>
+    <li id="ref-neurallander">Shi, G., Shi, X., O'Connell, M., Yu, R., Azizzadenesheli, K., Anandkumar, A., Yue, Y., Chung, S.-J. (2019). Neural Lander: Stable drone landing control using learned dynamics. <span class="venue">ICRA 2019</span>, 9784–9790.</li>
+    <li id="ref-neuralswarm">Shi, G., Hönig, W., Yue, Y., Chung, S.-J. (2020). Neural-Swarm: Decentralized close-proximity multirotor control using learned interactions. <span class="venue">ICRA 2020</span>, 3241–3247.</li>
+    <li id="ref-bangura2017">Bangura, M., Mahony, R. (2017). Thrust control for multirotor aerial vehicles. <span class="venue">IEEE Transactions on Robotics</span>, 33(2), 390–405.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="34">
+    <li id="ref-px4desat">PX4. <code>ControlAllocationSequentialDesaturation</code> (src/lib/control_allocation), código fuente. <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-murray1995">Murray, R. M., Rathinam, M., Sluis, W. (1995). Differential flatness of mechanical control systems: A catalog of prototype systems. <span class="venue">ASME IMECE 1995</span>.</li>
+    <li id="ref-stevens2015">Stevens, B. L., Lewis, F. L., Johnson, E. N. (2015). <em>Aircraft Control and Simulation: Dynamics, Controls Design, and Autonomous Systems</em>, 3.ª ed. Wiley.</li>
+    <li id="ref-mavsim">BYU MAGICC Lab. <code>mavsim_public</code>: material del libro de Beard y McLain, parámetros del Aerosonde (<code>aerosonde_parameters.py</code>). <a href="https://github.com/byu-magicc/mavsim_public">github.com/byu-magicc/mavsim_public</a></li>
+    <li id="ref-lustosa2019">Lustosa, L. R., Defaÿ, F., Moschetta, J.-M. (2019). Global singularity-free aerodynamic model for algorithmic flight control of tail sitters. <span class="venue">Journal of Guidance, Control, and Dynamics</span>, 42(2), 303–316.</li>
+    <li id="ref-murali2024">Murali, K., Moreno, E. P., Lustosa, L. R. (2024). Flight validation of a global singularity-free aerodynamic model for flight control of tail sitters. <span class="venue">ICRA 2024</span>, 3861–3867.</li>
+    <li id="ref-bohn2024">Bøhn, E., Coates, E. M., Reinhardt, D., Johansen, T. A. (2024). Data-efficient deep reinforcement learning for attitude control of fixed-wing UAVs: Field experiments. <span class="venue">IEEE TNNLS</span>, 35(3), 3168–3180. <a href="https://arxiv.org/abs/2111.04153">arXiv:2111.04153</a></li>
+    <li id="ref-px4sih">PX4. Simulation-In-Hardware (SIH). <a href="https://docs.px4.io/main/en/sim_sih/">docs.px4.io/main/en/sim_sih</a></li>
+    <li id="ref-kumar2012">Kumar, V., Michael, N. (2012). Opportunities and challenges with autonomous micro aerial vehicles. <span class="venue">IJRR</span>, 31(11), 1279–1291.</li>
+    <li id="ref-busetto2026">Busetto, R., Cereda, E., Forgione, M., Maroni, G., Piga, D., Palossi, D. (2026). Nonlinear system identification for a nano-drone benchmark. <span class="venue">Control Engineering Practice</span>, 172, 106871. <a href="https://arxiv.org/abs/2512.14450">arXiv:2512.14450</a></li>
+    <li id="ref-swift">Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Champion-level drone racing using deep reinforcement learning. <span class="venue">Nature</span>, 620, 982–987. <a href="https://doi.org/10.1038/s41586-023-06419-4">doi:10.1038/s41586-023-06419-4</a></li>
+    <li id="ref-neuralfly">O'Connell, M., Shi, G., Shi, X., Azizzadenesheli, K., Anandkumar, A., Yue, Y., Chung, S.-J. (2022). Neural-Fly enables rapid learning for agile flight in strong winds. <span class="venue">Science Robotics</span>, 7(66). <a href="https://arxiv.org/abs/2205.06908">arXiv:2205.06908</a></li>
+    <li id="ref-torrente2021">Torrente, G., Kaufmann, E., Foehn, P., Scaramuzza, D. (2021). Data-driven MPC for quadrotors. <span class="venue">IEEE RA-L</span>, 6(2), 3769–3776. <a href="https://arxiv.org/abs/2102.05773">arXiv:2102.05773</a></li>
+    <li id="ref-salzmann2023">Salzmann, T., Kaufmann, E., Arrizabalaga, J., Pavone, M., Scaramuzza, D., Ryll, M. (2023). Real-time neural MPC: Deep learning model predictive control for quadrotors and agile robotic platforms. <span class="venue">IEEE RA-L</span>, 8(4). <a href="https://arxiv.org/abs/2203.07747">arXiv:2203.07747</a></li>
+    <li id="ref-saviolo2023">Saviolo, A., Loianno, G. (2023). Learning quadrotor dynamics for precise, safe, and agile flight control. <span class="venue">Annual Reviews in Control</span>, 55, 45–60.</li>
+    <li id="ref-folk2026">Folk, S. (2026). <em>Real time local wind inference for robust autonomous navigation</em>. Tesis doctoral, University of Pennsylvania. <a href="https://arxiv.org/abs/2604.00343">arXiv:2604.00343</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>

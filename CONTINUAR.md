@@ -31,7 +31,7 @@ Para cada tema, en el orden de `TEMARIO.md`:
 
    Verificar cada referencia (autores, año, venue, enlace) y cada cifra en la fuente primaria; si solo hay fuentes secundarias, decirlo en la diapositiva. Nunca inventar referencias, autores, páginas ni cifras: si algo no se puede confirmar, se omite o se marca.
 3. **Guion.** Ordenar el material para enseñar, no para enumerar. Estructura de la sección 4.
-4. **Figuras.** Diagramas en SVG dentro del HTML. Cualquier figura con datos (curvas, nubes de puntos, escalas) se **calcula con un script** (Python puro; en la máquina original no había numpy) y se pega el resultado: nada de curvas dibujadas a ojo.
+4. **Figuras.** Diagramas en SVG dentro del HTML. Cualquier figura con datos (curvas, nubes de puntos, escalas) se **calcula con un script** y se pega el resultado: nada de curvas dibujadas a ojo. Desde A1, el script se guarda en `temas/<ID>_<slug>/figuras/` para poder regenerar cada cifra y cada curva (numpy es suficiente).
 5. **Escribir** `temas/<ID>_<slug>/index.html` con el motor compartido (sección 5).
 6. **Laboratorio** en `temas/<ID>_<slug>/lab/README.md` (sección 7).
 7. **Verificar en el navegador** (sección 6). No se da un tema por terminado sin esto.
@@ -66,7 +66,7 @@ Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.h
 
 Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `T` tema) y modo lectura automático en pantallas estrechas.
 
-**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=6`, `curso.js?v=2`.
+**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=7`, `curso.js?v=3`.
 
 Componentes disponibles:
 
@@ -76,7 +76,7 @@ Componentes disponibles:
 | `slide title-slide`, `slide divider` | Portada y separador de parte (`p.num`, `h2`, `p`). |
 | `p.kicker` + `h2` | Encabezado de cada hoja. Títulos de una línea si es posible. |
 | `.cols`, `.cols.c3`, `.cols.c4`, `.cols.w60`, `.cols.w40`, `.center` | Rejillas de 2, 3, 4 columnas o 60/40 y 40/60. |
-| `.stack`, `.body` | Columna con separación; `.body` ocupa el alto sobrante. |
+| `.stack`, `.body` | Columna con separación; `.body` ocupa el alto sobrante. Con `.cols` (p. ej. `cols c3 body`) sigue siendo rejilla desde `curso.css?v=7`. |
 | `.callout.clave / .realidad / .tesis / .error` con `<span class="tag">` | Avisos: idea clave, cifras reales, tu tesis, error frecuente. |
 | `.card` (`.meta`, `h3`, `p`) y `.cards-sm` en el contenedor | Tarjetas; `cards-sm` reduce la letra si no caben. |
 | `.table-wrap > table.t`, `td.n` | Tablas; `td.n` para cifras en monoespaciada. |
@@ -106,7 +106,9 @@ Matemáticas con MathJax: `\( … \)` en línea y `\[ … \]` en bloque. Las fó
    curso.checkOverflow()   // debe devolver []
    ```
 
-   Devuelve las hojas que no caben en 1280×720. Arreglar recortando texto, usando `cards-sm`, partiendo hojas o limitando la altura de una figura (`style="max-height:…px"` en el `svg`).
+   Devuelve las hojas que no caben en 1280×720 y, desde `curso.js?v=3`, también las que recortan contenido por dentro: tablas (`.table-wrap`), bloques `.body` y fórmulas en bloque que se salen de su caja. Arreglar recortando texto, usando `cards-sm`, partiendo hojas o fórmulas, o limitando la altura de una figura (`style="max-height:…px"` en el `svg`).
+
+   `checkOverflow()` no ve solapes entre bloques ni etiquetas que se pisan dentro de una figura: **mira cada hoja**, en tema claro y oscuro. Sin un navegador a mano, Playwright con el Chrome del sistema sirve para todo este apartado y para hacer capturas (`uv run --with playwright python …`, `channel="chrome"`).
 3. Comprobar que no hay citas sin referencia (aparecerían como `[?]`), ni errores de MathJax (`document.querySelectorAll('mjx-merror').length` debe ser 0), ni errores en consola.
 4. Con ancho de móvil (unos 375 px), comprobar que ninguna hoja desborda en horizontal:
 
