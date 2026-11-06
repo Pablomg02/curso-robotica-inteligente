@@ -1,0 +1,1349 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>M0 · Mapa del campo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=6">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="M0" data-deck-title="Mapa del campo · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 0 · Jornada 1 · Curso de robótica inteligente</p>
+  <h1>Mapa del campo</h1>
+  <p class="subtitle">La pila de autonomía de un robot, los seis paradigmas que la han ido formando y por qué en 2026 la inteligencia se reparte por capas de tiempo.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> ninguno</span>
+    <span><b>Prepara</b> todo el curso</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cómo usar estas presentaciones</p>
+  <h2>Dos modos, cuatro tipos de aviso y derivaciones plegables</h2>
+  <div class="cols w40">
+    <div class="stack small">
+      <p><strong>Modo presentación</strong>: una hoja cada vez. Flechas, espacio o RePág/AvPág para moverte; Inicio y Fin para saltar.</p>
+      <p><strong>Modo lectura</strong> (tecla <code>L</code>): todas las hojas en scroll. Se activa solo en pantallas estrechas.</p>
+      <p><strong>Índice</strong> (tecla <code>I</code>) y <strong>tema claro/oscuro</strong> (tecla <code>T</code>).</p>
+      <p>Las <span class="hz">frecuencias y latencias</span> van siempre en este color: son el hilo del curso.</p>
+      <p>Los números entre corchetes <a class="cite" data-ref="swift"></a> llevan a la referencia completa, al final.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea clave</span>Lo que tienes que poder explicar sin mirar.</div>
+      <div class="callout realidad"><span class="tag">Realidad</span>Cifras de sistemas reales: hercios, milisegundos, gramos, parámetros.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Qué significa esto para belief states y world models en drones.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Ideas intuitivas que fallan en el robot real.</div>
+      <details class="deriv"><summary>Derivación</summary>Las demostraciones y cuentas completas están plegadas así. Ábrelas cuando quieras el detalle.</details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de M0</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:21px; gap:12px;">
+    <li>Explicar qué separa la robótica del resto del aprendizaje automático: el tiempo, la observabilidad parcial, el coste de los datos y las consecuencias físicas.</li>
+    <li>Situar los <strong>seis paradigmas</strong> de la robótica y reconocer qué idea de cada uno sigue viva en los sistemas de 2026.</li>
+    <li>Dibujar la <strong>pila de autonomía</strong> de un dron con la frecuencia y el hardware de cada capa.</li>
+    <li>Demostrar con una cuenta por qué un modelo lento no puede cerrar un lazo rápido, y cómo lo esquivan el <em>action chunking</em> y las jerarquías.</li>
+    <li>Leer un paper de 2026 y ubicarlo en el mapa: qué capa toca, qué paradigma usa y qué evidencia en hardware real aporta.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">El curso en una hoja</p>
+  <h2>Siete fases y un proyecto que crece con ellas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 300" role="img" aria-label="Siete fases del curso en secuencia con sus jornadas y los hitos del proyecto hilo">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <g font-size="15">
+        <rect class="box-accent" x="5" y="30" width="140" height="120" rx="4"/>
+        <text x="17" y="56" class="t-mono t-accent" font-size="12">FASE 0 · J1–2</text>
+        <text x="17" y="84" class="t-bold">Arranque</text>
+        <text x="17" y="106" class="t-muted" font-size="13">Mapa y</text>
+        <text x="17" y="124" class="t-muted" font-size="13">matemáticas</text>
+
+        <rect class="box" x="168" y="30" width="140" height="120" rx="4"/>
+        <text x="180" y="56" class="t-mono t-accent" font-size="12">FASE 1 · J3–10</text>
+        <text x="180" y="84" class="t-bold">El robot</text>
+        <text x="180" y="106" class="t-muted" font-size="13">Dinámica, control,</text>
+        <text x="180" y="124" class="t-muted" font-size="13">estimación, planif.</text>
+
+        <rect class="box" x="331" y="30" width="140" height="120" rx="4"/>
+        <text x="343" y="56" class="t-mono t-accent" font-size="12">FASE 2 · J11–16</text>
+        <text x="343" y="84" class="t-bold">Simular</text>
+        <text x="343" y="106" class="t-muted" font-size="13">Física, sensores,</text>
+        <text x="343" y="124" class="t-muted" font-size="13">tiempo, GPU</text>
+
+        <rect class="box-tesis" x="494" y="30" width="140" height="120" rx="4"/>
+        <text x="506" y="56" class="t-mono t-tesis" font-size="12">FASE 3 · J17–28</text>
+        <text x="506" y="84" class="t-bold">Aprender</text>
+        <text x="506" y="106" class="t-muted" font-size="13">RL, POMDP, world</text>
+        <text x="506" y="124" class="t-muted" font-size="13">models, MARL</text>
+
+        <rect class="box" x="657" y="30" width="140" height="120" rx="4"/>
+        <text x="669" y="56" class="t-mono t-accent" font-size="12">FASE 4 · J29–33</text>
+        <text x="669" y="84" class="t-bold">Razonar</text>
+        <text x="669" y="106" class="t-muted" font-size="13">LLM, VLA,</text>
+        <text x="669" y="124" class="t-muted" font-size="13">jerarquías</text>
+
+        <rect class="box" x="820" y="30" width="140" height="120" rx="4"/>
+        <text x="832" y="56" class="t-mono t-accent" font-size="12">FASE 5 · J34–41</text>
+        <text x="832" y="84" class="t-bold">Desplegar</text>
+        <text x="832" y="106" class="t-muted" font-size="13">Cómputo, ROS 2,</text>
+        <text x="832" y="124" class="t-muted" font-size="13">tiempo real</text>
+
+        <rect class="box" x="983" y="30" width="160" height="120" rx="4"/>
+        <text x="995" y="56" class="t-mono t-accent" font-size="12">FASE 6 · J42–48</text>
+        <text x="995" y="84" class="t-bold">Cerrar el círculo</text>
+        <text x="995" y="106" class="t-muted" font-size="13">HIL, sim-to-real,</text>
+        <text x="995" y="124" class="t-muted" font-size="13">tu simulador</text>
+      </g>
+      <path class="ln" d="M145 90 H166" marker-end="url(#ar)"/>
+      <path class="ln" d="M308 90 H329" marker-end="url(#ar)"/>
+      <path class="ln" d="M471 90 H492" marker-end="url(#ar)"/>
+      <path class="ln" d="M634 90 H655" marker-end="url(#ar)"/>
+      <path class="ln" d="M797 90 H818" marker-end="url(#ar)"/>
+      <path class="ln" d="M960 90 H981" marker-end="url(#ar)"/>
+      <path class="ln-time" d="M20 205 H1135"/>
+      <g font-size="13" class="t-mono">
+        <circle cx="238" cy="205" r="7" class="fill-time"/><text x="238" y="236" text-anchor="middle" class="t-time">H1 · dron en JAX</text><text x="238" y="254" text-anchor="middle" class="t-muted" font-size="12">control, MPC, ESKF</text>
+        <circle cx="401" cy="205" r="7" class="fill-time"/><text x="401" y="236" text-anchor="middle" class="t-time">H2 · realismo</text><text x="401" y="254" text-anchor="middle" class="t-muted" font-size="12">motores, IMU, latencias</text>
+        <circle cx="564" cy="205" r="7" class="fill-time"/><text x="564" y="236" text-anchor="middle" class="t-time">H3 · políticas</text><text x="564" y="254" text-anchor="middle" class="t-muted" font-size="12">belief, world model</text>
+        <circle cx="890" cy="205" r="7" class="fill-time"/><text x="890" y="236" text-anchor="middle" class="t-time">H4 · ROS 2 + PX4</text><text x="890" y="254" text-anchor="middle" class="t-muted" font-size="12">SITL, latencias medidas</text>
+        <circle cx="1063" cy="205" r="7" class="fill-time"/><text x="1063" y="236" text-anchor="middle" class="t-time">H5 · HIL en Pixhawk</text><text x="1063" y="254" text-anchor="middle" class="t-muted" font-size="12">y diseño del simulador</text>
+        <text x="20" y="190" class="t-faint" font-size="12">PROYECTO HILO</text>
+      </g>
+    </svg>
+    <figcaption>45 presentaciones en 48 jornadas. El proyecto hilo es un simulador y pipeline de dron en JAX que crece con cada laboratorio y termina siendo la primera versión del de tu tesis.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 1 · QUÉ ES UN ROBOT INTELIGENTE ============ -->
+<section class="slide divider" data-section="1 · Qué es un robot">
+  <p class="num">Parte 1</p>
+  <h2>Un robot es un lazo cerrado con el mundo físico</h2>
+  <p>Antes de hablar de PID, VLAs o world models, conviene fijar qué problema resuelve un robot y qué lo hace distinto de cualquier otro sistema de IA.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Definición operativa</p>
+  <h2>Percibir, estimar, decidir y actuar mientras el mundo sigue moviéndose</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 660 400" role="img" aria-label="Lazo cerrado: mundo, sensores, estimación, decisión, actuadores y de vuelta al mundo, con retardos en cada tramo">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect class="box-soft" x="230" y="160" width="200" height="80" rx="40"/>
+        <text x="330" y="196" text-anchor="middle" class="t-bold" font-size="18">Mundo físico</text>
+        <text x="330" y="220" text-anchor="middle" class="t-muted" font-size="14">estado oculto s(t)</text>
+
+        <rect class="box" x="20" y="30" width="170" height="60" rx="4"/>
+        <text x="105" y="58" text-anchor="middle" class="t-bold" font-size="16">Sensores</text>
+        <text x="105" y="78" text-anchor="middle" class="t-muted" font-size="13">observación parcial</text>
+
+        <rect class="box-tesis" x="245" y="30" width="170" height="60" rx="4"/>
+        <text x="330" y="58" text-anchor="middle" class="t-bold" font-size="16">Estimación</text>
+        <text x="330" y="78" text-anchor="middle" class="t-muted" font-size="13">belief b(s)</text>
+
+        <rect class="box" x="470" y="30" width="170" height="60" rx="4"/>
+        <text x="555" y="58" text-anchor="middle" class="t-bold" font-size="16">Decisión</text>
+        <text x="555" y="78" text-anchor="middle" class="t-muted" font-size="13">planificar y controlar</text>
+
+        <rect class="box" x="470" y="310" width="170" height="60" rx="4"/>
+        <text x="555" y="338" text-anchor="middle" class="t-bold" font-size="16">Actuadores</text>
+        <text x="555" y="358" text-anchor="middle" class="t-muted" font-size="13">motores, ESC</text>
+
+        <path class="ln" d="M190 60 H243" marker-end="url(#ar2)"/>
+        <path class="ln" d="M415 60 H468" marker-end="url(#ar2)"/>
+        <path class="ln" d="M555 90 V308" marker-end="url(#ar2)"/>
+        <path class="ln" d="M470 340 H330 V242" marker-end="url(#ar2)"/>
+        <path class="ln" d="M232 200 H105 V92" marker-end="url(#ar2)"/>
+
+        <g class="t-mono t-time" font-size="14">
+          <text x="216" y="50" text-anchor="middle">τ_s</text>
+          <text x="441" y="50" text-anchor="middle">τ_e</text>
+          <text x="572" y="205">τ_d</text>
+          <text x="400" y="330" text-anchor="middle">τ_a</text>
+        </g>
+        <text x="330" y="282" text-anchor="middle" class="t-time" font-size="14">el mundo evoluciona durante τ = τ_s + τ_e + τ_d + τ_a</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <p>Todo robot responde, una y otra vez, a cuatro preguntas:</p>
+      <table class="t">
+        <tr><th>Pregunta</th><th>Capa</th><th>Temas</th></tr>
+        <tr><td>¿Cómo está el mundo y dónde estoy?</td><td>Estimación, percepción</td><td>A4, A7</td></tr>
+        <tr><td>¿Qué quiero conseguir?</td><td>Tarea, razonamiento</td><td>A11–A13</td></tr>
+        <tr><td>¿Cómo llego?</td><td>Planificación</td><td>A3, A5</td></tr>
+        <tr><td>¿Qué hago ahora mismo?</td><td>Control</td><td>A2, A6</td></tr>
+      </table>
+      <p class="small muted">Cada tramo del lazo añade retardo. El robot siempre actúa sobre un mundo que ya ha cambiado.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué la robótica no es "ML con un robot"</p>
+  <h2>Cuatro propiedades que cambian las reglas</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card"><span class="meta">1 · TIEMPO</span><h3>El mundo no espera</h3><p>Mientras la red calcula, el dron sigue cayendo. La latencia se convierte en error de estado y, en lazos rápidos, en inestabilidad.</p><p class="small muted">A2 · A13 · B4 · C4</p></div>
+    <div class="card"><span class="meta">2 · OBSERVABILIDAD</span><h3>Solo ves una parte</h3><p>Sensores ruidosos, con campo de visión limitado y sin acceso a viento, masa real o intenciones de otros agentes. Formalmente, un POMDP.</p><p class="small muted">A4 · A7 · A8 · A15</p></div>
+    <div class="card"><span class="meta">3 · DATOS</span><h3>Cada dato cuesta</h3><p>Un ensayo real gasta batería, tiempo y riesgo. No hay "internet de acciones de robot", así que se simula, se transfiere y se reutiliza.</p><p class="small muted">B6 · B7 · A10 · A12</p></div>
+    <div class="card"><span class="meta">4 · CONSECUENCIAS</span><h3>Los errores rompen cosas</h3><p>Una política con un 99 % de éxito estrella el dron una vez de cada cien. Hacen falta garantías, filtros de seguridad y detección de fallos.</p><p class="small muted">A14 · C7 · D1</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>Casi todas las decisiones de diseño de la robótica moderna son una forma de gestionar estas cuatro propiedades a la vez. Este curso vuelve a ellas en cada tema.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas de tiempo</p>
+  <h2>Un dron es una escalera de lazos, del kilohercio al hercio</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 424" role="img" aria-label="Escala logarítmica de frecuencias de cada capa de un dron, desde 0,1 Hz hasta 10 kHz, con valores de sistemas reales">
+      <g class="ln-rule">
+        <path d="M200 26 V396"/><path d="M370 26 V396"/><path d="M540 26 V396"/><path d="M710 26 V396"/><path d="M880 26 V396"/><path d="M1050 26 V396"/>
+      </g>
+      <path class="ln" d="M200 396 H1050"/>
+      <g class="t-mono t-faint" font-size="13" text-anchor="middle">
+        <text x="200" y="416">0,1 Hz</text><text x="370" y="416">1 Hz</text><text x="540" y="416">10 Hz</text><text x="710" y="416">100 Hz</text><text x="880" y="416">1 kHz</text><text x="1050" y="416">10 kHz</text>
+      </g>
+      <g font-size="15" text-anchor="end">
+        <text x="188" y="55">Razonamiento (LLM/VLM)</text>
+        <text x="188" y="99">Política VLA / System 1</text>
+        <text x="188" y="143">Planificación</text>
+        <text x="188" y="187">Percepción (cámara)</text>
+        <text x="188" y="231">Estimación (VIO, EKF)</text>
+        <text x="188" y="275">Posición y velocidad</text>
+        <text x="188" y="319">Actitud</text>
+        <text x="188" y="363">Velocidad angular</text>
+      </g>
+      <g class="box-soft">
+        <rect x="200" y="41" width="340" height="18" rx="3"/>
+        <rect x="472.3" y="85" width="288.9" height="18" rx="3"/>
+        <rect x="370" y="129" width="251.1" height="18" rx="3"/>
+        <rect x="621.1" y="173" width="81.1" height="18" rx="3"/>
+        <rect x="621.1" y="217" width="156.5" height="18" rx="3"/>
+        <rect x="591.2" y="261" width="118.8" height="18" rx="3"/>
+        <rect x="710" y="305" width="118.8" height="18" rx="3"/>
+        <rect x="812.3" y="349" width="221.2" height="18" rx="3"/>
+      </g>
+      <g class="t-mono t-time" font-size="12.5" text-anchor="middle">
+        <circle cx="523.5" cy="50" r="5" class="fill-time"/><circle cx="540" cy="50" r="5" class="fill-time"/>
+        <text x="552" y="54" text-anchor="start">Helix S2 7–9 Hz · GR00T N1 S2 10 Hz</text>
+
+        <circle cx="472.3" cy="94" r="5" fill="none" class="ln-time"/>
+        <text x="472.3" y="120">Gemini R. ≈4 Hz</text>
+        <circle cx="658.8" cy="94" r="5" class="fill-time"/>
+        <text x="658.8" y="80">π0 · Gemini R. 50 Hz</text>
+        <circle cx="723.5" cy="94" r="5" class="fill-time"/>
+        <text x="723.5" y="120">GR00T S1 120</text>
+        <circle cx="761.2" cy="94" r="5" class="fill-time"/>
+        <text x="790" y="80">Helix S1 200</text>
+
+        <circle cx="621.1" cy="182" r="5" class="fill-time"/><text x="606" y="168">Swift 30</text>
+        <circle cx="702.2" cy="182" r="5" class="fill-time"/><text x="712" y="168">MonoRace 90</text>
+        <circle cx="710" cy="226" r="5" class="fill-time"/><text x="710" y="212">Swift VIO 100</text>
+
+        <text x="840" y="318" text-anchor="start" class="t-muted">PX4: al ritmo de la estimación de actitud</text>
+
+        <circle cx="812.3" cy="358" r="5" class="fill-time"/><circle cx="863.5" cy="358" r="5" class="fill-time"/>
+        <text x="838" y="344">PX4 400–800</text>
+        <circle cx="828.8" cy="358" r="5" fill="none" class="ln-time"/>
+        <text x="800" y="384">MonoRace red 500</text>
+        <circle cx="965.9" cy="358" r="5" class="fill-time"/><circle cx="1033.5" cy="358" r="5" class="fill-time"/>
+        <text x="1000" y="344">Betaflight 3,2k–8k</text>
+      </g>
+    </svg>
+    <figcaption>Escala logarítmica. Bandas grises: rangos típicos, orientativos. Puntos: valores publicados de sistemas concretos <a class="cite" data-ref="px4params,betaflight,swift,monorace,helix,groot,gemrob,pi0"></a>. Círculo hueco: frecuencia de inferencia (Gemini Robotics, 250 ms por chunk) o red que sustituye a un lazo (MonoRace). La IMU muestrea aún más rápido: hasta 8 kHz en bruto; en MonoRace, acelerómetro a 1 kHz y giróscopo a 2 kHz.</figcaption>
+  </figure>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas de tiempo · lectura</p>
+  <h2>El lazo más rápido es el de velocidad angular, no el de actitud</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout error"><span class="tag">Error frecuente</span>Pensar que la actitud es el lazo más rápido y que basta con unos 50 Hz. En los autopilotos reales, el lazo de <em>rate</em> (velocidad angular) va por dentro, a cientos o miles de hercios. La actitud genera la consigna de rate y la posición genera la de actitud.</div>
+      <ul class="small">
+        <li><strong>Betaflight</strong> fija el giróscopo a su tasa nativa (8 kHz en el MPU6000, 3,2 kHz en el BMI270) y por defecto corre el PID a esa misma tasa <a class="cite" data-ref="betaflight"></a>.</li>
+        <li><strong>PX4</strong> publica el giróscopo para control a <code>IMU_GYRO_RATEMAX</code>: 400 Hz por defecto, 800 Hz en la configuración de multirrotor, hasta 2 kHz <a class="cite" data-ref="px4params"></a>.</li>
+        <li>La regla de diseño es la <strong>separación de escalas</strong>: cada lazo exterior debe ser varias veces más lento que el interior, para que este parezca instantáneo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Realidad</span>Las redes neuronales ya entran en los lazos rápidos, pero muy pequeñas. MonoRace sustituye todos los lazos internos por una red de 3×64 neuronas que corre en la controladora a <span class="hz">500 Hz</span> y manda directamente los motores <a class="cite" data-ref="monorace"></a>. Los modelos de miles de millones de parámetros se quedan arriba, a <span class="hz">7–10 Hz</span> <a class="cite" data-ref="helix,groot"></a>.</div>
+      <p class="small">Esta escalera es el esqueleto de todo el curso. Cuando aparezca un método nuevo, la primera pregunta es: <strong>¿en qué peldaño corre y cuánto tarda?</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 · HISTORIA ============ -->
+<section class="slide divider" data-section="2 · Seis paradigmas">
+  <p class="num">Parte 2</p>
+  <h2>Seis paradigmas que se solapan</h2>
+  <p>La robótica no ha avanzado por sustitución, sino por acumulación. Cada paradigma resolvió un problema del anterior y dejó una idea que sigue en los sistemas de 2026.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Visión de conjunto</p>
+  <h2>De Shakey a los foundation models, 1966–2026</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 300" role="img" aria-label="Línea temporal de seis paradigmas solapados de 1966 a 2026">
+      <g class="ln-rule">
+        <path d="M60 20 V262"/><path d="M225 20 V262"/><path d="M390 20 V262"/><path d="M555 20 V262"/><path d="M720 20 V262"/><path d="M885 20 V262"/><path d="M1050 20 V262"/>
+      </g>
+      <rect class="box" x="159" y="30" width="396" height="30" rx="3"/>
+      <text x="171" y="51" font-size="15">Deliberativa · sense-plan-act</text>
+      <rect class="box" x="489" y="70" width="231" height="30" rx="3"/>
+      <text x="501" y="91" font-size="15">Comportamientos</text>
+      <rect class="box" x="555" y="110" width="363" height="30" rx="3"/>
+      <text x="567" y="131" font-size="15">Probabilística</text>
+      <rect class="box" x="802.5" y="150" width="247.5" height="30" rx="3"/>
+      <text x="814" y="171" font-size="15">Optimización y modelos</text>
+      <rect class="box-accent" x="934.5" y="190" width="214.5" height="30" rx="3"/>
+      <text x="946" y="211" font-size="15">Deep learning y RL</text>
+      <rect class="box-tesis" x="1042" y="230" width="107" height="30" rx="3"/>
+      <text x="1032" y="251" font-size="15" text-anchor="end">Foundation y world models</text>
+      <path class="ln" d="M60 262 H1160"/>
+      <g class="t-mono t-faint" font-size="13" text-anchor="middle">
+        <text x="60" y="284">1960</text><text x="225" y="284">1970</text><text x="390" y="284">1980</text><text x="555" y="284">1990</text><text x="720" y="284">2000</text><text x="885" y="284">2010</text><text x="1050" y="284">2020</text><text x="1149" y="284" class="t-accent">2026</text>
+      </g>
+    </svg>
+    <figcaption>Fechas orientativas: las eras se solapan y ninguna desaparece. Cada banda empieza cuando sus ideas se vuelven dominantes, no cuando se publican por primera vez.</figcaption>
+  </figure>
+  <p class="small muted">En las seis hojas siguientes, cada paradigma con sus hitos, su límite y la idea que sobrevive.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 1 · 1966–1990</p>
+  <h2>Deliberativa: construir un modelo del mundo y razonar sobre él</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="tl">
+        <div class="ev"><span class="yr">1966–72</span><strong>Shakey</strong> (SRI): primer robot móvil que razona sobre sus acciones. Percibe, construye un modelo simbólico, planifica y ejecuta <a class="cite" data-ref="shakey"></a>.</div>
+        <div class="ev"><span class="yr">1968</span><strong>A*</strong>: búsqueda heurística óptima, nacida en el propio proyecto Shakey <a class="cite" data-ref="astar"></a>.</div>
+        <div class="ev"><span class="yr">1971</span><strong>STRIPS</strong>: planificación simbólica con precondiciones y efectos <a class="cite" data-ref="strips"></a>.</div>
+      </div>
+      <p><strong>Límite:</strong> el ciclo percibir-planificar-actuar era tan lento que el mundo cambiaba antes de terminar el plan. Y el modelo simbólico no captaba el ruido ni la geometría reales.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea que sobrevive</span>Planificar sobre un modelo explícito del mundo. Vuelve con fuerza en 2022 con los LLMs como planificadores (SayCan, Code as Policies) <a class="cite" data-ref="saycan,cap"></a> y con los world models.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model es la versión aprendida y probabilística del modelo de Shakey. El problema de 1970 sigue ahí: planificar con él tiene que caber en el presupuesto de tiempo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 2 · 1986–2000</p>
+  <h2>Comportamientos: reaccionar rápido sin modelo central</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="tl">
+        <div class="ev"><span class="yr">1986</span><strong>Arquitectura de subsunción</strong> (Brooks): capas de comportamientos simples que corren en paralelo. Las capas superiores inhiben a las inferiores <a class="cite" data-ref="brooks1986"></a>.</div>
+        <div class="ev"><span class="yr">1991</span><em>Intelligence without representation</em>: "el mundo es su mejor modelo" <a class="cite" data-ref="brooks1991"></a>.</div>
+        <div class="ev"><span class="yr">1998</span><strong>Arquitecturas de tres capas</strong>: un controlador reactivo rápido, un secuenciador y un planificador deliberativo lento <a class="cite" data-ref="gat1998"></a>.</div>
+      </div>
+      <p><strong>Límite:</strong> sin modelo, los comportamientos no componen tareas largas ni razonan sobre lo que no ven.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea que sobrevive</span>Organizar la inteligencia <strong>por escalas de tiempo</strong>. La arquitectura de tres capas de 1998 es, casi punto por punto, el System 1 / System 2 de Helix (2025) o GR00T N1 (2025) <a class="cite" data-ref="helix,groot"></a>.</div>
+      <p class="small">Lo nuevo en 2025 no es la jerarquía, sino que <strong>cada capa es una red aprendida</strong> y la comunicación entre capas es un vector latente en lugar de un símbolo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 3 · 1990–2012</p>
+  <h2>Probabilística: representar la incertidumbre de forma explícita</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="tl">
+        <div class="ev"><span class="yr">1960</span><strong>Filtro de Kalman</strong>: estimación óptima para sistemas lineales gaussianos <a class="cite" data-ref="kalman1960"></a>.</div>
+        <div class="ev"><span class="yr">1999</span><strong>Localización Monte Carlo</strong>: el belief se representa con partículas <a class="cite" data-ref="mcl1999"></a>.</div>
+        <div class="ev"><span class="yr">2005</span><strong>Stanley</strong> gana el DARPA Grand Challenge. El mismo año sale <em>Probabilistic Robotics</em>, el libro que fija el paradigma <a class="cite" data-ref="stanley,probrob"></a>.</div>
+      </div>
+      <p><strong>Límite:</strong> los modelos de observación se diseñaban a mano y no escalaban a imágenes en bruto ni a tareas abiertas.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea que sobrevive</span>El robot no conoce su estado: mantiene un <strong>belief</strong>, una distribución sobre el estado oculto dada su historia. Todo estimador moderno (EKF, VIO, SLAM) es una aproximación del filtro de Bayes.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Este es tu paradigma de origen. El filtro de Kalman es el belief exacto del caso lineal gaussiano. Lo que tu tesis aprende es un belief para cuando no hay modelo lineal, ni gaussiano, ni siquiera estado definido a mano.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 4 · 2005–2020</p>
+  <h2>Optimización y modelos: si el modelo es bueno, optimiza</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="tl">
+        <div class="ev"><span class="yr">2009</span><strong>ROS</strong> unifica el software de investigación <a class="cite" data-ref="ros2009"></a>. En 2022, ROS 2 ya es el estándar en producción <a class="cite" data-ref="ros2_2022"></a>.</div>
+        <div class="ev"><span class="yr">2010</span><strong>Control geométrico en SE(3)</strong> para cuadricópteros <a class="cite" data-ref="lee2010"></a>.</div>
+        <div class="ev"><span class="yr">2011</span><strong>Minimum snap</strong> y planitud diferencial: trayectorias agresivas por optimización <a class="cite" data-ref="mellinger2011"></a>.</div>
+        <div class="ev"><span class="yr">2015</span><strong>PX4</strong>, autopiloto abierto con arquitectura de nodos para sistemas embebidos <a class="cite" data-ref="px4_2015"></a>.</div>
+      </div>
+      <p><strong>Límite:</strong> depende de modelos precisos y de un estado bien estimado. Le cuesta lo que no se modela bien: contacto, aerodinámica no estacionaria, percepción.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea que sobrevive</span>El MPC y la optimización de trayectorias siguen siendo la referencia en control de drones. Además, son la forma de <strong>planificar con un world model</strong>: TD-MPC2 usa MPC por muestreo dentro de su espacio latente <a class="cite" data-ref="tdmpc2"></a>.</div>
+      <p class="small">Por eso el MPC (A3) está "a fondo" en este curso: es la herramienta que une el control clásico con tu tesis.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 5 · 2013–hoy</p>
+  <h2>Deep learning y RL: aprender en simulación y transferir</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="tl">
+        <div class="ev"><span class="yr">2015–16</span><strong>DQN</strong> y políticas visuomotoras de extremo a extremo <a class="cite" data-ref="dqn2015,levine2016"></a>.</div>
+        <div class="ev"><span class="yr">2017</span><strong>CAD2RL</strong> vuela un dron real entrenado solo en simulación. <strong>Domain randomization</strong> <a class="cite" data-ref="cad2rl,tobin2017"></a>.</div>
+        <div class="ev"><span class="yr">2019–21</span>Locomoción de ANYmal con red de actuadores, entrenamiento masivo en GPU en minutos, vuelo a alta velocidad en el bosque <a class="cite" data-ref="hwangbo2019,rudin2021,loquercio2021"></a>.</div>
+        <div class="ev"><span class="yr">2023</span><strong>Swift</strong> gana a campeones humanos de carreras de drones <a class="cite" data-ref="swift"></a>.</div>
+      </div>
+      <p><strong>Límite:</strong> cada política sirve para una tarea y una plataforma. La percepción con imágenes reales sigue siendo el eslabón débil del sim-to-real.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea que sobrevive</span>La receta de sim-to-real: simulador masivo, aleatorización, un profesor con información privilegiada y modelos residuales identificados con pocos datos reales. Es la base de casi todo el control aprendido de drones en 2026.</div>
+      <div class="callout realidad"><span class="tag">Realidad</span>Swift se entrenó con 10⁸ interacciones en <span class="hz">50 min</span> en una RTX 3090 y ajustó sus residuales con unos <span class="hz">50 s</span> de vuelo real <a class="cite" data-ref="swift"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Paradigma 6 · 2022–hoy</p>
+  <h2>Foundation models y world models: generalidad a partir de datos masivos</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3>Políticas y razonamiento</h3>
+      <div class="tl">
+        <div class="ev"><span class="yr">2022–23</span>LLMs como planificadores (SayCan, Code as Policies). RT-1 y RT-2: primeros VLAs a escala <a class="cite" data-ref="saycan,cap,rt1,rt2"></a>.</div>
+        <div class="ev"><span class="yr">2023</span>ACT y Diffusion Policy: <em>action chunking</em> y políticas generativas. Open X-Embodiment junta datos de 22 robots <a class="cite" data-ref="act,dp,oxe"></a>.</div>
+        <div class="ev"><span class="yr">2024–25</span>OpenVLA, π0, Helix, GR00T N1, Gemini Robotics <a class="cite" data-ref="openvla,pi0,helix,groot,gemrob"></a>.</div>
+        <div class="ev"><span class="yr">2026</span>π0.7 (abril) y Gemini Robotics 2 (julio) <a class="cite" data-ref="pi07,gemrob2"></a>.</div>
+      </div>
+    </div>
+    <div class="stack">
+      <h3>World models</h3>
+      <div class="tl">
+        <div class="ev"><span class="yr">2020</span>Dreamer: aprender comportamientos imaginando en un espacio latente <a class="cite" data-ref="dreamer"></a>.</div>
+        <div class="ev"><span class="yr">2022–24</span>DayDreamer en robots reales, TD-MPC2, DreamerV3 <a class="cite" data-ref="daydreamer,tdmpc2,dreamerv3"></a>.</div>
+        <div class="ev"><span class="yr">2025</span>V-JEPA 2, Genie 3 y Dreamer 4, que entrena agentes dentro de un world model solo con datos offline <a class="cite" data-ref="vjepa2,genie3,dreamer4"></a>.</div>
+      </div>
+      <div class="callout realidad"><span class="tag">Realidad</span>Límites actuales: latencia, fiabilidad por debajo de lo exigible en producción y escasez de datos de robot. Helix se entrenó con unas <span class="hz">500 h</span> de teleoperación <a class="cite" data-ref="helix"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lo que se repite</p>
+  <h2>Cuatro ejes que atraviesan los seis paradigmas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Eje</th><th>Antes</th><th>Hoy (2026)</th><th style="width:16%">Temas</th></tr>
+      <tr><td><strong>Escalas de tiempo</strong></td><td>Subsunción (1986), tres capas (1998)</td><td>System 1 / System 2: red pequeña rápida bajo un VLM lento <a class="cite" data-ref="helix,groot"></a></td><td>A2 · A13 · C2</td></tr>
+      <tr><td><strong>Modelo explícito o implícito</strong></td><td>Deliberativo frente a reactivo; MPC frente a RL sin modelo</td><td>World models (modelo aprendido) frente a VLAs (política directa)</td><td>A3 · A6 · A8 · A12</td></tr>
+      <tr><td><strong>Incertidumbre</strong></td><td>Filtro de Bayes, Kalman, partículas</td><td>Belief latente aprendido (RSSM de Dreamer), memoria en transformers</td><td>A4 · A7 · A8</td></tr>
+      <tr><td><strong>Fuente de los datos</strong></td><td>Diseño a mano, después simulación</td><td>Simulación masiva + teleoperación + vídeo de internet + experiencia propia con fallos <a class="cite" data-ref="pi07"></a></td><td>B6 · A10 · A12</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>Ante un método nuevo, pregúntate dónde cae en cada eje. Casi siempre es una combinación nueva de ideas antiguas, y eso te dice cuáles serán sus límites.</div>
+</section>
+
+<!-- ============ 3 · DRONES ============ -->
+<section class="slide divider" data-section="3 · Drones">
+  <p class="num">Parte 3</p>
+  <h2>La historia propia de los robots aéreos</h2>
+  <p>Los multirrotores son inestables en lazo abierto, rápidos y con poco cómputo a bordo. Eso los convierte en el banco de pruebas más exigente para el control aprendido.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots aéreos · 2007–2026</p>
+  <h2>De los primeros cuadricópteros de laboratorio a redes en el autopiloto</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">2007</span>STARMAC: dinámica y control de cuadricóptero con experimentos, incluidos efectos aerodinámicos <a class="cite" data-ref="hoffmann2007"></a>.</div>
+      <div class="ev"><span class="yr">2010–11</span>Control geométrico en SE(3) y trayectorias minimum snap <a class="cite" data-ref="lee2010,mellinger2011"></a>.</div>
+      <div class="ev"><span class="yr">2012–15</span>PIXHAWK y PX4: autopiloto abierto con visión a bordo <a class="cite" data-ref="pixhawk2012,px4_2015"></a>.</div>
+      <div class="ev"><span class="yr">2017</span>CAD2RL: primer vuelo real con una política entrenada solo en simulación <a class="cite" data-ref="cad2rl"></a>.</div>
+      <div class="ev"><span class="yr">2021</span>Vuelo a alta velocidad en entornos naturales con una política aprendida <a class="cite" data-ref="loquercio2021"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">2022</span>Enjambre de microdrones en un bosque, con planificación descentralizada a bordo <a class="cite" data-ref="zhou2022"></a>. Neural-Fly: adaptación rápida en viento fuerte <a class="cite" data-ref="neuralfly"></a>.</div>
+      <div class="ev"><span class="yr">2023</span>Swift gana 15 de 25 carreras a tres campeones humanos <a class="cite" data-ref="swift"></a>.</div>
+      <div class="ev"><span class="yr">2025</span>MonoRace (TU Delft) gana la A2RL de Abu Dabi y bate a tres excampeones mundiales de FPV con una sola cámara <a class="cite" data-ref="monorace"></a>.</div>
+      <div class="ev"><span class="yr">2025–26</span>RAPTOR: una política fundacional de 2084 parámetros que controla cuadricópteros de 32 g a 2,4 kg sin reajuste, ya integrada en PX4 como módulo experimental <a class="cite" data-ref="raptor,px4raptor"></a>.</div>
+    </div>
+  </div>
+  <p class="small muted">Revisión de referencia sobre carreras autónomas, con la evolución del control clásico al aprendido: Hanover et al. (2024) <a class="cite" data-ref="hanover2024"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Caso 1 · Swift (2023)</p>
+  <h2>Anatomía de un sistema campeón: aprendizaje encima de un autopiloto clásico</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 330" role="img" aria-label="Pipeline de Swift: sensores, detector de puertas, filtro de Kalman, política, controladora Betaflight y motores, con tiempos">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect class="box-soft" x="10" y="10" width="760" height="230" rx="6"/>
+      <text x="24" y="34" class="t-mono t-faint" font-size="12">ORDENADOR DE A BORDO · JETSON TX2</text>
+      <rect class="box-soft" x="800" y="10" width="340" height="230" rx="6"/>
+      <text x="814" y="34" class="t-mono t-faint" font-size="12">CONTROLADORA · STM32 216 MHz</text>
+
+      <rect class="box" x="30" y="56" width="170" height="70" rx="4"/>
+      <text x="115" y="84" text-anchor="middle" class="t-bold" font-size="15">Cámara + VIO</text>
+      <text x="115" y="106" text-anchor="middle" class="t-mono t-time" font-size="13">RealSense T265 · 100 Hz</text>
+
+      <rect class="box" x="30" y="150" width="170" height="70" rx="4"/>
+      <text x="115" y="178" text-anchor="middle" class="t-bold" font-size="15">Detector de puertas</text>
+      <text x="115" y="200" text-anchor="middle" class="t-mono t-time" font-size="13">U-Net · 40 ms en GPU</text>
+
+      <rect class="box" x="260" y="100" width="200" height="80" rx="4"/>
+      <text x="360" y="130" text-anchor="middle" class="t-bold" font-size="15">Filtro de Kalman</text>
+      <text x="360" y="152" text-anchor="middle" class="t-muted" font-size="13">corrige la deriva del VIO</text>
+      <text x="360" y="170" text-anchor="middle" class="t-muted" font-size="13">con las esquinas de puerta</text>
+
+      <rect class="box-accent" x="520" y="100" width="220" height="80" rx="4"/>
+      <text x="630" y="128" text-anchor="middle" class="t-bold" font-size="15">Política (PPO)</text>
+      <text x="630" y="149" text-anchor="middle" class="t-muted" font-size="13">MLP 2×128 · 31 entradas</text>
+      <text x="630" y="169" text-anchor="middle" class="t-mono t-time" font-size="13">8 ms en CPU</text>
+
+      <rect class="box" x="820" y="56" width="300" height="70" rx="4"/>
+      <text x="970" y="84" text-anchor="middle" class="t-bold" font-size="15">Betaflight</text>
+      <text x="970" y="106" text-anchor="middle" class="t-muted" font-size="13">PID de velocidad angular</text>
+
+      <rect class="box" x="820" y="150" width="300" height="70" rx="4"/>
+      <text x="970" y="178" text-anchor="middle" class="t-bold" font-size="15">ESC BLHeli32 + motores</text>
+      <text x="970" y="200" text-anchor="middle" class="t-muted" font-size="13">empuje de los rotores</text>
+
+      <path class="ln" d="M200 91 H230 V125 H258" marker-end="url(#ar3)"/>
+      <path class="ln" d="M200 185 H230 V155 H258" marker-end="url(#ar3)"/>
+      <path class="ln" d="M460 140 H518" marker-end="url(#ar3)"/>
+      <path class="ln-accent" d="M740 140 H780 V91 H818" marker-end="url(#ar3)"/>
+      <text x="630" y="72" class="t-mono t-accent" font-size="12" text-anchor="middle">salida: empuje colectivo</text>
+      <text x="630" y="88" class="t-mono t-accent" font-size="12" text-anchor="middle">+ velocidades angulares →</text>
+      <path class="ln" d="M970 126 V148" marker-end="url(#ar3)"/>
+
+      <g font-size="14">
+        <text x="20" y="276" class="t-mono t-faint" font-size="12">ENTRENAMIENTO Y SIM-TO-REAL</text>
+        <text x="20" y="300">10⁸ interacciones con PPO en 50 min (RTX 3090). Residuales identificados con ≈50 s de vuelo real:</text>
+        <text x="20" y="322">procesos gaussianos para el error de percepción y k-vecinos (k = 5) para la aceleración residual de la dinámica.</text>
+      </g>
+    </svg>
+    <figcaption>Cámara a <span class="hz">30 Hz</span>; latencia sensoriomotora total de <span class="hz">40 ms</span>. Resultado: 15 de 25 carreras ganadas y la vuelta más rápida, 17,47 s. Datos del artículo y sus métodos <a class="cite" data-ref="swift"></a>.</figcaption>
+  </figure>
+</section>
+
+<section class="slide">
+  <p class="kicker">Caso 2 · MonoRace (2025)</p>
+  <h2>Dos años después, la red baja hasta la controladora</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%"></th><th>Swift · UZH, 2023 <a class="cite" data-ref="swift"></a></th><th>MonoRace · TU Delft, 2025 <a class="cite" data-ref="monorace"></a></th></tr>
+      <tr><td>Sensores</td><td>T265 (VIO estéreo) y cámara a 30 Hz</td><td>Una cámara rolling shutter de 155° a 90 Hz; IMU a 1 kHz (acel.) y 2 kHz (giro)</td></tr>
+      <tr><td>Estimación</td><td>VIO comercial + Kalman de deriva</td><td>EKF de 16 estados propio: IMU en la predicción, PnP de las esquinas de puerta en la corrección</td></tr>
+      <tr><td>Política</td><td>MLP 2×128 en el ordenador de a bordo</td><td>G&amp;CNet 3×64 en la propia controladora (STM32H743, 480 MHz)</td></tr>
+      <tr><td>Salida</td><td>Empuje + velocidades angulares → PID de Betaflight</td><td><strong>Comandos de motor directos</strong>, sin lazos internos clásicos</td></tr>
+      <tr><td>Frecuencia de la red</td><td>No publicada (8 ms de inferencia)</td><td class="n">500 Hz</td></tr>
+      <tr><td>Cómputo de visión</td><td>Jetson TX2</td><td>Jetson Orin NX</td></tr>
+      <tr><td>Resultado</td><td>15/25 carreras frente a campeones</td><td>Gana la A2RL y a tres excampeones mundiales; hasta <span class="hz">28 m/s</span> (≈100 km/h)</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>Cuanto más cerca del actuador, más pequeña y más rápida tiene que ser la red. MonoRace no usa una red grande en el lazo rápido: usa una diminuta, en el microcontrolador, a 500 Hz.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Caso 3 · RAPTOR (2025–26)</p>
+  <h2>Una "política fundacional" de 2084 parámetros dentro de PX4</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Eschmann, Albani y Loianno entrenan una única política diminuta que controla cuadricópteros muy distintos <strong>sin reajustar ganancias</strong> <a class="cite" data-ref="raptor"></a>.</p>
+      <ul>
+        <li>Entradas: posición, orientación y velocidades lineal y angular. Salida: <strong>comandos de motor</strong> (<code>actuator_motors</code>).</li>
+        <li>Probada en más de 10 plataformas reales, de <span class="hz">32 g</span> a <span class="hz">2,4 kg</span>.</li>
+        <li>Disponible en PX4 v1.18 como módulo experimental de multirrotor, con pesos cargados desde la tarjeta SD <a class="cite" data-ref="px4raptor"></a>.</li>
+        <li>Se entrena con <em>meta-imitation learning</em>: aprende a adaptarse en contexto a la plataforma que está volando.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Adaptarse a un dron desconocido sin reajuste es inferir sus parámetros (masa, inercia, motores) a partir de la historia: un <strong>belief sobre la dinámica</strong>. RAPTOR lo hace de forma implícita con 2084 parámetros. Lo verás a fondo en A7 y A9.</div>
+      <div class="callout realidad"><span class="tag">Realidad</span>Que un módulo así esté en el autopiloto de referencia es una señal de 2026: las redes pequeñas empiezan a ser una pieza estándar del lazo de control, no solo un experimento de laboratorio.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tamaño frente a frecuencia</p>
+  <h2>Cuanto más grande el modelo, más arriba en la pila y más lento</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 700 430" role="img" aria-label="Diagrama log-log de parámetros frente a frecuencia de salida para varios sistemas reales">
+        <g class="ln-rule">
+          <path d="M80 30 V380"/><path d="M160 30 V380"/><path d="M240 30 V380"/><path d="M320 30 V380"/><path d="M400 30 V380"/><path d="M480 30 V380"/><path d="M560 30 V380"/><path d="M640 30 V380"/>
+          <path d="M80 380 H660"/><path d="M80 270 H660"/><path d="M80 160 H660"/><path d="M80 50 H660"/>
+        </g>
+        <path class="ln" d="M80 380 H660"/><path class="ln" d="M80 30 V380"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="80" y="400">1k</text><text x="160" y="400">10k</text><text x="240" y="400">100k</text><text x="320" y="400">1M</text><text x="400" y="400">10M</text><text x="480" y="400">100M</text><text x="560" y="400">1B</text><text x="640" y="400">10B</text>
+          <text x="370" y="424">parámetros</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="72" y="384">1 Hz</text><text x="72" y="274">10 Hz</text><text x="72" y="164">100 Hz</text><text x="72" y="54">1 kHz</text>
+        </g>
+        <g class="t-mono" font-size="13">
+          <circle cx="160" cy="83.1" r="6" class="fill-time"/><text x="172" y="88" class="t-time">MonoRace G&amp;CNet · 500 Hz</text>
+          <circle cx="464.6" cy="126.9" r="6" class="fill-time"/><text x="452" y="114" text-anchor="end" class="t-time">Helix S1 · 200 Hz</text>
+          <circle cx="547.4" cy="151.3" r="6" class="fill-time"/><text x="536" y="168" text-anchor="end" class="t-time">GR00T S1 · 120 Hz</text>
+          <circle cx="547.4" cy="248.7" r="6" fill="none" class="ln-time"/><text x="536" y="253" text-anchor="end" class="t-muted">inferencia ≈16 Hz</text>
+          <path class="ln-time ln-dash" d="M547.4 157 V242"/>
+          <circle cx="601.5" cy="193.1" r="6" class="fill-time"/><text x="590" y="205" text-anchor="end" class="t-time">π0 · 50 Hz</text>
+          <circle cx="561.6" cy="270" r="6" class="fill-time"/><text x="550" y="300" text-anchor="end" class="t-time">GR00T S2 · 10 Hz</text>
+          <circle cx="636" cy="280.7" r="6" class="fill-time"/><text x="636" y="322" text-anchor="middle" class="t-time">Helix S2 · 7–9 Hz</text>
+        </g>
+      </svg>
+    </figure>
+    <div class="stack small">
+      <p>Ejes logarítmicos. Frecuencia = acciones por segundo que entrega cada sistema <a class="cite" data-ref="monorace,helix,groot,pi0"></a>.</p>
+      <p>MonoRace: unas 10⁴ conexiones (3 capas de 64). GR00T S1: ≈0,9 B, estimado como 2,2 B del modelo menos 1,34 B del VLM. π0: 3,3 B.</p>
+      <div class="callout error"><span class="tag">Ojo con la tendencia</span>Los VLAs "hacen trampa" con el <em>action chunking</em>: GR00T N1 tarda <span class="hz">63,9 ms</span> en generar 16 acciones, así que infiere a unos <span class="hz">16 Hz</span> pero entrega <span class="hz">120 Hz</span>. Las acciones de un chunk se ejecutan en lazo abierto.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 · LA PILA ============ -->
+<section class="slide divider" data-section="4 · La pila de autonomía">
+  <p class="num">Parte 4</p>
+  <h2>La pila de autonomía de un dron en 2026</h2>
+  <p>Qué corre dónde, a qué frecuencia y cómo se comunican las partes. Es el mapa sobre el que se colocan los tres bloques del curso.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">La pila completa</p>
+  <h2>Tres niveles de hardware, una escalera de frecuencias</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1170 560" style="max-height:490px" role="img" aria-label="Pila de autonomía de un dron: nube, ordenador de a bordo y controladora de vuelo, con sensores y actuadores, buses y frecuencias">
+      <defs>
+        <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect class="box-soft" x="40" y="8" width="1090" height="56" rx="6"/>
+      <text x="56" y="31" class="t-mono t-faint" font-size="12">NUBE O ESTACIÓN DE TIERRA</text>
+      <text x="56" y="53" font-size="15">Razonamiento pesado, supervisión y telemetría. Ejemplo: Gemini Robotics, backbone en la nube (&lt;160 ms) y 250 ms de extremo a extremo.</text>
+
+      <path class="ln" d="M585 64 V98" marker-start="url(#ar4)" marker-end="url(#ar4)"/>
+      <text x="600" y="86" class="t-mono t-time" font-size="13">radio · 4G/5G · decenas a cientos de ms</text>
+
+      <rect class="box-soft" x="40" y="100" width="1090" height="190" rx="6"/>
+      <text x="56" y="123" class="t-mono t-faint" font-size="12">ORDENADOR DE A BORDO · JETSON ORIN NX / AGX THOR · LINUX (PREEMPT_RT)</text>
+      <g font-size="15">
+        <rect class="box-tesis" x="60" y="140" width="245" height="125" rx="4"/>
+        <text x="76" y="168" class="t-bold">Razonamiento</text>
+        <text x="76" y="192" class="t-muted" font-size="14">VLM o LLM de misión</text>
+        <text x="76" y="214" class="t-muted" font-size="14">System 2</text>
+        <text x="76" y="250" class="t-mono t-time" font-size="14">0,1–10 Hz</text>
+
+        <rect class="box" x="325" y="140" width="245" height="125" rx="4"/>
+        <text x="341" y="168" class="t-bold">Planificación</text>
+        <text x="341" y="192" class="t-muted" font-size="14">trayectoria, exploración</text>
+        <text x="341" y="214" class="t-muted" font-size="14">o política aprendida</text>
+        <text x="341" y="250" class="t-mono t-time" font-size="14">1–30 Hz</text>
+
+        <rect class="box" x="590" y="140" width="245" height="125" rx="4"/>
+        <text x="606" y="168" class="t-bold">Percepción</text>
+        <text x="606" y="192" class="t-muted" font-size="14">detección, mapa,</text>
+        <text x="606" y="214" class="t-muted" font-size="14">segmentación</text>
+        <text x="606" y="250" class="t-mono t-time" font-size="14">30–90 Hz</text>
+
+        <rect class="box-tesis" x="855" y="140" width="255" height="125" rx="4"/>
+        <text x="871" y="168" class="t-bold">Estimación visual</text>
+        <text x="871" y="192" class="t-muted" font-size="14">VIO, SLAM, belief</text>
+        <text x="871" y="214" class="t-muted" font-size="14">del entorno</text>
+        <text x="871" y="250" class="t-mono t-time" font-size="14">30–100 Hz</text>
+      </g>
+
+      <path class="ln" d="M585 290 V330" marker-start="url(#ar4)" marker-end="url(#ar4)"/>
+      <text x="600" y="316" class="t-mono t-time" font-size="13">UART o Ethernet · MAVLink o uXRCE-DDS (ROS 2)</text>
+
+      <rect class="box-soft" x="40" y="332" width="1090" height="140" rx="6"/>
+      <text x="56" y="355" class="t-mono t-faint" font-size="12">CONTROLADORA DE VUELO · STM32H7 (480 MHz) · NUTTX (PX4) / CHIBIOS (ARDUPILOT)</text>
+      <g font-size="15">
+        <rect class="box-tesis" x="60" y="370" width="190" height="80" rx="4"/>
+        <text x="76" y="396" class="t-bold">EKF</text>
+        <text x="76" y="418" class="t-muted" font-size="13">IMU + correcciones</text>
+        <text x="76" y="438" class="t-mono t-time" font-size="13">cientos de Hz</text>
+
+        <rect class="box" x="275" y="370" width="190" height="80" rx="4"/>
+        <text x="291" y="396" class="t-bold">Posición</text>
+        <text x="291" y="418" class="t-muted" font-size="13">y velocidad</text>
+        <text x="291" y="438" class="t-mono t-time" font-size="13">20–100 Hz</text>
+
+        <rect class="box" x="490" y="370" width="190" height="80" rx="4"/>
+        <text x="506" y="396" class="t-bold">Actitud</text>
+        <text x="506" y="418" class="t-muted" font-size="13">consigna de rate</text>
+        <text x="506" y="438" class="t-mono t-time" font-size="13">100–500 Hz</text>
+
+        <rect class="box-accent" x="705" y="370" width="190" height="80" rx="4"/>
+        <text x="721" y="396" class="t-bold">Velocidad angular</text>
+        <text x="721" y="418" class="t-muted" font-size="13">PID de rate</text>
+        <text x="721" y="438" class="t-mono t-time" font-size="13">0,4–8 kHz</text>
+
+        <rect class="box" x="920" y="370" width="190" height="80" rx="4"/>
+        <text x="936" y="396" class="t-bold">Mezclador</text>
+        <text x="936" y="418" class="t-muted" font-size="13">par → motores</text>
+      </g>
+      <path class="ln" d="M250 410 H273" marker-end="url(#ar4)"/>
+      <path class="ln" d="M465 410 H488" marker-end="url(#ar4)"/>
+      <path class="ln" d="M680 410 H703" marker-end="url(#ar4)"/>
+      <path class="ln" d="M895 410 H918" marker-end="url(#ar4)"/>
+
+      <g font-size="14">
+        <rect class="box" x="60" y="500" width="240" height="50" rx="4"/>
+        <text x="76" y="522" class="t-bold">Cámaras</text>
+        <text x="76" y="541" class="t-mono t-muted" font-size="12">MIPI CSI o USB · 30–90 Hz</text>
+        <rect class="box" x="360" y="500" width="240" height="50" rx="4"/>
+        <text x="376" y="522" class="t-bold">IMU</text>
+        <text x="376" y="541" class="t-mono t-muted" font-size="12">SPI · hasta 8 kHz</text>
+        <rect class="box" x="890" y="500" width="240" height="50" rx="4"/>
+        <text x="906" y="522" class="t-bold">ESC y motores</text>
+        <text x="906" y="541" class="t-mono t-muted" font-size="12">DShot · telemetría de RPM</text>
+      </g>
+      <path class="ln" d="M60 525 H22 V200 H38" marker-end="url(#ar4)"/>
+      <path class="ln" d="M480 500 L160 453" marker-end="url(#ar4)"/>
+      <path class="ln" d="M1015 450 V498" marker-end="url(#ar4)"/>
+    </svg>
+    <figcaption>Configuración típica de un dron de investigación con autopiloto PX4 o ArduPilot y ordenador de a bordo. Rangos orientativos: se precisan en A2, C1, C2 y C3.</figcaption>
+  </figure>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dónde vive la inteligencia</p>
+  <h2>Cada capa tiene una solución clásica y una aprendida</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Capa</th><th>Clásico (sigue en producción)</th><th>Aprendido (estado del arte)</th><th style="width:15%">Dónde corre</th></tr>
+      <tr><td>Rate y motores</td><td>PID en cascada, INDI, filtros notch</td><td>Red diminuta a comandos de motor: MonoRace, RAPTOR <a class="cite" data-ref="monorace,raptor"></a></td><td>Microcontrolador</td></tr>
+      <tr><td>Actitud y posición</td><td>Control geométrico, LQR, NMPC</td><td>Política RL a empuje + rates (Swift); MPC con residuales aprendidos <a class="cite" data-ref="swift,neuralfly"></a></td><td>MCU o a bordo</td></tr>
+      <tr><td>Estimación</td><td>EKF, VIO (filtros y optimización), SLAM</td><td>Detectores neuronales como medida dentro del EKF; filtros aprendidos; belief latente</td><td>A bordo</td></tr>
+      <tr><td>Planificación</td><td>Minimum snap, búsqueda, muestreo, MPCC</td><td>Políticas de extremo a extremo desde visión <a class="cite" data-ref="loquercio2021"></a>; planificación en world model</td><td>A bordo</td></tr>
+      <tr><td>Tarea y razonamiento</td><td>Máquinas de estados, árboles de comportamiento</td><td>LLM/VLM planificadores; VLAs con razonamiento encarnado <a class="cite" data-ref="saycan,gemrob2"></a></td><td>A bordo o nube</td></tr>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">Realidad</span>En drones, los sistemas que ganan en hardware real en 2023–2026 son <strong>híbridos</strong>: estimación con un filtro clásico (alimentado por detectores neuronales) y control aprendido encima o en lugar de los lazos internos. Las políticas puramente de píxel a motor siguen siendo minoría fuera de la investigación.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modular, de extremo a extremo o jerárquico</p>
+  <h2>Tres formas de montar la pila</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">MODULAR</span>
+      <h3>Una caja por función</h3>
+      <p class="small">Estimación, planificación y control separados, con interfaces definidas por humanos (estado, trayectoria, consigna).</p>
+      <p class="small"><strong>A favor:</strong> depurable, verificable, cada módulo se prueba por separado.</p>
+      <p class="small"><strong>En contra:</strong> los errores se acumulan y las interfaces tiran información útil.</p>
+      <p class="xsmall muted">PX4 + planificador clásico. Swift es modular con piezas aprendidas.</p>
+    </div>
+    <div class="card">
+      <span class="meta">DE EXTREMO A EXTREMO</span>
+      <h3>Una red de sensores a acciones</h3>
+      <p class="small">Todo se aprende junto, optimizando directamente el objetivo final.</p>
+      <p class="small"><strong>A favor:</strong> no hay cuellos de botella de diseño; aprovecha datos masivos.</p>
+      <p class="small"><strong>En contra:</strong> opaca, difícil de certificar, y necesita muchísimos datos y cómputo.</p>
+      <p class="xsmall muted">VLAs de manipulación (π0, OpenVLA).</p>
+    </div>
+    <div class="card">
+      <span class="meta">JERÁRQUICO</span>
+      <h3>Capas aprendidas por escala de tiempo</h3>
+      <p class="small">Un modelo grande y lento razona; uno pequeño y rápido actúa; se comunican por un latente o un subobjetivo.</p>
+      <p class="small"><strong>A favor:</strong> inteligencia y reactividad a la vez, con presupuestos de latencia por capa.</p>
+      <p class="small"><strong>En contra:</strong> la interfaz entre capas es un problema abierto.</p>
+      <p class="xsmall muted">Helix, GR00T N1, Gemini Robotics 2 + ER 2.</p>
+    </div>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>La pregunta útil no es "modular o de extremo a extremo", sino <strong>qué interfaces se aprenden y cuáles se fijan</strong>, y a qué frecuencia corre cada lado.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La trampa de la latencia</p>
+  <h2>Un retardo se come margen de fase</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Por qué un modelo lento no puede cerrar un lazo rápido. Un retardo puro \(\tau\) es \(e^{-s\tau}\): no cambia la ganancia, pero resta una fase \(\omega\tau\) a cada frecuencia. Si el lazo cruza en \(\omega_c\) con margen \(\mathrm{PM}\):</p>
+      \[ \mathrm{PM}' = \mathrm{PM} - \omega_c\,\tau \quad\Rightarrow\quad \tau_{\max} = \frac{\mathrm{PM}}{2\pi f_c} \]
+      <p class="small">Con \(\mathrm{PM}=45^\circ\) (0,785 rad): \(\tau_{\max}\approx 0{,}125/f_c\).</p>
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Sea \(L(s)\) la ganancia de lazo y \(\omega_c\) tal que \(|L(j\omega_c)|=1\). El margen de fase es \(\mathrm{PM}=\pi+\angle L(j\omega_c)\). Con retardo, \(L_\tau(s)=L(s)\,e^{-s\tau}\) y \(|e^{-j\omega\tau}|=1\), así que el cruce no se mueve y \(\angle L_\tau(j\omega_c)=\angle L(j\omega_c)-\omega_c\tau\). Por tanto \(\mathrm{PM}'=\mathrm{PM}-\omega_c\tau\). El lazo cerrado pierde la estabilidad cuando \(\mathrm{PM}'\le 0\), es decir, cuando \(\tau\ge \mathrm{PM}/\omega_c\). En la práctica se exige \(\mathrm{PM}'\gtrsim 30^\circ\), así que el retardo admisible es aún menor.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <table class="t">
+        <tr><th>Lazo (cruce ilustrativo)</th><th>\(f_c\)</th><th>\(\tau_{\max}\) con PM 45°</th></tr>
+        <tr><td>Velocidad angular</td><td class="n">30 Hz</td><td class="n">4 ms</td></tr>
+        <tr><td>Actitud</td><td class="n">10 Hz</td><td class="n">12,5 ms</td></tr>
+        <tr><td>Posición</td><td class="n">1 Hz</td><td class="n">125 ms</td></tr>
+        <tr><td>Misión</td><td class="n">0,1 Hz</td><td class="n">1,25 s</td></tr>
+      </table>
+      <div class="callout realidad"><span class="tag">Realidad</span>Con los <span class="hz">250 ms</span> de Gemini Robotics <a class="cite" data-ref="gemrob"></a>, solo cabe cerrar lazos con cruce por debajo de unos <span class="hz">0,5 Hz</span>. Con los <span class="hz">40 ms</span> de Swift, un lazo de actitud a 10 Hz perdería 144° de fase: por eso Swift deja el lazo de rate a Betaflight.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cómo se esquiva la latencia</p>
+  <h2>Chunks, ejecución asíncrona y jerarquías</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3>Action chunking</h3>
+      <p class="small">La política predice una secuencia de acciones futuras en lugar de una sola. Gemini Robotics tarda <span class="hz">≈250 ms</span> por consulta pero entrega una frecuencia de control efectiva de <span class="hz">50 Hz</span> porque cada respuesta trae un chunk de acciones <a class="cite" data-ref="gemrob,act"></a>.</p>
+      <h3>Ejecución asíncrona</h3>
+      <p class="small">Mientras se ejecuta un chunk, ya se calcula el siguiente. <em>Real-time chunking</em> lo plantea como un problema de inpainting: congela las acciones que se van a ejecutar seguro y rellena el resto, sin reentrenar <a class="cite" data-ref="rtc"></a>.</p>
+      <h3>Jerarquía</h3>
+      <p class="small">El modelo grande no cierra el lazo: entrega un latente o un subobjetivo a una red pequeña que sí lo cierra a 120–200 Hz <a class="cite" data-ref="helix,groot"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">El límite en drones</span>Un chunk se ejecuta en lazo abierto. Para un brazo casi estático sirve; un multirrotor es inestable en lazo abierto, y unas décimas de segundo sin corrección pueden bastar para perderlo. Por eso en drones el lazo rápido siempre queda en manos de un controlador clásico o de una red pequeña que corre en tiempo real.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Esto respondía a tu intuición del sondeo: <strong>predecir dónde estará el dron cuando actúe</strong>. Es la idea del predictor de Smith y de la compensación de retardo. Un world model puede hacerlo de forma aprendida: imaginar el estado en \(t+\tau\) antes de decidir.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 · SIMULACIÓN Y DESPLIEGUE ============ -->
+<section class="slide divider" data-section="5 · Simular y desplegar">
+  <p class="num">Parte 5</p>
+  <h2>Los otros dos bloques: simular y desplegar</h2>
+  <p>Una vista previa de lo que la Fase 2 y las Fases 5–6 desarrollan a fondo, para que sepas desde hoy qué capas tendrá que tener tu simulador.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Simulación</p>
+  <h2>Un simulador tiene dos trabajos que tiran en direcciones opuestas</h2>
+  <div class="cols">
+    <div class="card">
+      <span class="meta">ENTRENAR · TEMAS B6, A6</span>
+      <h3>Rendimiento: millones de pasos por segundo</h3>
+      <p class="small">Miles de entornos en paralelo en GPU, física simplificada, sin render o con render barato. Se mide en pasos por segundo y en tiempo hasta una política útil.</p>
+      <p class="small">Swift: 10⁸ interacciones en 50 min <a class="cite" data-ref="swift"></a>. Locomoción de ANYmal: políticas en minutos con miles de robots en paralelo <a class="cite" data-ref="rudin2021"></a>.</p>
+      <p class="xsmall muted">Isaac Lab, MuJoCo MJX, Genesis, Aerial Gym, OmniDrones, tus entornos en JAX <a class="cite" data-ref="aerialgym,omnidrones"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">VALIDAR · TEMAS B2–B5</span>
+      <h3>Fidelidad: que lo que pasa allí pase aquí</h3>
+      <p class="small">Sensores con ruido realista, render fotorrealista, latencias, el firmware real del autopiloto (SITL) o incluso su hardware (HIL). Se mide por la diferencia con los datos de vuelo.</p>
+      <p class="small">Más lento, a menudo en tiempo real, con una sola instancia.</p>
+      <p class="xsmall muted">Gazebo + PX4 SITL, Isaac Sim, simuladores sobre Unreal (herederos de AirSim), Flightmare <a class="cite" data-ref="gazebo,airsim,flightmare"></a>.</p>
+    </div>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>Ningún simulador hace bien las dos cosas. El estándar en 2026 es una <strong>pipeline por niveles</strong>: entrenar en un simulador rápido y aleatorizado, y validar en otro más fiel antes de volar. Es exactamente lo que marcaste como objetivo para tu simulador.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Las capas de la realidad</p>
+  <h2>Lo que un simulador de drones suele olvidar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Capa</th><th>Qué incluye</th><th>Síntoma si falta</th><th style="width:10%">Tema</th></tr>
+      <tr><td>Cuerpo rígido</td><td>Newton-Euler en SE(3), inercia, centro de masas</td><td>Casi nunca falta; el error está en los parámetros</td><td>A1</td></tr>
+      <tr><td>Actuadores</td><td>Constante de tiempo del motor, curva de empuje, ESC, caída de tensión de la batería</td><td>Oscilaciones y respuesta lenta en el dron real</td><td>B2</td></tr>
+      <tr><td>Aerodinámica</td><td>Arrastre, efecto suelo, flapping de pala, viento y turbulencia</td><td>Deriva y error de seguimiento a alta velocidad</td><td>B2</td></tr>
+      <tr><td>Sensores</td><td>Ruido y sesgo de IMU, rolling shutter, desenfoque, exposición</td><td>El estimador funciona en simulación y diverge en vuelo</td><td>B3</td></tr>
+      <tr><td>Tiempo</td><td>Latencias, jitter, multi-frecuencia, asincronía</td><td>La política oscila o se cae</td><td>B4</td></tr>
+      <tr><td>Software real</td><td>Firmware del autopiloto, filtros del giróscopo, middleware</td><td>Diferencias de comportamiento sin causa visible</td><td>B5</td></tr>
+      <tr><td>Otros agentes</td><td>Compañeros y adversarios, comunicación con pérdidas</td><td>Coordinación que se rompe fuera del simulador</td><td>A15</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Tu respuesta del sondeo ya acertaba con el tiempo, el ruido de la IMU y los parámetros físicos. Faltaban sobre todo los actuadores, el firmware real y las convenciones de ejes (NED/ENU, FRD/FLU), que causan más fallos de los que parece.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Despliegue</p>
+  <h2>Tres niveles de cómputo, buses distintos y garantías temporales distintas</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">MICROCONTROLADOR · TEMAS C4, C6</span>
+      <h3>Controladora de vuelo</h3>
+      <p class="small">STM32 de cientos de MHz: 216 MHz en Swift, STM32H743 a 480 MHz en MonoRace <a class="cite" data-ref="swift,monorace"></a>.</p>
+      <p class="small">RTOS (NuttX en PX4, ChibiOS en ArduPilot) o planificador propio sin sistema operativo (Betaflight). Tiempo real duro.</p>
+      <p class="small">IMU por SPI; ESC por DShot.</p>
+    </div>
+    <div class="card">
+      <span class="meta">SOC CON GPU · TEMAS C1, C5</span>
+      <h3>Ordenador de a bordo</h3>
+      <p class="small">Jetson TX2 en Swift (2023), Orin NX en MonoRace (2025) <a class="cite" data-ref="swift,monorace"></a>. Para humanoides, Jetson AGX Thor.</p>
+      <p class="small">Linux, que desde la versión 6.12 incluye PREEMPT_RT en el kernel principal <a class="cite" data-ref="linux612"></a>. Tiempo real blando o firme.</p>
+      <p class="small">Habla con la controladora por MAVLink o uXRCE-DDS.</p>
+    </div>
+    <div class="card">
+      <span class="meta">FUERA DEL ROBOT · TEMAS C2, C3</span>
+      <h3>Estación de tierra o nube</h3>
+      <p class="small">Modelos que no caben a bordo: el backbone de Gemini Robotics corre en la nube <a class="cite" data-ref="gemrob"></a>.</p>
+      <p class="small">Sin garantías temporales: radio, 4G/5G, pérdidas. Solo para capas lentas y con plan B a bordo.</p>
+    </div>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>La pregunta de despliegue siempre es la misma: <strong>¿qué pasa si esta capa no responde a tiempo?</strong> Cuanto más abajo en la pila, más dura tiene que ser la garantía.</div>
+</section>
+
+<!-- ============ 6 · TENSIONES Y TENDENCIAS ============ -->
+<section class="slide divider" data-section="6 · Tensiones y tendencias">
+  <p class="num">Parte 6</p>
+  <h2>Dónde está el campo en noviembre de 2026</h2>
+  <p>Problemas abiertos, lo que ha pasado en los últimos meses y lo que razonablemente cabe esperar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Problemas abiertos</p>
+  <h2>Seis tensiones sin resolver</h2>
+  <div class="cols c3 body">
+    <div class="card"><h3>Capacidad frente a latencia</h3><p class="small">Los modelos que razonan no caben en los lazos rápidos. La interfaz entre capas sigue siendo artesanal.</p></div>
+    <div class="card"><h3>Datos de robot</h3><p class="small">No hay un internet de acciones. Se combinan teleoperación, simulación, vídeo y experiencia propia con fallos <a class="cite" data-ref="pi07"></a>.</p></div>
+    <div class="card"><h3>Generalidad frente a fiabilidad</h3><p class="small">Un VLA generalista hace muchas tareas, pero con tasas de éxito por debajo de lo que exige un producto.</p></div>
+    <div class="card"><h3>Evaluación</h3><p class="small">Pocos benchmarks reales comparables. Muchos resultados son demos de la propia empresa, sin verificación independiente.</p></div>
+    <div class="card"><h3>Garantías</h3><p class="small">Las redes no ofrecen certificados de estabilidad ni de seguridad. Se recurre a filtros de seguridad y monitores.</p></div>
+    <div class="card"><h3>Memoria y observabilidad parcial</h3><p class="small">Recordar lo que no se ve durante minutos, con compañeros y adversarios que también actúan. El terreno de tu tesis.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tendencias verificadas 2025–2026</p>
+  <h2>Lo que ha cambiado en el último año</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>VLAs más dirigibles y con memoria.</strong> π0.7 (abril de 2026): 5 B parámetros, backbone Gemma 3 4B, experto de acción de 860 M y codificador de historia de vídeo. Aprende de demostraciones, de datos autónomos con fallos y de fuentes que no son de robot <a class="cite" data-ref="pi07"></a>.</li>
+      <li><strong>Razonamiento separado de la acción.</strong> Gemini Robotics 2 (julio de 2026) se presenta con ER 2, que planifica, sigue el progreso y llama a herramientas, y con un modelo On-Device 2 que corre sin red <a class="cite" data-ref="gemrob2"></a>.</li>
+      <li><strong>Entrenar dentro del world model.</strong> Dreamer 4 consigue diamantes en Minecraft solo con datos offline, entrenando la política en imaginación <a class="cite" data-ref="dreamer4"></a>. Las revisiones de 2025–2026 consolidan el área <a class="cite" data-ref="wmsurvey"></a>.</li>
+    </ul>
+    <ul class="small">
+      <li><strong>Redes pequeñas en el autopiloto.</strong> RAPTOR entra en PX4 y MonoRace vuela con la red en el microcontrolador <a class="cite" data-ref="px4raptor,monorace"></a>.</li>
+      <li><strong>Ejecución asíncrona como estándar.</strong> Real-time chunking (NeurIPS 2025) permite usar políticas de difusión y flow con latencia real <a class="cite" data-ref="rtc"></a>.</li>
+      <li><strong>VLAs para drones, un área joven.</strong> Las revisiones de 2026 recogen la evolución de la navegación visión-lenguaje para UAVs hacia sistemas agénticos y VLAs, y señalan como retos el sim-to-real y el hardware limitado <a class="cite" data-ref="uavvln,vlauav"></a>.</li>
+    </ul>
+  </div>
+  <div class="callout realidad"><span class="tag">Realidad</span>Las cifras de rendimiento de π0.7 o Gemini Robotics 2 vienen de las propias empresas. Trátalas como afirmaciones hasta que haya evaluaciones independientes.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Hacia dónde va (previsión, no hechos)</p>
+  <h2>Qué cabe esperar en 2027 y después</h2>
+  <div class="cols">
+    <ol class="small">
+      <li><strong>World models como banco de evaluación.</strong> Evaluar políticas en un modelo aprendido antes de volar, como complemento del simulador físico.</li>
+      <li><strong>Modelos fundacionales en el dispositivo.</strong> La línea On-Device y la cuantización agresiva acercan los VLAs al ordenador de a bordo de un dron mediano.</li>
+      <li><strong>Redes estandarizadas en los autopilotos</strong>, con interfaces, verificación y modos de fallo definidos.</li>
+    </ol>
+    <ol class="small" start="4">
+      <li><strong>Aprendizaje durante el despliegue.</strong> Políticas que mejoran con su propia experiencia, lo que obliga a resolver el olvido y la seguridad del aprendizaje online (A9).</li>
+      <li><strong>Equipos heterogéneos.</strong> Coordinación entre drones y con robots de tierra, con compañeros que no se conocen de antemano (A15).</li>
+      <li><strong>Más peso de la evaluación honesta</strong>: protocolos sim-to-real reproducibles y comparables (D1).</li>
+    </ol>
+  </div>
+  <div class="callout tesis"><span class="tag">Tu tesis</span>Los puntos 1, 4 y 5 son casi literalmente tu título: world models, adaptación online y compañeros o adversarios desconocidos bajo observabilidad parcial. Vas bien encaminado; la competencia está en hacerlo funcionar en hardware real.</div>
+</section>
+
+<!-- ============ 7 · ECOSISTEMA ============ -->
+<section class="slide divider" data-section="7 · Ecosistema">
+  <p class="num">Parte 7</p>
+  <h2>Quién hace qué y cómo seguirle el ritmo</h2>
+  <p>Un avance. D2, al final del curso, lo trata a fondo y lo conecta con tu plan de investigación.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Grupos, empresas y dónde se publica</p>
+  <h2>Los nombres que vas a ver citados en todo el curso</h2>
+  <div class="cols c3 body">
+    <div class="stack small">
+      <h3>Grupos de robótica aérea</h3>
+      <ul>
+        <li>UZH Robotics and Perception Group: Swift, vuelo ágil</li>
+        <li>TU Delft MAVLab: MonoRace, microdrones</li>
+        <li>Zhejiang University FAST Lab: enjambres</li>
+        <li>Caltech (Chung): Neural-Fly</li>
+        <li>UPenn GRASP, ETH Zürich, CMU AirLab</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <h3>Foundation models y aprendizaje</h3>
+      <ul>
+        <li>Physical Intelligence: π0 a π0.7, real-time chunking</li>
+        <li>Google DeepMind: Gemini Robotics, Genie, Dreamer</li>
+        <li>NVIDIA: GR00T, Isaac, Cosmos</li>
+        <li>Figure: Helix</li>
+        <li>UC Berkeley, Stanford, CMU, MIT</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <h3>Dónde se publica</h3>
+      <ul>
+        <li>Conferencias: ICRA, IROS, RSS, CoRL</li>
+        <li>Aprendizaje: NeurIPS, ICML, ICLR</li>
+        <li>Revistas: T-RO, RA-L, IJRR, Science Robotics</li>
+        <li>Preprints: arXiv cs.RO y cs.LG</li>
+      </ul>
+    </div>
+  </div>
+  <p class="xsmall muted">Lista mínima y deliberadamente incompleta, a partir de los trabajos citados en esta presentación.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Método</p>
+  <h2>Un filtro de credibilidad para leer cualquier resultado</h2>
+  <div class="cols w60">
+    <ol>
+      <li><strong>¿Hardware real?</strong> ¿Cuántos ensayos, en qué condiciones y cuántos fallos?</li>
+      <li><strong>¿Latencia y frecuencia publicadas?</strong> Si no dicen a qué Hz corre ni cuánto tarda, desconfía.</li>
+      <li><strong>¿Contra qué se compara?</strong> ¿Hay una línea base clásica bien ajustada?</li>
+      <li><strong>¿Código y pesos?</strong> ¿Se puede reproducir?</li>
+      <li><strong>¿Quién lo evalúa?</strong> ¿Revisión por pares, benchmark independiente o blog de empresa?</li>
+      <li><strong>¿Qué capa toca?</strong> Ubícalo en la escalera de frecuencias y en los cuatro ejes.</li>
+    </ol>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Rutina recomendada</span>Una vez por semana: repaso de arXiv cs.RO, una lectura a fondo y una frase en tu cuaderno de lecturas sobre dónde cae en el mapa. Así se construye el criterio que pide una tesis.</div>
+      <p class="small muted">Las presentaciones de este curso aplican el mismo filtro: las cifras de empresa se marcan como afirmaciones propias.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8 · TU TESIS ============ -->
+<section class="slide divider" data-section="8 · Tu tesis">
+  <p class="num">Parte 8</p>
+  <h2>Dónde encaja tu tesis en este mapa</h2>
+  <p>Belief states y world models para sistemas aéreos autónomos en entornos parcialmente observables.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tu tesis en la pila</p>
+  <h2>Dos beliefs a dos velocidades</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 660 400" role="img" aria-label="Arquitectura con un filtro físico rápido y un belief latente lento que alimentan a la política, con un world model que imagina">
+        <defs>
+          <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect class="box" x="20" y="30" width="190" height="70" rx="4"/>
+        <text x="115" y="60" text-anchor="middle" class="t-bold" font-size="15">IMU, cámara,</text>
+        <text x="115" y="80" text-anchor="middle" class="t-bold" font-size="15">mensajes de otros</text>
+
+        <rect class="box-accent" x="260" y="20" width="200" height="80" rx="4"/>
+        <text x="360" y="48" text-anchor="middle" class="t-bold" font-size="15">Filtro físico</text>
+        <text x="360" y="68" text-anchor="middle" class="t-muted" font-size="13">estado del dron</text>
+        <text x="360" y="88" text-anchor="middle" class="t-mono t-time" font-size="13">cientos de Hz</text>
+
+        <rect class="box-tesis" x="260" y="140" width="200" height="90" rx="4"/>
+        <text x="360" y="168" text-anchor="middle" class="t-bold" font-size="15">Belief latente</text>
+        <text x="360" y="188" text-anchor="middle" class="t-muted" font-size="13">entorno, tarea, compañeros</text>
+        <text x="360" y="212" text-anchor="middle" class="t-mono t-time" font-size="13">1–30 Hz</text>
+
+        <rect class="box-tesis" x="260" y="290" width="200" height="80" rx="4"/>
+        <text x="360" y="320" text-anchor="middle" class="t-bold" font-size="15">World model</text>
+        <text x="360" y="342" text-anchor="middle" class="t-muted" font-size="13">imagina futuros</text>
+
+        <rect class="box" x="510" y="90" width="130" height="90" rx="4"/>
+        <text x="575" y="130" text-anchor="middle" class="t-bold" font-size="15">Política</text>
+        <text x="575" y="152" text-anchor="middle" class="t-muted" font-size="13">a los lazos</text>
+
+        <path class="ln" d="M210 60 H258" marker-end="url(#ar5)"/>
+        <path class="ln" d="M210 80 H235 V185 H258" marker-end="url(#ar5)"/>
+        <path class="ln" d="M460 60 H485 V115 H508" marker-end="url(#ar5)"/>
+        <path class="ln" d="M460 185 H485 V155 H508" marker-end="url(#ar5)"/>
+        <path class="ln-tesis ln-dash" d="M340 230 V288" marker-end="url(#ar5)"/>
+        <path class="ln-tesis ln-dash" d="M380 288 V232" marker-end="url(#ar5)"/>
+        <path class="ln-accent ln-dash" d="M360 100 V138" marker-end="url(#ar5)"/>
+      </svg>
+    </figure>
+    <div class="stack small">
+      <p>Un esquema posible, no el único: el <strong>filtro físico</strong> (EKF) da el estado del dron a la velocidad de los lazos; el <strong>belief latente</strong> resume lo que no se ve (dónde puede estar el objetivo, qué hará un compañero) a la velocidad de la percepción; el <strong>world model</strong> lo entrena y permite imaginar antes de decidir.</p>
+      <div class="callout tesis"><span class="tag">Preguntas abiertas</span>
+        <ol class="small">
+          <li>¿Cómo se combina un filtro físico con un belief aprendido sin que se contradigan?</li>
+          <li>¿A qué frecuencia tiene que correr un world model para un dron?</li>
+          <li>¿Cómo se adapta online sin perder la seguridad?</li>
+          <li>¿Cómo se mantiene un belief sobre compañeros y adversarios con comunicación limitada?</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Para todo el curso</p>
+  <h2>Cinco preguntas que llevarás de tema en tema</h2>
+  <ol class="body" style="font-size:21px; gap:14px;">
+    <li><strong>¿En qué peldaño de la escalera corre y cuánto tarda?</strong> Frecuencia, latencia y hardware.</li>
+    <li><strong>¿Qué parte del estado no se observa y cómo se representa?</strong> Belief explícito, latente o memoria implícita.</li>
+    <li><strong>¿De dónde salen los datos?</strong> Simulación, teleoperación, vídeo o experiencia propia, y con qué sesgos.</li>
+    <li><strong>¿Qué se rompe al pasar al hardware real?</strong> Recorre las siete capas de la realidad.</li>
+    <li><strong>¿Qué garantiza que no se estrelle?</strong> Margen de estabilidad, filtro de seguridad o nada.</li>
+  </ol>
+  <div class="callout clave"><span class="tag">Idea clave</span>Si al final del curso respondes estas cinco preguntas para cualquier sistema en dos minutos, estás al día.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de M0</h2>
+  <ul class="body" style="font-size:20px; gap:12px;">
+    <li>Un robot es un lazo cerrado con retardo sobre un mundo parcialmente observable. Tiempo, observabilidad, datos y consecuencias definen la disciplina.</li>
+    <li>Seis paradigmas se acumulan. Sus ideas siguen vivas: planificar sobre modelos, organizar por escalas de tiempo, representar la incertidumbre, optimizar, aprender en simulación y generalizar con datos masivos.</li>
+    <li>Un dron es una escalera de lazos: de miles de hercios en la velocidad angular a menos de un hercio en la misión.</li>
+    <li>Un retardo \(\tau\) resta \(\omega_c\tau\) de margen de fase. Los modelos grandes van arriba; abajo, redes diminutas o control clásico.</li>
+    <li>En drones gana lo híbrido: estimación clásica con percepción neuronal y control aprendido. Las redes pequeñas ya entran en el autopiloto.</li>
+    <li>Tu tesis vive en la capa del belief y del world model, que es justo donde se cruzan los tres bloques del curso.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Comprueba lo esencial</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. En un multirrotor con PX4 o Betaflight, ¿qué lazo corre más rápido?</p>
+      <ol class="opts">
+        <li><button type="button">El de actitud, a unos 50 Hz</button></li>
+        <li><button type="button">El de velocidad angular, a cientos o miles de Hz</button></li>
+        <li><button type="button">El de posición, porque es el más importante</button></li>
+        <li><button type="button">Todos corren a la frecuencia de la IMU</button></li>
+      </ol>
+      <p class="explain">El lazo de rate es el más interno: Betaflight lo corre a la tasa del giróscopo (3,2–8 kHz) y PX4 a 400–800 Hz por defecto. La actitud genera su consigna.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. Gemini Robotics tarda unos 250 ms por consulta. ¿Cómo logra 50 Hz efectivos?</p>
+      <ol class="opts">
+        <li><button type="button">Ejecuta el backbone en la propia controladora</button></li>
+        <li><button type="button">Reduce la imagen hasta que la inferencia tarda 20 ms</button></li>
+        <li><button type="button">Cada respuesta trae un chunk de acciones que se ejecuta mientras llega la siguiente</button></li>
+        <li><button type="button">Usa un filtro de Kalman para interpolar acciones</button></li>
+      </ol>
+      <p class="explain">Action chunking: varias acciones por consulta. Ojo: dentro del chunk, el robot va en lazo abierto.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Cuentas y casos</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">3. Un lazo con cruce a 5 Hz recibe un retardo de 20 ms. ¿Cuánto margen de fase pierde?</p>
+      <ol class="opts">
+        <li><button type="button">3,6°</button></li>
+        <li><button type="button">36°</button></li>
+        <li><button type="button">72°</button></li>
+        <li><button type="button">360°</button></li>
+      </ol>
+      <p class="explain">\(\omega_c\tau = 2\pi\cdot 5\cdot 0{,}02 = 0{,}628\) rad \(= 36^\circ\). Con un margen inicial de 45°, quedarían solo 9°.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. ¿Qué usó Swift para reducir la brecha entre simulación y realidad?</p>
+      <ol class="opts">
+        <li><button type="button">Horas de vuelo real para reentrenar la política desde cero</button></li>
+        <li><button type="button">Solo domain randomization, sin datos reales</button></li>
+        <li><button type="button">Un simulador fotorrealista con render de las puertas</button></li>
+        <li><button type="button">Residuales de percepción y dinámica identificados con unos 50 s de vuelo real</button></li>
+      </ol>
+      <p class="explain">Procesos gaussianos para el error del VIO y k-vecinos para la aceleración residual, ajustados con tres vueltas (≈50 s). La política se reajustó con esos residuales.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Conceptos que conectan con tu tesis</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">5. ¿Qué tienen en común la arquitectura de tres capas de 1998 y Helix (2025)?</p>
+      <ol class="opts">
+        <li><button type="button">Organizan la inteligencia por escalas de tiempo: lo lento razona y lo rápido actúa</button></li>
+        <li><button type="button">Las dos son de extremo a extremo</button></li>
+        <li><button type="button">Las dos usan un planificador simbólico</button></li>
+        <li><button type="button">Nada: son paradigmas opuestos</button></li>
+      </ol>
+      <p class="explain">Lo nuevo de Helix es que ambas capas son redes aprendidas y se comunican por un latente.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: ¿por qué se puede decir que el RSSM de Dreamer mantiene un belief?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Un belief es la distribución a posteriori del estado oculto dada la historia, \(b_t(s)=p(s_t\mid o_{1:t},a_{1:t-1})\). El RSSM combina un estado determinista \(h_t\) (recurrente, resume la historia) con un latente estocástico cuyo posterior \(q(z_t\mid h_t,o_t)\) se entrena con un objetivo variacional (ELBO) que obliga a predecir observaciones y recompensas. Es un <strong>filtro aproximado aprendido</strong>: un belief sobre un estado latente, no sobre el estado físico verdadero. Lo formalizan A7 y A8.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN</span>
+      <h3>Swift, Nature 2023 <a class="cite" data-ref="swift"></a></h3>
+      <p class="small"><strong>Lee:</strong> resumen, figura 2 y la sección de métodos sobre política y residuales.</p>
+      <p class="small"><strong>Busca:</strong> espacio de observación y de acción, cómo se identifican los residuales y qué hace Betaflight.</p>
+      <p class="small"><strong>Responde:</strong> ¿qué parte del éxito se debe al aprendizaje y qué parte al autopiloto clásico?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN</span>
+      <h3>MonoRace, 2026 <a class="cite" data-ref="monorace"></a></h3>
+      <p class="small"><strong>Lee:</strong> resumen, vista general de métodos y la sección de la G&amp;CNet.</p>
+      <p class="small"><strong>Busca:</strong> por qué se eliminan los lazos internos y cómo maneja el EKF la saturación del acelerómetro.</p>
+      <p class="small"><strong>Responde:</strong> ¿qué ganas y qué pierdes al mandar comandos de motor directamente?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 40 MIN</span>
+      <h3>GR00T N1, 2025 <a class="cite" data-ref="groot"></a></h3>
+      <p class="small"><strong>Lee:</strong> introducción y sección 2 (arquitectura).</p>
+      <p class="small"><strong>Busca:</strong> cómo se conectan System 2 y System 1, el tamaño del chunk y los tiempos de inferencia.</p>
+      <p class="small"><strong>Responde:</strong> ¿podría esta arquitectura controlar un multirrotor? ¿Qué capa tendrías que cambiar?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> la revisión de carreras autónomas de Hanover et al. <a class="cite" data-ref="hanover2024"></a>, la de foundation models en robótica de Firoozi et al. <a class="cite" data-ref="firoozi"></a>, la de world models para IA encarnada <a class="cite" data-ref="wmsurvey"></a> y el artículo original de Brooks <a class="cite" data-ref="brooks1986"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio 0 · ≈ 3 h</p>
+  <h2>Prepara el banco de trabajo del proyecto hilo</h2>
+  <div class="cols w60">
+    <ol class="small">
+      <li>Crea el proyecto con <code>uv</code> e instala JAX con soporte CUDA para tu GPU (o en CPU, si no hay GPU). Comprueba que <code>jax.devices()</code> ve la GPU.</li>
+      <li>Monta la estructura del repositorio: <code>dinamica/</code>, <code>control/</code>, <code>estimacion/</code>, <code>sim/</code>, <code>experimentos/</code>, con tests desde el primer día.</li>
+      <li>Escribe un integrador RK4 genérico y pruébalo con un péndulo simple: compara con la solución analítica para ángulos pequeños.</li>
+      <li>Vectoriza con <code>jax.vmap</code> y mide pasos por segundo con 1, 1024 y 65 536 entornos. Anota la cifra: es tu primera referencia de rendimiento.</li>
+      <li>Simula un lazo con retardo: un integrador controlado por un P con un retardo de \(k\) pasos. Barre \(k\) y comprueba que la inestabilidad aparece donde predice \(\tau_{\max}=\mathrm{PM}/\omega_c\).</li>
+    </ol>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Entregable</span>Un repositorio con tests en verde, una tabla de pasos por segundo y una gráfica de estabilidad frente a retardo comparada con la teoría.</div>
+      <p class="small">El enunciado completo está en <code>temas/M0_mapa-del-campo/lab/README.md</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Pista paralela</p>
+  <h2>C++ en paralelo, media hora al día</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>PX4, ROS 2 y casi todo el código de tiempo real están en C++. No es un tema del curso, pero en la Fase 5 lo necesitarás para leer y modificar código real.</p>
+      <ul class="small">
+        <li><strong>learncpp.com</strong>: curso gratuito y muy completo para empezar desde cero.</li>
+        <li><strong><em>A Tour of C++</em></strong> (Stroustrup, 3.ª ed., 2022): visión compacta de C++ moderno, ideal tras lo básico.</li>
+        <li><strong>C++ Core Guidelines</strong> (isocpp.github.io/CppCoreGuidelines): cómo escribirlo bien.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Objetivo</span>Al llegar a C8 (ROS 2) y C4 (tiempo real), deberías leer un nodo de ROS 2 en C++ o un módulo de PX4 y entender qué hace, aunque aún no lo escribas con soltura.</div>
+      <p class="small muted">Sugerencia: reescribe en C++ el integrador RK4 del laboratorio 0 y compara su rendimiento con la versión en JAX en CPU.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-shakey">Nilsson, N. J. (1984). <em>Shakey the robot</em>. SRI AI Center, Technical Note 323.</li>
+    <li id="ref-astar">Hart, P. E., Nilsson, N. J., Raphael, B. (1968). A formal basis for the heuristic determination of minimum cost paths. <span class="venue">IEEE Trans. Systems Science and Cybernetics</span>, 4(2), 100–107.</li>
+    <li id="ref-strips">Fikes, R. E., Nilsson, N. J. (1971). STRIPS: A new approach to the application of theorem proving to problem solving. <span class="venue">Artificial Intelligence</span>, 2(3–4), 189–208.</li>
+    <li id="ref-saycan">Ahn, M., et al. (2022). Do as I can, not as I say: Grounding language in robotic affordances. <span class="venue">CoRL 2022</span>. <a href="https://arxiv.org/abs/2204.01691">arXiv:2204.01691</a></li>
+    <li id="ref-cap">Liang, J., et al. (2023). Code as Policies: Language model programs for embodied control. <span class="venue">ICRA 2023</span>. <a href="https://arxiv.org/abs/2209.07753">arXiv:2209.07753</a></li>
+    <li id="ref-brooks1986">Brooks, R. A. (1986). A robust layered control system for a mobile robot. <span class="venue">IEEE Journal of Robotics and Automation</span>, 2(1), 14–23.</li>
+    <li id="ref-brooks1991">Brooks, R. A. (1991). Intelligence without representation. <span class="venue">Artificial Intelligence</span>, 47(1–3), 139–159.</li>
+    <li id="ref-gat1998">Gat, E. (1998). On three-layer architectures. En Kortenkamp, Bonasso, Murphy (eds.), <span class="venue">Artificial Intelligence and Mobile Robots</span>. AAAI Press / MIT Press.</li>
+    <li id="ref-helix">Figure AI (2025). Helix: A vision-language-action model for generalist humanoid control. <a href="https://www.figure.ai/news/helix">figure.ai/news/helix</a></li>
+    <li id="ref-groot">NVIDIA, Bjorck, J., et al. (2025). GR00T N1: An open foundation model for generalist humanoid robots. <a href="https://arxiv.org/abs/2503.14734">arXiv:2503.14734</a></li>
+    <li id="ref-kalman1960">Kalman, R. E. (1960). A new approach to linear filtering and prediction problems. <span class="venue">Journal of Basic Engineering</span>, 82(1), 35–45.</li>
+    <li id="ref-mcl1999">Dellaert, F., Fox, D., Burgard, W., Thrun, S. (1999). Monte Carlo localization for mobile robots. <span class="venue">ICRA 1999</span>.</li>
+    <li id="ref-stanley">Thrun, S., et al. (2006). Stanley: The robot that won the DARPA Grand Challenge. <span class="venue">Journal of Field Robotics</span>, 23(9), 661–692.</li>
+    <li id="ref-probrob">Thrun, S., Burgard, W., Fox, D. (2005). <em>Probabilistic Robotics</em>. MIT Press.</li>
+    <li id="ref-ros2009">Quigley, M., et al. (2009). ROS: an open-source Robot Operating System. <span class="venue">ICRA Workshop on Open Source Software</span>.</li>
+    <li id="ref-ros2_2022">Macenski, S., Foote, T., Gerkey, B., Lalancette, C., Woodall, W. (2022). Robot Operating System 2: Design, architecture, and uses in the wild. <span class="venue">Science Robotics</span>, 7(66).</li>
+    <li id="ref-lee2010">Lee, T., Leok, M., McClamroch, N. H. (2010). Geometric tracking control of a quadrotor UAV on SE(3). <span class="venue">IEEE CDC 2010</span>.</li>
+    <li id="ref-mellinger2011">Mellinger, D., Kumar, V. (2011). Minimum snap trajectory generation and control for quadrotors. <span class="venue">ICRA 2011</span>.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="18">
+    <li id="ref-px4_2015">Meier, L., Honegger, D., Pollefeys, M. (2015). PX4: A node-based multithreaded open source robotics framework for deeply embedded platforms. <span class="venue">ICRA 2015</span>.</li>
+    <li id="ref-tdmpc2">Hansen, N., Su, H., Wang, X. (2024). TD-MPC2: Scalable, robust world models for continuous control. <span class="venue">ICLR 2024</span>. <a href="https://arxiv.org/abs/2310.16828">arXiv:2310.16828</a></li>
+    <li id="ref-dqn2015">Mnih, V., et al. (2015). Human-level control through deep reinforcement learning. <span class="venue">Nature</span>, 518, 529–533.</li>
+    <li id="ref-levine2016">Levine, S., Finn, C., Darrell, T., Abbeel, P. (2016). End-to-end training of deep visuomotor policies. <span class="venue">JMLR</span>, 17(39), 1–40.</li>
+    <li id="ref-cad2rl">Sadeghi, F., Levine, S. (2017). CAD2RL: Real single-image flight without a single real image. <span class="venue">RSS 2017</span>. <a href="https://arxiv.org/abs/1611.04201">arXiv:1611.04201</a></li>
+    <li id="ref-tobin2017">Tobin, J., et al. (2017). Domain randomization for transferring deep neural networks from simulation to the real world. <span class="venue">IROS 2017</span>.</li>
+    <li id="ref-hwangbo2019">Hwangbo, J., et al. (2019). Learning agile and dynamic motor skills for legged robots. <span class="venue">Science Robotics</span>, 4(26).</li>
+    <li id="ref-rudin2021">Rudin, N., Hoeller, D., Reist, P., Hutter, M. (2021). Learning to walk in minutes using massively parallel deep reinforcement learning. <span class="venue">CoRL 2021</span>. <a href="https://arxiv.org/abs/2109.11978">arXiv:2109.11978</a></li>
+    <li id="ref-loquercio2021">Loquercio, A., Kaufmann, E., Ranftl, R., Müller, M., Koltun, V., Scaramuzza, D. (2021). Learning high-speed flight in the wild. <span class="venue">Science Robotics</span>, 6(59).</li>
+    <li id="ref-swift">Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Champion-level drone racing using deep reinforcement learning. <span class="venue">Nature</span>, 620, 982–987. <a href="https://doi.org/10.1038/s41586-023-06419-4">doi:10.1038/s41586-023-06419-4</a></li>
+    <li id="ref-rt1">Brohan, A., et al. (2023). RT-1: Robotics Transformer for real-world control at scale. <span class="venue">RSS 2023</span>. <a href="https://arxiv.org/abs/2212.06817">arXiv:2212.06817</a></li>
+    <li id="ref-rt2">Brohan, A., et al. (2023). RT-2: Vision-language-action models transfer web knowledge to robotic control. <span class="venue">CoRL 2023</span>. <a href="https://arxiv.org/abs/2307.15818">arXiv:2307.15818</a></li>
+    <li id="ref-act">Zhao, T. Z., Kumar, V., Levine, S., Finn, C. (2023). Learning fine-grained bimanual manipulation with low-cost hardware. <span class="venue">RSS 2023</span>. <a href="https://arxiv.org/abs/2304.13705">arXiv:2304.13705</a></li>
+    <li id="ref-dp">Chi, C., et al. (2023). Diffusion Policy: Visuomotor policy learning via action diffusion. <span class="venue">RSS 2023</span>. <a href="https://arxiv.org/abs/2303.04137">arXiv:2303.04137</a></li>
+    <li id="ref-oxe">Open X-Embodiment Collaboration (2024). Open X-Embodiment: Robotic learning datasets and RT-X models. <span class="venue">ICRA 2024</span>. <a href="https://arxiv.org/abs/2310.08864">arXiv:2310.08864</a></li>
+    <li id="ref-openvla">Kim, M. J., et al. (2024). OpenVLA: An open-source vision-language-action model. <span class="venue">CoRL 2024</span>. <a href="https://arxiv.org/abs/2406.09246">arXiv:2406.09246</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="35">
+    <li id="ref-pi0">Black, K., et al. (2024). π0: A vision-language-action flow model for general robot control. <a href="https://arxiv.org/abs/2410.24164">arXiv:2410.24164</a></li>
+    <li id="ref-gemrob">Gemini Robotics Team (2025). Gemini Robotics: Bringing AI into the physical world. <a href="https://arxiv.org/abs/2503.20020">arXiv:2503.20020</a></li>
+    <li id="ref-pi07">Physical Intelligence (2026). π0.7: A steerable generalist robotic foundation model with emergent capabilities. <a href="https://arxiv.org/abs/2604.15483">arXiv:2604.15483</a></li>
+    <li id="ref-gemrob2">Google DeepMind (2026, julio). Gemini Robotics 2 brings whole body intelligence to robots. <a href="https://deepmind.google/blog/gemini-robotics-2-brings-whole-body-intelligence-to-robots/">deepmind.google</a></li>
+    <li id="ref-dreamer">Hafner, D., Lillicrap, T., Ba, J., Norouzi, M. (2020). Dream to control: Learning behaviors by latent imagination. <span class="venue">ICLR 2020</span>. <a href="https://arxiv.org/abs/1912.01603">arXiv:1912.01603</a></li>
+    <li id="ref-daydreamer">Wu, P., Escontrela, A., Hafner, D., Abbeel, P., Goldberg, K. (2022). DayDreamer: World models for physical robot learning. <span class="venue">CoRL 2022</span>. <a href="https://arxiv.org/abs/2206.14176">arXiv:2206.14176</a></li>
+    <li id="ref-dreamerv3">Hafner, D., Pasukonis, J., Ba, J., Lillicrap, T. (2025). Mastering diverse control tasks through world models. <span class="venue">Nature</span>. <a href="https://arxiv.org/abs/2301.04104">arXiv:2301.04104</a></li>
+    <li id="ref-vjepa2">Assran, M., et al. (2025). V-JEPA 2: Self-supervised video models enable understanding, prediction and planning. <a href="https://arxiv.org/abs/2506.09985">arXiv:2506.09985</a></li>
+    <li id="ref-genie3">Google DeepMind (2025, agosto). Genie 3: A new frontier for world models. <a href="https://deepmind.google/discover/blog/genie-3-a-new-frontier-for-world-models/">deepmind.google</a></li>
+    <li id="ref-dreamer4">Hafner, D., Yan, W., Lillicrap, T. (2025). Training agents inside of scalable world models. <a href="https://arxiv.org/abs/2509.24527">arXiv:2509.24527</a></li>
+    <li id="ref-hoffmann2007">Hoffmann, G. M., Huang, H., Waslander, S. L., Tomlin, C. J. (2007). Quadrotor helicopter flight dynamics and control: Theory and experiment. <span class="venue">AIAA GNC Conference 2007</span>.</li>
+    <li id="ref-pixhawk2012">Meier, L., Tanskanen, P., Heng, L., Lee, G. H., Fraundorfer, F., Pollefeys, M. (2012). PIXHAWK: A micro aerial vehicle design for autonomous flight using onboard computer vision. <span class="venue">Autonomous Robots</span>, 33, 21–39.</li>
+    <li id="ref-zhou2022">Zhou, X., et al. (2022). Swarm of micro flying robots in the wild. <span class="venue">Science Robotics</span>, 7(66).</li>
+    <li id="ref-neuralfly">O'Connell, M., Shi, G., Shi, X., Azizzadenesheli, K., Anandkumar, A., Yue, Y., Chung, S.-J. (2022). Neural-Fly enables rapid learning for agile flight in strong winds. <span class="venue">Science Robotics</span>, 7(66).</li>
+    <li id="ref-monorace">Bahnam, S. A., Ferede, R., Blaha, T. M., Lang, A. E., Lucassen, E., Missinne, Q., Verraest, A. E. C., De Wagter, C., de Croon, G. C. H. E. (2026). MonoRace: Winning champion-level drone racing with robust monocular AI. <a href="https://arxiv.org/abs/2601.15222">arXiv:2601.15222</a></li>
+    <li id="ref-raptor">Eschmann, J., Albani, D., Loianno, G. (2025). RAPTOR: A foundation policy for quadrotor control. <a href="https://arxiv.org/abs/2509.11481">arXiv:2509.11481</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 4 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="51">
+    <li id="ref-px4raptor">PX4 Autopilot (2026). RAPTOR: A neural network module for adaptive quadrotor control. <a href="https://docs.px4.io/main/en/neural_networks/raptor">docs.px4.io</a></li>
+    <li id="ref-hanover2024">Hanover, D., Loquercio, A., Bauersfeld, L., Romero, A., Penicka, R., Song, Y., Cioffi, G., Kaufmann, E., Scaramuzza, D. (2024). Autonomous drone racing: A survey. <span class="venue">IEEE Transactions on Robotics</span>, 40. <a href="https://arxiv.org/abs/2301.01755">arXiv:2301.01755</a></li>
+    <li id="ref-px4params">PX4 Autopilot. Parameter reference (v1.16): <code>IMU_GYRO_RATEMAX</code>; valores por defecto de multirrotor en <code>rc.mc_defaults</code>. <a href="https://docs.px4.io/v1.16/en/advanced_config/parameter_reference">docs.px4.io</a></li>
+    <li id="ref-betaflight">Betaflight. Configuration tab (gyro update frequency y PID loop). <a href="https://betaflight.com/docs/wiki/app/configuration-tab">betaflight.com</a></li>
+    <li id="ref-rtc">Black, K., Galliker, M. Y., Levine, S. (2025). Real-time execution of action chunking flow policies. <span class="venue">NeurIPS 2025</span>. <a href="https://arxiv.org/abs/2506.07339">arXiv:2506.07339</a></li>
+    <li id="ref-aerialgym">Kulkarni, M., Rehberg, W., Alexis, K. (2025). Aerial Gym Simulator: A framework for highly parallelized simulation of aerial robots. <span class="venue">IEEE RA-L</span>. <a href="https://arxiv.org/abs/2503.01471">arXiv:2503.01471</a></li>
+    <li id="ref-omnidrones">Xu, B., et al. (2024). OmniDrones: An efficient and flexible platform for reinforcement learning in drone control. <span class="venue">IEEE RA-L</span>, 9(3). <a href="https://arxiv.org/abs/2309.12825">arXiv:2309.12825</a></li>
+    <li id="ref-gazebo">Koenig, N., Howard, A. (2004). Design and use paradigms for Gazebo, an open-source multi-robot simulator. <span class="venue">IROS 2004</span>.</li>
+    <li id="ref-airsim">Shah, S., Dey, D., Lovett, C., Kapoor, A. (2017). AirSim: High-fidelity visual and physical simulation for autonomous vehicles. <span class="venue">Field and Service Robotics</span>. <a href="https://arxiv.org/abs/1705.05065">arXiv:1705.05065</a></li>
+    <li id="ref-flightmare">Song, Y., Naji, S., Kaufmann, E., Loquercio, A., Scaramuzza, D. (2020). Flightmare: A flexible quadrotor simulator. <span class="venue">CoRL 2020</span>. <a href="https://arxiv.org/abs/2009.00563">arXiv:2009.00563</a></li>
+    <li id="ref-linux612">Kernel Newbies. Linux 6.12: real-time support (PREEMPT_RT) in mainline. <a href="https://kernelnewbies.org/Linux_6.12">kernelnewbies.org</a></li>
+    <li id="ref-wmsurvey">Li, X., He, X., Zhang, L., Wu, M., Li, X., Liu, Y. (2025). A comprehensive survey on world models for embodied AI. <a href="https://arxiv.org/abs/2510.16732">arXiv:2510.16732</a></li>
+    <li id="ref-uavvln">Chen et al. (2026). Vision-and-language navigation for UAVs: Progress, challenges, and a research roadmap. <a href="https://arxiv.org/abs/2604.13654">arXiv:2604.13654</a></li>
+    <li id="ref-vlauav">Sa, I., Park, C., Lee, H.-M., Noh, D., Ahn, H. S. (2026). Vision Language Action (VLA) models for unmanned aerial robotics and bimanual manipulation: A review. <a href="https://arxiv.org/abs/2607.06706">arXiv:2607.06706</a></li>
+    <li id="ref-firoozi">Firoozi, R., et al. (2025). Foundation models in robotics: Applications, challenges, and the future. <span class="venue">IJRR</span>, 44(5), 701–739. <a href="https://doi.org/10.1177/02783649241281508">doi:10.1177/02783649241281508</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=2"></script>
+</body>
+</html>
