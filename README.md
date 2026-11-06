@@ -22,7 +22,7 @@ Dentro de una presentación: flechas o espacio para avanzar, `L` para el modo le
 
 ## Estado
 
-Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo), **M1** (herramientas matemáticas), **A1** (dinámica y modelado), **A2** (control clásico y jerarquía de lazos), **A3a** (control óptimo), **A3b** (MPC por muestreo y aprendizaje), **A4a** (filtrado bayesiano) y **A4b** (percepción para estimación).
+Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo), **M1** (herramientas matemáticas), **A1** (dinámica y modelado), **A2** (control clásico y jerarquía de lazos), **A3a** (control óptimo), **A3b** (MPC por muestreo y aprendizaje), **A4a** (filtrado bayesiano), **A4b** (percepción para estimación) y **A5** (planificación y navegación).
 
 ## Estructura
 
