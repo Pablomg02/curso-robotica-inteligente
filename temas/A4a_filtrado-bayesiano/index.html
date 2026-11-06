@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A4a · Filtrado bayesiano</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A4a" data-deck-title="Filtrado bayesiano: de Bayes a Kalman y partículas · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 1 · Jornada 7 · Curso de robótica inteligente</p>
+  <h1>Filtrado bayesiano: de Bayes a Kalman y partículas</h1>
+  <p class="subtitle">El belief exacto y sus aproximaciones: filtro de Bayes, Kalman, EKF, UKF, filtro de partículas y el filtro de estado de error que usan los autopilotos. Con derivaciones completas, consistencia y observabilidad.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> M1 (SO(3), Exp y Log), A1 (modelo e IMU), A3a (LQR y Riccati)</span>
+    <span><b>Prepara</b> A4b, A7 (belief MDP), A8 (RSSM), B3a, C6</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A4a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Derivar el filtro de Bayes (predicción y actualización) y explicar por qué el belief es un estadístico suficiente para decidir.</li>
+    <li>Derivar el filtro de Kalman desde el condicionamiento de gaussianas, y su dualidad con el LQR.</li>
+    <li>Comprobar la consistencia de un filtro con NEES y NIS.</li>
+    <li>Derivar EKF, UKF y filtro de partículas, y elegir entre ellos con cifras.</li>
+    <li>Construir un filtro de estado de error (ESKF) para actitud y sesgos en SO(3), y entender cómo funciona EKF2 de PX4.</li>
+    <li>Detectar direcciones no observables y el exceso de confianza que provocan.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>El filtro de Kalman es el belief exacto de tu tesis en el caso lineal y gaussiano</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Un agente con observabilidad parcial decide a partir de \(p(x_k\mid y_{1:k}, u_{1:k-1})\), el <strong>belief</strong>. El filtro de Bayes lo calcula de forma recursiva.</li>
+        <li>Con dinámica lineal y ruido gaussiano, el belief es una gaussiana y el filtro de Bayes <em>es</em> el filtro de Kalman: exacto, no una aproximación.</li>
+        <li>Fuera de ese caso hay que aproximar: linealizar (EKF), muestrear de forma determinista (UKF) o con partículas (PF). Un RSSM de Dreamer es otra aproximación, aprendida (A8).</li>
+        <li>Todo lo que vuela depende de esto: el estado que usan la cascada de A2 y el MPC de A3 sale de un filtro.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué cambia para ti</span>Marcaste estimación de estado con un 1, pero dominas POMDP con un 3. Este tema es la cara clásica de lo que ya sabes: el belief exacto, sus aproximaciones y cómo se comprueba que un belief no miente.</div>
+      <div class="callout realidad"><span class="tag">En un dron real</span>EKF2 de PX4 estima 24 estados con un filtro de estado de error, funde las medidas en un horizonte retrasado para compensar el retardo de cada sensor y lleva el resultado al instante actual con un filtro complementario <a class="cite" data-ref="px4ekf"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia breve</p>
+  <h2>De Wiener a los filtros aprendidos</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">1949</span>Wiener: filtrado óptimo de series estacionarias en el dominio de la frecuencia <a class="cite" data-ref="wiener1949"></a>.</div>
+      <div class="ev"><span class="yr">1960–61</span>Kalman, y Kalman y Bucy: el filtro recursivo en el espacio de estados, en tiempo discreto y continuo <a class="cite" data-ref="kalman1960f,kalman1961"></a>.</div>
+      <div class="ev"><span class="yr">1960s</span>Investigadores de NASA Ames lo convierten en el filtro de Kalman extendido para una aplicación aeroespacial, y después en la forma de raíz cuadrada para los ordenadores de a bordo <a class="cite" data-ref="mcgee1985"></a>.</div>
+      <div class="ev"><span class="yr">1993</span>Gordon, Salmond y Smith: el filtro de partículas con remuestreo (<em>bootstrap filter</em>) <a class="cite" data-ref="gordon1993"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">1997–2004</span>Julier y Uhlmann: el filtro de Kalman <em>unscented</em> <a class="cite" data-ref="julier2004"></a>.</div>
+      <div class="ev"><span class="yr">2007–14</span>MSCKF para navegación visual-inercial; análisis de la inconsistencia del EKF por observabilidad <a class="cite" data-ref="mourikis2007,huang2010,hesch2014"></a>.</div>
+      <div class="ev"><span class="yr">2017</span>Filtro de estado de error en cuaterniones (Solà) y EKF invariante en grupos de Lie (Barrau y Bonnabel) <a class="cite" data-ref="sola2017,barrau2017"></a>.</div>
+      <div class="ev"><span class="yr">2022–26</span>Filtros híbridos con redes, como KalmanNet <a class="cite" data-ref="revach2022"></a>; filtros aprendidos y world models como estimadores (A4b, A8).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 · BAYES ============ -->
+<section class="slide divider" data-section="1 · Filtro de Bayes">
+  <p class="num">Parte 1</p>
+  <h2>El filtro de Bayes</h2>
+  <p>Predicción y actualización: la recursión exacta del belief, y cómo se ve cuando el belief tiene varios modos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">La recursión</p>
+  <h2>Predecir con el modelo, corregir con la medida, normalizar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Modelo de Markov oculto: \(x_k\sim p(x_k\mid x_{k-1},u_{k-1})\) y \(y_k\sim p(y_k\mid x_k)\). Con \(\mathrm{bel}(x_k) = p(x_k\mid y_{1:k},u_{1:k-1})\):</p>
+      \[ \overline{\mathrm{bel}}(x_k) = \int p(x_k\mid x_{k-1},u_{k-1})\,\mathrm{bel}(x_{k-1})\,dx_{k-1} \]
+      \[ \mathrm{bel}(x_k) = \eta\,p(y_k\mid x_k)\,\overline{\mathrm{bel}}(x_k) \]
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">Por Bayes, \(p(x_k\mid y_{1:k}) \propto p(y_k\mid x_k, y_{1:k-1})\,p(x_k\mid y_{1:k-1})\), y \(p(y_k\mid x_k, y_{1:k-1}) = p(y_k\mid x_k)\) porque la medida solo depende del estado actual. Para la predicción, se marginaliza \(x_{k-1}\): \(p(x_k\mid y_{1:k-1}) = \int p(x_k\mid x_{k-1}, y_{1:k-1})\,p(x_{k-1}\mid y_{1:k-1})\,dx_{k-1}\), y \(p(x_k\mid x_{k-1}, y_{1:k-1}) = p(x_k\mid x_{k-1})\) por la propiedad de Markov. \(\eta\) normaliza <a class="cite" data-ref="thrun2005,sarkka2023"></a>.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Estadístico suficiente</span>Toda la historia \((y_{1:k}, u_{1:k-1})\) entra en la decisión solo a través de \(\mathrm{bel}(x_k)\): es lo que convierte un POMDP en un MDP sobre beliefs (A7). Por eso el filtro es la mitad de un agente con observabilidad parcial.</div>
+      <div class="callout realidad"><span class="tag">Coste</span>En una rejilla de \(n\) celdas, la predicción cuesta \(O(n^2)\) (\(O(nw)\) si el movimiento es una convolución de \(w\) celdas, o \(O(n\log n)\) con FFT) y la actualización \(O(n)\). En 12 dimensiones, como un dron, la rejilla es imposible: de ahí las aproximaciones del resto del tema.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief con varios modos</p>
+  <h2>Un robot en un pasillo con puertas: tres hipótesis que se reducen a una</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 250" role="img" aria-label="Belief de un filtro de Bayes en rejilla en tres instantes: con tres modos y luego con uno">
+        <g class="ln-rule"><line x1="40" y1="70" x2="500" y2="70"/><line x1="40" y1="145" x2="500" y2="145"/><line x1="40" y1="220" x2="500" y2="220"/></g>
+        <g class="fill-faint" opacity="0.35"><rect x="100" y="8" width="18" height="214"/><rect x="192" y="8" width="18" height="214"/><rect x="376" y="8" width="18" height="214"/></g>
+        <path class="ln-accent" fill="none" stroke-width="2" d="M40.0,70.0 L41.1,70.0 L42.3,70.0 L43.5,70.0 L44.6,70.0 L45.8,70.0 L46.9,70.0 L48.0,70.0 L49.2,70.0 L50.4,70.0 L51.5,70.0 L52.7,70.0 L53.8,70.0 L55.0,70.0 L56.1,70.0 L57.2,70.0 L58.4,70.0 L59.6,70.0 L60.7,70.0 L61.9,70.0 L63.0,70.0 L64.2,70.0 L65.3,70.0 L66.5,70.0 L67.6,70.0 L68.8,70.0 L69.9,70.0 L71.0,70.0 L72.2,70.0 L73.4,70.0 L74.5,70.0 L75.7,69.9 L76.8,69.9 L78.0,69.8 L79.1,69.7 L80.2,69.5 L81.4,69.2 L82.5,68.9 L83.7,68.4 L84.9,67.8 L86.0,67.0 L87.2,66.0 L88.3,64.7 L89.5,63.1 L90.6,61.2 L91.8,59.0 L92.9,56.4 L94.0,53.4 L95.2,50.2 L96.3,46.7 L97.5,42.9 L98.7,39.0 L99.8,35.0 L101.0,31.1 L102.1,27.3 L103.2,23.9 L104.4,21.0 L105.5,18.7 L106.7,17.3 L107.8,16.7 L109.0,17.0 L110.2,18.3 L111.3,20.6 L112.5,23.6 L113.6,27.4 L114.8,31.7 L115.9,36.4 L117.0,41.1 L118.2,45.8 L119.3,50.2 L120.5,54.2 L121.7,57.8 L122.8,60.7 L124.0,63.1 L125.1,65.0 L126.2,66.4 L127.4,67.5 L128.6,68.2 L129.7,68.7 L130.8,69.0 L132.0,69.2 L133.2,69.3 L134.3,69.3 L135.5,69.3 L136.6,69.3 L137.8,69.2 L138.9,69.2 L140.1,69.1 L141.2,69.1 L142.3,69.1 L143.5,69.0 L144.7,69.1 L145.8,69.1 L146.9,69.1 L148.1,69.2 L149.2,69.2 L150.4,69.3 L151.6,69.3 L152.7,69.4 L153.8,69.4 L155.0,69.4 L156.2,69.4 L157.3,69.3 L158.4,69.2 L159.6,69.1 L160.8,69.0 L161.9,68.9 L163.1,68.7 L164.2,68.5 L165.3,68.4 L166.5,68.2 L167.7,68.0 L168.8,67.8 L169.9,67.6 L171.1,67.4 L172.2,67.2 L173.4,66.9 L174.6,66.6 L175.7,66.2 L176.8,65.6 L178.0,64.9 L179.2,64.1 L180.3,63.0 L181.4,61.6 L182.6,60.0 L183.8,58.0 L184.9,55.6 L186.1,52.9 L187.2,49.9 L188.3,46.5 L189.5,42.8 L190.7,38.9 L191.8,35.0 L192.9,31.1 L194.1,27.3 L195.2,23.9 L196.4,21.0 L197.6,18.8 L198.7,17.3 L199.8,16.7 L201.0,17.0 L202.2,18.3 L203.3,20.6 L204.4,23.6 L205.6,27.4 L206.8,31.7 L207.9,36.4 L209.1,41.1 L210.2,45.8 L211.3,50.2 L212.5,54.2 L213.7,57.8 L214.8,60.7 L215.9,63.1 L217.1,65.0 L218.2,66.4 L219.4,67.5 L220.6,68.2 L221.7,68.7 L222.8,69.0 L224.0,69.2 L225.2,69.3 L226.3,69.3 L227.4,69.3 L228.6,69.3 L229.8,69.2 L230.9,69.2 L232.1,69.1 L233.2,69.1 L234.4,69.1 L235.5,69.0 L236.7,69.1 L237.8,69.1 L238.9,69.1 L240.1,69.2 L241.2,69.2 L242.4,69.3 L243.6,69.3 L244.7,69.4 L245.9,69.4 L247.0,69.4 L248.2,69.4 L249.3,69.3 L250.4,69.2 L251.6,69.1 L252.8,69.0 L253.9,68.9 L255.1,68.7 L256.2,68.6 L257.4,68.4 L258.5,68.2 L259.6,68.1 L260.8,67.9 L261.9,67.8 L263.1,67.6 L264.2,67.5 L265.4,67.4 L266.6,67.3 L267.7,67.2 L268.9,67.2 L270.0,67.1 L271.1,67.1 L272.3,67.0 L273.4,67.0 L274.6,67.0 L275.8,66.9 L276.9,66.9 L278.1,66.9 L279.2,66.9 L280.4,66.9 L281.5,66.9 L282.6,66.9 L283.8,66.9 L284.9,66.9 L286.1,66.9 L287.2,66.9 L288.4,66.9 L289.6,66.9 L290.7,66.9 L291.9,66.9 L293.0,66.9 L294.1,66.9 L295.3,66.9 L296.4,66.9 L297.6,66.9 L298.8,66.9 L299.9,66.9 L301.1,66.9 L302.2,66.9 L303.4,66.9 L304.5,66.9 L305.6,66.9 L306.8,66.9 L307.9,66.9 L309.1,66.9 L310.2,66.9 L311.4,66.9 L312.6,66.9 L313.7,66.9 L314.9,66.9 L316.0,66.9 L317.1,66.9 L318.3,66.9 L319.4,66.9 L320.6,66.9 L321.8,66.9 L322.9,66.9 L324.1,66.9 L325.2,66.9 L326.4,66.9 L327.5,66.9 L328.6,66.9 L329.8,66.9 L330.9,66.9 L332.1,66.9 L333.2,66.9 L334.4,66.9 L335.6,66.9 L336.7,66.9 L337.9,66.9 L339.0,66.9 L340.1,66.9 L341.3,66.9 L342.4,66.9 L343.6,66.9 L344.8,66.9 L345.9,66.9 L347.1,66.9 L348.2,66.9 L349.4,66.9 L350.5,66.8 L351.6,66.8 L352.8,66.8 L353.9,66.7 L355.1,66.6 L356.2,66.5 L357.4,66.3 L358.6,66.0 L359.7,65.7 L360.9,65.2 L362.0,64.6 L363.1,63.7 L364.3,62.7 L365.4,61.4 L366.6,59.7 L367.8,57.8 L368.9,55.5 L370.1,52.8 L371.2,49.7 L372.4,46.4 L373.5,42.7 L374.6,38.9 L375.8,34.9 L376.9,31.0 L378.1,27.3 L379.2,23.9 L380.4,21.0 L381.6,18.7 L382.7,17.3 L383.9,16.7 L385.0,17.0 L386.1,18.3 L387.3,20.6 L388.4,23.6 L389.6,27.4 L390.8,31.7 L391.9,36.4 L393.1,41.1 L394.2,45.8 L395.4,50.2 L396.5,54.2 L397.6,57.8 L398.8,60.7 L399.9,63.1 L401.1,65.0 L402.2,66.4 L403.4,67.5 L404.6,68.2 L405.7,68.7 L406.9,69.0 L408.0,69.2 L409.1,69.3 L410.3,69.3 L411.5,69.3 L412.6,69.3 L413.8,69.2 L414.9,69.2 L416.1,69.1 L417.2,69.1 L418.4,69.1 L419.5,69.0 L420.6,69.1 L421.8,69.1 L423.0,69.1 L424.1,69.2 L425.2,69.2 L426.4,69.3 L427.6,69.3 L428.7,69.4 L429.9,69.4 L431.0,69.4 L432.1,69.4 L433.3,69.3 L434.5,69.2 L435.6,69.1 L436.8,69.0 L437.9,68.9 L439.1,68.7 L440.2,68.6 L441.4,68.4 L442.5,68.2 L443.6,68.1 L444.8,67.9 L446.0,67.8 L447.1,67.6 L448.2,67.5 L449.4,67.4 L450.6,67.3 L451.7,67.2 L452.9,67.2 L454.0,67.1 L455.1,67.1 L456.3,67.0 L457.5,67.0 L458.6,67.0 L459.8,66.9 L460.9,66.9 L462.1,66.9 L463.2,66.9 L464.4,66.9 L465.5,66.9 L466.6,66.9 L467.8,66.9 L469.0,66.9 L470.1,66.9 L471.2,66.9 L472.4,66.9 L473.6,66.9 L474.7,66.9 L475.9,66.9 L477.0,66.9 L478.1,66.9 L479.3,66.9 L480.5,66.9 L481.6,66.9 L482.8,66.9 L483.9,66.9 L485.1,66.9 L486.2,66.9 L487.4,66.9 L488.5,66.9 L489.6,66.9 L490.8,66.9 L492.0,66.9 L493.1,66.9 L494.2,66.9 L495.4,66.9 L496.6,66.9 L497.7,66.9 L498.9,66.9 L500.0,66.9"/>
+        <path class="ln-accent" fill="none" stroke-width="2" d="M40.0,145.0 L41.1,145.0 L42.3,145.0 L43.5,145.0 L44.6,145.0 L45.8,145.0 L46.9,145.0 L48.0,145.0 L49.2,145.0 L50.4,145.0 L51.5,145.0 L52.7,145.0 L53.8,145.0 L55.0,145.0 L56.1,145.0 L57.2,145.0 L58.4,145.0 L59.6,145.0 L60.7,145.0 L61.9,145.0 L63.0,145.0 L64.2,145.0 L65.3,145.0 L66.5,145.0 L67.6,145.0 L68.8,145.0 L69.9,145.0 L71.0,145.0 L72.2,145.0 L73.4,145.0 L74.5,145.0 L75.7,145.0 L76.8,145.0 L78.0,145.0 L79.1,145.0 L80.2,145.0 L81.4,145.0 L82.5,145.0 L83.7,145.0 L84.9,145.0 L86.0,145.0 L87.2,145.0 L88.3,145.0 L89.5,145.0 L90.6,145.0 L91.8,145.0 L92.9,145.0 L94.0,145.0 L95.2,145.0 L96.3,145.0 L97.5,145.0 L98.7,145.0 L99.8,145.0 L101.0,145.0 L102.1,145.0 L103.2,145.0 L104.4,145.0 L105.5,145.0 L106.7,145.0 L107.8,145.0 L109.0,145.0 L110.2,145.0 L111.3,145.0 L112.5,145.0 L113.6,145.0 L114.8,145.0 L115.9,145.0 L117.0,145.0 L118.2,145.0 L119.3,145.0 L120.5,145.0 L121.7,145.0 L122.8,145.0 L124.0,145.0 L125.1,145.0 L126.2,145.0 L127.4,145.0 L128.6,145.0 L129.7,145.0 L130.8,145.0 L132.0,145.0 L133.2,145.0 L134.3,145.0 L135.5,145.0 L136.6,145.0 L137.8,145.0 L138.9,145.0 L140.1,145.0 L141.2,145.0 L142.3,145.0 L143.5,145.0 L144.7,145.0 L145.8,145.0 L146.9,145.0 L148.1,145.0 L149.2,145.0 L150.4,145.0 L151.6,145.0 L152.7,145.0 L153.8,145.0 L155.0,145.0 L156.2,145.0 L157.3,145.0 L158.4,145.0 L159.6,145.0 L160.8,145.0 L161.9,145.0 L163.1,145.0 L164.2,145.0 L165.3,145.0 L166.5,145.0 L167.7,145.0 L168.8,145.0 L169.9,145.0 L171.1,145.0 L172.2,145.0 L173.4,144.9 L174.6,144.9 L175.7,144.9 L176.8,144.8 L178.0,144.7 L179.2,144.5 L180.3,144.3 L181.4,143.9 L182.6,143.3 L183.8,142.5 L184.9,141.3 L186.1,139.7 L187.2,137.5 L188.3,134.7 L189.5,131.2 L190.7,127.1 L191.8,122.3 L192.9,117.0 L194.1,111.5 L195.2,106.0 L196.4,100.9 L197.6,96.6 L198.7,93.5 L199.8,91.8 L201.0,91.7 L202.2,93.2 L203.3,96.2 L204.4,100.5 L205.6,105.7 L206.8,111.4 L207.9,117.2 L209.1,122.7 L210.2,127.8 L211.3,132.1 L212.5,135.7 L213.7,138.5 L214.8,140.6 L215.9,142.1 L217.1,143.2 L218.2,143.9 L219.4,144.3 L220.6,144.6 L221.7,144.8 L222.8,144.9 L224.0,144.9 L225.2,144.9 L226.3,145.0 L227.4,145.0 L228.6,145.0 L229.8,145.0 L230.9,145.0 L232.1,145.0 L233.2,145.0 L234.4,145.0 L235.5,145.0 L236.7,145.0 L237.8,145.0 L238.9,145.0 L240.1,145.0 L241.2,145.0 L242.4,145.0 L243.6,145.0 L244.7,145.0 L245.9,145.0 L247.0,145.0 L248.2,145.0 L249.3,145.0 L250.4,145.0 L251.6,145.0 L252.8,145.0 L253.9,145.0 L255.1,145.0 L256.2,145.0 L257.4,145.0 L258.5,145.0 L259.6,145.0 L260.8,144.9 L261.9,144.9 L263.1,144.9 L264.2,144.9 L265.4,144.9 L266.6,144.9 L267.7,144.9 L268.9,144.8 L270.0,144.8 L271.1,144.7 L272.3,144.7 L273.4,144.6 L274.6,144.5 L275.8,144.3 L276.9,144.2 L278.1,144.0 L279.2,143.8 L280.4,143.6 L281.5,143.4 L282.6,143.2 L283.8,143.0 L284.9,142.8 L286.1,142.5 L287.2,142.4 L288.4,142.2 L289.6,142.1 L290.7,142.0 L291.9,141.9 L293.0,141.9 L294.1,141.9 L295.3,142.0 L296.4,142.0 L297.6,142.2 L298.8,142.3 L299.9,142.5 L301.1,142.7 L302.2,142.9 L303.4,143.1 L304.5,143.4 L305.6,143.6 L306.8,143.8 L307.9,143.9 L309.1,144.1 L310.2,144.2 L311.4,144.4 L312.6,144.5 L313.7,144.6 L314.9,144.7 L316.0,144.7 L317.1,144.8 L318.3,144.8 L319.4,144.9 L320.6,144.9 L321.8,144.9 L322.9,144.9 L324.1,144.9 L325.2,144.9 L326.4,144.9 L327.5,144.9 L328.6,144.9 L329.8,144.9 L330.9,144.9 L332.1,144.9 L333.2,144.9 L334.4,144.9 L335.6,144.9 L336.7,144.9 L337.9,144.9 L339.0,144.9 L340.1,144.9 L341.3,144.9 L342.4,144.9 L343.6,144.9 L344.8,144.9 L345.9,144.9 L347.1,144.9 L348.2,144.9 L349.4,144.9 L350.5,144.9 L351.6,144.8 L352.8,144.8 L353.9,144.8 L355.1,144.8 L356.2,144.8 L357.4,144.8 L358.6,144.7 L359.7,144.7 L360.9,144.7 L362.0,144.6 L363.1,144.5 L364.3,144.4 L365.4,144.3 L366.6,144.2 L367.8,144.0 L368.9,143.8 L370.1,143.6 L371.2,143.4 L372.4,143.1 L373.5,142.8 L374.6,142.5 L375.8,142.1 L376.9,141.8 L378.1,141.5 L379.2,141.2 L380.4,141.0 L381.6,140.8 L382.7,140.7 L383.9,140.6 L385.0,140.6 L386.1,140.8 L387.3,140.9 L388.4,141.2 L389.6,141.5 L390.8,141.9 L391.9,142.2 L393.1,142.6 L394.2,143.0 L395.4,143.4 L396.5,143.7 L397.6,144.0 L398.8,144.2 L399.9,144.4 L401.1,144.6 L402.2,144.7 L403.4,144.8 L404.6,144.9 L405.7,144.9 L406.9,144.9 L408.0,144.9 L409.1,144.9 L410.3,144.9 L411.5,144.9 L412.6,144.9 L413.8,144.9 L414.9,144.9 L416.1,144.9 L417.2,144.9 L418.4,144.9 L419.5,144.9 L420.6,144.9 L421.8,144.9 L423.0,144.9 L424.1,144.9 L425.2,144.9 L426.4,144.9 L427.6,144.9 L428.7,145.0 L429.9,145.0 L431.0,145.0 L432.1,145.0 L433.3,145.0 L434.5,145.0 L435.6,144.9 L436.8,144.9 L437.9,144.9 L439.1,144.9 L440.2,144.9 L441.4,144.9 L442.5,144.9 L443.6,144.9 L444.8,144.9 L446.0,144.9 L447.1,144.9 L448.2,144.9 L449.4,144.9 L450.6,144.9 L451.7,144.9 L452.9,144.8 L454.0,144.8 L455.1,144.7 L456.3,144.7 L457.5,144.6 L458.6,144.5 L459.8,144.3 L460.9,144.2 L462.1,144.0 L463.2,143.8 L464.4,143.6 L465.5,143.4 L466.6,143.2 L467.8,143.0 L469.0,142.7 L470.1,142.5 L471.2,142.4 L472.4,142.2 L473.6,142.1 L474.7,142.0 L475.9,141.9 L477.0,141.9 L478.1,141.9 L479.3,142.0 L480.5,142.0 L481.6,142.2 L482.8,142.3 L483.9,142.5 L485.1,142.7 L486.2,142.9 L487.4,143.1 L488.5,143.4 L489.6,143.6 L490.8,143.8 L492.0,143.9 L493.1,144.1 L494.2,144.2 L495.4,144.4 L496.6,144.5 L497.7,144.6 L498.9,144.7 L500.0,144.7"/>
+        <path class="ln-accent" fill="none" stroke-width="2" d="M40.0,220.0 L41.1,220.0 L42.3,220.0 L43.5,220.0 L44.6,220.0 L45.8,220.0 L46.9,220.0 L48.0,220.0 L49.2,220.0 L50.4,220.0 L51.5,220.0 L52.7,220.0 L53.8,220.0 L55.0,220.0 L56.1,220.0 L57.2,220.0 L58.4,220.0 L59.6,220.0 L60.7,220.0 L61.9,220.0 L63.0,220.0 L64.2,220.0 L65.3,220.0 L66.5,220.0 L67.6,220.0 L68.8,220.0 L69.9,220.0 L71.0,220.0 L72.2,220.0 L73.4,220.0 L74.5,220.0 L75.7,220.0 L76.8,220.0 L78.0,220.0 L79.1,220.0 L80.2,220.0 L81.4,220.0 L82.5,220.0 L83.7,220.0 L84.9,220.0 L86.0,220.0 L87.2,220.0 L88.3,220.0 L89.5,220.0 L90.6,220.0 L91.8,220.0 L92.9,220.0 L94.0,220.0 L95.2,220.0 L96.3,220.0 L97.5,220.0 L98.7,220.0 L99.8,220.0 L101.0,220.0 L102.1,220.0 L103.2,220.0 L104.4,220.0 L105.5,220.0 L106.7,220.0 L107.8,220.0 L109.0,220.0 L110.2,220.0 L111.3,220.0 L112.5,220.0 L113.6,220.0 L114.8,220.0 L115.9,220.0 L117.0,220.0 L118.2,220.0 L119.3,220.0 L120.5,220.0 L121.7,220.0 L122.8,220.0 L124.0,220.0 L125.1,220.0 L126.2,220.0 L127.4,220.0 L128.6,220.0 L129.7,220.0 L130.8,220.0 L132.0,220.0 L133.2,220.0 L134.3,220.0 L135.5,220.0 L136.6,220.0 L137.8,220.0 L138.9,220.0 L140.1,220.0 L141.2,220.0 L142.3,220.0 L143.5,220.0 L144.7,220.0 L145.8,220.0 L146.9,220.0 L148.1,220.0 L149.2,220.0 L150.4,220.0 L151.6,220.0 L152.7,220.0 L153.8,220.0 L155.0,220.0 L156.2,220.0 L157.3,220.0 L158.4,220.0 L159.6,220.0 L160.8,220.0 L161.9,220.0 L163.1,220.0 L164.2,220.0 L165.3,220.0 L166.5,220.0 L167.7,220.0 L168.8,220.0 L169.9,220.0 L171.1,220.0 L172.2,220.0 L173.4,220.0 L174.6,220.0 L175.7,220.0 L176.8,220.0 L178.0,220.0 L179.2,220.0 L180.3,220.0 L181.4,220.0 L182.6,220.0 L183.8,220.0 L184.9,220.0 L186.1,220.0 L187.2,220.0 L188.3,220.0 L189.5,220.0 L190.7,220.0 L191.8,220.0 L192.9,220.0 L194.1,220.0 L195.2,220.0 L196.4,220.0 L197.6,220.0 L198.7,220.0 L199.8,220.0 L201.0,220.0 L202.2,220.0 L203.3,220.0 L204.4,220.0 L205.6,220.0 L206.8,220.0 L207.9,220.0 L209.1,220.0 L210.2,220.0 L211.3,220.0 L212.5,220.0 L213.7,220.0 L214.8,220.0 L215.9,220.0 L217.1,220.0 L218.2,220.0 L219.4,220.0 L220.6,220.0 L221.7,220.0 L222.8,220.0 L224.0,220.0 L225.2,220.0 L226.3,220.0 L227.4,220.0 L228.6,220.0 L229.8,220.0 L230.9,220.0 L232.1,220.0 L233.2,220.0 L234.4,220.0 L235.5,220.0 L236.7,220.0 L237.8,220.0 L238.9,220.0 L240.1,220.0 L241.2,220.0 L242.4,220.0 L243.6,220.0 L244.7,220.0 L245.9,220.0 L247.0,220.0 L248.2,220.0 L249.3,220.0 L250.4,220.0 L251.6,220.0 L252.8,220.0 L253.9,220.0 L255.1,220.0 L256.2,220.0 L257.4,220.0 L258.5,220.0 L259.6,220.0 L260.8,220.0 L261.9,220.0 L263.1,220.0 L264.2,220.0 L265.4,220.0 L266.6,220.0 L267.7,220.0 L268.9,220.0 L270.0,220.0 L271.1,220.0 L272.3,220.0 L273.4,220.0 L274.6,220.0 L275.8,220.0 L276.9,220.0 L278.1,220.0 L279.2,220.0 L280.4,220.0 L281.5,219.9 L282.6,219.9 L283.8,219.8 L284.9,219.8 L286.1,219.7 L287.2,219.5 L288.4,219.3 L289.6,219.0 L290.7,218.6 L291.9,218.1 L293.0,217.3 L294.1,216.4 L295.3,215.3 L296.4,213.9 L297.6,212.2 L298.8,210.1 L299.9,207.7 L301.1,205.0 L302.2,201.9 L303.4,198.5 L304.5,194.9 L305.6,191.0 L306.8,187.2 L307.9,183.3 L309.1,179.6 L310.2,176.1 L311.4,173.0 L312.6,170.5 L313.7,168.5 L314.9,167.2 L316.0,166.7 L317.1,166.9 L318.3,167.8 L319.4,169.4 L320.6,171.7 L321.8,174.4 L322.9,177.7 L324.1,181.2 L325.2,184.9 L326.4,188.7 L327.5,192.4 L328.6,196.1 L329.8,199.5 L330.9,202.7 L332.1,205.5 L333.2,208.1 L334.4,210.3 L335.6,212.3 L336.7,213.9 L337.9,215.2 L339.0,216.3 L340.1,217.2 L341.3,217.9 L342.4,218.4 L343.6,218.8 L344.8,219.2 L345.9,219.4 L347.1,219.6 L348.2,219.7 L349.4,219.8 L350.5,219.8 L351.6,219.9 L352.8,219.9 L353.9,219.9 L355.1,219.9 L356.2,220.0 L357.4,220.0 L358.6,220.0 L359.7,220.0 L360.9,220.0 L362.0,220.0 L363.1,220.0 L364.3,220.0 L365.4,220.0 L366.6,220.0 L367.8,219.9 L368.9,219.9 L370.1,219.9 L371.2,219.9 L372.4,219.9 L373.5,219.9 L374.6,219.9 L375.8,219.9 L376.9,219.9 L378.1,219.9 L379.2,219.9 L380.4,219.9 L381.6,219.9 L382.7,219.9 L383.9,219.9 L385.0,219.9 L386.1,219.9 L387.3,219.9 L388.4,219.8 L389.6,219.8 L390.8,219.7 L391.9,219.6 L393.1,219.5 L394.2,219.3 L395.4,219.2 L396.5,219.2 L397.6,219.1 L398.8,219.1 L399.9,219.1 L401.1,219.1 L402.2,219.2 L403.4,219.2 L404.6,219.3 L405.7,219.4 L406.9,219.4 L408.0,219.4 L409.1,219.4 L410.3,219.4 L411.5,219.3 L412.6,219.3 L413.8,219.2 L414.9,219.1 L416.1,219.1 L417.2,219.1 L418.4,219.1 L419.5,219.1 L420.6,219.2 L421.8,219.2 L423.0,219.3 L424.1,219.4 L425.2,219.5 L426.4,219.6 L427.6,219.6 L428.7,219.7 L429.9,219.8 L431.0,219.8 L432.1,219.9 L433.3,219.9 L434.5,219.9 L435.6,219.9 L436.8,219.9 L437.9,219.9 L439.1,219.9 L440.2,219.9 L441.4,219.9 L442.5,219.9 L443.6,219.9 L444.8,220.0 L446.0,220.0 L447.1,220.0 L448.2,220.0 L449.4,220.0 L450.6,220.0 L451.7,220.0 L452.9,220.0 L454.0,220.0 L455.1,220.0 L456.3,220.0 L457.5,220.0 L458.6,220.0 L459.8,220.0 L460.9,219.9 L462.1,219.9 L463.2,219.9 L464.4,219.9 L465.5,219.9 L466.6,219.9 L467.8,219.9 L469.0,219.9 L470.1,219.9 L471.2,219.8 L472.4,219.8 L473.6,219.8 L474.7,219.7 L475.9,219.7 L477.0,219.6 L478.1,219.5 L479.3,219.3 L480.5,219.2 L481.6,219.0 L482.8,218.8 L483.9,218.5 L485.1,218.3 L486.2,218.0 L487.4,217.7 L488.5,217.3 L489.6,217.0 L490.8,216.7 L492.0,216.4 L493.1,216.0 L494.2,215.8 L495.4,215.5 L496.6,215.3 L497.7,215.2 L498.9,215.1 L500.0,215.1"/>
+        <g class="fill-tesis"><circle cx="109.0" cy="70" r="4"/><circle cx="201.0" cy="145" r="4"/><circle cx="316.0" cy="220" r="4"/></g>
+        <g font-size="12" class="t-muted">
+          <text x="44" y="24">x = 3 m: ve la 1.ª puerta</text>
+          <text x="44" y="99">x = 7 m: ve la 2.ª puerta</text>
+          <text x="44" y="174">x = 12 m</text>
+          <text x="40" y="240">0</text><text x="500" y="240" text-anchor="end">20 m</text>
+          <text x="109" y="248" text-anchor="middle">puertas</text>
+        </g>
+      </svg>
+      <figcaption>Filtro de Bayes en una rejilla de 401 celdas: sensor de puertas imperfecto y movimiento de 1 m por paso con 0,15 m de ruido. Punto: posición real. Calculado en <code>figuras/figuras_a4a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Al ver la primera puerta, el belief tiene tres modos: en las tres puertas.</li>
+        <li>Al ver la segunda, cuatro metros después, solo una hipótesis encaja: un modo en 7 m con el 70 % de la masa a menos de 0,5 m.</li>
+        <li>Después, sin puertas, el movimiento lo ensancha y la ausencia de puertas lo mantiene.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Lo que una gaussiana no puede</span>Un filtro de Kalman o un EKF tendrían que elegir uno de los tres modos al ver la primera puerta, y si eligen mal no se recuperan. Es el problema de la localización global y de la relocalización.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 · KALMAN ============ -->
+<section class="slide divider" data-section="2 · Kalman">
+  <p class="num">Parte 2</p>
+  <h2>El filtro de Kalman</h2>
+  <p>El caso lineal y gaussiano, derivado de principio a fin, su dualidad con el LQR y cómo se comprueba que el filtro no miente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Derivación</p>
+  <h2>Condicionar una gaussiana conjunta: eso es todo el filtro de Kalman</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">\(x_k = Fx_{k-1} + Gu_{k-1} + w\), \(w\sim\mathcal N(0,Q)\); \(y_k = Hx_k + v\), \(v\sim\mathcal N(0,R)\).</p>
+      \[ \begin{aligned} &\text{Predicción:} && m^- = Fm + Gu,\quad P^- = FPF^\top + Q\\ &\text{Innovación:} && \nu = y - Hm^-,\quad S = HP^-H^\top + R\\ &\text{Ganancia:} && K = P^-H^\top S^{-1}\\ &\text{Actualización:} && m = m^- + K\nu,\quad P = (I - KH)P^- \end{aligned} \]
+      <p class="small">Forma de Joseph, simétrica y definida positiva aunque \(K\) no sea óptima: \(P = (I-KH)P^-(I-KH)^\top + KRK^\top\). EKF2 de PX4 la usa <a class="cite" data-ref="px4ekf"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small"><strong>Predicción:</strong> una transformación lineal de una gaussiana más ruido independiente es gaussiana, con media \(Fm + Gu\) y covarianza \(FPF^\top + Q\).</p>
+        <p class="small"><strong>Actualización:</strong> \(x\) e \(y = Hx + v\) son conjuntamente gaussianos con media \((m^-, Hm^-)\), \(\operatorname{Cov}(y) = S\) y \(\operatorname{Cov}(x,y) = P^-H^\top\). La condicional de una gaussiana conjunta es gaussiana, con media \(m^- + \operatorname{Cov}(x,y)\operatorname{Cov}(y)^{-1}(y - Hm^-)\) y covarianza \(P^- - \operatorname{Cov}(x,y)\operatorname{Cov}(y)^{-1}\operatorname{Cov}(y,x)\) (complemento de Schur). Sustituyendo sale la ganancia \(K\) y \(P = P^- - KSK^\top = (I-KH)P^-\) <a class="cite" data-ref="sarkka2023"></a>.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Idea clave</span>\(K\) pondera modelo y medida por sus incertidumbres: si \(R\to0\), el filtro sigue a la medida en las direcciones que observa; si \(P^-\to0\), \(K\to0\) y se fía del modelo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dualidad con el LQR</p>
+  <h2>La misma ecuación de Riccati que en A3a, transpuesta</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Juntando predicción y actualización, la covarianza predicha cumple</p>
+      \[ \begin{aligned} P^-_{k+1} = FP^-_kF^\top &- FP^-_kH^\top(HP^-_kH^\top + R)^{-1}HP^-_kF^\top\\ &+ Q \end{aligned} \]
+      <p class="small">Es la recursión de Riccati del LQR de A3a con \(A\to F^\top\) y \(B\to H^\top\): \(Q\) y \(R\) ocupan el mismo sitio, pero ahora son covarianzas de ruido en lugar de pesos de coste, y la recursión corre hacia delante en el tiempo. En régimen estacionario, \(P^-\) resuelve la DARE dual y la ganancia es constante <a class="cite" data-ref="kalman1960f,sarkka2023"></a>.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Controlabilidad ↔ observabilidad:</strong> la DARE del LQR necesita \((A,B)\) estabilizable y \((A,Q^{1/2})\) detectable; la del filtro, \((F,H)\) detectable y \((F,Q^{1/2})\) estabilizable.</li>
+        <li><strong>Principio de separación</strong> (caso lineal gaussiano): el controlador óptimo con estado parcial es el LQR aplicado a la media del filtro de Kalman. Es el caso clásico en el que estimar y controlar se diseñan por separado sin perder optimalidad.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Fuera del caso lineal gaussiano, la separación falla: la acción óptima depende de todo el belief, no solo de su media, y puede merecer la pena actuar para reducir la incertidumbre. Es justo el territorio de los POMDP (A7) y de la percepción activa.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Filtro complementario</p>
+  <h2>Un filtro complementario es un Kalman estacionario con la frecuencia de cruce bien elegida</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Altura o posición en un eje: el acelerómetro (densidad de ruido \(q\)) entra como mando y una medida de posición (densidad \(r\)) corrige: \(\dot p = v\), \(\dot v = a_m + w\), \(y = p + n\). La ganancia estacionaria del filtro de Kalman en tiempo continuo es</p>
+      \[ K = \big(\sqrt2\,\omega_0,\ \omega_0^2\big),\qquad \omega_0 = (q/r)^{1/4} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">La Riccati estacionaria \(AP + PA^\top + qLL^\top - PC^\top CP/r = 0\) con \(A = \begin{bmatrix}0&1\\0&0\end{bmatrix}\), \(L = (0,1)^\top\), \(C = (1, 0)\) da, componente a componente: \(p_{12} = \sqrt{qr}\), \(p_{11} = \sqrt{2r}\,(qr)^{1/4}\), y \(K = PC^\top/r = (p_{11}, p_{12})/r\). Sustituyendo, \(K = (\sqrt2 (q/r)^{1/4}, (q/r)^{1/2})\). El error cumple \(\ddot e + \sqrt2\,\omega_0\dot e + \omega_0^2 e = \ldots\): un segundo orden con \(\zeta = 1/\sqrt2\).</p>
+      </details>
+      <p class="small">Por debajo de \(\omega_0\) manda la medida de posición; por encima, la integral del acelerómetro. Con \(q = 0{,}35^2\) y \(r = 0{,}5^2\), \(\omega_0 = 0{,}84\) rad/s (0,13 Hz); con un sensor diez veces mejor, 2,65 rad/s. Comprobado integrando la Riccati en <code>figuras/figuras_a4a.py</code>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En PX4</span>Es la pieza que lleva la salida de EKF2 desde el horizonte retrasado hasta el presente: un filtro complementario con constantes de tiempo de velocidad y posición ajustables (<code>EKF2_TAU_VEL</code>, <code>EKF2_TAU_POS</code>) <a class="cite" data-ref="px4ekf"></a>.</div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Ajustar «a mano» la frecuencia de cruce de un complementario es ajustar el cociente \(q/r\) de un Kalman: la misma decisión con otro nombre. El Kalman además te da la covarianza.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ruido de proceso y forma de información</p>
+  <h2>De dónde sale \(Q\), y el filtro escrito en información</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>\(Q\) discreta desde un ruido continuo.</strong> Modelo de velocidad constante con aceleración de ruido blanco de densidad espectral \(q\) (m²/s³):</p>
+      \[ Q_d = \int_0^{\Delta t} e^{A\tau}LqL^\top e^{A^\top\tau}\,d\tau = q\begin{bmatrix}\Delta t^3/3 & \Delta t^2/2\\ \Delta t^2/2 & \Delta t\end{bmatrix} \]
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Con \(A = \begin{bmatrix}0&1\\0&0\end{bmatrix}\) y \(L = (0, 1)^\top\), \(e^{A\tau}L = (\tau, 1)^\top\). El integrando es \(q\begin{bmatrix}\tau^2&\tau\\ \tau&1\end{bmatrix}\), e integrando de 0 a \(\Delta t\) sale la matriz. Es la \(Q\) del experimento de consistencia.</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente</span>Usar la desviación típica de un sensor por muestra como si fuera una densidad espectral, o al revés. Las hojas de características de las IMU dan densidades (por \(\sqrt{\mathrm{Hz}}\)); el filtro discreto necesita varianzas por paso. B3a lo hace con la varianza de Allan.</div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Forma de información.</strong> Con \(\Lambda = P^{-1}\) y \(\eta = P^{-1}m\), la actualización es una suma:</p>
+      \[ \Lambda = \Lambda^- + H^\top R^{-1}H,\qquad \eta = \eta^- + H^\top R^{-1}y \]
+      <ul class="small">
+        <li>Fundir varios sensores independientes es sumar sus contribuciones, en cualquier orden.</li>
+        <li>Sin información previa (\(\Lambda^- = 0\)) es natural; con \(P\) es imposible.</li>
+        <li>La predicción es la parte cara. En SLAM, la matriz de información es dispersa, y eso es lo que aprovechan los métodos de optimización de A4b.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Consistencia</p>
+  <h2>Un filtro que estima bien pero miente sobre su incertidumbre es peligroso</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="NEES medio de un filtro de Kalman bien ajustado y otro con Q cien veces menor">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <rect class="fill-faint" opacity="0.4" x="60" y="187.1" width="440" height="15.3"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M64.4,187.3 L68.8,187.3 L73.2,187.1 L77.6,190.2 L82.0,189.7 L86.4,191.7 L90.8,193.7 L95.2,192.8 L99.6,192.6 L104.0,189.9 L108.4,186.9 L112.8,186.9 L117.2,194.7 L121.6,192.8 L126.0,193.8 L130.4,191.9 L134.8,193.6 L139.2,190.8 L143.6,192.8 L148.0,194.2 L152.4,195.5 L156.8,197.7 L161.2,200.7 L165.6,200.7 L170.0,199.6 L174.4,203.5 L178.8,203.4 L183.2,203.0 L187.6,200.3 L192.0,193.3 L196.4,194.3 L200.8,195.6 L205.2,199.7 L209.6,199.2 L214.0,196.3 L218.4,192.6 L222.8,196.6 L227.2,200.3 L231.6,198.6 L236.0,198.7 L240.4,201.1 L244.8,199.8 L249.2,198.6 L253.6,195.5 L258.0,200.8 L262.4,197.4 L266.8,201.9 L271.2,202.4 L275.6,200.6 L280.0,202.1 L284.4,200.9 L288.8,202.1 L293.2,201.1 L297.6,198.1 L302.0,198.5 L306.4,198.0 L310.8,197.6 L315.2,195.5 L319.6,201.1 L324.0,198.2 L328.4,198.7 L332.8,196.3 L337.2,195.8 L341.6,193.4 L346.0,194.4 L350.4,193.8 L354.8,196.4 L359.2,199.6 L363.6,197.4 L368.0,199.2 L372.4,197.6 L376.8,200.1 L381.2,201.1 L385.6,202.1 L390.0,196.1 L394.4,194.7 L398.8,198.3 L403.2,197.6 L407.6,197.0 L412.0,195.8 L416.4,196.3 L420.8,200.6 L425.2,199.6 L429.6,200.8 L434.0,199.0 L438.4,196.4 L442.8,196.3 L447.2,198.3 L451.6,204.1 L456.0,204.6 L460.4,202.9 L464.8,204.9 L469.2,201.8 L473.6,202.2 L478.0,200.9 L482.4,199.3 L486.8,203.0 L491.2,200.6 L495.6,200.7 L500.0,200.5"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M64.4,185.7 L68.8,184.1 L73.2,182.3 L77.6,183.7 L82.0,181.0 L86.4,180.4 L90.8,176.3 L95.2,167.9 L99.6,154.4 L104.0,137.2 L108.4,109.1 L112.8,77.2 L117.2,60.3 L121.6,30.0 L126.0,30.0 L130.4,30.0 L134.8,30.0 L139.2,30.0 L143.6,30.0 L148.0,30.0 L152.4,30.0 L156.8,30.0 L161.2,30.0 L165.6,30.0 L170.0,30.0 L174.4,30.0 L178.8,30.0 L183.2,30.0 L187.6,30.0 L192.0,30.0 L196.4,30.0 L200.8,30.0 L205.2,30.0 L209.6,30.0 L214.0,30.0 L218.4,30.0 L222.8,30.0 L227.2,30.0 L231.6,30.0 L236.0,30.0 L240.4,30.0 L244.8,30.0 L249.2,30.0 L253.6,30.0 L258.0,30.0 L262.4,30.0 L266.8,30.0 L271.2,30.0 L275.6,30.0 L280.0,30.0 L284.4,30.0 L288.8,30.0 L293.2,30.0 L297.6,30.0 L302.0,30.0 L306.4,30.0 L310.8,30.0 L315.2,30.0 L319.6,30.0 L324.0,30.0 L328.4,30.0 L332.8,30.0 L337.2,30.0 L341.6,30.0 L346.0,30.0 L350.4,30.0 L354.8,30.0 L359.2,30.0 L363.6,30.0 L368.0,30.0 L372.4,30.0 L376.8,30.0 L381.2,30.0 L385.6,30.0 L390.0,30.0 L394.4,30.0 L398.8,30.0 L403.2,30.0 L407.6,30.0 L412.0,30.0 L416.4,30.0 L420.8,30.0 L425.2,30.0 L429.6,30.0 L434.0,30.0 L438.4,30.0 L442.8,30.0 L447.2,30.0 L451.6,30.0 L456.0,30.0 L460.4,30.0 L464.8,30.0 L469.2,30.0 L473.6,30.0 L478.0,30.0 L482.4,30.0 L486.8,30.0 L491.2,30.0 L495.6,30.0 L500.0,30.0"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">5</text>
+          <text x="500" y="268" text-anchor="end">10 s</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="199" text-anchor="end">2</text>
+          <text x="52" y="34" text-anchor="end">8</text>
+        </g>
+        <g font-size="13">
+          <text x="300" y="222" class="t-accent">bien ajustado: 1,86</text>
+          <text x="300" y="50" class="t-tesis">Q 100 veces menor: 95 (fuera de escala)</text>
+        </g>
+      </svg>
+      <figcaption>NEES medio de 200 ensayos de un filtro de velocidad constante con posición medida a 10 Hz. Banda: intervalo del 95 % para la media (1,73–2,29). Calculado en <code>figuras/figuras_a4a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small"><strong>NEES</strong> (error de estado normalizado): \(\epsilon_k = e_k^\top P_k^{-1}e_k\). Si el filtro es consistente, \(\epsilon_k\sim\chi^2_n\) y su media vale \(n\). Requiere el estado real: simulación o datos con referencia.</p>
+      <p class="small"><strong>NIS</strong> (innovación normalizada): \(\nu_k^\top S_k^{-1}\nu_k\sim\chi^2_{m}\). Se calcula en vuelo, sin conocer el estado real.</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>Bajar \(Q\) «para que el filtro sea más suave». El filtro se vuelve sobreconfiado: su covarianza dice centímetros y el error real es de decímetros. Cualquier planificador o detector de fallos que use esa covarianza decidirá mal.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 · NO LINEAL ============ -->
+<section class="slide divider" data-section="3 · No lineal">
+  <p class="num">Parte 3</p>
+  <h2>Filtros no lineales: EKF, UKF y partículas</h2>
+  <p>Tres formas de aproximar el belief cuando el modelo no es lineal, y lo que cuesta cada una.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">EKF y UKF</p>
+  <h2>Linealizar el modelo o propagar puntos elegidos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>EKF.</strong> Con \(x_k = f(x_{k-1},u) + w\) e \(y_k = h(x_k) + v\), se linealiza alrededor de la estimación actual:</p>
+      \[ F_k = \frac{\partial f}{\partial x}\Big|_{m},\qquad H_k = \frac{\partial h}{\partial x}\Big|_{m^-} \]
+      \[ m^- = f(m,u),\qquad \nu = y - h(m^-) \]
+      <p class="small">y se aplican las ecuaciones de Kalman con \(F_k\) y \(H_k\). Barato y estándar, pero la media y la covarianza solo son correctas a primer orden, y los jacobianos se evalúan en una estimación que puede estar mal.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>UKF.</strong> Se eligen \(2n+1\) puntos sigma con la media y la covarianza del belief, se propagan por la función no lineal y se recompone la gaussiana con pesos <a class="cite" data-ref="julier2004"></a>:</p>
+      \[ \mathcal X_0 = m,\qquad \mathcal X_{\pm i} = m \pm \big(\sqrt{(n+\lambda)P}\big)_i \]
+      \[ \hat m = \sum_j W_j\,f(\mathcal X_j) \]
+      <details class="deriv"><summary>Por qué funciona</summary>
+        <p class="small">Los puntos sigma reproducen exactamente la media y la covarianza de la gaussiana de partida. Al pasarlos por \(f\), la media y la covarianza muestrales capturan términos de la serie de Taylor que el EKF descarta, sin calcular jacobianos. El coste es \(2n+1\) evaluaciones del modelo por paso y una raíz de Cholesky.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Idea clave</span>Ninguno de los dos representa varios modos: siguen siendo gaussianas. Mejoran la aproximación local, no el tipo de belief.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Filtro de partículas</p>
+  <h2>Representar el belief con muestras pesadas y remuestrear</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Belief \(\approx\sum_i w^i\delta(x - x^i)\). Muestreo secuencial por importancia con propuesta \(q\):</p>
+      \[ x_k^i\sim q(x_k\mid x_{k-1}^i, y_k) \]
+      \[ w_k^i\propto w_{k-1}^i\,\frac{p(y_k\mid x_k^i)\,p(x_k^i\mid x_{k-1}^i)}{q(x_k^i\mid x_{k-1}^i, y_k)} \]
+      <p class="small">Con la transición como propuesta (filtro <em>bootstrap</em> de Gordon et al.), el peso es solo la verosimilitud \(p(y_k\mid x_k^i)\) <a class="cite" data-ref="gordon1993"></a>.</p>
+      <ul class="small">
+        <li><strong>Degeneración:</strong> en pocos pasos casi todo el peso cae en unas pocas partículas. Se mide con el tamaño efectivo \(1/\sum_i (w^i)^2\).</li>
+        <li><strong>Remuestreo</strong> (sistemático, por ejemplo) cuando el tamaño efectivo baja: duplica las partículas pesadas y elimina las ligeras.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Maldición de la dimensionalidad</span>El número de partículas necesario crece muy deprisa con la dimensión del estado: un filtro de partículas para los 15–24 estados de un dron completo no es práctico. Se usa en subproblemas de pocas dimensiones (localización en un mapa, guiñada) o combinado con Kalman (Rao-Blackwellización).</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es el belief no paramétrico de POMCP y de los métodos de árbol de A7: las mismas partículas, ahora usadas para planificar. Y el mismo problema de degeneración cuando las observaciones son muy informativas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Comparación</p>
+  <h2>En un problema muy no lineal, el filtro de partículas gana por goleada</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Estado real y estimaciones de EKF y filtro de partículas en un modelo no lineal">
+        <line class="ln-rule" x1="60" y1="140" x2="500" y2="140"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln" fill="none" stroke-width="1.6" stroke-dasharray="4 3" d="M60.0,116.1 L67.5,138.2 L74.9,138.9 L82.4,109.7 L89.8,82.3 L97.3,74.6 L104.7,116.7 L112.2,143.4 L119.7,220.2 L127.1,182.9 L134.6,169.9 L142.0,197.6 L149.5,210.0 L156.9,233.1 L164.4,169.2 L171.9,159.0 L179.3,186.6 L186.8,191.4 L194.2,199.8 L201.7,171.1 L209.2,134.2 L216.6,90.8 L224.1,114.2 L231.5,127.4 L239.0,103.0 L246.4,63.6 L253.9,75.0 L261.4,123.0 L268.8,139.9 L276.3,123.1 L283.7,71.0 L291.2,69.8 L298.6,117.5 L306.1,130.7 L313.6,125.3 L321.0,68.4 L328.5,71.7 L335.9,83.0 L343.4,141.0 L350.8,189.6 L358.3,163.4 L365.8,131.9 L373.2,84.4 L380.7,132.6 L388.1,100.9 L395.6,100.8 L403.1,78.1 L410.5,83.9 L418.0,143.5 L425.4,252.3 L432.9,206.8 L440.3,146.4 L447.8,180.9 L455.3,182.9 L462.7,210.3 L470.2,184.1 L477.6,160.7 L485.1,141.1 L492.5,166.4 L500.0,191.6"/>
+        <path class="ln-tesis" fill="none" stroke-width="1.8" d="M60.0,113.7 L67.5,139.2 L74.9,129.6 L82.4,101.0 L89.8,83.2 L97.3,73.4 L104.7,122.8 L112.2,139.3 L119.7,30.0 L127.1,46.1 L134.6,93.8 L142.0,71.9 L149.5,68.3 L156.9,30.0 L164.4,85.2 L171.9,102.8 L179.3,97.1 L186.8,139.5 L194.2,250.0 L201.7,184.8 L209.2,137.7 L216.6,90.0 L224.1,132.7 L231.5,124.0 L239.0,93.8 L246.4,66.7 L253.9,73.3 L261.4,117.3 L268.8,143.8 L276.3,170.7 L283.7,138.6 L291.2,72.7 L298.6,116.6 L306.1,147.9 L313.6,171.8 L321.0,201.5 L328.5,214.8 L335.9,200.2 L343.4,176.1 L350.8,195.2 L358.3,160.3 L365.8,138.0 L373.2,88.4 L380.7,135.9 L388.1,95.7 L395.6,97.8 L403.1,74.8 L410.5,81.9 L418.0,126.3 L425.4,30.0 L432.9,60.9 L440.3,94.3 L447.8,97.6 L455.3,92.3 L462.7,157.8 L470.2,186.3 L477.6,152.0 L485.1,134.0 L492.5,110.5 L500.0,164.9"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M60.0,148.2 L67.5,137.9 L74.9,135.7 L82.4,128.2 L89.8,84.2 L97.3,74.3 L104.7,126.5 L112.2,138.3 L119.7,216.2 L127.1,171.8 L134.6,145.2 L142.0,177.6 L149.5,209.4 L156.9,230.9 L164.4,167.5 L171.9,139.2 L179.3,130.2 L186.8,187.7 L194.2,202.3 L201.7,166.3 L209.2,138.1 L216.6,129.2 L224.1,136.5 L231.5,133.9 L239.0,126.3 L246.4,67.3 L253.9,73.7 L261.4,122.0 L268.8,139.3 L276.3,133.5 L283.7,72.3 L291.2,73.4 L298.6,119.1 L306.1,140.4 L313.6,132.9 L321.0,74.3 L328.5,71.7 L335.9,82.0 L343.4,138.1 L350.8,174.2 L358.3,154.4 L365.8,140.9 L373.2,127.5 L380.7,137.0 L388.1,126.4 L395.6,114.2 L403.1,74.8 L410.5,82.1 L418.0,131.0 L425.4,248.3 L432.9,203.5 L440.3,152.9 L447.8,146.2 L455.3,176.4 L462.7,209.3 L470.2,186.6 L477.6,146.3 L485.1,142.6 L492.5,138.4 L500.0,188.0"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="52" y="34" text-anchor="end">25</text>
+          <text x="52" y="144" text-anchor="end">0</text>
+          <text x="52" y="254" text-anchor="end">−25</text>
+          <text x="60" y="268" text-anchor="middle">1</text>
+          <text x="500" y="268" text-anchor="end">60 pasos</text>
+        </g>
+        <g font-size="13">
+          <text x="70" y="290" class="t-muted">real (discontinua)</text>
+          <text x="230" y="290" class="t-tesis">EKF</text>
+          <text x="300" y="290" class="t-accent">PF, 500 partículas</text>
+        </g>
+      </svg>
+      <figcaption>\(x_k = x/2 + 25x/(1+x^2) + 8\cos(1{,}2k) + w\), \(y_k = x^2/20 + v\): la medida no distingue el signo de \(x\). Un ensayo; calculado en <code>figuras/figuras_a4a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Filtro</th><th>RMSE medio (50 ensayos)</th></tr>
+          <tr><td>EKF</td><td class="n">20,6</td></tr>
+          <tr><td>UKF</td><td class="n">11,1</td></tr>
+          <tr><td>PF, 50 partículas</td><td class="n">5,6</td></tr>
+          <tr><td>PF, 500 partículas</td><td class="n">4,7</td></tr>
+        </table>
+      </div>
+      <ul class="small">
+        <li>La medida \(x^2/20\) tiene dos explicaciones (\(\pm x\)): el belief real es bimodal. El EKF elige un lado y, cuando se equivoca, se queda allí.</li>
+        <li>El PF mantiene los dos modos hasta que la dinámica rompe la simetría. En el ensayo de la figura, su tamaño efectivo baja a 4 de 500 en algún paso: sin remuestreo, degeneraría.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 · ESKF ============ -->
+<section class="slide divider" data-section="4 · Estado de error">
+  <p class="num">Parte 4</p>
+  <h2>El filtro de estado de error</h2>
+  <p>Cómo estiman actitud, velocidad y sesgos los autopilotos: un estado nominal en la variedad y un error pequeño en el espacio tangente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">ESKF</p>
+  <h2>Estado nominal sin ruido, error pequeño con covarianza</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Estado verdadero = nominal ⊕ error. Para la actitud, con perturbación por la derecha (M1): \(R = \hat R\,\operatorname{Exp}(\delta\boldsymbol\theta)\), y \(\delta\boldsymbol\theta\in\mathbb R^3\) <a class="cite" data-ref="sola2017"></a>.</p>
+      <ol class="small">
+        <li><strong>Propagar el nominal</strong> con la IMU, sin ruido: \(\hat R\leftarrow\hat R\operatorname{Exp}((\boldsymbol\omega_m - \hat{\mathbf b}_g)\Delta t)\), y velocidad y posición con la fuerza específica rotada más la gravedad.</li>
+        <li><strong>Propagar la covarianza del error</strong> con el jacobiano del error: \(\delta\dot{\boldsymbol\theta} = -[\boldsymbol\omega_m - \hat{\mathbf b}_g]_\times\delta\boldsymbol\theta - \delta\mathbf b_g - \mathbf n_g\).</li>
+        <li><strong>Actualizar el error</strong> con la medida (Kalman sobre \(\delta x\), que tenía media cero).</li>
+        <li><strong>Inyectar</strong> \(\delta x\) en el nominal y <strong>reiniciar</strong> el error a cero (con un jacobiano de reinicio que, para errores pequeños, es casi la identidad).</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Jacobiano de una medida vectorial</summary>
+        <p class="small">Si el sensor mide un vector fijo del mundo en ejes cuerpo, \(\mathbf y = R^\top\mathbf v\) (gravedad para el acelerómetro en reposo, campo magnético): \(R^\top\mathbf v = \operatorname{Exp}(-\delta\boldsymbol\theta)\hat R^\top\mathbf v \approx (I - [\delta\boldsymbol\theta]_\times)\hat R^\top\mathbf v = \hat R^\top\mathbf v + [\hat R^\top\mathbf v]_\times\delta\boldsymbol\theta\). Por tanto \(H_{\delta\theta} = [\hat R^\top\mathbf v]_\times\), que no ve rotaciones alrededor de \(\hat R^\top\mathbf v\).</p>
+      </details>
+      <div class="callout clave"><span class="tag">Por qué estado de error</span>El error es pequeño, así que la linealización es buena; vive en un espacio vectorial de dimensión mínima (3 para la actitud, sin la restricción de norma del cuaternión); y evoluciona despacio, lo que permite actualizar a menos frecuencia que la IMU <a class="cite" data-ref="sola2017"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">ESKF con IMU</p>
+  <h2>El filtro de 15 estados que estima la navegación de un dron</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Nominal \((\mathbf p, \mathbf v, R, \mathbf b_a, \mathbf b_g)\), error \(\delta\mathbf x = (\delta\mathbf p, \delta\mathbf v, \delta\boldsymbol\theta, \delta\mathbf b_a, \delta\mathbf b_g)\in\mathbb R^{15}\). Con \(\mathbf a = \mathbf a_m - \hat{\mathbf b}_a\) y \(\boldsymbol\omega = \boldsymbol\omega_m - \hat{\mathbf b}_g\) <a class="cite" data-ref="sola2017"></a>:</p>
+      \[ \begin{aligned} \delta\dot{\mathbf p} &= \delta\mathbf v\\ \delta\dot{\mathbf v} &= -\hat R[\mathbf a]_\times\delta\boldsymbol\theta - \hat R\,\delta\mathbf b_a - \hat R\,\mathbf n_a\\ \delta\dot{\boldsymbol\theta} &= -[\boldsymbol\omega]_\times\delta\boldsymbol\theta - \delta\mathbf b_g - \mathbf n_g\\ \delta\dot{\mathbf b}_a &= \mathbf n_{ba},\quad \delta\dot{\mathbf b}_g = \mathbf n_{bg} \end{aligned} \]
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación de la fila de velocidad</summary>
+        <p class="small">\(\dot{\mathbf v} = R(\mathbf a_m - \mathbf b_a - \mathbf n_a) + \mathbf g\). Con \(R = \hat R(I + [\delta\boldsymbol\theta]_\times)\) y \(\mathbf b_a = \hat{\mathbf b}_a + \delta\mathbf b_a\), y quitando lo nominal, queda a primer orden \(\delta\dot{\mathbf v} = \hat R[\delta\boldsymbol\theta]_\times\mathbf a - \hat R\delta\mathbf b_a - \hat R\mathbf n_a\). Como \([\delta\boldsymbol\theta]_\times\mathbf a = -[\mathbf a]_\times\delta\boldsymbol\theta\), sale la fila de la izquierda.</p>
+      </details>
+      <ul class="small">
+        <li><strong>Medida de posición</strong> (GNSS, captura de movimiento): \(H = [I\ 0\ 0\ 0\ 0]\), lineal en el error.</li>
+        <li><strong>Lo que la hace observable:</strong> la inclinación y los sesgos, gracias a la gravedad y a la excitación del movimiento; la guiñada, solo si el dron acelera en horizontal o hay magnetómetro.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Hilo con A1</span>El acelerómetro mide fuerza específica, no aceleración: \(\mathbf a_m = R^\top(\dot{\mathbf v} - \mathbf g)\). Con el arrastre de rotor de A1, esa medida informa también de la velocidad respecto al aire.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Observabilidad</p>
+  <h2>Sin magnetómetro, la guiñada no es observable, y el EKF no siempre lo sabe</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Error de guiñada y dos sigmas del filtro con y sin magnetómetro">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.4" d="M60.0,103.1 L63.7,117.9 L67.3,111.6 L71.0,137.1 L74.7,150.9 L78.3,154.1 L82.0,161.2 L85.7,165.4 L89.3,155.7 L93.0,155.4 L96.7,150.5 L100.3,139.9 L104.0,150.6 L107.7,149.1 L111.3,162.5 L115.0,184.1 L118.7,167.8 L122.3,160.8 L126.0,157.1 L129.7,161.0 L133.3,153.0 L137.0,132.9 L140.7,135.2 L144.3,115.1 L148.0,100.5 L151.7,99.5 L155.3,109.7 L159.0,103.9 L162.7,123.7 L166.3,120.1 L170.0,118.7 L173.7,118.4 L177.3,111.4 L181.0,106.6 L184.7,104.7 L188.3,108.9 L192.0,115.4 L195.7,120.0 L199.3,123.6 L203.0,123.2 L206.7,105.3 L210.3,101.1 L214.0,84.0 L217.7,72.4 L221.3,74.4 L225.0,75.5 L228.7,89.9 L232.3,87.0 L236.0,99.9 L239.7,92.0 L243.3,92.7 L247.0,76.6 L250.7,63.0 L254.3,54.9 L258.0,59.0 L261.7,65.4 L265.3,56.6 L269.0,56.5 L272.7,62.8 L276.3,63.1 L280.0,54.7 L283.7,57.8 L287.3,56.0 L291.0,50.6 L294.7,47.6 L298.3,61.0 L302.0,54.7 L305.7,64.1 L309.3,70.1 L313.0,72.6 L316.7,58.0 L320.3,65.2 L324.0,65.8 L327.7,67.5 L331.3,71.7 L335.0,73.1 L338.7,76.3 L342.3,84.9 L346.0,87.2 L349.7,84.1 L353.3,83.9 L357.0,86.8 L360.7,103.9 L364.3,105.0 L368.0,109.3 L371.7,101.7 L375.3,95.2 L379.0,88.8 L382.7,82.9 L386.3,88.5 L390.0,82.9 L393.7,84.9 L397.3,82.8 L401.0,72.1 L404.7,74.5 L408.3,67.1 L412.0,69.2 L415.7,79.7 L419.3,87.6 L423.0,91.2 L426.7,93.1 L430.3,86.9 L434.0,90.3 L437.7,84.6 L441.3,94.5 L445.0,94.1 L448.7,98.7 L452.3,96.9 L456.0,105.9 L459.7,104.7 L463.3,106.8 L467.0,106.6 L470.7,114.2 L474.3,120.2 L478.0,111.7 L481.7,102.7 L485.3,101.6 L489.0,111.4 L492.7,104.9 L496.3,99.7"/>
+        <path class="ln-tesis" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M60.0,30.0 L63.7,45.1 L67.3,68.5 L71.0,74.6 L74.7,78.2 L78.3,86.9 L82.0,87.9 L85.7,89.5 L89.3,92.2 L93.0,93.6 L96.7,95.8 L100.3,97.1 L104.0,99.4 L107.7,100.2 L111.3,100.7 L115.0,102.1 L118.7,103.2 L122.3,103.6 L126.0,105.3 L129.7,106.1 L133.3,108.0 L137.0,110.3 L140.7,111.0 L144.3,113.3 L148.0,114.0 L151.7,116.5 L155.3,118.3 L159.0,119.5 L162.7,121.1 L166.3,123.3 L170.0,123.6 L173.7,124.7 L177.3,126.5 L181.0,126.9 L184.7,127.1 L188.3,127.6 L192.0,128.2 L195.7,128.6 L199.3,128.9 L203.0,130.3 L206.7,131.7 L210.3,132.1 L214.0,133.8 L217.7,134.8 L221.3,134.8 L225.0,135.0 L228.7,135.4 L232.3,136.2 L236.0,136.8 L239.7,137.2 L243.3,137.6 L247.0,137.9 L250.7,138.9 L254.3,139.2 L258.0,139.3 L261.7,139.6 L265.3,140.2 L269.0,140.3 L272.7,141.0 L276.3,141.7 L280.0,142.3 L283.7,142.3 L287.3,142.4 L291.0,142.6 L294.7,142.8 L298.3,142.9 L302.0,142.9 L305.7,143.2 L309.3,143.6 L313.0,143.7 L316.7,143.7 L320.3,143.7 L324.0,143.9 L327.7,144.6 L331.3,144.7 L335.0,144.9 L338.7,144.9 L342.3,144.5 L346.0,144.2 L349.7,144.5 L353.3,144.6 L357.0,145.4 L360.7,146.3 L364.3,147.3 L368.0,147.6 L371.7,147.8 L375.3,147.9 L379.0,148.6 L382.7,149.2 L386.3,150.6 L390.0,150.9 L393.7,151.1 L397.3,151.9 L401.0,152.1 L404.7,152.1 L408.3,152.3 L412.0,152.3 L415.7,152.8 L419.3,152.9 L423.0,152.9 L426.7,153.1 L430.3,153.5 L434.0,153.3 L437.7,153.5 L441.3,154.0 L445.0,153.9 L448.7,153.9 L452.3,154.1 L456.0,154.2 L459.7,154.7 L463.3,154.5 L467.0,154.6 L470.7,154.5 L474.3,154.5 L478.0,154.6 L481.7,154.9 L485.3,155.6 L489.0,155.5 L492.7,155.9 L496.3,155.6"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,209.0 L63.7,249.4 L67.3,248.5 L71.0,249.8 L74.7,244.8 L78.3,247.9 L82.0,248.1 L85.7,248.8 L89.3,247.1 L93.0,250.0 L96.7,248.2 L100.3,247.4 L104.0,247.5 L107.7,244.5 L111.3,243.5 L115.0,241.6 L118.7,244.3 L122.3,246.2 L126.0,244.7 L129.7,246.2 L133.3,246.6 L137.0,245.1 L140.7,240.8 L144.3,246.7 L148.0,245.6 L151.7,244.2 L155.3,246.8 L159.0,247.0 L162.7,247.7 L166.3,247.4 L170.0,240.4 L173.7,249.9 L177.3,247.6 L181.0,245.6 L184.7,244.0 L188.3,241.5 L192.0,244.6 L195.7,247.8 L199.3,245.1 L203.0,248.8 L206.7,249.6 L210.3,242.7 L214.0,246.1 L217.7,248.0 L221.3,249.1 L225.0,246.2 L228.7,248.4 L232.3,247.3 L236.0,241.8 L239.7,245.4 L243.3,245.3 L247.0,247.3 L250.7,247.1 L254.3,241.3 L258.0,246.4 L261.7,245.1 L265.3,249.4 L269.0,243.3 L272.7,245.9 L276.3,247.2 L280.0,247.6 L283.7,239.3 L287.3,241.5 L291.0,246.0 L294.7,243.8 L298.3,240.5 L302.0,244.1 L305.7,243.5 L309.3,249.5 L313.0,243.8 L316.7,249.2 L320.3,248.8 L324.0,249.1 L327.7,247.9 L331.3,249.9 L335.0,236.6 L338.7,248.8 L342.3,247.7 L346.0,246.9 L349.7,246.5 L353.3,242.7 L357.0,246.7 L360.7,248.7 L364.3,246.5 L368.0,235.6 L371.7,247.0 L375.3,247.9 L379.0,249.5 L382.7,249.5 L386.3,242.4 L390.0,247.2 L393.7,243.8 L397.3,249.3 L401.0,247.8 L404.7,249.9 L408.3,244.8 L412.0,242.1 L415.7,241.2 L419.3,246.3 L423.0,248.1 L426.7,248.2 L430.3,248.0 L434.0,249.6 L437.7,244.3 L441.3,246.1 L445.0,241.9 L448.7,249.1 L452.3,247.7 L456.0,249.3 L459.7,240.7 L463.3,244.6 L467.0,247.2 L470.7,249.9 L474.3,246.8 L478.0,249.3 L481.7,247.6 L485.3,248.6 L489.0,248.4 L492.7,247.6 L496.3,242.4"/>
+        <path class="ln-accent" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M60.0,171.1 L63.7,229.2 L67.3,234.3 L71.0,237.0 L74.7,237.8 L78.3,237.9 L82.0,238.0 L85.7,238.6 L89.3,239.0 L93.0,239.2 L96.7,239.2 L100.3,239.3 L104.0,239.3 L107.7,239.2 L111.3,239.1 L115.0,239.0 L118.7,239.1 L122.3,239.3 L126.0,239.3 L129.7,239.3 L133.3,239.3 L137.0,239.2 L140.7,239.2 L144.3,239.2 L148.0,239.2 L151.7,239.3 L155.3,239.3 L159.0,239.4 L162.7,239.4 L166.3,239.5 L170.0,239.5 L173.7,239.5 L177.3,239.5 L181.0,239.5 L184.7,239.5 L188.3,239.5 L192.0,239.4 L195.7,239.4 L199.3,239.4 L203.0,239.4 L206.7,239.4 L210.3,239.5 L214.0,239.5 L217.7,239.5 L221.3,239.5 L225.0,239.5 L228.7,239.5 L232.3,239.5 L236.0,239.5 L239.7,239.5 L243.3,239.5 L247.0,239.5 L250.7,239.6 L254.3,239.6 L258.0,239.5 L261.7,239.5 L265.3,239.5 L269.0,239.5 L272.7,239.5 L276.3,239.5 L280.0,239.5 L283.7,239.5 L287.3,239.5 L291.0,239.5 L294.7,239.5 L298.3,239.5 L302.0,239.6 L305.7,239.6 L309.3,239.5 L313.0,239.5 L316.7,239.5 L320.3,239.6 L324.0,239.6 L327.7,239.6 L331.3,239.6 L335.0,239.6 L338.7,239.6 L342.3,239.6 L346.0,239.5 L349.7,239.5 L353.3,239.5 L357.0,239.6 L360.7,239.6 L364.3,239.6 L368.0,239.6 L371.7,239.5 L375.3,239.5 L379.0,239.5 L382.7,239.5 L386.3,239.6 L390.0,239.6 L393.7,239.6 L397.3,239.6 L401.0,239.6 L404.7,239.6 L408.3,239.6 L412.0,239.6 L415.7,239.6 L419.3,239.6 L423.0,239.5 L426.7,239.5 L430.3,239.5 L434.0,239.6 L437.7,239.6 L441.3,239.6 L445.0,239.6 L448.7,239.6 L452.3,239.6 L456.0,239.6 L459.7,239.6 L463.3,239.6 L467.0,239.6 L470.7,239.6 L474.3,239.6 L478.0,239.6 L481.7,239.6 L485.3,239.6 L489.0,239.6 L492.7,239.6 L496.3,239.6"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">60</text>
+          <text x="500" y="268" text-anchor="end">120 s</text>
+          <text x="52" y="254" text-anchor="end">0°</text>
+          <text x="52" y="107" text-anchor="end">10°</text>
+          <text x="52" y="34" text-anchor="end">15°</text>
+        </g>
+        <g font-size="13">
+          <text x="300" y="94" class="t-tesis">solo acelerómetro: el error no se corrige</text>
+          <text x="300" y="186" class="t-tesis">… y el filtro cree que 2σ = 6°</text>
+          <text x="300" y="240" class="t-accent">con magnetómetro: 0,5°</text>
+        </g>
+      </svg>
+      <figcaption>ESKF de actitud y sesgo del giróscopo con IMU a 200 Hz y actualizaciones a 50 Hz, error inicial de 10° en guiñada. Continua: error real; discontinua: 2σ del filtro. Calculado en <code>figuras/figuras_a4a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>La gravedad no cambia al girar alrededor de la vertical: la guiñada es inobservable con solo acelerómetro, se mueva como se mueva el dron. El error no se corrige: deriva, y a los 120 s está entre 1° y 28° según el ensayo (10° en el de la figura).</li>
+        <li>Pero la σ del filtro baja de 12,8° a unos 3,2° en todos los ensayos: el EKF gana información espuria en una dirección no observable y acaba sobreconfiado. Es la causa de inconsistencia que Huang et al. y Hesch et al. analizan en SLAM y en VIO <a class="cite" data-ref="huang2010,hesch2014"></a>.</li>
+        <li>La inclinación y el sesgo del giróscopo sí se estiman bien en los dos casos (error de inclinación por debajo de 0,6°). Con magnetómetro, el error de guiñada queda por debajo de 0,6° en los seis ensayos.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">EKF2 de PX4</p>
+  <h2>Cómo es el estimador de un autopiloto de verdad</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>24 estados:</strong> cuaternión, velocidad y posición NED, sesgos de giróscopo y acelerómetro, campo magnético de la Tierra y del cuerpo, y viento horizontal. Formulación de estado de error <a class="cite" data-ref="px4ekf"></a>.</li>
+        <li><strong>La IMU solo predice;</strong> nunca entra como medida. Predicción cada <span class="hz">10 ms</span> (<code>EKF2_PREDICT_US</code>).</li>
+        <li><strong>Horizonte de fusión retrasado:</strong> cada sensor llega con su retardo y se funde en el instante en que se midió, hasta <span class="hz">200 ms</span> atrás (<code>EKF2_DELAY_MAX</code>). Un filtro complementario lleva la estimación al instante actual con la IMU guardada.</li>
+        <li>Covarianza con la forma de Joseph; ecuaciones derivadas simbólicamente con SymForce.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ruidos por defecto</span>Giróscopo 0,015 rad/s y acelerómetro 0,35 m/s² para la predicción; paseo de los sesgos 0,001 rad/s² y 0,003 m/s³ (código de PX4, noviembre de 2026) <a class="cite" data-ref="px4ekf"></a>. En B3a los relacionarás con la varianza de Allan de una IMU real.</div>
+      <div class="callout clave"><span class="tag">Hilo con A1</span>EKF2 puede estimar el viento en un multirrotor con la fuerza específica del arrastre de rotor medida por el acelerómetro: el modelo de A1 dentro del estimador. Y lleva un estimador de guiñada de emergencia con varios EKF de 3 estados (velocidad horizontal y guiñada) para cuando el magnetómetro miente.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 · EN LA PRÁCTICA ============ -->
+<section class="slide divider" data-section="5 · En la práctica">
+  <p class="num">Parte 5</p>
+  <h2>Retardos, ajuste y fallos</h2>
+  <p>Lo que hace que un filtro funcione en un dron real: medidas que llegan tarde, ruidos que hay que medir y modos de fallo conocidos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Medidas retrasadas</p>
+  <h2>Fundir cada medida en el instante en que se tomó</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Una posición de GNSS o de visión llega decenas o cientos de milisegundos después de medirse. Fundirla como si fuera de ahora mete un error del orden de la velocidad por el retardo: a 5 m/s y 100 ms, medio metro.</p>
+      <ol class="small">
+        <li><strong>Horizonte retrasado</strong> (EKF2): el filtro vive en el pasado, a una distancia fija del presente; un predictor lleva su salida al ahora.</li>
+        <li><strong>Reprocesar:</strong> guardar estados e IMU, volver al instante de la medida, fundir y repropagar. Exacto y caro.</li>
+        <li><strong>Clonar el estado</strong> en el instante de la medida y corregir con la correlación cruzada: es la idea del MSCKF (A4b) <a class="cite" data-ref="mourikis2007"></a>.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>El horizonte retrasado tiene un coste: lo que sale al control a 200 Hz es una predicción desde hasta 200 ms atrás. PX4 recomienda reducir ese horizonte al mínimo que permitan los sensores, porque así se reduce el error del filtro complementario <a class="cite" data-ref="px4ekf"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un belief aprendido tiene el mismo problema con las observaciones de una cámara que llegan tarde: o el modelo sabe la marca de tiempo de cada observación, o aprenderá a compensar un retardo fijo que en vuelo no será fijo (B4).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Medidas atípicas y suavizado</p>
+  <h2>Rechazar lo imposible, y mirar atrás cuando no hay prisa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Prueba de innovación.</strong> Si el filtro es consistente, \(d^2 = \nu^\top S^{-1}\nu\sim\chi^2_m\). Se rechaza la medida si \(d^2\) supera un cuantil:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Dimensión de la medida</th><th>95 %</th><th>99 %</th><th>99,9 %</th></tr>
+          <tr><td>1 (altura, distancia)</td><td class="n">3,84</td><td class="n">6,63</td><td class="n">10,83</td></tr>
+          <tr><td>3 (posición GNSS)</td><td class="n">7,81</td><td class="n">11,34</td><td class="n">16,27</td></tr>
+          <tr><td>6 (pose de visión)</td><td class="n">12,59</td><td class="n">16,81</td><td class="n">22,46</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Cuantiles calculados en <code>figuras/figuras_a4a.py</code>.</p>
+      <div class="callout error"><span class="tag">Cuidado</span>La prueba solo funciona si el filtro es consistente: uno sobreconfiado rechaza medidas buenas y acaba ignorando todos los sensores.</div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Suavizado</strong> (Rauch-Tung-Striebel): tras filtrar hacia delante, una pasada hacia atrás usa también las medidas futuras <a class="cite" data-ref="sarkka2023"></a>:</p>
+      \[ G_k = P_kF^\top(P^-_{k+1})^{-1},\quad m^s_k = m_k + G_k(m^s_{k+1} - m^-_{k+1}) \]
+      <p class="small">No sirve para controlar en vuelo, pero sí para analizar logs, identificar modelos (B2) y crear referencias para entrenar.</p>
+      <p class="small"><strong>Estimación de horizonte móvil (MHE):</strong> el dual del MPC. Se resuelve una optimización sobre las últimas \(N\) medidas, con restricciones sobre el estado, y se resume lo anterior en un coste de llegada <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste y errores</p>
+  <h2>Seis formas de que un filtro falle en vuelo</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>\(Q\) y \(R\) a ojo:</strong> mide el ruido de los sensores (varianza de Allan para la IMU, B3a) y comprueba NIS en vuelo.</li>
+      <li><strong>Direcciones no observables</strong> sin tratar: guiñada sin magnetómetro, sesgos sin excitación, posición absoluta sin GNSS. El filtro se vuelve sobreconfiado.</li>
+      <li><strong>Covarianza que pierde simetría</strong> o deja de ser definida positiva: usa la forma de Joseph y simetriza.</li>
+    </ul>
+    <ul class="small">
+      <li><strong>Medidas atípicas:</strong> un GNSS con multitrayecto o un reflejo en el telémetro; se rechazan con una prueba de innovación (NIS por encima de un umbral \(\chi^2\)).</li>
+      <li><strong>Marcas de tiempo mal alineadas</strong> entre IMU, cámara y GNSS: errores sistemáticos que ningún ajuste de \(Q\) arregla (C6).</li>
+      <li><strong>Normalizar el cuaternión a mano</strong> después de una actualización aditiva, en lugar de usar el estado de error.</li>
+    </ul>
+  </div>
+  <div class="callout clave"><span class="tag">EKF invariante</span>Para una clase amplia de sistemas en grupos de Lie, el error definido con la estructura del grupo evoluciona de forma autónoma (no depende de la trayectoria estimada) y su logaritmo sigue una ecuación lineal; Barrau y Bonnabel demuestran así la estabilidad local del filtro <a class="cite" data-ref="barrau2017"></a>. Es la versión con garantías del ESKF.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Filtros con estructura de grupo, filtros aprendidos y beliefs latentes</h2>
+  <div class="cols">
+    <div class="stack small">
+      <p><strong>Lo que ya se ve:</strong></p>
+      <ul>
+        <li>Filtros invariantes en grupos de Lie, con garantías que el EKF no tiene <a class="cite" data-ref="barrau2017"></a>.</li>
+        <li>Estimadores que respetan las direcciones no observables para no volverse sobreconfiados <a class="cite" data-ref="hesch2014"></a>.</li>
+        <li>Filtros híbridos que mantienen la estructura de Kalman y aprenden con una red lo que el modelo no sabe <a class="cite" data-ref="revach2022"></a>; filtros aprendidos de extremo a extremo (A4b).</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <p><strong>Previsión nuestra para 2027 y después:</strong></p>
+      <ul>
+        <li>Estimadores de vuelo con un núcleo ESKF/InEKF y módulos aprendidos para sensores difíciles (cámaras de eventos, aerodinámica).</li>
+        <li>Beliefs latentes de world models evaluados con las herramientas de este tema: consistencia (NEES/NIS) y observabilidad.</li>
+        <li>Planificadores que usan la covarianza del filtro para decidir dónde mirar (percepción activa, A7).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Tres beliefs: exacto, aproximado y aprendido</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Belief</th><th>Representación</th><th>Cuándo es exacto</th></tr>
+          <tr><td>Filtro de Kalman</td><td>Gaussiana \((m, P)\)</td><td>Lineal y gaussiano</td></tr>
+          <tr><td>EKF, UKF, ESKF</td><td>Gaussiana aproximada</td><td>Nunca; bien si es casi lineal</td></tr>
+          <tr><td>Filtro de partículas</td><td>Muestras pesadas</td><td>En el límite de infinitas partículas</td></tr>
+          <tr><td>RSSM (Dreamer)</td><td>Latente determinista + estocástico</td><td>No pretende serlo: aprende lo que predice</td></tr>
+        </table>
+      </div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un belief aprendido se puede evaluar como un filtro: ¿su incertidumbre es consistente (NEES en simulación, NIS con datos reales)? ¿Gana información espuria en direcciones no observables? Son preguntas que casi ningún artículo de world models se hace.</div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol class="small">
+        <li>¿Qué parte del estado de tu dron debe estimar un filtro clásico (actitud, sesgos) y qué parte un belief aprendido (entorno, objetivos)?</li>
+        <li>¿Cómo mides la consistencia de un belief latente cuyo «estado real» no está definido?</li>
+        <li>¿Tu world model gana confianza en direcciones que no observa, como el EKF sin magnetómetro?</li>
+        <li>¿Cómo trata tu modelo las observaciones retrasadas?</li>
+        <li>¿Cuándo merece la pena un belief multimodal (partículas, mezclas) en lugar de una gaussiana?</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A4a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Filtro de Bayes: predecir con el modelo, multiplicar por la verosimilitud y normalizar. El belief es un estadístico suficiente para decidir.</li>
+    <li>Filtro de Kalman = condicionar una gaussiana conjunta: \(K = P^-H^\top S^{-1}\). Su Riccati es la del LQR transpuesta (dualidad, separación).</li>
+    <li>Consistencia: NEES medio igual a la dimensión del estado; un filtro con \(Q\) cien veces menor da 95 en lugar de 2.</li>
+    <li>EKF linealiza, UKF propaga puntos sigma, PF usa muestras: en el modelo bimodal, RMSE de 20,6, 11,1 y 4,7.</li>
+    <li>ESKF: nominal en la variedad, error en el tangente; inyectar y reiniciar. Es lo que usan EKF2 de PX4 y casi todo VIO.</li>
+    <li>Sin magnetómetro la guiñada no es observable, y el EKF se cree que sí: σ de 3° con errores reales de 1° a 28°.</li>
+    <li>Medidas retrasadas: horizonte retrasado, reprocesado o clonado de estados.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Bayes y Kalman</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Un filtro de Kalman 1D tiene \(P^- = 4\) m² y la medida directa de la posición, \(R = 1\) m². ¿Cuánto vale la ganancia y la varianza tras actualizar?</p>
+      <ol class="opts">
+        <li><button type="button">\(K = 0{,}2\); \(P = 3{,}2\)</button></li>
+        <li><button type="button">\(K = 0{,}8\); \(P = 0{,}8\)</button></li>
+        <li><button type="button">\(K = 0{,}5\); \(P = 2\)</button></li>
+        <li><button type="button">\(K = 1\); \(P = 0\)</button></li>
+      </ol>
+      <p class="explain">\(K = P^-/(P^- + R) = 4/5 = 0{,}8\) y \(P = (1-K)P^- = 0{,}2\cdot4 = 0{,}8\) m². La varianza final es menor que las dos: \(1/P = 1/4 + 1/1\).</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. En 200 ensayos simulados, el NEES medio de tu filtro de 6 estados sale 31. ¿Qué pasa?</p>
+      <ol class="opts">
+        <li><button type="button">Nada: el NEES depende de la escala de las unidades</button></li>
+        <li><button type="button">El filtro es demasiado prudente: su covarianza es mayor que el error real</button></li>
+        <li><button type="button">El filtro es sobreconfiado: su covarianza es mucho menor que el error real</button></li>
+        <li><button type="button">El filtro tiene un sesgo pero su covarianza es correcta</button></li>
+      </ol>
+      <p class="explain">Si fuera consistente, el NEES medio valdría 6. Un valor mucho mayor significa que \(e^\top P^{-1}e\) es grande: \(P\) subestima el error. Suele venir de \(Q\) demasiado pequeña o de direcciones no observables.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Filtros no lineales</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. ¿Por qué falla el EKF en el modelo con medida \(x^2/20\)?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el belief verdadero es bimodal (\(\pm x\)) y una gaussiana solo puede representar un modo</button></li>
+        <li><button type="button">Porque el jacobiano no existe en \(x = 0\)</button></li>
+        <li><button type="button">Porque el ruido del proceso es demasiado grande para cualquier filtro</button></li>
+        <li><button type="button">Porque el EKF no admite ruido de medida</button></li>
+      </ol>
+      <p class="explain">La medida no distingue el signo de \(x\). El EKF y el UKF eligen un modo; el filtro de partículas mantiene los dos hasta que la dinámica rompe la simetría.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. Tu filtro de partículas tiene 1000 partículas y el tamaño efectivo baja a 3. ¿Qué haces?</p>
+      <ol class="opts">
+        <li><button type="button">Nada: 3 partículas bastan</button></li>
+        <li><button type="button">Aumentar el ruido de la medida a cero</button></li>
+        <li><button type="button">Cambiar a un EKF</button></li>
+        <li><button type="button">Remuestrear y, si pasa a menudo, mejorar la propuesta o aumentar las partículas</button></li>
+      </ol>
+      <p class="explain">Un tamaño efectivo de 3 es degeneración: casi todo el peso en 3 partículas. Se remuestrea; si ocurre en cada paso, la propuesta (la transición) está demasiado lejos de la verosimilitud.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Estado de error y observabilidad</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Con un acelerómetro que mide la gravedad en ejes cuerpo, \(H_{\delta\theta} = [\hat R^\top\mathbf g]_\times\). ¿Qué rotación no corrige nunca esa medida?</p>
+      <ol class="opts">
+        <li><button type="button">Ninguna: corrige toda la actitud</button></li>
+        <li><button type="button">La rotación alrededor de la vertical (guiñada)</button></li>
+        <li><button type="button">La rotación alrededor del eje x del cuerpo</button></li>
+        <li><button type="button">La inclinación</button></li>
+      </ol>
+      <p class="explain">\([\mathbf a]_\times\mathbf a = 0\): la medida es ciega a giros alrededor de \(\hat R^\top\mathbf g\), la vertical vista desde el cuerpo. Hace falta otro vector de referencia (magnetómetro, GNSS en movimiento, visión).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu dron vuela en interiores sin GNSS ni magnetómetro fiable, con IMU y cámara. ¿Qué estados son observables, cuáles no, y cómo evitas que tu filtro (o tu belief aprendido) se vuelva sobreconfiado en los no observables?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Con IMU y cámara (VIO) son inobservables la posición absoluta y la guiñada global: cuatro direcciones. Lo demás (inclinación, velocidad, sesgos con excitación suficiente, escala con la IMU) es observable. Para no ganar información espuria: linealizar respetando esas direcciones (filtros con restricciones de observabilidad o invariantes), no inicializar la covarianza de lo inobservable con valores pequeños, y vigilar el NEES en simulación. En un belief aprendido, evaluarlo en simulación frente al estado real con las mismas métricas y comprobar que su incertidumbre sobre la posición absoluta crece con el tiempo.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 90 MIN · LIBRO</span>
+      <h3>Bayesian Filtering and Smoothing <a class="cite" data-ref="sarkka2023"></a></h3>
+      <p><strong>Lee:</strong> los capítulos del filtro de Bayes, del filtro de Kalman, de los filtros gaussianos no lineales (EKF, UKF) y del filtro de partículas.</p>
+      <p><strong>Busca:</strong> la derivación del Kalman por condicionamiento y la familia de filtros gaussianos como un único esquema.</p>
+      <p><strong>Responde:</strong> ¿qué hace distintos a EKF y UKF dentro de ese esquema?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 90 MIN · ARXIV</span>
+      <h3>Cuaterniones y ESKF <a class="cite" data-ref="sola2017"></a></h3>
+      <p><strong>Lee:</strong> las perturbaciones en SO(3) y el capítulo del filtro de estado de error con IMU.</p>
+      <p><strong>Busca:</strong> el jacobiano de reinicio y por qué casi siempre se aproxima por la identidad.</p>
+      <p><strong>Responde:</strong> ¿qué cambia en las ecuaciones si usas perturbación local (derecha) o global (izquierda)?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN</span>
+      <h3>Consistencia y observabilidad <a class="cite" data-ref="hesch2014"></a></h3>
+      <p><strong>Lee:</strong> la introducción y el análisis de observabilidad del VINS lineal frente al no lineal.</p>
+      <p><strong>Busca:</strong> qué direcciones son inobservables y cómo el EKF gana información espuria en ellas.</p>
+      <p><strong>Responde:</strong> ¿qué tiene que ver con la figura de la guiñada de este tema?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Probabilistic Robotics, caps. 2–4 <a class="cite" data-ref="thrun2005"></a>; EKF invariante <a class="cite" data-ref="barrau2017"></a>; la documentación de EKF2 <a class="cite" data-ref="px4ekf"></a>; KalmanNet <a class="cite" data-ref="revach2022"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>ESKF de IMU y posición con datos reales de EuRoC, y un filtro de partículas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Kalman y consistencia</strong> en simulación: NEES y NIS, filtro bien y mal ajustado.</li>
+        <li><strong>ESKF de actitud</strong> con sesgo, con y sin magnetómetro: la figura de la guiñada.</li>
+        <li><strong>ESKF de 15 estados</strong> (posición, velocidad, actitud y sesgos) con la IMU de un vuelo de EuRoC y posiciones de la referencia, degradadas, como «GNSS» a 10 Hz con retardo.</li>
+        <li><strong>Filtro de partículas</strong> para el mismo problema reducido, y comparación de coste y error.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>NEES de 1,86 frente a 95; RMSE de EKF, UKF y PF en el modelo bimodal; guiñada inobservable sin magnetómetro y σ sobreconfiada; error de posición del ESKF con y sin compensar el retardo de la medida.</div>
+      <div class="callout realidad"><span class="tag">Datos reales</span>EuRoC: vuelos de un microdrón con IMU, cámaras estéreo y referencia de posición milimétrica (láser) o de pose completa (captura de movimiento) <a class="cite" data-ref="burri2016"></a>. Todo en CPU.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a4a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-px4ekf">PX4. Using the ECL EKF (documentación de EKF2) y parámetros de <code>src/modules/ekf2</code> (rama main, noviembre de 2026). <a href="https://docs.px4.io/main/en/advanced_config/tuning_the_ecl_ekf.html">docs.px4.io</a></li>
+    <li id="ref-wiener1949">Wiener, N. (1949). <em>Extrapolation, Interpolation, and Smoothing of Stationary Time Series</em>. MIT Press. <a href="https://doi.org/10.7551/mitpress/2946.001.0001">doi:10.7551/mitpress/2946.001.0001</a></li>
+    <li id="ref-kalman1960f">Kalman, R. E. (1960). A new approach to linear filtering and prediction problems. <span class="venue">Journal of Basic Engineering</span>, 82(1), 35–45. <a href="https://doi.org/10.1115/1.3662552">doi:10.1115/1.3662552</a></li>
+    <li id="ref-kalman1961">Kalman, R. E., Bucy, R. S. (1961). New results in linear filtering and prediction theory. <span class="venue">Journal of Basic Engineering</span>, 83(1), 95–108. <a href="https://doi.org/10.1115/1.3658902">doi:10.1115/1.3658902</a></li>
+    <li id="ref-mcgee1985">McGee, L. A., Schmidt, S. F. (1985). Discovery of the Kalman filter as a practical tool for aerospace and industry. NASA TM-86847. <a href="https://ntrs.nasa.gov/citations/19860003843">ntrs.nasa.gov</a></li>
+    <li id="ref-gordon1993">Gordon, N. J., Salmond, D. J., Smith, A. F. M. (1993). Novel approach to nonlinear/non-Gaussian Bayesian state estimation. <span class="venue">IEE Proceedings F</span>, 140(2), 107–113. <a href="https://doi.org/10.1049/ip-f-2.1993.0015">doi:10.1049/ip-f-2.1993.0015</a></li>
+    <li id="ref-julier2004">Julier, S. J., Uhlmann, J. K. (2004). Unscented filtering and nonlinear estimation. <span class="venue">Proceedings of the IEEE</span>, 92(3), 401–422. <a href="https://doi.org/10.1109/JPROC.2003.823141">doi:10.1109/JPROC.2003.823141</a></li>
+    <li id="ref-mourikis2007">Mourikis, A. I., Roumeliotis, S. I. (2007). A multi-state constraint Kalman filter for vision-aided inertial navigation. <span class="venue">ICRA 2007</span>, 3565–3572. <a href="https://doi.org/10.1109/ROBOT.2007.364024">doi:10.1109/ROBOT.2007.364024</a></li>
+    <li id="ref-huang2010">Huang, G. P., Mourikis, A. I., Roumeliotis, S. I. (2010). Observability-based rules for designing consistent EKF SLAM estimators. <span class="venue">International Journal of Robotics Research</span>, 29(5), 502–528. <a href="https://doi.org/10.1177/0278364909353640">doi:10.1177/0278364909353640</a></li>
+    <li id="ref-hesch2014">Hesch, J. A., Kottas, D. G., Bowman, S. L., Roumeliotis, S. I. (2014). Consistency analysis and improvement of vision-aided inertial navigation. <span class="venue">IEEE Transactions on Robotics</span>, 30(1), 158–176. <a href="https://doi.org/10.1109/TRO.2013.2277549">doi:10.1109/TRO.2013.2277549</a></li>
+    <li id="ref-sola2017">Solà, J. (2017). Quaternion kinematics for the error-state Kalman filter. <a href="https://arxiv.org/abs/1711.02508">arXiv:1711.02508</a></li>
+    <li id="ref-barrau2017">Barrau, A., Bonnabel, S. (2017). The invariant extended Kalman filter as a stable observer. <span class="venue">IEEE Transactions on Automatic Control</span>, 62(4), 1797–1812. <a href="https://doi.org/10.1109/TAC.2016.2594085">doi:10.1109/TAC.2016.2594085</a></li>
+    <li id="ref-revach2022">Revach, G., Shlezinger, N., Ni, X., Escoriza, A. L., van Sloun, R. J. G., Eldar, Y. C. (2022). KalmanNet: Neural network aided Kalman filtering for partially known dynamics. <span class="venue">IEEE Transactions on Signal Processing</span>, 70, 1532–1547. <a href="https://doi.org/10.1109/TSP.2022.3158588">doi:10.1109/TSP.2022.3158588</a></li>
+    <li id="ref-thrun2005">Thrun, S., Burgard, W., Fox, D. (2005). <em>Probabilistic Robotics</em>. MIT Press.</li>
+    <li id="ref-sarkka2023">Särkkä, S., Svensson, L. (2023). <em>Bayesian Filtering and Smoothing</em>, 2.ª ed. Cambridge University Press. <a href="https://doi.org/10.1017/9781108917407">doi:10.1017/9781108917407</a></li>
+    <li id="ref-rmd2017">Rawlings, J. B., Mayne, D. Q., Diehl, M. M. (2017). <em>Model Predictive Control: Theory, Computation, and Design</em>, 2.ª ed., cap. 4. Nob Hill (PDF gratuito de la 6.ª impresión, 2026). <a href="https://sites.engineering.ucsb.edu/~jbraw/mpc/">sites.engineering.ucsb.edu/~jbraw/mpc</a></li>
+    <li id="ref-burri2016">Burri, M., Nikolic, J., Gohl, P., Schneider, T., Rehder, J., Omari, S., Achtelik, M. W., Siegwart, R. (2016). The EuRoC micro aerial vehicle datasets. <span class="venue">International Journal of Robotics Research</span>, 35(10), 1157–1163. <a href="https://doi.org/10.1177/0278364915620033">doi:10.1177/0278364915620033</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
