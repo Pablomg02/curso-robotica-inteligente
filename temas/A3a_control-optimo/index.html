@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A3a · Control óptimo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A3a" data-deck-title="Control óptimo: LQR, NMPC, MPCC y RTI · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 1 · Jornada 5 · Curso de robótica inteligente</p>
+  <h1>Control óptimo: LQR, NMPC, MPCC y RTI</h1>
+  <p class="subtitle">De la recursión de Riccati al control predictivo no lineal que corre a 100 Hz en un dron: formulación, estabilidad, coste computacional, la iteración en tiempo real y el control de contorno de las carreras de drones.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A1 (modelo del x500), A2 (cascada y retardos), optimización</span>
+    <span><b>Prepara</b> A3b, A5, A8 (planificar con un world model), A14, C1</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A3a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Derivar el LQR discreto por programación dinámica (recursión de Riccati y DARE) y decir qué garantiza y qué no.</li>
+    <li>Plantear un MPC lineal como QP, en forma condensada y dispersa, y estimar su coste en función del horizonte.</li>
+    <li>Enunciar las condiciones de estabilidad del MPC (coste y conjunto terminales) y la factibilidad recursiva.</li>
+    <li>Explicar el NMPC por <em>multiple shooting</em> con SQP de Gauss-Newton, y por qué la iteración en tiempo real (RTI) basta en la práctica.</li>
+    <li>Formular el control de contorno (MPCC) y explicar por qué gana en vuelo a tiempo mínimo.</li>
+    <li>Elegir horizonte, discretización, <em>solver</em> y frecuencia para un MPC en un dron real, con cifras publicadas.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>El MPC es planificar con un modelo y replanificar en cada muestra</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Restricciones explícitas:</strong> empuje de los motores, inclinación, obstáculos. Un PID o un LQR las violan o las tratan con saturaciones que pueden desestabilizar el lazo.</li>
+        <li><strong>Anticipación:</strong> ve la referencia por delante y empieza a girar antes de la curva.</li>
+        <li><strong>Es tu tesis con otra máscara:</strong> planificar con un world model (PETS, TD-MPC2, Dreamer en modo planificador) es MPC con un modelo aprendido. A3b lo desarrolla.</li>
+        <li><strong>Industria:</strong> una encuesta a proveedores de 1999 ya contaba más de 4600 aplicaciones de MPC en procesos <a class="cite" data-ref="qin2003"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Qué cambia para ti</span>En tu diagnóstico marcaste MPC y optimización numérica con un 1. Sabes optimizar y conoces la dinámica; aquí se juntan las dos cosas con la restricción que manda en un robot: resolver un problema de optimización cada 10 ms.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>MPC en drones reales</th><th>Horizonte</th><th>Frecuencia</th><th>Cómputo</th></tr>
+          <tr><td>NMPC + INDI <a class="cite" data-ref="sun2022"></a></td><td class="n">20 × 0,05 s</td><td class="n"><span class="hz">100 Hz</span></td><td class="n"><span class="hz">2,7 ms</span>, a bordo</td></tr>
+          <tr><td>MPCC++ <a class="cite" data-ref="krinner2024"></a></td><td class="n">20 × 0,04 s</td><td class="n"><span class="hz">100 Hz</span></td><td>fuera de bordo</td></tr>
+          <tr><td>TinyMPC, Crazyflie <a class="cite" data-ref="nguyen2024"></a></td><td class="n">N = 15</td><td class="n"><span class="hz">500 Hz</span></td><td class="n">&lt; <span class="hz">2 ms</span>, MCU</td></tr>
+          <tr><td>Ala fija <a class="cite" data-ref="stastny2018"></a></td><td class="n">70 × 0,1 s</td><td class="n"><span class="hz">10 Hz</span></td><td>a bordo</td></tr>
+        </table>
+      </div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>El MPC supone que conoce el estado \(x(t)\). Con observabilidad parcial lo conoce a través de un estimador (A4) o de un belief: la pregunta de cómo planificar con incertidumbre en el estado atraviesa todo el tema.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia breve</p>
+  <h2>De la programación dinámica a un QP cada 10 ms</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">1957–62</span>Programación dinámica de Bellman y principio del máximo de Pontryagin <a class="cite" data-ref="bellman1957,pontryagin1962"></a>.</div>
+      <div class="ev"><span class="yr">1960</span>Kalman formula el regulador lineal cuadrático (LQR) <a class="cite" data-ref="kalman1960"></a>.</div>
+      <div class="ev"><span class="yr">1978–80</span>Primeros MPC industriales: IDCOM de Richalet et al. y DMC de Shell <a class="cite" data-ref="richalet1978,qin2003"></a>.</div>
+      <div class="ev"><span class="yr">1984</span><em>Multiple shooting</em> de Bock y Plitt para resolver problemas de control óptimo <a class="cite" data-ref="bock1984"></a>.</div>
+      <div class="ev"><span class="yr">2000</span>Mayne et al. sistematizan la estabilidad del MPC con restricciones <a class="cite" data-ref="mayne2000"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">2002–05</span>Iteración en tiempo real (RTI) de Diehl, Bock y Schlöder, y su prueba de contracción <a class="cite" data-ref="diehl2002,diehl2005"></a>.</div>
+      <div class="ev"><span class="yr">2010–15</span>Control de contorno (MPCC) y carreras de coches a escala 1:43 <a class="cite" data-ref="lam2010,liniger2015"></a>.</div>
+      <div class="ev"><span class="yr">2017–18</span>NMPC a bordo de multirrotores a 100 Hz; MPC consciente de la percepción <a class="cite" data-ref="kamel2017,falanga2018"></a>.</div>
+      <div class="ev"><span class="yr">2021–22</span>acados; MPCC a tiempo mínimo a 60 km/h <a class="cite" data-ref="verschueren2022,romero2022"></a>.</div>
+      <div class="ev"><span class="yr">2023–26</span>RL gana a MPC en carreras (Song et al.); MPCC++ con restricciones de seguridad; MPC en microcontroladores <a class="cite" data-ref="song2023,krinner2024,nguyen2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 · LQR ============ -->
+<section class="slide divider" data-section="1 · LQR">
+  <p class="num">Parte 1</p>
+  <h2>El regulador lineal cuadrático</h2>
+  <p>Programación dinámica, recursión de Riccati, el LQR del x500 y lo que sus márgenes garantizan de verdad.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Programación dinámica</p>
+  <h2>La recursión de Riccati sale de minimizar una cuadrática paso a paso</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Sistema \(x_{k+1} = Ax_k + Bu_k\), coste \(\sum_{k=0}^{N-1}(x_k^\top Qx_k + u_k^\top Ru_k) + x_N^\top P_f x_N\), con \(Q \succeq 0\), \(R \succ 0\). El coste óptimo desde \(k\) es cuadrático, \(V_k(x) = x^\top\Pi_k x\), y la ley óptima es lineal:</p>
+      \[ u_k = -K_kx_k,\qquad K_k = (R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A \]
+      \[ \begin{aligned}\Pi_k = Q &+ A^\top\Pi_{k+1}A\\ &- A^\top\Pi_{k+1}B(R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\end{aligned} \]
+      <p class="small">con \(\Pi_N = P_f\), hacia atrás <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación</summary>
+        <p class="small">Principio de optimalidad: \(V_k(x) = \min_u\,[x^\top Qx + u^\top Ru + V_{k+1}(Ax + Bu)]\). Si \(V_{k+1}(x) = x^\top\Pi_{k+1}x\), lo de dentro es una cuadrática estrictamente convexa en \(u\) (porque \(R \succ 0\)). Gradiente nulo: \(2Ru + 2B^\top\Pi_{k+1}(Ax + Bu) = 0\), de donde \(u = -(R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}Ax\). Sustituyendo, \(V_k\) vuelve a ser cuadrática con la matriz \(\Pi_k\) de la izquierda: por inducción desde \(\Pi_N = P_f\), vale para todo \(k\).</p>
+      </details>
+      <p class="small"><strong>Horizonte infinito:</strong> el punto fijo es la ecuación algebraica de Riccati discreta (DARE). Con \((A, B)\) estabilizable y \((A, Q^{1/2})\) detectable existe una solución estabilizante y \(A - BK\) tiene todos sus autovalores dentro del círculo unidad <a class="cite" data-ref="rmd2017"></a>.</p>
+      <div class="callout clave"><span class="tag">Idea clave</span>Todo el MPC lineal sin restricciones es esta recursión. Con restricciones deja de haber fórmula cerrada, pero los <em>solvers</em> rápidos siguen usando Riccati por dentro (parte 2).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El LQR del x500</p>
+  <h2>Un solo controlador, y sus polos se ordenan en tres escalas como la cascada</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Linealización en estacionario (12 estados: posición, velocidad, ángulos pequeños y velocidad angular; 4 entradas: empuje y pares), discretizada a 100 Hz. Pesos por la regla de Bryson, \(Q = \operatorname{diag}(1/x_{i,\max}^2)\), \(R = \operatorname{diag}(1/u_{j,\max}^2)\), con errores admisibles de 0,5 m, 1 m/s, 0,3 rad (0,5 en guiñada) y 2 rad/s, y mandos de 13,9 N y 1; 1; 0,1 N·m.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Grupo de polos en lazo cerrado</th><th>\(|s|\)</th><th>PX4 (A2)</th></tr>
+          <tr><td>Movimiento horizontal (x, y)</td><td class="n">2,6 rad/s</td><td class="n">0,95 y 1,8 rad/s</td></tr>
+          <tr><td>Inclinación</td><td class="n">6,3 rad/s</td><td class="n">4 rad/s</td></tr>
+          <tr><td>Velocidad angular de alabeo y cabeceo</td><td class="n">19,7 rad/s</td><td class="n">≈ 40 rad/s</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">La altura queda en 2,1 y 6,4 rad/s y la guiñada en 2,1. Calculado en <code>figuras/figuras_a3a.py</code> con la inercia compuesta del x500 de A2.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>Nadie ha pedido una cascada, pero el óptimo la reproduce: la planta es una cadena de integradores y los pesos dicen qué estados importan, así que el LQR reparte el ancho de banda de dentro afuera, con separaciones de 2,4 y 3,1 veces entre grupos.</li>
+        <li>La ganancia acopla lo que la cascada separa: el par de cabeceo depende directamente de \(x\), \(v_x\), \(\theta\) y \(q\) a la vez.</li>
+        <li>Lo que el LQR no ve: saturación de motores, límite de inclinación, retardos. Para eso hace falta la parte 2.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>El LQR multivariable pide el estado completo a 100 Hz o más: posición y velocidad incluidas. En un dron real esas llegan del estimador a 100 Hz (PX4) y con retardo, lo que lo hace menos práctico que la cascada, que cierra lo rápido solo con el giróscopo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Horizonte finito</p>
+  <h2>¿Cuánto horizonte hace falta para que la ganancia ya sea la de horizonte infinito?</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Distancia relativa entre la ganancia LQR de horizonte finito y la de horizonte infinito en función del horizonte">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M61.1,30.0 L62.2,30.1 L63.3,30.4 L64.4,30.8 L65.5,31.3 L66.6,31.8 L67.7,32.4 L68.8,33.0 L69.9,33.6 L71.0,34.3 L72.1,35.0 L73.2,35.7 L74.3,36.4 L75.4,37.1 L76.5,37.8 L77.6,38.4 L78.7,39.1 L79.8,39.8 L80.9,40.5 L82.0,41.1 L83.1,41.7 L84.2,42.3 L85.3,42.9 L86.4,43.5 L87.5,44.0 L88.6,44.6 L89.7,45.1 L90.8,45.6 L91.9,46.1 L93.0,46.6 L94.1,47.0 L95.2,47.5 L96.3,48.0 L97.4,48.4 L98.5,48.9 L99.6,49.4 L100.7,49.8 L101.8,50.3 L102.9,50.7 L104.0,51.2 L105.1,51.7 L106.2,52.1 L107.3,52.6 L108.4,53.1 L109.5,53.6 L110.6,54.1 L111.7,54.6 L112.8,55.1 L113.9,55.6 L115.0,56.1 L116.1,56.6 L117.2,57.1 L118.3,57.7 L119.4,58.2 L120.5,58.7 L121.6,59.3 L122.7,59.8 L123.8,60.4 L124.9,61.0 L126.0,61.5 L127.1,62.1 L128.2,62.7 L129.3,63.3 L130.4,63.9 L131.5,64.5 L132.6,65.1 L133.7,65.7 L134.8,66.3 L135.9,66.9 L137.0,67.6 L138.1,68.2 L139.2,68.8 L140.3,69.5 L141.4,70.1 L142.5,70.8 L143.6,71.4 L144.7,72.1 L145.8,72.7 L146.9,73.4 L148.0,74.1 L149.1,74.7 L150.2,75.4 L151.3,76.1 L152.4,76.8 L153.5,77.5 L154.6,78.2 L155.7,78.9 L156.8,79.6 L157.9,80.3 L159.0,81.0 L160.1,81.7 L161.2,82.5 L162.3,83.2 L163.4,83.9 L164.5,84.6 L165.6,85.4 L166.7,86.1 L167.8,86.9 L168.9,87.6 L170.0,88.4 L171.1,89.1 L172.2,89.9 L173.3,90.7 L174.4,91.5 L175.5,92.2 L176.6,93.0 L177.7,93.8 L178.8,94.6 L179.9,95.4 L181.0,96.2 L182.1,97.0 L183.2,97.8 L184.3,98.6 L185.4,99.4 L186.5,100.2 L187.6,101.0 L188.7,101.9 L189.8,102.7 L190.9,103.5 L192.0,104.4 L193.1,105.2 L194.2,106.1 L195.3,106.9 L196.4,107.8 L197.5,108.6 L198.6,109.5 L199.7,110.4 L200.8,111.2 L201.9,112.1 L203.0,113.0 L204.1,113.9 L205.2,114.7 L206.3,115.6 L207.4,116.5 L208.5,117.4 L209.6,118.3 L210.7,119.2 L211.8,120.1 L212.9,121.0 L214.0,122.0 L215.1,122.9 L216.2,123.8 L217.3,124.7 L218.4,125.7 L219.5,126.6 L220.6,127.5 L221.7,128.5 L222.8,129.4 L223.9,130.4 L225.0,131.3 L226.1,132.3 L227.2,133.2 L228.3,134.2 L229.4,135.2 L230.5,136.1 L231.6,137.1 L232.7,138.1 L233.8,139.0 L234.9,140.0 L236.0,141.0 L237.1,142.0 L238.2,143.0 L239.3,144.0 L240.4,145.0 L241.5,146.0 L242.6,147.0 L243.7,148.0 L244.8,149.0 L245.9,150.0 L247.0,151.1 L248.1,152.1 L249.2,153.1 L250.3,154.1 L251.4,155.2 L252.5,156.2 L253.6,157.2 L254.7,158.3 L255.8,159.3 L256.9,160.4 L258.0,161.4 L259.1,162.5 L260.2,163.5 L261.3,164.6 L262.4,165.6 L263.5,166.7 L264.6,167.8 L265.7,168.8 L266.8,169.9 L267.9,171.0 L269.0,172.1 L270.1,173.2 L271.2,174.3 L272.3,175.3 L273.4,176.4 L274.5,177.5 L275.6,178.6 L276.7,179.7 L277.8,180.8 L278.9,181.9 L280.0,183.1 L281.1,184.2 L282.2,185.3 L283.3,186.4 L284.4,187.5 L285.5,188.7 L286.6,189.8 L287.7,190.9 L288.8,192.1 L289.9,193.2 L291.0,194.3 L292.1,195.5 L293.2,196.6 L294.3,197.8 L295.4,198.9 L296.5,200.1 L297.6,201.2 L298.7,202.4 L299.8,203.6 L300.9,204.7 L302.0,205.9 L303.1,207.1 L304.2,208.2 L305.3,209.4 L306.4,210.6 L307.5,211.8 L308.6,213.0 L309.7,214.2 L310.8,215.4 L311.9,216.6 L313.0,217.7 L314.1,219.0 L315.2,220.2 L316.3,221.4 L317.4,222.6 L318.5,223.8 L319.6,225.0 L320.7,226.2 L321.8,227.4 L322.9,228.7 L324.0,229.9 L325.1,231.1 L326.2,232.4 L327.3,233.6 L328.4,234.8 L329.5,236.1 L330.6,237.3 L331.7,238.6 L332.8,239.8 L333.9,241.1 L335.0,242.3 L336.1,243.6 L337.2,244.9 L338.3,246.1 L339.4,247.4 L340.5,248.7 L341.6,249.9"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="170" y="268" text-anchor="middle">100</text>
+          <text x="280" y="268" text-anchor="middle">200</text>
+          <text x="390" y="268" text-anchor="middle">300</text>
+          <text x="500" y="268" text-anchor="end">400 pasos</text>
+          <text x="52" y="34" text-anchor="end">1</text>
+          <text x="52" y="89" text-anchor="end">10⁻¹</text>
+          <text x="52" y="144" text-anchor="end">10⁻²</text>
+          <text x="52" y="199" text-anchor="end">10⁻³</text>
+          <text x="52" y="254" text-anchor="end">10⁻⁴</text>
+        </g>
+        <line class="ln-dash" x1="60" y1="89" x2="500" y2="89"/>
+        <text x="300" y="82" class="t-faint" font-size="12">10 %: N = 96 (0,96 s)</text>
+      </svg>
+      <figcaption>\(\|K_0(N) - K_\infty\|/\|K_\infty\|\) para el eje x del x500 a 100 Hz, con coste terminal nulo. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Al 50 % con 30 pasos (0,30 s), al 10 % con 96 (0,96 s) y al 1 % con 159 (1,59 s).</li>
+        <li>El horizonte tiene que cubrir la dinámica lenta del lazo cerrado: aquí el par de polos horizontales, con \(|s|\) = 2,6 rad/s (constante de tiempo de unos 0,4 s).</li>
+        <li>Con un coste terminal igual a la solución de la DARE, \(P_f = \Pi_\infty\), la ganancia es la infinita con cualquier \(N\): es la elección que usa la teoría de estabilidad del MPC.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Un MPC con horizonte corto y sin coste terminal se comporta como un controlador miope: frena tarde, o no llega a estabilizar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Márgenes</p>
+  <h2>Los famosos 60° del LQR valen menos de lo que parece</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Lo que sí está demostrado.</strong> En tiempo continuo, con una entrada y realimentación del estado completo, el diagrama de Nyquist del LQR evita el círculo unidad centrado en −1. Eso da margen de ganancia \([\tfrac12, \infty)\) y de fase de al menos 60° <a class="cite" data-ref="anderson1990"></a>. Con varias entradas y \(R\) diagonal, lo mismo lazo a lazo <a class="cite" data-ref="safonov1977"></a>.</p>
+      <details class="deriv"><summary>De dónde sale</summary>
+        <p class="small">La igualdad de retorno da \(|1 + L(j\omega)| \ge 1\), con \(L = K(j\omega I - A)^{-1}B\): el diagrama de Nyquist nunca entra en el disco de radio 1 centrado en −1. Multiplicar \(L\) por \(\beta\) equivale a mover el punto crítico a \(-1/\beta\); para \(\beta > \tfrac12\), ese punto está en \((-2, 0)\), dentro del disco que la curva no toca, así que el número de vueltas no cambia y el lazo sigue estable. Para la fase: los puntos con \(|L| = 1\) están en la circunferencia unidad y fuera del disco, es decir, a ±120° o menos del eje real positivo, lo que deja al menos 60° hasta −180°.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Lo que no:</strong></p>
+      <ul class="small">
+        <li><strong>En tiempo discreto, que es lo que implementas</strong>, el margen de fase garantizado es \(2\arcsin(\gamma/2) &lt; 60°\), con \(\gamma &lt; 1\) dependiente de la planta, y hay sistemas de primer orden con márgenes arbitrariamente pequeños <a class="cite" data-ref="anderson1990"></a>.</li>
+        <li><strong>Con retardo</strong> se pierde el margen de ganancia infinito <a class="cite" data-ref="anderson1990"></a>: A2 entero.</li>
+        <li><strong>Sin estado completo</strong> (con un observador) las garantías no se heredan automáticamente.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Las garantías clásicas del LQR suponen que mides todo el estado sin ruido ni retardo. En cuanto el estado sale de un filtro o de un belief, la robustez hay que comprobarla otra vez: es una de las razones de que A4 venga justo después.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 · MPC LINEAL ============ -->
+<section class="slide divider" data-section="2 · MPC lineal">
+  <p class="num">Parte 2</p>
+  <h2>MPC lineal: un QP en cada muestra</h2>
+  <p>Formulación, forma condensada y dispersa, cuánto cuesta resolverlo, qué garantiza la estabilidad y un ejemplo con el límite de inclinación del x500.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Formulación</p>
+  <h2>Optimizar el futuro, aplicar solo el primer mando y repetir</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ \begin{aligned} \min_{u_0,\dots,u_{N-1}}\ &\sum_{k=0}^{N-1}\ell(x_k,u_k) + V_f(x_N)\\ \text{s.a.}\ & x_{k+1} = f(x_k,u_k),\quad x_0 = x(t)\\ & (x_k,u_k)\in\mathbb Z,\quad x_N\in\mathbb X_f \end{aligned} \]
+      <p class="small">Se aplica \(u_0^\star\), se mide el nuevo estado y se vuelve a resolver: <strong>horizonte deslizante</strong>. La realimentación entra por \(x_0 = x(t)\).</p>
+      <p class="small">Con \(f\) lineal, \(\ell\) cuadrático y restricciones poliédricas, es un <strong>QP</strong> convexo.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Forma condensada.</strong> Eliminando los estados, \(X = \Phi x_0 + \Gamma U\), y queda un QP solo en los mandos:</p>
+      \[ \min_U\ \tfrac12 U^\top HU + (\Gamma^\top\bar Q\Phi x_0)^\top U\quad\text{s.a.}\quad G U \le w + Ex_0 \]
+      <details class="deriv"><summary>Construcción</summary>
+        <p class="small">\(x_k = A^kx_0 + \sum_{j<k}A^{k-1-j}Bu_j\): apilando, \(\Phi\) tiene las potencias \(A^k\) y \(\Gamma\) es triangular inferior por bloques. Con \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\) y \(\bar R = \operatorname{diag}(R,\dots,R)\), \(H = \Gamma^\top\bar Q\Gamma + \bar R\). Las restricciones sobre estados se convierten en restricciones sobre \(U\) a través de las filas de \(\Gamma\).</p>
+      </details>
+      <p class="small"><strong>Forma dispersa.</strong> Se dejan estados y mandos como variables, con la dinámica como igualdades. El sistema KKT es de banda y se resuelve con una recursión tipo Riccati.</p>
+      <div class="callout clave"><span class="tag">Idea clave</span>El MPC no es un controlador nuevo: es un LQR que además respeta restricciones, y que con restricciones activas deja de ser lineal.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coste computacional</p>
+  <h2>Condensar sale a cuenta con horizontes cortos; Riccati gana con los largos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Operaciones en coma flotante para resolver el QP del MPC con Riccati y con la forma condensada en función del horizonte">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,194.0 L148.0,182.9 L236.0,171.9 L324.0,160.9 L412.0,149.8 L500.0,138.8"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M60.0,212.3 L148.0,179.2 L236.0,146.1 L324.0,113.0 L412.0,79.9 L500.0,46.7"/>
+        <line class="ln-dash" x1="236.0" y1="30" x2="236.0" y2="250"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">5</text>
+          <text x="236" y="268" text-anchor="middle">20</text>
+          <text x="500" y="268" text-anchor="end">160 = N</text>
+          <text x="52" y="254" text-anchor="end">1</text>
+          <text x="52" y="181" text-anchor="end">10³</text>
+          <text x="52" y="107" text-anchor="end">10⁶</text>
+          <text x="52" y="34" text-anchor="end">10⁹</text>
+          <text x="64" y="44" class="t-faint">flop</text>
+        </g>
+        <g font-size="13">
+          <text x="380" y="74" class="t-tesis">condensado ∝ N³</text>
+          <text x="380" y="168" class="t-accent">Riccati ∝ N</text>
+        </g>
+      </svg>
+      <figcaption>Con \(n\) = 12 estados y \(m\) = 4 entradas, como el x500. Fórmulas de recuento de Rawlings, Mayne y Diehl <a class="cite" data-ref="rmd2017"></a>; cálculo en <code>figuras/figuras_a3a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Riccati</strong> (forma dispersa): unos \(N(\tfrac73n^3 + 4n^2m + 2nm^2 + \tfrac13m^3)\) flop, lineal en \(N\).</li>
+        <li><strong>Condensar y factorizar</strong>: unos \(\tfrac13N^3nm^2 + \tfrac13N^3m^3\), cúbico en \(N\).</li>
+        <li>Condensando en cada muestra, como en un NMPC con linealizaciones que cambian: ×5 con \(N\) = 20 (0,13 frente a 0,68 Mflop) y ×324 con \(N\) = 160. En un MPC lineal invariante, \(H\) se construye fuera de línea y solo se factoriza: ×1,3 y ×81.</li>
+        <li>La <strong>condensación parcial</strong> (bloques de varios pasos) queda en medio y es lo que suele usar acados con HPIPM <a class="cite" data-ref="frison2020,verschueren2022"></a>.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Cómputo limitado</span>0,7 Mflop por factorización son décimas de milisegundo en un PC, y un punto interior necesita una factorización por iteración. En un microcontrolador de 168 MHz sin unidad vectorial ya es otra historia: de ahí TinyMPC (parte 5).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker"><em>Solvers</em> de QP</p>
+  <h2>Tres familias, y cada una encaja en un sitio distinto</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Familia</th><th style="width:20%">Ejemplo</th><th>Cómo trabaja</th><th style="width:30%">Cuándo conviene</th></tr>
+      <tr><td>Conjunto activo</td><td>qpOASES <a class="cite" data-ref="ferreau2014"></a></td><td>Adivina qué restricciones están activas y resuelve sistemas lineales; versión paramétrica que sigue la solución al cambiar \(x_0\)</td><td>QP densos pequeños con arranque en caliente; pocas restricciones cambian de una muestra a otra</td></tr>
+      <tr><td>Punto interior</td><td>HPIPM <a class="cite" data-ref="frison2020"></a></td><td>Barrera logarítmica; cada iteración es un sistema KKT de banda resuelto con Riccati</td><td>Horizontes largos y estructura de control óptimo; tiempo de cálculo predecible</td></tr>
+      <tr><td>Operadores (ADMM)</td><td>OSQP <a class="cite" data-ref="stellato2020"></a>, TinyMPC <a class="cite" data-ref="nguyen2024"></a></td><td>Divide el problema en una proyección sobre las restricciones y un sistema lineal que casi no cambia y se factoriza pocas veces</td><td>Iteraciones baratísimas y precisión moderada; microcontroladores</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Idea clave</span>En MPC no importa resolver con 10⁻¹² de precisión: importa tener un mando razonable a tiempo, y que sea el mismo cada vez que el problema se repite casi igual (arranque en caliente).</div>
+    <div class="callout error"><span class="tag">Error frecuente</span>Usar un <em>solver</em> genérico de NLP (como IPOPT) dentro del lazo: en el banco de acados para una cadena de masas, IPOPT tarda 59,8 ms de mediana por iteración frente a 1,05 ms de acados <a class="cite" data-ref="verschueren2022"></a>.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estabilidad</p>
+  <h2>Coste terminal como función de Lyapunov y conjunto terminal invariante</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Optimizar a horizonte finito no garantiza estabilizar. Condiciones suficientes <a class="cite" data-ref="rmd2017,mayne2000"></a>:</p>
+      <ol class="small">
+        <li>En \(\mathbb X_f\) existe un mando admisible con \(f(x,u)\in\mathbb X_f\) y \(V_f(f(x,u)) - V_f(x) \le -\ell(x,u)\): \(\mathbb X_f\) es invariante controlado y \(V_f\) es una función de Lyapunov de control local.</li>
+        <li>\(\ell\) y \(V_f\) están acotados por funciones de clase \(\mathcal K_\infty\) del estado.</li>
+      </ol>
+      <p class="small">Entonces el origen es asintóticamente estable en la región donde el problema es factible. Elección típica en el caso lineal: \(V_f\) = coste del LQR (la DARE) y \(\mathbb X_f\) invariante bajo la ley LQR.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Desplazar y añadir: la demostración en tres líneas</summary>
+        <p class="small">Sea \(u^\star = (u_0^\star,\dots,u_{N-1}^\star)\) óptimo en \(x\) y \(x^+ = f(x,u_0^\star)\). La secuencia \(\tilde u = (u_1^\star,\dots,u_{N-1}^\star,\kappa_f(x_N^\star))\) es factible en \(x^+\), porque \(x_N^\star\in\mathbb X_f\) y la ley terminal lo mantiene ahí: eso es la <strong>factibilidad recursiva</strong>. Su coste es \(V_N^\star(x) - \ell(x,u_0^\star) + [\ell(x_N^\star,\kappa_f) + V_f(x_{N+1}) - V_f(x_N^\star)]\), y el corchete es \(\le 0\) por la condición 1. Así que \(V_N^\star(x^+) \le V_N^\star(x) - \ell(x,u_0^\star)\): el coste óptimo es una función de Lyapunov.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">En drones</span>Casi ningún NMPC de vuelo impone \(\mathbb X_f\): se usa un coste terminal razonable y un horizonte que cubre la dinámica lenta. Funciona, pero la garantía formal se pierde, y con perturbaciones la factibilidad tampoco está asegurada.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Restricciones que importan</p>
+  <h2>MPC frente a un LQR saturado con el límite de inclinación del x500</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Posición e inclinación del x500 ante un salto de 1 m con LQR saturado y con MPC que respeta el límite de 20 grados">
+        <line class="ln-rule" x1="60" y1="20" x2="60" y2="130"/>
+        <line class="ln-rule" x1="60" y1="160" x2="60" y2="270"/>
+        <line class="ln-rule" x1="60" y1="270" x2="500" y2="270"/>
+        <line class="ln-dash" x1="60" y1="42.0" x2="500" y2="42.0"/>
+        <line class="ln-dash" x1="60" y1="196.7" x2="500" y2="196.7"/>
+        <line class="ln-dash" x1="60" y1="233.3" x2="500" y2="233.3"/>
+        <path class="ln-tesis" fill="none" stroke-width="2" d="M60.0,115.3 L62.2,115.3 L64.4,115.3 L66.6,115.3 L68.8,115.2 L71.0,115.0 L73.2,114.7 L75.4,114.2 L77.6,113.5 L79.8,112.5 L82.0,111.2 L84.2,109.7 L86.4,107.9 L88.6,105.9 L90.8,103.7 L93.0,101.3 L95.2,98.8 L97.4,96.2 L99.6,93.6 L101.8,90.9 L104.0,88.3 L106.2,85.7 L108.4,83.2 L110.6,80.7 L112.8,78.3 L115.0,76.0 L117.2,73.9 L119.4,71.8 L121.6,69.9 L123.8,68.0 L126.0,66.3 L128.2,64.7 L130.4,63.2 L132.6,61.7 L134.8,60.4 L137.0,59.2 L139.2,58.0 L141.4,56.9 L143.6,56.0 L145.8,55.0 L148.0,54.2 L150.2,53.4 L152.4,52.6 L154.6,51.9 L156.8,51.3 L159.0,50.6 L161.2,50.1 L163.4,49.6 L165.6,49.1 L167.8,48.6 L170.0,48.2 L172.2,47.8 L174.4,47.4 L176.6,47.1 L178.8,46.7 L181.0,46.4 L183.2,46.1 L185.4,45.9 L187.6,45.6 L189.8,45.4 L192.0,45.2 L194.2,45.0 L196.4,44.8 L198.6,44.6 L200.8,44.4 L203.0,44.3 L205.2,44.1 L207.4,44.0 L209.6,43.9 L211.8,43.7 L214.0,43.6 L216.2,43.5 L218.4,43.4 L220.6,43.3 L222.8,43.2 L225.0,43.2 L227.2,43.1 L229.4,43.0 L231.6,43.0 L233.8,42.9 L236.0,42.8 L238.2,42.8 L240.4,42.7 L242.6,42.7 L244.8,42.6 L247.0,42.6 L249.2,42.6 L251.4,42.5 L253.6,42.5 L255.8,42.5 L258.0,42.4 L260.2,42.4 L262.4,42.4 L264.6,42.4 L266.8,42.3 L269.0,42.3 L271.2,42.3 L273.4,42.3 L275.6,42.3 L277.8,42.2 L280.0,42.2 L282.2,42.2 L284.4,42.2 L286.6,42.2 L288.8,42.2 L291.0,42.2 L293.2,42.1 L295.4,42.1 L297.6,42.1 L299.8,42.1 L302.0,42.1 L304.2,42.1 L306.4,42.1 L308.6,42.1 L310.8,42.1 L313.0,42.1 L315.2,42.1 L317.4,42.1 L319.6,42.1 L321.8,42.1 L324.0,42.1 L326.2,42.1 L328.4,42.1 L330.6,42.0 L332.8,42.0 L335.0,42.0 L337.2,42.0 L339.4,42.0 L341.6,42.0 L343.8,42.0 L346.0,42.0 L348.2,42.0 L350.4,42.0 L352.6,42.0 L354.8,42.0 L357.0,42.0 L359.2,42.0 L361.4,42.0 L363.6,42.0 L365.8,42.0 L368.0,42.0 L370.2,42.0 L372.4,42.0 L374.6,42.0 L376.8,42.0 L379.0,42.0 L381.2,42.0 L383.4,42.0 L385.6,42.0 L387.8,42.0 L390.0,42.0 L392.2,42.0 L394.4,42.0 L396.6,42.0 L398.8,42.0 L401.0,42.0 L403.2,42.0 L405.4,42.0 L407.6,42.0 L409.8,42.0 L412.0,42.0 L414.2,42.0 L416.4,42.0 L418.6,42.0 L420.8,42.0 L423.0,42.0 L425.2,42.0 L427.4,42.0 L429.6,42.0 L431.8,42.0 L434.0,42.0 L436.2,42.0 L438.4,42.0 L440.6,42.0 L442.8,42.0 L445.0,42.0 L447.2,42.0 L449.4,42.0 L451.6,42.0 L453.8,42.0 L456.0,42.0 L458.2,42.0 L460.4,42.0 L462.6,42.0 L464.8,42.0 L467.0,42.0 L469.2,42.0 L471.4,42.0 L473.6,42.0 L475.8,42.0 L478.0,42.0 L480.2,42.0 L482.4,42.0 L484.6,42.0 L486.8,42.0 L489.0,42.0 L491.2,42.0 L493.4,42.0 L495.6,42.0 L497.8,42.0 L500.0,42.0"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,115.3 L62.2,115.3 L64.4,115.3 L66.6,115.3 L68.8,115.2 L71.0,115.0 L73.2,114.8 L75.4,114.4 L77.6,114.0 L79.8,113.4 L82.0,112.8 L84.2,112.0 L86.4,111.1 L88.6,110.2 L90.8,109.1 L93.0,108.0 L95.2,106.7 L97.4,105.3 L99.6,103.9 L101.8,102.3 L104.0,100.7 L106.2,98.9 L108.4,97.0 L110.6,95.1 L112.8,93.1 L115.0,91.0 L117.2,88.9 L119.4,86.8 L121.6,84.7 L123.8,82.6 L126.0,80.5 L128.2,78.4 L130.4,76.4 L132.6,74.4 L134.8,72.5 L137.0,70.7 L139.2,69.0 L141.4,67.3 L143.6,65.7 L145.8,64.2 L148.0,62.8 L150.2,61.5 L152.4,60.2 L154.6,59.0 L156.8,57.9 L159.0,56.8 L161.2,55.9 L163.4,55.0 L165.6,54.1 L167.8,53.3 L170.0,52.6 L172.2,51.9 L174.4,51.2 L176.6,50.6 L178.8,50.0 L181.0,49.5 L183.2,49.0 L185.4,48.6 L187.6,48.1 L189.8,47.7 L192.0,47.4 L194.2,47.0 L196.4,46.7 L198.6,46.4 L200.8,46.1 L203.0,45.8 L205.2,45.6 L207.4,45.4 L209.6,45.1 L211.8,44.9 L214.0,44.7 L216.2,44.6 L218.4,44.4 L220.6,44.2 L222.8,44.1 L225.0,44.0 L227.2,43.8 L229.4,43.7 L231.6,43.6 L233.8,43.5 L236.0,43.4 L238.2,43.3 L240.4,43.2 L242.6,43.2 L244.8,43.1 L247.0,43.0 L249.2,42.9 L251.4,42.9 L253.6,42.8 L255.8,42.8 L258.0,42.7 L260.2,42.7 L262.4,42.6 L264.6,42.6 L266.8,42.6 L269.0,42.5 L271.2,42.5 L273.4,42.5 L275.6,42.4 L277.8,42.4 L280.0,42.4 L282.2,42.3 L284.4,42.3 L286.6,42.3 L288.8,42.3 L291.0,42.3 L293.2,42.2 L295.4,42.2 L297.6,42.2 L299.8,42.2 L302.0,42.2 L304.2,42.2 L306.4,42.2 L308.6,42.2 L310.8,42.1 L313.0,42.1 L315.2,42.1 L317.4,42.1 L319.6,42.1 L321.8,42.1 L324.0,42.1 L326.2,42.1 L328.4,42.1 L330.6,42.1 L332.8,42.1 L335.0,42.1 L337.2,42.1 L339.4,42.1 L341.6,42.1 L343.8,42.1 L346.0,42.1 L348.2,42.0 L350.4,42.0 L352.6,42.0 L354.8,42.0 L357.0,42.0 L359.2,42.0 L361.4,42.0 L363.6,42.0 L365.8,42.0 L368.0,42.0 L370.2,42.0 L372.4,42.0 L374.6,42.0 L376.8,42.0 L379.0,42.0 L381.2,42.0 L383.4,42.0 L385.6,42.0 L387.8,42.0 L390.0,42.0 L392.2,42.0 L394.4,42.0 L396.6,42.0 L398.8,42.0 L401.0,42.0 L403.2,42.0 L405.4,42.0 L407.6,42.0 L409.8,42.0 L412.0,42.0 L414.2,42.0 L416.4,42.0 L418.6,42.0 L420.8,42.0 L423.0,42.0 L425.2,42.0 L427.4,42.0 L429.6,42.0 L431.8,42.0 L434.0,42.0 L436.2,42.0 L438.4,42.0 L440.6,42.0 L442.8,42.0 L445.0,42.0 L447.2,42.0 L449.4,42.0 L451.6,42.0 L453.8,42.0 L456.0,42.0 L458.2,42.0 L460.4,42.0 L462.6,42.0 L464.8,42.0 L467.0,42.0 L469.2,42.0 L471.4,42.0 L473.6,42.0 L475.8,42.0 L478.0,42.0 L480.2,42.0 L482.4,42.0 L484.6,42.0 L486.8,42.0 L489.0,42.0 L491.2,42.0 L493.4,42.0 L495.6,42.0 L497.8,42.0 L500.0,42.0"/>
+        <path class="ln-tesis" fill="none" stroke-width="2" d="M60.0,215.0 L62.2,213.9 L64.4,210.7 L66.6,205.4 L68.8,197.9 L71.0,189.0 L73.2,180.5 L75.4,173.7 L77.6,169.1 L79.8,166.6 L82.0,166.2 L84.2,168.0 L86.4,171.9 L88.6,177.6 L90.8,184.5 L93.0,191.9 L95.2,199.1 L97.4,206.0 L99.6,212.2 L101.8,217.6 L104.0,222.3 L106.2,226.1 L108.4,229.2 L110.6,231.5 L112.8,233.3 L115.0,234.4 L117.2,235.1 L119.4,235.4 L121.6,235.4 L123.8,235.1 L126.0,234.5 L128.2,233.8 L130.4,233.1 L132.6,232.2 L134.8,231.3 L137.0,230.3 L139.2,229.4 L141.4,228.5 L143.6,227.6 L145.8,226.7 L148.0,225.9 L150.2,225.1 L152.4,224.4 L154.6,223.7 L156.8,223.1 L159.0,222.5 L161.2,222.0 L163.4,221.5 L165.6,221.0 L167.8,220.6 L170.0,220.2 L172.2,219.8 L174.4,219.5 L176.6,219.2 L178.8,218.9 L181.0,218.6 L183.2,218.4 L185.4,218.1 L187.6,217.9 L189.8,217.7 L192.0,217.6 L194.2,217.4 L196.4,217.2 L198.6,217.1 L200.8,217.0 L203.0,216.8 L205.2,216.7 L207.4,216.6 L209.6,216.5 L211.8,216.4 L214.0,216.3 L216.2,216.2 L218.4,216.2 L220.6,216.1 L222.8,216.0 L225.0,215.9 L227.2,215.9 L229.4,215.8 L231.6,215.8 L233.8,215.7 L236.0,215.7 L238.2,215.6 L240.4,215.6 L242.6,215.6 L244.8,215.5 L247.0,215.5 L249.2,215.5 L251.4,215.4 L253.6,215.4 L255.8,215.4 L258.0,215.3 L260.2,215.3 L262.4,215.3 L264.6,215.3 L266.8,215.3 L269.0,215.2 L271.2,215.2 L273.4,215.2 L275.6,215.2 L277.8,215.2 L280.0,215.2 L282.2,215.2 L284.4,215.2 L286.6,215.1 L288.8,215.1 L291.0,215.1 L293.2,215.1 L295.4,215.1 L297.6,215.1 L299.8,215.1 L302.0,215.1 L304.2,215.1 L306.4,215.1 L308.6,215.1 L310.8,215.1 L313.0,215.1 L315.2,215.1 L317.4,215.1 L319.6,215.1 L321.8,215.1 L324.0,215.0 L326.2,215.0 L328.4,215.0 L330.6,215.0 L332.8,215.0 L335.0,215.0 L337.2,215.0 L339.4,215.0 L341.6,215.0 L343.8,215.0 L346.0,215.0 L348.2,215.0 L350.4,215.0 L352.6,215.0 L354.8,215.0 L357.0,215.0 L359.2,215.0 L361.4,215.0 L363.6,215.0 L365.8,215.0 L368.0,215.0 L370.2,215.0 L372.4,215.0 L374.6,215.0 L376.8,215.0 L379.0,215.0 L381.2,215.0 L383.4,215.0 L385.6,215.0 L387.8,215.0 L390.0,215.0 L392.2,215.0 L394.4,215.0 L396.6,215.0 L398.8,215.0 L401.0,215.0 L403.2,215.0 L405.4,215.0 L407.6,215.0 L409.8,215.0 L412.0,215.0 L414.2,215.0 L416.4,215.0 L418.6,215.0 L420.8,215.0 L423.0,215.0 L425.2,215.0 L427.4,215.0 L429.6,215.0 L431.8,215.0 L434.0,215.0 L436.2,215.0 L438.4,215.0 L440.6,215.0 L442.8,215.0 L445.0,215.0 L447.2,215.0 L449.4,215.0 L451.6,215.0 L453.8,215.0 L456.0,215.0 L458.2,215.0 L460.4,215.0 L462.6,215.0 L464.8,215.0 L467.0,215.0 L469.2,215.0 L471.4,215.0 L473.6,215.0 L475.8,215.0 L478.0,215.0 L480.2,215.0 L482.4,215.0 L484.6,215.0 L486.8,215.0 L489.0,215.0 L491.2,215.0 L493.4,215.0 L495.6,215.0 L497.8,215.0 L500.0,215.0"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,215.0 L62.2,213.9 L64.4,210.7 L66.6,205.5 L68.8,200.5 L71.0,197.6 L73.2,196.7 L75.4,196.7 L77.6,196.7 L79.8,196.7 L82.0,196.7 L84.2,196.7 L86.4,196.7 L88.6,196.7 L90.8,196.7 L93.0,196.7 L95.2,196.7 L97.4,196.7 L99.6,196.7 L101.8,196.7 L104.0,197.1 L106.2,198.1 L108.4,199.8 L110.6,202.0 L112.8,204.7 L115.0,207.6 L117.2,210.7 L119.4,213.7 L121.6,216.6 L123.8,219.3 L126.0,221.7 L128.2,223.8 L130.4,225.6 L132.6,227.0 L134.8,228.1 L137.0,229.0 L139.2,229.5 L141.4,229.8 L143.6,229.9 L145.8,229.9 L148.0,229.6 L150.2,229.3 L152.4,228.8 L154.6,228.3 L156.8,227.8 L159.0,227.2 L161.2,226.5 L163.4,225.9 L165.6,225.3 L167.8,224.7 L170.0,224.1 L172.2,223.5 L174.4,222.9 L176.6,222.4 L178.8,221.9 L181.0,221.4 L183.2,221.0 L185.4,220.6 L187.6,220.2 L189.8,219.8 L192.0,219.5 L194.2,219.2 L196.4,218.9 L198.6,218.6 L200.8,218.4 L203.0,218.2 L205.2,218.0 L207.4,217.8 L209.6,217.6 L211.8,217.4 L214.0,217.2 L216.2,217.1 L218.4,217.0 L220.6,216.8 L222.8,216.7 L225.0,216.6 L227.2,216.5 L229.4,216.4 L231.6,216.3 L233.8,216.2 L236.0,216.1 L238.2,216.1 L240.4,216.0 L242.6,215.9 L244.8,215.9 L247.0,215.8 L249.2,215.8 L251.4,215.7 L253.6,215.7 L255.8,215.6 L258.0,215.6 L260.2,215.6 L262.4,215.5 L264.6,215.5 L266.8,215.5 L269.0,215.4 L271.2,215.4 L273.4,215.4 L275.6,215.3 L277.8,215.3 L280.0,215.3 L282.2,215.3 L284.4,215.3 L286.6,215.2 L288.8,215.2 L291.0,215.2 L293.2,215.2 L295.4,215.2 L297.6,215.2 L299.8,215.2 L302.0,215.2 L304.2,215.1 L306.4,215.1 L308.6,215.1 L310.8,215.1 L313.0,215.1 L315.2,215.1 L317.4,215.1 L319.6,215.1 L321.8,215.1 L324.0,215.1 L326.2,215.1 L328.4,215.1 L330.6,215.1 L332.8,215.1 L335.0,215.1 L337.2,215.1 L339.4,215.0 L341.6,215.0 L343.8,215.0 L346.0,215.0 L348.2,215.0 L350.4,215.0 L352.6,215.0 L354.8,215.0 L357.0,215.0 L359.2,215.0 L361.4,215.0 L363.6,215.0 L365.8,215.0 L368.0,215.0 L370.2,215.0 L372.4,215.0 L374.6,215.0 L376.8,215.0 L379.0,215.0 L381.2,215.0 L383.4,215.0 L385.6,215.0 L387.8,215.0 L390.0,215.0 L392.2,215.0 L394.4,215.0 L396.6,215.0 L398.8,215.0 L401.0,215.0 L403.2,215.0 L405.4,215.0 L407.6,215.0 L409.8,215.0 L412.0,215.0 L414.2,215.0 L416.4,215.0 L418.6,215.0 L420.8,215.0 L423.0,215.0 L425.2,215.0 L427.4,215.0 L429.6,215.0 L431.8,215.0 L434.0,215.0 L436.2,215.0 L438.4,215.0 L440.6,215.0 L442.8,215.0 L445.0,215.0 L447.2,215.0 L449.4,215.0 L451.6,215.0 L453.8,215.0 L456.0,215.0 L458.2,215.0 L460.4,215.0 L462.6,215.0 L464.8,215.0 L467.0,215.0 L469.2,215.0 L471.4,215.0 L473.6,215.0 L475.8,215.0 L478.0,215.0 L480.2,215.0 L482.4,215.0 L484.6,215.0 L486.8,215.0 L489.0,215.0 L491.2,215.0 L493.4,215.0 L495.6,215.0 L497.8,215.0 L500.0,215.0"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="52" y="46" text-anchor="end">0 m</text>
+          <text x="52" y="122" text-anchor="end">−1 m</text>
+          <text x="52" y="201" text-anchor="end">+20°</text>
+          <text x="52" y="238" text-anchor="end">−20°</text>
+          <text x="60" y="288" text-anchor="middle">0</text>
+          <text x="280" y="288" text-anchor="middle">2</text>
+          <text x="500" y="288" text-anchor="end">4 s</text>
+        </g>
+        <g font-size="13">
+          <text x="300" y="70" class="t-muted">posición x</text>
+          <text x="300" y="186" class="t-muted">inclinación θ</text>
+          <text x="120" y="172" class="t-tesis">LQR: 53°</text>
+          <text x="170" y="214" class="t-accent">MPC: 20°</text>
+        </g>
+      </svg>
+      <figcaption>Eje x del x500 linealizado a 50 Hz, salto de 1 m, mismos pesos. MPC con \(N\) = 50 (1 s), coste terminal de la DARE y \(|\theta| \le 20°\), resuelto con un ADMM al estilo de OSQP. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>El LQR con el par saturado llega a 53° de inclinación, muy por encima del límite y fuera de donde vale la linealización. El MPC se queda en 20,0°.</li>
+        <li>El MPC tarda algo más (1,32 s frente a 1,16 s para quedarse en el 5 %): es el precio de respetar la restricción. Ambos usan los mismos pesos, \(Q = \operatorname{diag}(10; 1; 1; 0{,}01)\) y \(R = 0{,}05\), distintos de los de Bryson de la parte 1.</li>
+        <li>Con un salto de 2 m, el LQR saturado <strong>diverge</strong> en el modelo lineal: saturar una cadena de cuatro integradores puede desestabilizar el lazo.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué la cascada no tiene este problema</span>PX4 limita la inclinación en el lazo de velocidad (A2, 45°), antes de pedirla. El MPC hace lo mismo de forma óptima y con anticipación: sabe que va a tocar el límite antes de tocarlo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPC explícito</p>
+  <h2>Resolver el QP fuera de línea, para todos los estados posibles</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Para un MPC lineal, la solución es una función <strong>afín a trozos y continua</strong> del estado: el espacio de estados se parte en regiones poliédricas, y en cada una el mando es \(u = F_ix + g_i\) <a class="cite" data-ref="bemporad2002"></a>.</p>
+      <ul class="small">
+        <li>En línea solo hay que localizar la región y evaluar un afín: microsegundos y sin <em>solver</em>.</li>
+        <li>El número de regiones crece de forma combinatoria con el horizonte y las restricciones. Hay problemas de dos estados que necesitan más de 10⁵ regiones, y en la práctica solo es razonable con unos pocos estados <a class="cite" data-ref="rmd2017"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Destilar un MPC en una red (A10) es una versión aproximada y sin explosión combinatoria de esta misma idea: aprender la ley \(x\mapsto u^\star(x)\) fuera de línea y evaluarla en microsegundos. Pierdes la garantía de respetar las restricciones, que tendrá que devolverte un filtro de seguridad (A14).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Seguimiento sin error estacionario</p>
+  <h2>Un MPC solo llega a la referencia si su modelo explica las perturbaciones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con un modelo imperfecto (masa mal estimada, viento constante), el MPC de regulación se queda a una distancia fija de la referencia. La solución clásica es un <strong>modelo de perturbación integradora</strong> estimado junto al estado <a class="cite" data-ref="rmd2017"></a>:</p>
+      \[ \begin{aligned} x_{k+1} &= Ax_k + Bu_k + B_d d_k,\qquad d_{k+1} = d_k\\ y_k &= Cx_k + C_d d_k \end{aligned} \]
+      <p class="small">El estimador da \((\hat x, \hat d)\) y un cálculo de objetivo busca el equilibrio \((x_s, u_s)\) que lleva la salida a la referencia con esa perturbación:</p>
+      \[ \begin{bmatrix} A - I & B\\ C & 0\end{bmatrix}\begin{bmatrix} x_s\\ u_s\end{bmatrix} = \begin{bmatrix} -B_d\hat d\\ r - C_d\hat d\end{bmatrix} \]
+      <p class="small">El MPC penaliza \(x - x_s\) y \(u - u_s\) en lugar de \(x\) y \(u\).</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Por qué desaparece el error</summary>
+        <p class="small">En régimen estacionario, el estimador deja de corregir cuando la salida predicha coincide con la medida, y eso solo ocurre si \(\hat d\) explica exactamente la diferencia entre modelo y planta. El objetivo se calcula con ese \(\hat d\), así que el equilibrio al que lleva el MPC produce \(y = r\) en la planta real. Hace falta que el sistema aumentado sea detectable, que haya tantas perturbaciones como salidas medidas, que no se pidan más salidas que mandos y que el lazo cerrado converja.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">En drones</span>Es lo que hace el integrador del lazo de velocidad de PX4 o la medida de aceleración de INDI (A2): estimar una perturbación constante y compensarla. Torrente et al. van más allá y aprenden con un proceso gaussiano la parte del modelo que falta <a class="cite" data-ref="torrente2021"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>El estado aumentado \((x, d)\) es un belief muy simple sobre lo que el modelo no sabe. Un world model con latentes de perturbación (A9) generaliza la misma idea.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Incertidumbre</p>
+  <h2>MPC robusto, de tubo y estocástico: planificar sabiendo que el modelo falla</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Robustez inherente:</strong> un MPC nominal estable tolera perturbaciones pequeñas, pero sin garantía de mantener las restricciones.</li>
+        <li><strong>Min-max:</strong> optimizar el peor caso de la perturbación. Riguroso y caro.</li>
+        <li><strong>MPC de tubo:</strong> se planifica una trayectoria nominal y una ley auxiliar \(u = \bar u + K(x - \bar x)\) mantiene el estado real dentro de un «tubo» alrededor de ella. Las restricciones de la nominal se estrechan en el tamaño del tubo.</li>
+        <li><strong>MPC estocástico:</strong> restricciones en probabilidad, \(\Pr(x_k\in\mathbb X) \ge 1-\varepsilon\), en lugar de para todo caso.</li>
+      </ul>
+      <p class="xsmall muted">Las cuatro familias están desarrolladas en el capítulo 3 de Rawlings, Mayne y Diehl <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Con un estimador, el estado es una distribución \(\mathcal N(\hat x, \Sigma)\). Estrechar las restricciones con \(\Sigma\), por ejemplo exigir \(|\hat\theta| \le \theta_{\max} - 2\sigma_\theta\), es la forma más simple de planificar en el espacio de beliefs. A7 lo formaliza con los POMDP.</div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Ser conservador cuesta rendimiento: el tubo se come parte del margen de las restricciones. Cuanto mejor sea el estimador, más estrecho el tubo y más agresivo puede ser el plan.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 · NMPC Y RTI ============ -->
+<section class="slide divider" data-section="3 · NMPC y RTI">
+  <p class="num">Parte 3</p>
+  <h2>NMPC y la iteración en tiempo real</h2>
+  <p><em>Multiple shooting</em>, SQP con Gauss-Newton y la idea que hace posible el NMPC a 100 Hz: hacer una sola iteración por muestra y prepararla antes de conocer el estado.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tres familias de métodos</p>
+  <h2>Primero discretizar y después optimizar: por qué el MPC usa métodos directos</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">PROGRAMACIÓN DINÁMICA</span>
+      <h3>Hamilton-Jacobi-Bellman</h3>
+      <p>Una EDP para la función de valor en todo el espacio de estados. Por la maldición de la dimensionalidad, en la práctica solo sirve con unos pocos estados (menos de cinco) o en el caso lineal cuadrático sin restricciones, que es el LQR <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">MÉTODOS INDIRECTOS</span>
+      <h3>Primero optimizar, después discretizar</h3>
+      <p>Condiciones de optimalidad en tiempo continuo (Pontryagin: hamiltoniano y coestado) que dan un problema de contorno, y solo al final se discretiza. Preciso, pero difícil de inicializar y de combinar con restricciones de desigualdad.</p>
+    </div>
+    <div class="card">
+      <span class="meta">MÉTODOS DIRECTOS</span>
+      <h3>Primero discretizar, después optimizar</h3>
+      <p>Se transcribe el problema a uno de dimensión finita (<em>shooting</em> simple o múltiple, colocación) y se resuelve con optimización numérica a medida. Son los más usados en MPC <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+  </div>
+  <div class="callout tesis"><span class="tag">Tu tesis</span>El RL aproxima la primera familia: aprende la función de valor (o la política) en todo el espacio de estados, y escapa de la maldición de la dimensionalidad con redes y muestras. TD-MPC2 combina las dos ideas: un valor aprendido como coste terminal de una optimización directa sobre un horizonte corto (A3b).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Transcripción</p>
+  <h2><em>Multiple shooting</em>: el estado de cada nodo también es variable</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con integrador \(\phi\) (RK4 en cada intervalo), las variables son \(s_0,\dots,s_N\) y \(q_0,\dots,q_{N-1}\):</p>
+      \[ \begin{aligned} \min_{s,q}\ &\sum_{k}\tfrac12\|r(s_k,q_k)\|^2 + \tfrac12\|r_N(s_N)\|^2\\ \text{s.a.}\ & s_0 = x(t),\quad s_{k+1} = \phi(s_k,q_k),\quad h(s_k,q_k)\le 0 \end{aligned} \]
+      <ul class="small">
+        <li><strong>Frente al disparo simple</strong> (solo \(q\) como variables): se puede inicializar con una trayectoria de estados aunque no sea factible, se integra cada intervalo en paralelo y no se propagan inestabilidades a lo largo de todo el horizonte <a class="cite" data-ref="bock1984,rmd2017"></a>.</li>
+        <li>La restricción \(s_0 = x(t)\) es la <strong>inmersión del valor inicial</strong>: el estado medido entra como una igualdad lineal más.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>SQP con Gauss-Newton.</strong> Con coste de mínimos cuadrados, la hessiana del lagrangiano se aproxima por \(J_r^\top J_r\), con \(J_r\) el jacobiano de los residuos:</p>
+      \[ \nabla^2\mathcal L \approx J_r^\top J_r \succeq 0 \]
+      <details class="deriv"><summary>Por qué es buena idea</summary>
+        <p class="small">\(\nabla^2(\tfrac12\|r\|^2) = J_r^\top J_r + \sum_i r_i\nabla^2 r_i\). Cerca de una buena solución los residuos son pequeños y el segundo término también. La aproximación es semidefinida positiva por construcción (el QP es convexo) y no depende de los multiplicadores <a class="cite" data-ref="diehl2005"></a>. El precio: convergencia lineal en lugar de cuadrática, despreciable si se arranca cerca.</p>
+      </details>
+      <p class="small">Cada iteración linealiza dinámica y restricciones alrededor de la trayectoria actual y resuelve un QP con la misma estructura de banda de la parte 2.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Iteración en tiempo real (RTI)</p>
+  <h2>Una sola iteración por muestra, y casi toda antes de conocer el estado</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li><strong>Preparación</strong>, mientras se espera la medida: integrar y linealizar alrededor de la predicción, condensar y factorizar. No depende de \(x(t)\).</li>
+        <li><strong>Realimentación</strong>, en cuanto llega \(x(t)\): resolver el QP ya preparado y aplicar \(u_0\) de inmediato.</li>
+        <li><strong>Transición:</strong> desplazar la solución un paso para arrancar la siguiente.</li>
+      </ol>
+      <p class="small">Contracción (teorema 4.1 de Diehl et al.): si el error de la aproximación de la hessiana \(\kappa\) y la no linealidad \(\omega\) cumplen \(\delta_0 = \kappa + \tfrac\omega2\|\Delta y^0\| &lt; 1\), las iteradas se acercan geométricamente a la solución exacta <a class="cite" data-ref="diehl2005"></a>:</p>
+      \[ \|\Delta y^{k+1}\| \le \big(\kappa + \tfrac\omega2\|\Delta y^k\|\big)\|\Delta y^k\| \le \delta_0\|\Delta y^k\| \]
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Latencia</span>En el ejemplo de la cometa de Diehl et al., el óptimo convergido tardaba unos 8 s en su estación de trabajo; con RTI, el primer mando llegaba a los 0,05 s, con muestreo de 1 s y menos de 0,8 s de preparación <a class="cite" data-ref="diehl2005"></a>.</div>
+      <div class="callout error"><span class="tag">Letra pequeña</span>La prueba de 2005 cubre horizonte decreciente, sin desigualdades y con comportamiento nominal tras una perturbación. La estabilidad con horizonte deslizante está en otro artículo del mismo año <a class="cite" data-ref="diehl2005b"></a>. Y las restricciones activas que cambian se tratan en la práctica, no en la prueba.</div>
+      <div class="callout clave"><span class="tag">Por qué funciona</span>El problema de la muestra siguiente se parece mucho al anterior: la solución desplazada ya está cerca, y una iteración de tipo Newton desde cerca basta.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">RTI en números</p>
+  <h2>Una iteración por muestra basta: el mismo error que el SQP convergido</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Error de posición de un NMPC con RTI y con SQP convergido siguiendo una lemniscata con un empujón a los 3 s">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <line class="ln-dash" x1="225.0" y1="30" x2="225.0" y2="250"/>
+        <path class="ln-tesis" fill="none" stroke-width="3.2" d="M61.1,249.4 L62.2,247.6 L63.3,244.8 L64.4,241.2 L65.5,237.0 L66.6,232.1 L67.7,226.8 L68.8,221.2 L69.9,215.2 L71.0,209.0 L72.1,202.7 L73.2,196.3 L74.3,189.8 L75.4,183.4 L76.5,176.9 L77.6,170.5 L78.7,164.3 L79.8,158.1 L80.9,152.1 L82.0,146.4 L83.1,140.8 L84.2,135.6 L85.3,130.6 L86.4,126.0 L87.5,121.8 L88.6,118.0 L89.7,114.7 L90.8,111.8 L91.9,109.5 L93.0,107.7 L94.1,106.5 L95.2,105.8 L96.3,105.8 L97.4,106.3 L98.5,107.5 L99.6,109.3 L100.7,111.7 L101.8,114.6 L102.9,118.2 L104.0,122.3 L105.1,126.9 L106.2,132.0 L107.3,137.6 L108.4,143.6 L109.5,150.0 L110.6,156.7 L111.7,163.8 L112.8,171.1 L113.9,178.6 L115.0,186.3 L116.1,194.1 L117.2,201.9 L118.3,209.9 L119.4,217.8 L120.5,225.7 L121.6,233.6 L122.7,241.3 L123.8,248.1 L124.9,243.0 L126.0,235.7 L127.1,228.5 L128.2,221.3 L129.3,214.4 L130.4,207.6 L131.5,201.0 L132.6,194.5 L133.7,188.3 L134.8,182.2 L135.9,176.3 L137.0,170.6 L138.1,165.1 L139.2,159.9 L140.3,154.8 L141.4,149.9 L142.5,145.2 L143.6,140.7 L144.7,136.5 L145.8,132.5 L146.9,128.7 L148.0,125.1 L149.1,121.9 L150.2,118.8 L151.3,116.1 L152.4,113.6 L153.5,111.3 L154.6,109.4 L155.7,107.8 L156.8,106.4 L157.9,105.3 L159.0,104.6 L160.1,104.1 L161.2,104.0 L162.3,104.1 L163.4,104.6 L164.5,105.4 L165.6,106.5 L166.7,107.9 L167.8,109.6 L168.9,111.6 L170.0,113.9 L171.1,116.5 L172.2,119.4 L173.3,122.5 L174.4,126.0 L175.5,129.7 L176.6,133.7 L177.7,138.0 L178.8,142.5 L179.9,147.2 L181.0,152.2 L182.1,157.4 L183.2,162.7 L184.3,168.3 L185.4,174.1 L186.5,180.0 L187.6,186.1 L188.7,192.3 L189.8,198.6 L190.9,205.0 L192.0,211.5 L193.1,218.1 L194.2,224.7 L195.3,231.4 L196.4,238.0 L197.5,244.2 L198.6,246.6 L199.7,241.1 L200.8,234.6 L201.9,228.1 L203.0,221.6 L204.1,215.2 L205.2,208.8 L206.3,202.6 L207.4,196.4 L208.5,190.3 L209.6,184.4 L210.7,178.5 L211.8,172.7 L212.9,167.1 L214.0,161.5 L215.1,156.0 L216.2,150.7 L217.3,145.4 L218.4,140.3 L219.5,135.2 L220.6,130.3 L221.7,125.5 L222.8,120.8 L223.9,116.3 L225.0,111.9 L226.1,107.8 L227.2,103.9 L228.3,100.3 L229.4,97.1 L230.5,94.2 L231.6,91.8 L232.7,89.9 L233.8,88.5 L234.9,87.5 L236.0,87.2 L237.1,87.4 L238.2,88.1 L239.3,89.5 L240.4,91.4 L241.5,93.9 L242.6,96.9 L243.7,100.5 L244.8,104.7 L245.9,109.3 L247.0,114.4 L248.1,120.0 L249.2,126.0 L250.3,132.4 L251.4,139.1 L252.5,146.1 L253.6,153.4 L254.7,160.9 L255.8,168.5 L256.9,176.2 L258.0,184.0 L259.1,191.8 L260.2,199.5 L261.3,207.1 L262.4,214.4 L263.5,221.4 L264.6,227.7 L265.7,232.6 L266.8,235.1 L267.9,234.0 L269.0,230.2 L270.1,224.9 L271.2,219.1 L272.3,213.1 L273.4,207.0 L274.5,200.9 L275.6,194.9 L276.7,189.1 L277.8,183.3 L278.9,177.7 L280.0,172.3 L281.1,166.9 L282.2,161.8 L283.3,156.8 L284.4,152.0 L285.5,147.3 L286.6,142.9 L287.7,138.6 L288.8,134.6 L289.9,130.7 L291.0,127.1 L292.1,123.7 L293.2,120.5 L294.3,117.6 L295.4,115.0 L296.5,112.6 L297.6,110.5 L298.7,108.6 L299.8,107.1 L300.9,105.8 L302.0,104.8 L303.1,104.1 L304.2,103.8 L305.3,103.7 L306.4,103.9 L307.5,104.4 L308.6,105.3 L309.7,106.4 L310.8,107.9 L311.9,109.6 L313.0,111.7 L314.1,114.0 L315.2,116.7 L316.3,119.6 L317.4,122.8 L318.5,126.3 L319.6,130.1 L320.7,134.1 L321.8,138.4 L322.9,142.9 L324.0,147.7 L325.1,152.7 L326.2,157.9 L327.3,163.3 L328.4,168.9 L329.5,174.7 L330.6,180.6 L331.7,186.7 L332.8,192.9 L333.9,199.3 L335.0,205.7 L336.1,212.2 L337.2,218.8 L338.3,225.4 L339.4,232.0 L340.5,238.6 L341.6,244.8 L342.7,246.2 L343.8,240.4 L344.9,234.0 L346.0,227.5 L347.1,221.0 L348.2,214.5 L349.3,208.2 L350.4,201.9 L351.5,195.8 L352.6,189.7 L353.7,183.7 L354.8,177.9 L355.9,172.1 L357.0,166.5 L358.1,160.9 L359.2,155.5 L360.3,150.2 L361.4,144.9 L362.5,139.8 L363.6,134.7 L364.7,129.8 L365.8,125.0 L366.9,120.3 L368.0,115.8 L369.1,111.5 L370.2,107.4 L371.3,103.5 L372.4,99.9 L373.5,96.6 L374.6,93.6 L375.7,91.0 L376.8,88.7 L377.9,86.9 L379.0,85.6 L380.1,84.8 L381.2,84.5 L382.3,84.7 L383.4,85.5 L384.5,86.8 L385.6,88.7 L386.7,91.3 L387.8,94.3 L388.9,98.0 L390.0,102.2 L391.1,106.9 L392.2,112.2 L393.3,117.9 L394.4,124.1 L395.5,130.7 L396.6,137.6 L397.7,144.9 L398.8,152.5 L399.9,160.3 L401.0,168.3 L402.1,176.5 L403.2,184.8 L404.3,193.1 L405.4,201.5 L406.5,209.9 L407.6,218.2 L408.7,226.4 L409.8,234.6 L410.9,242.5 L412.0,248.4 L413.1,241.5 L414.2,234.0 L415.3,226.7 L416.4,219.5 L417.5,212.5 L418.6,205.6 L419.7,199.0 L420.8,192.6 L421.9,186.4 L423.0,180.3 L424.1,174.5 L425.2,168.9 L426.3,163.4 L427.4,158.2 L428.5,153.2 L429.6,148.3 L430.7,143.7 L431.8,139.3 L432.9,135.2 L434.0,131.2 L435.1,127.5 L436.2,124.1 L437.3,120.9 L438.4,117.9 L439.5,115.2 L440.6,112.8 L441.7,110.7 L442.8,108.8 L443.9,107.2 L445.0,105.9 L446.1,105.0 L447.2,104.3 L448.3,103.9 L449.4,103.8 L450.5,104.1 L451.6,104.6 L452.7,105.5 L453.8,106.6 L454.9,108.1 L456.0,109.9 L457.1,111.9 L458.2,114.3 L459.3,117.0 L460.4,119.9 L461.5,123.2 L462.6,126.7 L463.7,130.5 L464.8,134.5 L465.9,138.8 L467.0,143.4 L468.1,148.2 L469.2,153.2 L470.3,158.4 L471.4,163.8 L472.5,169.5 L473.6,175.2 L474.7,181.2 L475.8,187.3 L476.9,193.5 L478.0,199.9 L479.1,206.3 L480.2,212.8 L481.3,219.4 L482.4,226.1 L483.5,232.7 L484.6,239.3 L485.7,245.4 L486.8,245.8 L487.9,239.8 L489.0,233.3 L490.1,226.8 L491.2,220.3 L492.3,213.9 L493.4,207.6 L494.5,201.3 L495.6,195.2 L496.7,189.1 L497.8,183.2 L498.9,177.3 L500.0,171.6"/>
+        <path class="ln-accent" fill="none" stroke-width="1.6" d="M61.1,249.4 L62.2,247.6 L63.3,244.8 L64.4,241.2 L65.5,236.9 L66.6,232.1 L67.7,226.7 L68.8,221.0 L69.9,215.1 L71.0,208.9 L72.1,202.6 L73.2,196.1 L74.3,189.7 L75.4,183.2 L76.5,176.8 L77.6,170.4 L78.7,164.2 L79.8,158.0 L80.9,152.1 L82.0,146.3 L83.1,140.8 L84.2,135.6 L85.3,130.7 L86.4,126.1 L87.5,121.9 L88.6,118.1 L89.7,114.8 L90.8,111.9 L91.9,109.6 L93.0,107.8 L94.1,106.6 L95.2,105.9 L96.3,105.9 L97.4,106.4 L98.5,107.6 L99.6,109.4 L100.7,111.7 L101.8,114.7 L102.9,118.2 L104.0,122.3 L105.1,126.9 L106.2,132.0 L107.3,137.6 L108.4,143.6 L109.5,150.0 L110.6,156.7 L111.7,163.7 L112.8,171.0 L113.9,178.5 L115.0,186.1 L116.1,193.9 L117.2,201.8 L118.3,209.7 L119.4,217.7 L120.5,225.6 L121.6,233.4 L122.7,241.1 L123.8,247.8 L124.9,243.1 L126.0,235.8 L127.1,228.6 L128.2,221.5 L129.3,214.5 L130.4,207.7 L131.5,201.1 L132.6,194.6 L133.7,188.4 L134.8,182.3 L135.9,176.4 L137.0,170.7 L138.1,165.2 L139.2,159.9 L140.3,154.8 L141.4,149.9 L142.5,145.3 L143.6,140.8 L144.7,136.5 L145.8,132.5 L146.9,128.7 L148.0,125.2 L149.1,121.9 L150.2,118.9 L151.3,116.1 L152.4,113.6 L153.5,111.4 L154.6,109.4 L155.7,107.8 L156.8,106.4 L157.9,105.4 L159.0,104.6 L160.1,104.2 L161.2,104.0 L162.3,104.2 L163.4,104.6 L164.5,105.4 L165.6,106.5 L166.7,107.9 L167.8,109.6 L168.9,111.6 L170.0,113.9 L171.1,116.5 L172.2,119.4 L173.3,122.5 L174.4,126.0 L175.5,129.7 L176.6,133.7 L177.7,138.0 L178.8,142.5 L179.9,147.2 L181.0,152.2 L182.1,157.4 L183.2,162.8 L184.3,168.3 L185.4,174.1 L186.5,180.0 L187.6,186.1 L188.7,192.3 L189.8,198.6 L190.9,205.1 L192.0,211.6 L193.1,218.2 L194.2,224.8 L195.3,231.4 L196.4,238.0 L197.5,244.3 L198.6,246.6 L199.7,241.0 L200.8,234.6 L201.9,228.0 L203.0,221.5 L204.1,215.1 L205.2,208.7 L206.3,202.4 L207.4,196.3 L208.5,190.2 L209.6,184.2 L210.7,178.3 L211.8,172.5 L212.9,166.9 L214.0,161.3 L215.1,155.8 L216.2,150.5 L217.3,145.2 L218.4,140.1 L219.5,135.0 L220.6,130.1 L221.7,125.2 L222.8,120.6 L223.9,116.0 L225.0,111.7 L226.1,107.5 L227.2,103.6 L228.3,99.9 L229.4,96.6 L230.5,93.8 L231.6,91.4 L232.7,89.4 L233.8,88.0 L234.9,87.0 L236.0,86.7 L237.1,86.8 L238.2,87.6 L239.3,88.9 L240.4,90.9 L241.5,93.4 L242.6,96.4 L243.7,100.0 L244.8,104.2 L245.9,108.8 L247.0,114.0 L248.1,119.6 L249.2,125.6 L250.3,132.0 L251.4,138.7 L252.5,145.7 L253.6,153.0 L254.7,160.5 L255.8,168.1 L256.9,175.9 L258.0,183.7 L259.1,191.5 L260.2,199.3 L261.3,206.9 L262.4,214.4 L263.5,221.4 L264.6,227.9 L265.7,233.0 L266.8,235.7 L267.9,234.7 L269.0,230.8 L270.1,225.5 L271.2,219.6 L272.3,213.5 L273.4,207.3 L274.5,201.2 L275.6,195.2 L276.7,189.3 L277.8,183.6 L278.9,177.9 L280.0,172.4 L281.1,167.1 L282.2,161.9 L283.3,156.9 L284.4,152.1 L285.5,147.4 L286.6,143.0 L287.7,138.7 L288.8,134.6 L289.9,130.8 L291.0,127.2 L292.1,123.8 L293.2,120.6 L294.3,117.7 L295.4,115.0 L296.5,112.6 L297.6,110.5 L298.7,108.7 L299.8,107.1 L300.9,105.8 L302.0,104.9 L303.1,104.2 L304.2,103.8 L305.3,103.7 L306.4,103.9 L307.5,104.5 L308.6,105.3 L309.7,106.4 L310.8,107.9 L311.9,109.6 L313.0,111.7 L314.1,114.0 L315.2,116.7 L316.3,119.6 L317.4,122.8 L318.5,126.3 L319.6,130.1 L320.7,134.1 L321.8,138.4 L322.9,142.9 L324.0,147.7 L325.1,152.7 L326.2,157.9 L327.3,163.3 L328.4,168.9 L329.5,174.7 L330.6,180.6 L331.7,186.7 L332.8,192.9 L333.9,199.3 L335.0,205.7 L336.1,212.2 L337.2,218.8 L338.3,225.5 L339.4,232.1 L340.5,238.7 L341.6,244.9 L342.7,246.2 L343.8,240.4 L344.9,233.9 L346.0,227.4 L347.1,220.9 L348.2,214.4 L349.3,208.1 L350.4,201.8 L351.5,195.6 L352.6,189.6 L353.7,183.6 L354.8,177.7 L355.9,172.0 L357.0,166.3 L358.1,160.7 L359.2,155.3 L360.3,149.9 L361.4,144.7 L362.5,139.5 L363.6,134.5 L364.7,129.6 L365.8,124.8 L366.9,120.1 L368.0,115.6 L369.1,111.3 L370.2,107.2 L371.3,103.3 L372.4,99.7 L373.5,96.3 L374.6,93.3 L375.7,90.7 L376.8,88.5 L377.9,86.7 L379.0,85.4 L380.1,84.5 L381.2,84.2 L382.3,84.5 L383.4,85.2 L384.5,86.6 L385.6,88.5 L386.7,91.0 L387.8,94.1 L388.9,97.8 L390.0,102.0 L391.1,106.7 L392.2,112.0 L393.3,117.7 L394.4,123.9 L395.5,130.5 L396.6,137.4 L397.7,144.7 L398.8,152.3 L399.9,160.1 L401.0,168.1 L402.1,176.3 L403.2,184.6 L404.3,192.9 L405.4,201.3 L406.5,209.7 L407.6,218.0 L408.7,226.2 L409.8,234.4 L410.9,242.3 L412.0,248.1 L413.1,241.6 L414.2,234.1 L415.3,226.8 L416.4,219.6 L417.5,212.6 L418.6,205.8 L419.7,199.1 L420.8,192.7 L421.9,186.5 L423.0,180.4 L424.1,174.6 L425.2,169.0 L426.3,163.5 L427.4,158.3 L428.5,153.2 L429.6,148.4 L430.7,143.8 L431.8,139.4 L432.9,135.2 L434.0,131.3 L435.1,127.6 L436.2,124.1 L437.3,120.9 L438.4,117.9 L439.5,115.3 L440.6,112.8 L441.7,110.7 L442.8,108.8 L443.9,107.3 L445.0,106.0 L446.1,105.0 L447.2,104.3 L448.3,103.9 L449.4,103.8 L450.5,104.1 L451.6,104.6 L452.7,105.5 L453.8,106.6 L454.9,108.1 L456.0,109.9 L457.1,111.9 L458.2,114.3 L459.3,117.0 L460.4,119.9 L461.5,123.2 L462.6,126.7 L463.7,130.5 L464.8,134.5 L465.9,138.8 L467.0,143.4 L468.1,148.2 L469.2,153.2 L470.3,158.4 L471.4,163.9 L472.5,169.5 L473.6,175.3 L474.7,181.2 L475.8,187.3 L476.9,193.6 L478.0,199.9 L479.1,206.4 L480.2,212.9 L481.3,219.5 L482.4,226.1 L483.5,232.8 L484.6,239.3 L485.7,245.4 L486.8,245.7 L487.9,239.7 L489.0,233.2 L490.1,226.7 L491.2,220.2 L492.3,213.8 L493.4,207.4 L494.5,201.2 L495.6,195.0 L496.7,189.0 L497.8,183.0 L498.9,177.1 L500.0,171.4"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">4</text>
+          <text x="500" y="268" text-anchor="end">8 s</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="144" text-anchor="end">4</text>
+          <text x="52" y="34" text-anchor="end">8 cm</text>
+          <text x="230" y="44">empujón</text>
+        </g>
+        <g font-size="13">
+          <text x="330" y="60" class="t-tesis">SQP convergido (grueso)</text>
+          <text x="330" y="78" class="t-accent">RTI (fino)</text>
+        </g>
+      </svg>
+      <figcaption>Cuadricóptero plano con los parámetros del x500 siguiendo una lemniscata de amplitudes 3 m y 1 m, con NMPC a 50 Hz, horizonte de 1 s (50 nodos), sin restricciones de desigualdad (el empuje queda entre 2,3 y 16,1 N por par, dentro del límite de 17,1 N) y un empujón imprevisto de 2 rad/s a los 3 s. «SQP convergido»: Gauss-Newton con disparo simple iterado hasta converger, al estilo iLQR. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Error RMS de posición (desde 1 s): 3,80 cm con RTI y con SQP convergido. La mayor diferencia entre ambos en todo el vuelo: 0,03 cm.</li>
+        <li>El SQP necesita 6,8 iteraciones de media para converger (12 tras el empujón); el tiempo total de cálculo es unas 7 veces mayor.</li>
+        <li>En el RTI, la linealización se hace sobre la predicción y, cuando llega el estado, el mando es una ley afín ya calculada: la latencia es un producto matriz-vector.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es la misma lógica que amortizar la planificación en un world model: reutilizar la solución anterior (arranque en caliente) y gastar poco cómputo por paso. TD-MPC2 lo hace con MPPI y una política que propone el arranque (A3b, A8).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Herramientas</p>
+  <h2>acados: lo que hay dentro de un NMPC que corre a 100 Hz</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Modelo</strong> simbólico en CasADi <a class="cite" data-ref="andersson2019"></a>, con generación de código C para dinámica, jacobianos e integradores (ERK, IRK).</li>
+        <li><strong>Transcripción</strong> por <em>multiple shooting</em>.</li>
+        <li><strong>NLP</strong> por SQP con hessiana de Gauss-Newton o exacta, y una rutina específica de RTI.</li>
+        <li><strong>QP</strong> con HPIPM (punto interior con Riccati, condensación total o parcial), o con qpOASES, OSQP y otros <a class="cite" data-ref="verschueren2022,frison2020"></a>.</li>
+        <li>Interfaces en Python, MATLAB y C; el lazo de control se compila y no depende de Python.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cifras publicadas</span>En el banco de los autores con una cadena de masas, el tiempo mediano por iteración es de 1,05 ms con acados, 1,97 ms con ACADO y 59,8 ms con IPOPT. En un banco <em>hardware-in-the-loop</em> de dSPACE, por debajo de 10 ms con 50 ms de muestreo <a class="cite" data-ref="verschueren2022"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Medir el tiempo de cálculo en el PC de desarrollo y desplegar en el ordenador de a bordo. Sun et al. miden 2,7 ms por mando a bordo de una Jetson TX2 <a class="cite" data-ref="sun2022"></a>; Romero et al. corren su MPCC fuera del dron y señalan que en esa placa sería difícil <a class="cite" data-ref="romero2022"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 · MPCC ============ -->
+<section class="slide divider" data-section="4 · MPCC">
+  <p class="num">Parte 4</p>
+  <h2>Control de contorno: seguir el camino, no el reloj</h2>
+  <p>Cuando lo que importa es ir rápido por un circuito, seguir una trayectoria parametrizada en el tiempo es mala idea. El MPCC optimiza también cuánto avanza.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Formulación</p>
+  <h2>Errores de contorno y de retraso, y una variable de progreso que se premia</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El camino \(\mathbf p_d(\vartheta)\) se parametriza por longitud de arco \(\vartheta\) (no confundir con el cabeceo \(\theta\)), que pasa a ser un estado más, con \(\vartheta_{k+1} = \vartheta_k + v_kT_s\) y \(v_k\) un mando virtual. Con la tangente unitaria \(\mathbf t(\vartheta)\):</p>
+      \[ e_l = \mathbf t(\vartheta)^\top(\mathbf p - \mathbf p_d(\vartheta)),\qquad \mathbf e_c = (\mathbf p - \mathbf p_d(\vartheta)) - e_l\,\mathbf t(\vartheta) \]
+      \[ J = \sum_k \big(q_c\|\mathbf e_c\|^2 + q_l e_l^2 - \rho\,v_k + \|\Delta u_k\|_R^2\big) \]
+      <details class="deriv"><summary>Por qué hacen falta dos errores</summary>
+        <p class="small">El \(\vartheta^\star\) que minimiza la distancia al camino es una proyección, y meterla como restricción haría el problema mucho más caro. Se deja \(\vartheta\) libre y se penaliza el error de retraso \(e_l\) (desfase a lo largo de la tangente) con mucho peso: así \(\vartheta \approx \vartheta^\star\) y \(\mathbf e_c\) aproxima la distancia normal al camino. El término \(-\rho\,v_k\) premia avanzar: el optimizador decide la velocidad. Formulación de Lam et al. y Liniger et al. <a class="cite" data-ref="lam2010,liniger2015"></a>; el artículo de Liniger trae una errata en la actualización del progreso, que debe ser \(+v_kT_s\).</p>
+      </details>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 420 220" role="img" aria-label="Geometría de los errores de contorno y de retraso respecto a un camino">
+          <path class="ln-rule" fill="none" stroke-width="2" d="M20,180 C120,170 180,120 240,90 S360,40 400,30"/>
+          <circle class="fill-accent" cx="240" cy="90" r="5"/>
+          <text x="232" y="112" class="t-accent" font-size="13" text-anchor="end">p_d(ϑ)</text>
+          <circle class="fill-tesis" cx="285" cy="130" r="6"/>
+          <text x="293" y="150" class="t-tesis" font-size="13">p (dron)</text>
+          <line class="ln-accent" x1="240" y1="90" x2="320" y2="56" stroke-width="2"/>
+          <text x="322" y="54" class="t-accent" font-size="13">t(ϑ)</text>
+          <line class="ln-time" x1="240" y1="90" x2="263" y2="80" stroke-width="3"/>
+          <line class="ln-tesis" x1="263" y1="80" x2="285" y2="130" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="236" y="70" class="t-time" font-size="13">e_l</text>
+          <text x="286" y="104" class="t-tesis" font-size="13">e_c</text>
+          <text x="30" y="205" class="t-muted" font-size="12">camino parametrizado por longitud de arco ϑ</text>
+        </svg>
+        <figcaption>El error se descompone a lo largo de la tangente (retraso) y en perpendicular (contorno).</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Origen</span>Coches de carreras a escala 1:43: \(N\) = 40 a <span class="hz">50 Hz</span>, QP de <span class="hz">15 ms</span> de media y 21 ms de máximo; el plazo de 20 ms se incumplía un 4,4 % de las veces <a class="cite" data-ref="liniger2015"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPCC en drones</p>
+  <h2>A tiempo mínimo, contorno mejor que seguimiento; y RL mejor que los dos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Trabajo</th><th>Montaje</th><th>Resultado en vuelo real</th></tr>
+      <tr><td>Romero et al. (2022) <a class="cite" data-ref="romero2022"></a></td><td>ACADO con RTI, \(N\) = 20, <span class="hz">100 Hz</span>, unos <span class="hz">5 ms</span> por iteración en un PC fuera del dron</td><td>60 km/h y más de 5 g. En simulación aguanta 50 ms de retardo en el estado; el MPC de seguimiento falla con 25 ms.</td></tr>
+      <tr><td>Krinner et al. (2024), MPCC++ <a class="cite" data-ref="krinner2024"></a></td><td>acados con RTI, 20 × 0,04 s, <span class="hz">100 Hz</span>, con restricciones de seguridad</td><td>Más de 80 km/h. En el mismo circuito: MPCC++ 5,41 s con 100 % de éxito; MPCC 5,67 s con 59,3 %; RL 5,35 s con 85 %.</td></tr>
+      <tr><td>Song et al. (2023) <a class="cite" data-ref="song2023"></a></td><td>RL con CTBR a <span class="hz">100 Hz</span> frente a MPC de seguimiento y MPCC</td><td>Seguir la trayectoria de tiempo mínimo con MPC: 0 % de éxito en real. MPCC: 50 %. RL: 85 %, 5,35 s por vuelta, hasta 108 km/h y 12 g.</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Lo que dicen Song et al.</span>La ventaja del RL no es que optimice mejor, sino que optimiza un objetivo mejor: la tarea (pasar puertas rápido) en lugar de seguir una trayectoria precalculada. Con el mismo objetivo de seguimiento, el MPC gana al RL <a class="cite" data-ref="song2023"></a>. Es el puente con A3b.</div>
+    <div class="callout realidad"><span class="tag">Latencia</span>Por qué el MPCC aguanta más retardo que el seguimiento: no tiene que estar en un sitio a una hora; si va con retraso, simplemente avanza el progreso algo más tarde.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 · MPC EN DRONES REALES ============ -->
+<section class="slide divider" data-section="5 · MPC en drones">
+  <p class="num">Parte 5</p>
+  <h2>El MPC en drones reales</h2>
+  <p>Qué horizontes, mallas, <em>solvers</em> y frecuencias se usan de verdad, cuánto cuesta la latencia, y hasta dónde se puede bajar: microcontroladores y ala fija.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Patrón común</p>
+  <h2>Mando a 100 Hz sobre una malla de predicción gruesa, con una iteración por muestra</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th>Trabajo</th><th>Horizonte</th><th><em>Solver</em></th><th>Tiempo de cálculo</th><th>Frecuencia</th><th>Dónde corre</th></tr>
+      <tr><td>Kamel et al. (2017) <a class="cite" data-ref="kamel2017"></a></td><td class="n">20 × 0,1 s</td><td>ACADO RTI; lineal con CVXGEN</td><td class="n"><span class="hz">0,45 ms</span> NMPC; 2,35 ms lineal</td><td class="n">100 Hz</td><td>i7 a bordo de un hexacóptero</td></tr>
+      <tr><td>PAMPC (2018) <a class="cite" data-ref="falanga2018"></a></td><td class="n">20 × 0,1 s</td><td>ACADO + qpOASES, RTI</td><td class="n"><span class="hz">3,5 ms</span>, &lt; 5 ms</td><td class="n">100 Hz</td><td>Snapdragon Flight</td></tr>
+      <tr><td>Sun et al. (2022) <a class="cite" data-ref="sun2022"></a></td><td class="n">20 × 0,05 s</td><td>ACADO + qpOASES, RTI</td><td class="n"><span class="hz">2,7 ms</span></td><td class="n">100 Hz</td><td>Jetson TX2</td></tr>
+      <tr><td>Torrente et al. (2021) <a class="cite" data-ref="torrente2021"></a></td><td class="n">1 s, 10 nodos</td><td>acados, RTI con HPIPM</td><td class="n"><span class="hz">1,3 ms</span>; 4–5 ms con GP</td><td class="n">50 Hz</td><td>portátil, fuera del dron</td></tr>
+      <tr><td>HPA-MPC (2025) <a class="cite" data-ref="sarvaiya2025"></a></td><td class="n">1 s, \(N\) = 10</td><td>acados, RTI</td><td class="n">—</td><td class="n">150 Hz</td><td>VOXL2 con PX4</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">El truco</span>El periodo de mando (10 ms) es mucho menor que el paso de la malla (40–100 ms): basta un horizonte de 1–2 s con 20 nodos. Kamel et al. incluso miden un NMPC con RTI más rápido que su MPC lineal.</div>
+    <div class="callout realidad"><span class="tag">La latencia cuesta</span>Con el mismo MPC en Agilicious, el error RMS pasa de 0,32 m corriendo a bordo a 0,47 m fuera del dron; el retardo del mando es de 35 ms a bordo y de más de 75 ms fuera <a class="cite" data-ref="agilicious"></a>.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Abajo del todo y en ala fija</p>
+  <h2>MPC en un microcontrolador de 27 g y en un avión a 10 Hz</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Microcontroladores.</strong></p>
+      <ul class="small">
+        <li><strong>TinyMPC:</strong> ADMM con la recursión de Riccati precalculada. En el STM32F405 del Crazyflie (168 MHz, 192 kB de RAM), \(N\) = 15 a <span class="hz">500 Hz</span>, como mucho 7 iteraciones en menos de <span class="hz">2 ms</span>; OSQP no cabe en esa memoria <a class="cite" data-ref="nguyen2024"></a>.</li>
+        <li><strong>Conjunto activo con peor caso certificado:</strong> DAQP en el mismo procesador, 500 Hz con un peor caso de <span class="hz">1375 µs</span> (preprint) <a class="cite" data-ref="wikner2026"></a>.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Cómputo limitado</span>Un MPC lineal cabe en el microcontrolador de un microdrón; un NMPC necesita un ordenador de a bordo. Esa frontera decide dónde puede vivir el planificador de tu tesis (C1).</div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Ala fija.</strong> Horizontes largos y frecuencias bajas, porque la dinámica de trayectoria es lenta:</p>
+      <ul class="small">
+        <li>Stastny y Siegwart: guiado por NMPC con 70 × 0,1 s (7 s) a <span class="hz">10 Hz</span> en un ordenador de a bordo junto a una Pixhawk; errores de unos ±2 m en horizontal y ±0,5 m en vertical <a class="cite" data-ref="stastny2018"></a>.</li>
+        <li>Hirst et al.: acados con RTI, 50 × 0,1 s a <span class="hz">10 Hz</span> en una Jetson Xavier NX; 15–23 ms de media por mando, hasta 36 m/s respecto al suelo (preprint) <a class="cite" data-ref="hirst2025"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Igual que en A2</span>En ala fija, el NMPC suele sustituir al guiado y a TECS, no a los lazos de actitud: entra en la cascada a la altura que su frecuencia permite.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Errores frecuentes</p>
+  <h2>Seis formas de que un MPC funcione en simulación y no en vuelo</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Ignorar el retardo</strong> entre la medida y el mando: el MPC optimiza desde un estado que ya no existe. Se compensa prediciendo el estado al instante de actuación.</li>
+      <li><strong>Horizonte demasiado corto sin coste terminal:</strong> comportamiento miope o inestable.</li>
+      <li><strong>Modelo de empuje sin dinámica de motor</strong>, o mandos que el lazo interno no puede seguir: el MPC pide lo que el dron no puede dar (A1, A2).</li>
+    </ul>
+    <ul class="small">
+      <li><strong>Restricciones duras sobre estados con ruido:</strong> el QP se vuelve infactible por una medida mala. Se usan restricciones blandas con penalización.</li>
+      <li><strong>No acotar el tiempo de cálculo:</strong> sin un número fijo de iteraciones, el peor caso decide la frecuencia real.</li>
+      <li><strong>Pesos sin unidades:</strong> sin normalizar (regla de Bryson), ajustar \(Q\) y \(R\) es buscar a ciegas.</li>
+    </ul>
+  </div>
+  <div class="callout tesis"><span class="tag">Sim-to-real</span>Las tres primeras son las mismas que hacen fallar a una política entrenada en simulación (B4, B7). Un MPC tiene la ventaja de que el modelo está a la vista y se puede corregir; una política, no.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>MPC más barato, más aprendido y como guardián</h2>
+  <div class="cols">
+    <div class="stack small">
+      <p><strong>Lo que ya se ve en 2024–2026:</strong></p>
+      <ul>
+        <li>MPC con modelos aprendidos (procesos gaussianos, redes) dentro del NMPC a 50 Hz <a class="cite" data-ref="torrente2021"></a>: lo verás en A3b.</li>
+        <li>MPC en microcontroladores, con peor caso certificado <a class="cite" data-ref="nguyen2024,wikner2026"></a>.</li>
+        <li>MPCC con restricciones de seguridad que se acerca a RL en tiempo por vuelta y lo supera en tasa de éxito <a class="cite" data-ref="krinner2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <p><strong>Previsión nuestra para 2027 y después:</strong></p>
+      <ul>
+        <li>Políticas aprendidas con un MPC corto debajo, que garantiza las restricciones (A14).</li>
+        <li>MPC sobre el latente de un world model, con incertidumbre en el estado incluida en el coste.</li>
+        <li><em>Solvers</em> diferenciables dentro del entrenamiento, para aprender el modelo y los pesos extremo a extremo (A3b).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El MPC es la forma clásica de planificar con un modelo</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model con belief, usado como planificador, es un MPC cuyo estado es el belief y cuyo modelo es aprendido. Todo lo de este tema se traslada: horizonte, coste terminal (en Dreamer o TD-MPC2, una función de valor), arranque en caliente, presupuesto de cómputo por paso y latencia.</div>
+      <p class="small">Lo que cambia: el modelo no es diferenciable de forma barata o no es fiable lejos de los datos, y el estado es una distribución. Por eso A3b se dedica a MPC por muestreo y con aprendizaje.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol class="small">
+        <li>¿Qué hace de coste terminal en tu planificador: una función de valor aprendida, una heurística, nada?</li>
+        <li>¿Cómo meter la incertidumbre del belief en las restricciones (restricciones probabilísticas, márgenes)?</li>
+        <li>¿Te basta con una iteración por paso, como el RTI, o tu modelo aprendido necesita más para no explotar errores?</li>
+        <li>¿A qué frecuencia y con qué latencia puede correr tu planificador a bordo, y qué lazo de A2 deja debajo?</li>
+        <li>¿Seguimiento o contorno? Si tu tarea es explorar, el objetivo correcto no es seguir una trayectoria.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A3a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>LQR por programación dinámica: \(K_k = (R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\) y la recursión de Riccati; la DARE es su punto fijo.</li>
+    <li>Los márgenes de 60° y \([\tfrac12, \infty)\) son del LQR continuo con estado completo; en discreto y con estimador, no están garantizados.</li>
+    <li>MPC: un QP por muestra. Riccati cuesta \(O(N)\); condensar en cada muestra, \(O(N^3)\) (×5 con \(N\) = 20 en el x500).</li>
+    <li>Estabilidad: coste terminal que sea función de Lyapunov y conjunto terminal invariante; la prueba es «desplazar y añadir».</li>
+    <li>Las restricciones se respetan por construcción: 20° frente a los 53° del LQR saturado en el ejemplo del x500.</li>
+    <li>NMPC: <em>multiple shooting</em>, SQP con Gauss-Newton y RTI. Una iteración por muestra, preparada antes de la medida, sigue igual que el óptimo convergido.</li>
+    <li>MPCC: progreso como variable y errores de contorno y retraso; tolera más retardo y gana a tiempo mínimo.</li>
+    <li>En drones: 100 Hz sobre mallas de 0,04–0,1 s, de 0,5 a 5 ms por iteración a bordo; en microcontrolador, MPC lineal a 500 Hz.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>LQR y coste</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Con 12 estados, 4 entradas y \(N\) = 40, condensando en cada muestra como en un NMPC, ¿cuánto más cuesta resolver el QP condensado que con la recursión de Riccati?</p>
+      <ol class="opts">
+        <li><button type="button">Lo mismo: ambos son exactos</button></li>
+        <li><button type="button">Unas 2 veces más</button></li>
+        <li><button type="button">Unas 20 veces más</button></li>
+        <li><button type="button">Unas 2000 veces más</button></li>
+      </ol>
+      <p class="explain">Riccati: \(40\,(\tfrac73 12^3 + 4\cdot12^2\cdot4 + 2\cdot12\cdot16 + \tfrac{64}3) \approx 0{,}27\) Mflop. Condensado: \(\tfrac13 40^3(12\cdot16 + 64) \approx 5{,}5\) Mflop. Unas 20 veces más, y la razón crece como \(N^2\).</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. Implementas un LQR en un microcontrolador a 100 Hz con el estado completo. ¿Qué margen de fase tienes garantizado?</p>
+      <ol class="opts">
+        <li><button type="button">Al menos 60°, como todo LQR</button></li>
+        <li><button type="button">Uno menor de 60° que depende de la planta: en discreto la garantía se degrada</button></li>
+        <li><button type="button">Infinito</button></li>
+        <li><button type="button">Exactamente 45°</button></li>
+      </ol>
+      <p class="explain">Los 60° son del LQR continuo. En discreto, Anderson y Moore dan \(2\arcsin(\gamma/2) &lt; 60°\), y hay plantas de primer orden con márgenes arbitrariamente pequeños. Al reducir el periodo, \(\gamma\to1\) y se recupera el caso continuo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>MPC y RTI</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. ¿Qué dos ingredientes bastan para que el MPC estabilice, según la teoría clásica?</p>
+      <ol class="opts">
+        <li><button type="button">Un horizonte largo y pesos grandes en \(Q\)</button></li>
+        <li><button type="button">Un <em>solver</em> exacto y restricciones duras</button></li>
+        <li><button type="button">Que la planta sea estable en lazo abierto y \(R\) pequeño</button></li>
+        <li><button type="button">Un coste terminal que sea función de Lyapunov de control local y un conjunto terminal invariante</button></li>
+      </ol>
+      <p class="explain">Con ellos, la secuencia desplazada con el mando terminal añadido es factible y hace decrecer el coste óptimo, que actúa como función de Lyapunov.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. En la iteración en tiempo real, ¿qué queda por hacer cuando llega la medida del estado?</p>
+      <ol class="opts">
+        <li><button type="button">Solo la fase de realimentación: resolver el QP ya preparado (o aplicar su ley afín) y mandar \(u_0\)</button></li>
+        <li><button type="button">Integrar el modelo y linealizar</button></li>
+        <li><button type="button">Iterar SQP hasta converger</button></li>
+        <li><button type="button">Nada: el mando ya se calculó con la medida anterior</button></li>
+      </ol>
+      <p class="explain">Integrar, linealizar y condensar se hace antes, sobre la predicción. Con \(x(t)\) solo falta la fase de realimentación, mucho más corta.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Carreras y tu tesis</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Según Song et al. (2023), ¿por qué gana el RL al control óptimo en carreras de drones?</p>
+      <ol class="opts">
+        <li><button type="button">Porque optimiza mejor que cualquier <em>solver</em></button></li>
+        <li><button type="button">Porque optimiza un objetivo mejor: la tarea, no seguir una trayectoria</button></li>
+        <li><button type="button">Porque corre a mayor frecuencia</button></li>
+        <li><button type="button">Porque no necesita modelo</button></li>
+      </ol>
+      <p class="explain">Con el mismo objetivo de seguimiento, el MPC gana al RL. La ventaja viene de optimizar directamente la tarea, pasar las puertas rápido, en lugar de seguir una trayectoria fijada de antemano.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña el NMPC de tu dron de tesis. Elige horizonte, número de nodos, frecuencia y <em>solver</em>, di dónde corre y qué lazo de la cascada de A2 deja debajo. Justifica cada cifra.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Una elección defendible: horizonte de 1–1,5 s (cubre la dinámica lenta del lazo cerrado de posición, unos 2,6 rad/s), 20–30 nodos de 0,05 s, RTI a 100 Hz con acados y HPIPM en el ordenador de a bordo (2–5 ms por iteración en una placa tipo Jetson). Mandos CTBR o consignas de actitud, con el lazo de <em>rate</em> de PX4 (o INDI) debajo a 800 Hz. Coste terminal de un LQR del modelo linealizado, restricciones blandas de inclinación y empuje, y compensación del retardo prediciendo el estado al instante de actuación.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 90 MIN · ACCESO ABIERTO</span>
+      <h3>Model Predictive Control, caps. 1–2 <a class="cite" data-ref="rmd2017"></a></h3>
+      <p><strong>Lee:</strong> el LQR por programación dinámica (§1.3) y la estabilidad del MPC con restricciones (cap. 2, hasta el teorema 2.19).</p>
+      <p><strong>Busca:</strong> la hipótesis 2.14 y el argumento de desplazar y añadir.</p>
+      <p><strong>Responde:</strong> ¿qué pasa con la garantía si quitas el conjunto terminal (§2.6)?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · ACCESO ABIERTO</span>
+      <h3>Iteración en tiempo real <a class="cite" data-ref="diehl2005"></a></h3>
+      <p><strong>Lee:</strong> §2–4: la inmersión del valor inicial, el algoritmo en tres fases y el teorema de contracción.</p>
+      <p><strong>Busca:</strong> qué supuestos hace la prueba y qué deja fuera.</p>
+      <p><strong>Responde:</strong> ¿cuánto se reduce el retardo de realimentación respecto a resolver el problema completo?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ARXIV</span>
+      <h3>MPCC para vuelo a tiempo mínimo <a class="cite" data-ref="romero2022"></a></h3>
+      <p><strong>Lee:</strong> la formulación del contorno para cuadricópteros y los experimentos.</p>
+      <p><strong>Busca:</strong> cómo se comporta frente al retardo comparado con el MPC de seguimiento.</p>
+      <p><strong>Responde:</strong> ¿qué parte del rendimiento se debe al objetivo (contorno) y cuál al modelo?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> acados <a class="cite" data-ref="verschueren2022"></a>; HPIPM <a class="cite" data-ref="frison2020"></a>; NMPC frente a planitud <a class="cite" data-ref="sun2022"></a>; TinyMPC <a class="cite" data-ref="nguyen2024"></a>; MPCC++ <a class="cite" data-ref="krinner2024"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>NMPC con acados para el x500, y las cuentas del tema</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>LQR del x500</strong> con la DARE: polos y comparación con la cascada de PX4.</li>
+        <li><strong>MPC lineal con restricción de inclinación</strong> con OSQP: el ejemplo del salto de 1 m.</li>
+        <li><strong>NMPC con acados</strong> (CasADi + RTI + HPIPM) siguiendo una lemniscata con el modelo de A1, con tiempos de cálculo medidos.</li>
+        <li><strong>RTI frente a SQP</strong> y efecto de la latencia (0, 10 y 30 ms).</li>
+        <li><strong>MPCC</strong> en el plano (opcional).</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Polos del LQR en 2,6, 6,3 y 19,7 rad/s; ganancia al 10 % de la infinita con \(N\) = 96; 20° frente a 53° de inclinación; RTI con el mismo error que el SQP y unas siete veces menos cálculo; coste ×5 con \(N\) = 20 condensando en cada muestra.</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. acados se compila desde el código fuente (Linux, macOS o WSL); si no puedes instalarlo, el paso 3 tiene una alternativa en JAX con el Gauss-Newton del script de figuras.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a3a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-qin2003">Qin, S. J., Badgwell, T. A. (2003). A survey of industrial model predictive control technology. <span class="venue">Control Engineering Practice</span>, 11(7), 733–764. <a href="https://doi.org/10.1016/S0967-0661(02)00186-7">doi:10.1016/S0967-0661(02)00186-7</a></li>
+    <li id="ref-sun2022">Sun, S., Romero, A., Foehn, P., Kaufmann, E., Scaramuzza, D. (2022). A comparative study of nonlinear MPC and differential-flatness-based control for quadrotor agile flight. <span class="venue">IEEE Transactions on Robotics</span>, 38(6), 3357–3373. <a href="https://arxiv.org/abs/2109.01365">arXiv:2109.01365</a></li>
+    <li id="ref-krinner2024">Krinner, M., Romero, A., Bauersfeld, L., Zeilinger, M., Carron, A., Scaramuzza, D. (2024). MPCC++: Model predictive contouring control for time-optimal flight with safety constraints. <span class="venue">Robotics: Science and Systems XX</span>. <a href="https://arxiv.org/abs/2403.17551">arXiv:2403.17551</a></li>
+    <li id="ref-nguyen2024">Nguyen, K., Schoedel, S., Alavilli, A., Plancher, B., Manchester, Z. (2024). TinyMPC: Model-predictive control on resource-constrained microcontrollers. <span class="venue">ICRA 2024</span>. <a href="https://arxiv.org/abs/2310.16985">arXiv:2310.16985</a></li>
+    <li id="ref-stastny2018">Stastny, T., Siegwart, R. (2018). Nonlinear model predictive guidance for fixed-wing UAVs using identified control augmented dynamics. <span class="venue">ICUAS 2018</span>, 432–442. <a href="https://arxiv.org/abs/1802.02624">arXiv:1802.02624</a></li>
+    <li id="ref-bellman1957">Bellman, R. (1957). <em>Dynamic Programming</em>. Princeton University Press.</li>
+    <li id="ref-pontryagin1962">Pontryagin, L. S., Boltyanskii, V. G., Gamkrelidze, R. V., Mishchenko, E. F. (1962). <em>The Mathematical Theory of Optimal Processes</em>. Interscience (original ruso de 1961).</li>
+    <li id="ref-kalman1960">Kalman, R. E. (1960). Contributions to the theory of optimal control. <span class="venue">Boletín de la Sociedad Matemática Mexicana</span>, 5, 102–119.</li>
+    <li id="ref-richalet1978">Richalet, J., Rault, A., Testud, J. L., Papon, J. (1978). Model predictive heuristic control: Applications to industrial processes. <span class="venue">Automatica</span>, 14(5), 413–428. <a href="https://doi.org/10.1016/0005-1098(78)90001-8">doi:10.1016/0005-1098(78)90001-8</a></li>
+    <li id="ref-bock1984">Bock, H. G., Plitt, K. J. (1984). A multiple shooting algorithm for direct solution of optimal control problems. <span class="venue">IFAC Proceedings Volumes</span>, 17(2), 1603–1608. <a href="https://doi.org/10.1016/S1474-6670(17)61205-9">doi:10.1016/S1474-6670(17)61205-9</a></li>
+    <li id="ref-mayne2000">Mayne, D. Q., Rawlings, J. B., Rao, C. V., Scokaert, P. O. M. (2000). Constrained model predictive control: Stability and optimality. <span class="venue">Automatica</span>, 36(6), 789–814. <a href="https://doi.org/10.1016/S0005-1098(99)00214-9">doi:10.1016/S0005-1098(99)00214-9</a></li>
+    <li id="ref-diehl2002">Diehl, M., Bock, H. G., Schlöder, J. P., Findeisen, R., Nagy, Z., Allgöwer, F. (2002). Real-time optimization and nonlinear model predictive control of processes governed by differential-algebraic equations. <span class="venue">Journal of Process Control</span>, 12(4), 577–585. <a href="https://doi.org/10.1016/S0959-1524(01)00023-3">doi:10.1016/S0959-1524(01)00023-3</a></li>
+    <li id="ref-diehl2005">Diehl, M., Bock, H. G., Schlöder, J. P. (2005). A real-time iteration scheme for nonlinear optimization in optimal feedback control. <span class="venue">SIAM Journal on Control and Optimization</span>, 43(5), 1714–1736. <a href="https://doi.org/10.1137/S0363012902400713">doi:10.1137/S0363012902400713</a></li>
+    <li id="ref-lam2010">Lam, D., Manzie, C., Good, M. (2010). Model predictive contouring control. <span class="venue">IEEE CDC 2010</span>, 6137–6142. <a href="https://doi.org/10.1109/CDC.2010.5717042">doi:10.1109/CDC.2010.5717042</a></li>
+    <li id="ref-liniger2015">Liniger, A., Domahidi, A., Morari, M. (2015). Optimization-based autonomous racing of 1:43 scale RC cars. <span class="venue">Optimal Control Applications and Methods</span>, 36(5), 628–647. <a href="https://doi.org/10.1002/oca.2123">doi:10.1002/oca.2123</a></li>
+    <li id="ref-kamel2017">Kamel, M., Burri, M., Siegwart, R. (2017). Linear vs nonlinear MPC for trajectory tracking applied to rotary wing micro aerial vehicles. <span class="venue">IFAC-PapersOnLine</span>, 50(1), 3463–3469. <a href="https://arxiv.org/abs/1611.09240">arXiv:1611.09240</a></li>
+    <li id="ref-falanga2018">Falanga, D., Foehn, P., Lu, P., Scaramuzza, D. (2018). PAMPC: Perception-aware model predictive control for quadrotors. <span class="venue">IROS 2018</span>. <a href="https://arxiv.org/abs/1804.04811">arXiv:1804.04811</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="18">
+    <li id="ref-verschueren2022">Verschueren, R., Frison, G., Kouzoupis, D., Frey, J., van Duijkeren, N., Zanelli, A., Novoselnik, B., Albin, T., Quirynen, R., Diehl, M. (2022). acados: A modular open-source framework for fast embedded optimal control. <span class="venue">Mathematical Programming Computation</span>, 14(1), 147–183. <a href="https://arxiv.org/abs/1910.13753">arXiv:1910.13753</a></li>
+    <li id="ref-romero2022">Romero, A., Sun, S., Foehn, P., Scaramuzza, D. (2022). Model predictive contouring control for time-optimal quadrotor flight. <span class="venue">IEEE Transactions on Robotics</span>, 38(6), 3340–3356. <a href="https://arxiv.org/abs/2108.13205">arXiv:2108.13205</a></li>
+    <li id="ref-song2023">Song, Y., Romero, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Reaching the limit in autonomous racing: Optimal control versus reinforcement learning. <span class="venue">Science Robotics</span>, 8(82), eadg1462. <a href="https://arxiv.org/abs/2310.10943">arXiv:2310.10943</a></li>
+    <li id="ref-rmd2017">Rawlings, J. B., Mayne, D. Q., Diehl, M. M. (2017). <em>Model Predictive Control: Theory, Computation, and Design</em>, 2.ª ed. Nob Hill (PDF gratuito de la 6.ª impresión, 2026). <a href="https://sites.engineering.ucsb.edu/~jbraw/mpc/">sites.engineering.ucsb.edu/~jbraw/mpc</a></li>
+    <li id="ref-anderson1990">Anderson, B. D. O., Moore, J. B. (1990). <em>Optimal Control: Linear Quadratic Methods</em>. Prentice-Hall (§5.4 y §5.7). <a href="http://users.cecs.anu.edu.au/~john/papers/BOOK/B03.PDF">users.cecs.anu.edu.au</a></li>
+    <li id="ref-safonov1977">Safonov, M. G., Athans, M. (1977). Gain and phase margin for multiloop LQG regulators. <span class="venue">IEEE Transactions on Automatic Control</span>, 22(2), 173–179. <a href="https://doi.org/10.1109/TAC.1977.1101470">doi:10.1109/TAC.1977.1101470</a></li>
+    <li id="ref-frison2020">Frison, G., Diehl, M. (2020). HPIPM: A high-performance quadratic programming framework for model predictive control. <span class="venue">IFAC-PapersOnLine</span>, 53(2), 6563–6569. <a href="https://arxiv.org/abs/2003.02547">arXiv:2003.02547</a></li>
+    <li id="ref-ferreau2014">Ferreau, H. J., Kirches, C., Potschka, A., Bock, H. G., Diehl, M. (2014). qpOASES: A parametric active-set algorithm for quadratic programming. <span class="venue">Mathematical Programming Computation</span>, 6(4), 327–363. <a href="https://doi.org/10.1007/s12532-014-0071-1">doi:10.1007/s12532-014-0071-1</a></li>
+    <li id="ref-stellato2020">Stellato, B., Banjac, G., Goulart, P., Bemporad, A., Boyd, S. (2020). OSQP: An operator splitting solver for quadratic programs. <span class="venue">Mathematical Programming Computation</span>, 12(4), 637–672. <a href="https://doi.org/10.1007/s12532-020-00179-2">doi:10.1007/s12532-020-00179-2</a></li>
+    <li id="ref-bemporad2002">Bemporad, A., Morari, M., Dua, V., Pistikopoulos, E. N. (2002). The explicit linear quadratic regulator for constrained systems. <span class="venue">Automatica</span>, 38(1), 3–20. <a href="https://doi.org/10.1016/S0005-1098(01)00174-1">doi:10.1016/S0005-1098(01)00174-1</a></li>
+    <li id="ref-torrente2021">Torrente, G., Kaufmann, E., Foehn, P., Scaramuzza, D. (2021). Data-driven MPC for quadrotors. <span class="venue">IEEE Robotics and Automation Letters</span>, 6(2), 3769–3776. <a href="https://arxiv.org/abs/2102.05773">arXiv:2102.05773</a></li>
+    <li id="ref-diehl2005b">Diehl, M., Findeisen, R., Allgöwer, F., Bock, H. G., Schlöder, J. P. (2005). Nominal stability of real-time iteration scheme for nonlinear model predictive control. <span class="venue">IEE Proceedings – Control Theory and Applications</span>, 152(3), 296–308. <a href="https://doi.org/10.1049/ip-cta:20040008">doi:10.1049/ip-cta:20040008</a></li>
+    <li id="ref-andersson2019">Andersson, J. A. E., Gillis, J., Horn, G., Rawlings, J. B., Diehl, M. (2019). CasADi: A software framework for nonlinear optimization and optimal control. <span class="venue">Mathematical Programming Computation</span>, 11(1), 1–36. <a href="https://doi.org/10.1007/s12532-018-0139-4">doi:10.1007/s12532-018-0139-4</a></li>
+    <li id="ref-sarvaiya2025">Sarvaiya, M., Li, G., Loianno, G. (2025). HPA-MPC: Hybrid perception-aware nonlinear model predictive control for quadrotors with suspended loads. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(1), 358–365. <a href="https://arxiv.org/abs/2411.11982">arXiv:2411.11982</a></li>
+    <li id="ref-agilicious">Foehn, P., Kaufmann, E., Romero, A., Penicka, R., Sun, S., Bauersfeld, L., Laengle, T., Cioffi, G., Song, Y., Loquercio, A., Scaramuzza, D. (2022). Agilicious: Open-source and open-hardware agile quadrotor for vision-based flight. <span class="venue">Science Robotics</span>, 7(67), eabl6259. <a href="https://arxiv.org/abs/2307.06100">arXiv:2307.06100</a></li>
+    <li id="ref-wikner2026">Wikner, J., Arnström, D., Axehill, D. (2026). On real-time feasibility of high-rate MPC using an active-set method on nano-quadcopters. Preprint, <a href="https://arxiv.org/abs/2603.09342">arXiv:2603.09342</a></li>
+    <li id="ref-hirst2025">Hirst, C. A., Reale, C., Frew, E. (2025). 3D path-following guidance via nonlinear model predictive control for fixed-wing small UAS. Preprint, <a href="https://arxiv.org/abs/2512.24326">arXiv:2512.24326</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
