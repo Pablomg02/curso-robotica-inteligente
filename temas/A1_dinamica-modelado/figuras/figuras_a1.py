@@ -45,7 +45,8 @@ v_h = math.sqrt(T_h / (2 * RHO * A))
 P_id = T_h * v_h
 print(f"NeuroBEM quad: T_h por rotor = {T_h:.3f} N, R = {R_nb*100:.2f} cm, A = {A*1e4:.1f} cm2")
 print(f"  v_h = {v_h:.2f} m/s, P_ideal por rotor = {P_id:.1f} W, total = {4*P_id:.1f} W")
-for fm in (0.5, 0.6, 0.7):
+# FM supuesta: Deters y Selig (AIAA 2008-6246, tabla 1) miden 0,48-0,61 en hélices de 5" a Re bajo
+for fm in (0.5, 0.55, 0.6):
     print(f"  con FM = {fm}: potencia mecánica total = {4*P_id/fm:.0f} W")
 
 # Figura: v_i/v_h frente a V_c/v_h. viewBox 0 0 520 300; área x 60..500, y 30..250

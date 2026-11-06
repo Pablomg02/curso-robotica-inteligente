@@ -15,8 +15,8 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| A1 | Dinámica y modelado de multirrotor y ala fija | ✅ 🛑 | 2026-11-06 | 49 hojas + lab. Primera parada: revisar el formato en un tema técnico. Figuras y cifras calculadas en `figuras/figuras_a1.py`. Sin verificar en la fuente primaria: el texto completo de Kumar y Michael (2012) y de Mahony et al. (2012), de acceso cerrado (la ley de escala se deriva en la hoja y no se atribuye a ellos); la fórmula de Cheeseman y Bennett se toma de Sanchez-Cuevas et al. (2017); las fechas de Euler (1765) y Rankine y Froude (1865–89) no se han contrastado de nuevo. Supuestos marcados: figura de mérito 0,5–0,7; unidades de `vbat` en NeuroBEM; consecuencia del desajuste KM del x500 (inferencia). Los modos del Aerosonde son cálculo propio con los coeficientes del libro. Motor: arreglo de `assets/` (css v=7, js v=3) para que `cols … body` sea rejilla y `checkOverflow()` detecte recortes internos; corregidas dos fórmulas cortadas de M1 (hojas 30 y 34). |
-| A2 | Control clásico y jerarquía de lazos | ⬜ | | |
+| A1 | Dinámica y modelado de multirrotor y ala fija | ✅ 🛑 | 2026-11-06 | 49 hojas + lab. Primera parada: revisar el formato en un tema técnico. Figuras y cifras calculadas en `figuras/figuras_a1.py`. Revisado tras la parada con verificación independiente: Cheeseman y Bennett, ec. (2) del informe original; Euler (ecuaciones de 1750, publicadas en 1752; *Theoria motus*, 1765); Rankine (1865) y R. E. Froude (1889); Lanchester (1908) y Bryan (1911); leyes de escala de Kumar y Michael en la versión de ISRR 2011 (empuje y par, cuenta nuestra); numeración de motores de PX4 y Betaflight; masa y columnas de NeuroBEM (`vbat` en décimas de voltio aunque el Readme diga voltios); figura de mérito corregida a 0,5–0,6 con medidas de Deters y Selig (2008). Sin acceso al texto completo de Mahony et al. (2012): solo se cita como tutorial general y la lectura esencial pasa a Martin y Salaün (2010, acceso abierto). Beard y McLain no publican trim ni autovalores del Aerosonde: los de la presentación son cálculo propio. Motor: arreglo de `assets/` (css v=7, js v=3); corregidas dos fórmulas cortadas de M1 (hojas 30 y 34). |
+| A2 | Control clásico y jerarquía de lazos | ⏳ | | |
 | A3a | Control óptimo: LQR, NMPC, MPCC, RTI | ⬜ | | |
 | A3b | MPC por muestreo, MPC con aprendizaje, MPC frente a RL | ⬜ | | |
 | A4a | Filtrado bayesiano: de Bayes a Kalman y partículas | ⬜ | | |
@@ -94,3 +94,4 @@ Anota aquí cada revisión: fecha, qué temas revisó y qué pidió cambiar. Lo 
 | Fecha | Temas revisados | Cambios pedidos | Aplicado |
 |---|---|---|---|
 | 2026-11-06 | Temario y hardware | Laboratorios independientes del hardware; nunca volar un dron; Pixhawk solo como HIL opcional | Sí |
+| 2026-11-06 | A1 | Corregir lo que quedó dudoso en A1. No parar tras cada tema: solo al acabar la fase 1 (H1) y la fase 2 (B6). Paralelizar el trabajo con subagentes siempre que no reste calidad. | Sí: fuentes pendientes de A1 verificadas con agentes; investigación de cada tema en paralelo y revisión independiente antes del commit (`CONTINUAR.md` §3) |

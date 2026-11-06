@@ -39,6 +39,15 @@ Para cada tema, en el orden de `TEMARIO.md`:
 9. **Commit y push** con un mensaje del tipo `Tema A1: dinámica y modelado`.
 10. **Si el tema lleva 🛑**, parar: resumir a Pablo qué se ha hecho, qué queda dudoso y esperar su respuesta. Lo que pida se anota en el registro de revisiones de `ESTADO.md` y se aplica también a los temas siguientes.
 
+### 3.1 Trabajo en paralelo con subagentes (desde A2)
+
+Pablo pidió paralelizar siempre que no reste calidad. El reparto que la mantiene:
+
+- **Investigación en paralelo y por adelantado.** Para cada tema, 2–4 agentes de investigación con bloques de preguntas acotados (cifras de sistemas reales y código fuente; teoría e historia; estado del arte 2023–2026). Cada uno escribe un dossier en el scratchpad (`dossiers/<ID>/*.md`): cita completa con DOI o URL, la cifra o la frase exacta con su ubicación (tabla, sección, línea de código) y su estado (confirmado o no). La investigación del tema siguiente se lanza mientras se escribe el actual.
+- **Redacción secuencial por un solo autor.** La presentación, el script de figuras y el laboratorio los escribe el agente principal, un tema detrás de otro, para mantener la coherencia de notación, convenios y referencias cruzadas. Nada del dossier entra en una hoja sin estar marcado como confirmado.
+- **Revisión independiente antes del commit.** Un agente que no ha visto el razonamiento del autor recibe el HTML, el script y el laboratorio. Rehace las derivaciones y las cuentas, contrasta con su fuente una muestra de cifras y referencias, y busca errores de física, de convenio y de texto. Solo se corrige lo que se comprueba.
+- **No se paralelizan** la redacción de temas que dependen entre sí, ni los commits: un commit por tema, en orden.
+
 ## 4. Estructura de cada presentación
 
 Basada en M0 y M1, entre 40 y 60 hojas según la profundidad:
