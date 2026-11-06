@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A4b · Percepción para estimación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A4b" data-deck-title="Percepción para estimación: VIO, SLAM, eventos y filtros aprendidos · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 1 · Jornada 8 · Curso de robótica inteligente</p>
+  <h1>Percepción para estimación: VIO, SLAM, eventos y filtros aprendidos</h1>
+  <p class="subtitle">Cómo se estima el estado de un dron sin GNSS con una cámara y una IMU: geometría, observabilidad, filtros frente a optimización, preintegración, desfase temporal, cámaras de eventos y lo que han cambiado las redes.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A4a (ESKF, consistencia), M1 (SO(3))</span>
+    <span><b>Prepara</b> A5, A7b, A8, B3a, C6</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A4b</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Escribir el modelo de proyección de una cámara y calcular la incertidumbre de profundidad de un par estéreo.</li>
+    <li>Explicar qué estados son observables en VIO y por qué la escala necesita aceleración.</li>
+    <li>Derivar la proyección al espacio nulo del MSCKF y la preintegración de la IMU, y comparar filtros con optimización por ventana deslizante.</li>
+    <li>Cuantificar el efecto del desfase temporal cámara-IMU y estimarlo en línea.</li>
+    <li>Explicar cómo funciona una cámara de eventos y cuándo compensa.</li>
+    <li>Situar los estimadores aprendidos (DROID-SLAM, DPVO, odometría inercial aprendida) con cifras de vuelo.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Sin GNSS, el belief sobre la pose sale de una cámara y una IMU</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En interiores, bajo árboles o cerca de edificios, el GNSS falla o miente. La alternativa estándar es la odometría visual-inercial (VIO): la IMU da movimiento a alta frecuencia y la cámara corrige la deriva.</li>
+        <li>Es el mismo problema de A4a con un estado mucho mayor (poses pasadas, puntos del mapa) y medidas muy no lineales.</li>
+        <li>Lo que llega al control (A2, A3) depende de este estimador: su retardo, su frecuencia y sus fallos.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Una cifra de referencia</span>ORB-SLAM3 estéreo-inercial: 3,5 cm de error medio en EuRoC y 9 mm en la sala de TUM-VI, según sus autores <a class="cite" data-ref="campos2021"></a>. En una carrera a unos 70 km/h, en cambio, OpenVINS y SVO acumulan errores de 98 y 47 m <a class="cite" data-ref="cioffi2023"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu agente con belief tendrá que decidir qué parte del estado estima un VIO clásico y qué parte su world model. Y si el VIO falla en vuelo rápido o con poca luz, el belief tiene que saberlo: la incertidumbre del estimador es una entrada más del planificador.</div>
+      <div class="callout clave"><span class="tag">Qué cambia para ti</span>A4a te dio los filtros. Aquí aprendes las medidas que los alimentan en un dron real, y por qué la percepción es la principal fuente de fallos de estimación.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia breve</p>
+  <h2>De los filtros con cámara al SLAM aprendido</h2>
+  <div class="cols">
+    <div class="tl">
+      <div class="ev"><span class="yr">2007</span>MSCKF: navegación visual-inercial con un filtro que no guarda el mapa <a class="cite" data-ref="mourikis2007"></a>.</div>
+      <div class="ev"><span class="yr">2013–14</span>Calibración temporal y espacial conjunta (Kalibr) y calibración del desfase en línea <a class="cite" data-ref="furgale2013,li2014"></a>.</div>
+      <div class="ev"><span class="yr">2015–18</span>Optimización por ventana deslizante (OKVIS, VINS-Mono), preintegración en la variedad y la primera comparación sistemática en drones <a class="cite" data-ref="leutenegger2015,qin2018,forster2017,delmerico2018"></a>.</div>
+      <div class="ev"><span class="yr">2018</span>Eventos, imágenes e IMU juntos: primer cuadricóptero estimando con una cámara de eventos <a class="cite" data-ref="rosinol2018"></a>.</div>
+    </div>
+    <div class="tl">
+      <div class="ev"><span class="yr">2020–21</span>OpenVINS y Basalt como plataformas abiertas; ORB-SLAM3 <a class="cite" data-ref="geneva2020,usenko2020,campos2021"></a>.</div>
+      <div class="ev"><span class="yr">2020–23</span>Odometría inercial aprendida y SLAM aprendido de extremo a extremo: TLIO, DROID-SLAM, DPVO <a class="cite" data-ref="liu2020,teed2021,teed2023"></a>.</div>
+      <div class="ev"><span class="yr">2023–24</span>Odometría inercial aprendida en carreras de drones; VIO con eventos que cierra el lazo en volteretas <a class="cite" data-ref="cioffi2023,guan2024"></a>.</div>
+      <div class="ev"><span class="yr">2025</span>SLAM denso monocular en tiempo real sobre un modelo 3D fundacional (MASt3R-SLAM) <a class="cite" data-ref="murai2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 · GEOMETRÍA ============ -->
+<section class="slide divider" data-section="1 · Geometría">
+  <p class="num">Parte 1</p>
+  <h2>Geometría y observabilidad</h2>
+  <p>Qué mide una cámara, cuánto vale una profundidad estéreo y qué no se puede saber con una cámara y una IMU.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">La medida de una cámara</p>
+  <h2>Un punto 3D se convierte en un píxel: proyección y error de reproyección</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Punto en el mundo \(\mathbf p_w\), pose de la cámara \((R_{wc}, \mathbf t_{wc})\). En ejes cámara, \(\mathbf p_c = R_{wc}^\top(\mathbf p_w - \mathbf t_{wc}) = (X, Y, Z)\), y con el modelo de agujero:</p>
+      \[ \mathbf u = \pi(\mathbf p_c) = \begin{pmatrix} f_x X/Z + c_x\\ f_y Y/Z + c_y \end{pmatrix} \]
+      <p class="small">Medida: \(\mathbf z = \pi(\mathbf p_c) + \mathbf n\), con ruido de 0,5–1 píxel tras la detección. El <strong>error de reproyección</strong> \(\mathbf z - \pi(\cdot)\) es el residuo que minimizan casi todos los VIO.</p>
+      <details class="deriv"><summary>Jacobiano de la proyección</summary>
+        <p class="small">\(\dfrac{\partial\pi}{\partial\mathbf p_c} = \dfrac1Z\begin{bmatrix} f_x & 0 & -f_xX/Z\\ 0 & f_y & -f_yY/Z\end{bmatrix}\). Respecto a la rotación de la cámara (perturbación por la derecha) se multiplica por \([\mathbf p_c]_\times\), y respecto al punto, por \(R_{wc}^\top\). El factor \(1/Z\) dice que los puntos lejanos informan poco de la traslación.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Estéreo.</strong> Con base \(b\) y disparidad \(d\), \(Z = fb/d\), de donde \(\sigma_Z = Z^2\sigma_d/(fb)\). Con las cámaras de EuRoC (\(f\) = 458,65 px y base de 11,0 cm, según la configuración de OpenVINS) y \(\sigma_d\) = 0,5 px:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Distancia</th><th>1 m</th><th>3 m</th><th>10 m</th><th>30 m</th></tr>
+          <tr><td>\(\sigma_Z\), base 11 cm</td><td class="n">1,0 cm</td><td class="n">8,9 cm</td><td class="n">99 cm</td><td class="n">8,9 m</td></tr>
+          <tr><td>\(\sigma_Z\), base 30 cm</td><td class="n">0,4 cm</td><td class="n">3,3 cm</td><td class="n">36 cm</td><td class="n">3,3 m</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Calculado en <code>figuras/figuras_a4b.py</code>.</p>
+      <div class="callout realidad"><span class="tag">Cómputo limitado</span>Un dron pequeño tiene una base estéreo pequeña: más allá de unos metros, la profundidad estéreo casi no informa y la escala tiene que venir de la IMU.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Observabilidad</p>
+  <h2>Cuatro direcciones que una cámara y una IMU nunca ven</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Posición global (3) y guiñada global (1):</strong> trasladar todo el mundo o girarlo alrededor de la vertical no cambia ni las imágenes ni lo que mide la IMU. Un VIO deriva en esas cuatro direcciones sin remedio; solo un mapa previo, un GNSS o una referencia externa las fijan.</li>
+        <li><strong>Inclinación:</strong> observable, porque el acelerómetro ve la gravedad (A4a).</li>
+        <li><strong>Escala (monocular):</strong> la cámara sola la pierde; la IMU la recupera <em>si el dron acelera</em>. Con velocidad constante, la escala deja de ser observable.</li>
+        <li><strong>Sesgos:</strong> observables con excitación suficiente (giros en varios ejes).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">El fallo silencioso</span>Si el estimador linealiza en sus estimaciones, gana información espuria en esas direcciones y se vuelve sobreconfiado: el problema que Hesch et al. analizan en VIO y que viste en la guiñada de A4a <a class="cite" data-ref="hesch2014"></a>.</div>
+      <div class="callout tesis"><span class="tag">Percepción activa</span>La escala y los sesgos dependen de cómo vuela el dron. Un planificador que sabe esto puede elegir trayectorias que los hagan observables: es percepción activa (A7), y PAMPC en A3a ya lo hacía para la visibilidad.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 · FILTROS Y OPTIMIZACIÓN ============ -->
+<section class="slide divider" data-section="2 · Filtros y optimización">
+  <p class="num">Parte 2</p>
+  <h2>Filtros frente a optimización</h2>
+  <p>El MSCKF, la ventana deslizante con marginalización y la preintegración de la IMU que hace barata la optimización.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">MSCKF</p>
+  <h2>Usar los puntos del mapa sin guardarlos en el estado</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Estado: IMU (ESKF de A4a) más una ventana de clones de poses pasadas de la cámara, sin puntos del mapa. Cuando un punto deja de verse, se triangula con las poses de la ventana y se apilan sus residuos de reproyección <a class="cite" data-ref="mourikis2007"></a>:</p>
+      \[ \mathbf r = H_x\,\delta\mathbf x + H_f\,\delta\mathbf p_f + \mathbf n \]
+      <p class="small">El error del punto \(\delta\mathbf p_f\) no está en el estado. Se elimina proyectando con una base \(N\) del espacio nulo izquierdo de \(H_f\) (\(N^\top H_f = 0\)):</p>
+      \[ \mathbf r_o = N^\top\mathbf r = N^\top H_x\,\delta\mathbf x + N^\top\mathbf n \]
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Por qué funciona</summary>
+        <p class="small">\(H_f\) tiene 3 columnas y \(2m\) filas (\(m\) observaciones del punto), así que su espacio nulo izquierdo tiene dimensión \(2m - 3\). La proyección quita las 3 direcciones que dependen del punto y deja \(2m - 3\) residuos que solo dependen de las poses, con ruido todavía blanco si \(N\) es ortonormal. Es una marginalización exacta del punto, sin añadirlo al estado.</p>
+      </details>
+      <ul class="small">
+        <li>Coste lineal en el número de puntos y acotado por el tamaño de la ventana.</li>
+        <li>La base de OpenVINS, que lo extiende con puntos SLAM en el estado y calibración en línea <a class="cite" data-ref="geneva2020"></a>.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">En drones</span>En la comparación de Delmerico y Scaramuzza, el MSCKF completó todas las secuencias en todas las plataformas, incluidas las de poco cómputo <a class="cite" data-ref="delmerico2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ventana deslizante</p>
+  <h2>Optimizar las últimas poses y marginalizar las viejas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Se minimiza la suma de residuos (de reproyección, de la IMU y una prioridad de lo marginalizado) sobre las \(K\) últimas poses y los puntos visibles, con Gauss-Newton o Levenberg-Marquardt:</p>
+      \[ \min_{\mathcal X}\ \|\mathbf r_{\text{prior}}\|^2 + \sum_{k}\|\mathbf r_{\text{IMU},k}\|^2_{\Sigma_k} + \sum_{i,j}\rho\big(\|\mathbf r_{ij}\|^2_{\Sigma}\big) \]
+      <p class="small">\(\rho\) es una función robusta (Huber, Cauchy) que limita el peso de las asociaciones erróneas. Cuando sale una pose de la ventana, se <strong>marginaliza</strong>: complemento de Schur de su bloque en el sistema normal, que queda como prioridad sobre el resto.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>OKVIS</strong> (fotogramas clave) y <strong>VINS-Mono</strong> (monocular, con cierre de bucle y relocalización) son las referencias de esta familia <a class="cite" data-ref="leutenegger2015,qin2018"></a>.</li>
+        <li><strong>Basalt</strong> extrae de la VIO factores no lineales que resumen lo marginalizado y los reutiliza en un ajuste global <a class="cite" data-ref="usenko2020"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Filtro frente a optimización</span>Un EKF es una sola iteración de Gauss-Newton con todo marginalizado al instante; la ventana deslizante relinealiza varias veces las poses recientes. Es la misma diferencia que entre RTI y SQP convergido en A3a: más precisión a cambio de más cómputo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Preintegración</p>
+  <h2>Resumir cientos de medidas de la IMU en un solo factor</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Entre dos fotogramas \(i\) y \(j\) hay cientos de muestras de la IMU. Integrarlas en el marco del mundo obligaría a repetirlo cada vez que cambia la estimación de la pose \(i\). La preintegración las integra en el marco del cuerpo en \(i\) <a class="cite" data-ref="forster2017"></a>:</p>
+      \[ \begin{aligned} \Delta R_{ij} &= \prod_{k=i}^{j-1}\operatorname{Exp}\big((\boldsymbol\omega_k - \mathbf b_g)\Delta t\big)\\ \Delta\mathbf v_{ij} &= \sum_{k=i}^{j-1}\Delta R_{ik}(\mathbf a_k - \mathbf b_a)\Delta t\\ \Delta\mathbf p_{ij} &= \sum_{k=i}^{j-1}\Big(\Delta\mathbf v_{ik}\Delta t + \tfrac12\Delta R_{ik}(\mathbf a_k - \mathbf b_a)\Delta t^2\Big) \end{aligned} \]
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Por qué no depende de la pose inicial</summary>
+        <p class="small">Integrando \(\dot R = R[\boldsymbol\omega]_\times\), \(\dot{\mathbf v} = R\mathbf a + \mathbf g\) y \(\dot{\mathbf p} = \mathbf v\) de \(i\) a \(j\) y multiplicando por \(R_i^\top\), los términos que dependen de \(R_i\), \(\mathbf v_i\) y \(\mathbf g\) se separan: \(R_i^\top(\mathbf v_j - \mathbf v_i - \mathbf g\Delta t_{ij}) = \Delta\mathbf v_{ij}\), y lo análogo para la posición. Las cantidades \(\Delta\) solo dependen de las medidas y de los sesgos. Si cambia la estimación de los sesgos, se corrigen a primer orden con sus jacobianos, sin reintegrar.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Idea clave</span>Un factor por par de fotogramas con su covarianza propagada: la IMU entra en la optimización a coste casi nulo. Es lo que hizo prácticas la ventana deslizante y el ajuste de haces visual-inercial.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es también un buen resumen de la IMU para un world model: incrementos de rotación, velocidad y posición entre observaciones visuales, en lugar de cientos de muestras crudas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Qué funciona en un dron</p>
+  <h2>No hay almuerzo gratis: precisión, robustez y cómputo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Delmerico y Scaramuzza compararon VIO monoculares en las secuencias de EuRoC y en varias placas, incluidas algunas de dron <a class="cite" data-ref="delmerico2018"></a>:</p>
+      <ul class="small">
+        <li><strong>VINS-Mono:</strong> el más preciso y robusto de forma consistente, con un coste de recursos que los autores llaman «potencialmente prohibitivo».</li>
+        <li><strong>SVO + MSF:</strong> el más eficiente y el menos preciso.</li>
+        <li><strong>ROVIO:</strong> el compromiso, aunque divergió en la placa Up Board.</li>
+        <li><strong>MSCKF:</strong> terminó todas las secuencias en todas las plataformas.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Sistema</th><th>Familia</th><th>Cifra publicada</th></tr>
+          <tr><td>ORB-SLAM3 <a class="cite" data-ref="campos2021"></a></td><td>Optimización + mapa + cierre de bucle</td><td>3,5 cm de media en EuRoC (estéreo-inercial)</td></tr>
+          <tr><td>OpenVINS <a class="cite" data-ref="geneva2020"></a></td><td>Filtro (MSCKF extendido)</td><td>Plataforma de investigación abierta</td></tr>
+          <tr><td>Basalt <a class="cite" data-ref="usenko2020"></a></td><td>Ventana + factores no lineales</td><td>VIO más ajuste global</td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Lo que el control necesita a 100–200 Hz sale de la propagación con la IMU entre imágenes (20–30 Hz). El retardo de procesar una imagen se compensa como en A4a: fundir en el pasado y propagar al presente.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 · TIEMPO ============ -->
+<section class="slide divider" data-section="3 · Tiempo">
+  <p class="num">Parte 3</p>
+  <h2>El desfase temporal cámara-IMU</h2>
+  <p>Unos milisegundos de diferencia entre los relojes de la cámara y de la IMU se convierten en píxeles y centímetros de error.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">El efecto</p>
+  <h2>Un desfase de 10 ms girando a 2 rad/s son 9 píxeles</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Si la imagen se tomó \(t_d\) segundos antes de su marca de tiempo, el estimador la asocia a una pose equivocada. A primer orden, el error equivale a \(f\,\omega\,t_d\) píxeles por la rotación y a \(v\,t_d\) metros por la traslación:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\omega\)</th><th>\(t_d\) = 1 ms</th><th>5 ms</th><th>10 ms</th><th>30 ms</th></tr>
+          <tr><td>0,5 rad/s</td><td class="n">0,2 px</td><td class="n">1,1 px</td><td class="n">2,3 px</td><td class="n">6,9 px</td></tr>
+          <tr><td>2 rad/s</td><td class="n">0,9 px</td><td class="n">4,6 px</td><td class="n">9,2 px</td><td class="n">27,5 px</td></tr>
+          <tr><td>5 rad/s</td><td class="n">2,3 px</td><td class="n">11,5 px</td><td class="n">22,9 px</td><td class="n">68,8 px</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Con \(f\) = 458,65 px (cámara de EuRoC). A 10 m/s, 10 ms son 10 cm. Calculado en <code>figuras/figuras_a4b.py</code>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Por qué es tan traicionero</span>El ruido de detección es de 0,5–1 píxel: un desfase de pocos milisegundos en vuelo ágil ya es el error dominante, y ningún ajuste de covarianzas lo arregla, porque es sistemático.</div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>En un dron de carreras se gira a varios rad/s: con 5 ms de desfase sin corregir, el error equivale a más de 10 píxeles. Es una de las razones por las que los VIO genéricos fallan a alta velocidad.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estimarlo</p>
+  <h2>El desfase como un estado más del filtro</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Error de posición con y sin estimar el desfase temporal y evolución del desfase estimado">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <path class="ln-tesis" fill="none" stroke-width="2" d="M60.0,218.8 L61.1,114.9 L62.2,92.5 L63.3,76.3 L64.4,75.7 L65.5,70.4 L66.6,81.7 L67.7,100.8 L68.8,106.1 L69.9,124.9 L71.0,122.1 L72.1,133.1 L73.2,138.5 L74.3,137.6 L75.4,140.0 L76.5,144.0 L77.6,133.1 L78.7,110.6 L79.8,109.2 L80.9,92.3 L82.0,74.1 L83.1,66.2 L84.2,62.4 L85.3,68.7 L86.4,73.6 L87.5,84.8 L88.6,97.2 L89.7,108.0 L90.8,125.0 L91.9,146.6 L93.0,154.4 L94.1,148.5 L95.2,131.2 L96.3,108.1 L97.4,86.6 L98.5,66.5 L99.6,65.5 L100.7,53.1 L101.8,44.8 L102.9,30.0 L104.0,30.0 L105.1,30.4 L106.2,30.4 L107.3,40.4 L108.4,47.2 L109.5,57.1 L110.6,70.6 L111.7,95.0 L112.8,98.5 L113.9,116.6 L115.0,124.9 L116.1,127.1 L117.2,144.2 L118.3,161.5 L119.4,158.6 L120.5,146.1 L121.6,132.1 L122.7,126.6 L123.8,102.9 L124.9,73.6 L126.0,64.8 L127.1,56.0 L128.2,61.6 L129.3,72.5 L130.4,87.2 L131.5,105.4 L132.6,117.1 L133.7,130.8 L134.8,144.3 L135.9,148.1 L137.0,155.0 L138.1,146.3 L139.2,144.4 L140.3,130.6 L141.4,93.9 L142.5,82.0 L143.6,67.5 L144.7,63.0 L145.8,39.6 L146.9,31.4 L148.0,39.2 L149.1,38.4 L150.2,51.6 L151.3,48.2 L152.4,51.2 L153.5,72.5 L154.6,90.5 L155.7,111.2 L156.8,125.1 L157.9,135.0 L159.0,138.4 L160.1,144.0 L161.2,151.4 L162.3,147.3 L163.4,134.3 L164.5,118.3 L165.6,113.5 L166.7,105.9 L167.8,94.0 L168.9,97.3 L170.0,97.5 L171.1,93.8 L172.2,112.8 L173.3,117.4 L174.4,109.0 L175.5,118.4 L176.6,117.6 L177.7,122.6 L178.8,122.2 L179.9,132.9 L181.0,119.3 L182.1,103.4 L183.2,101.2 L184.3,98.7 L185.4,88.5 L186.5,61.4 L187.6,60.3 L188.7,50.6 L189.8,42.0 L190.9,39.9 L192.0,30.0 L193.1,30.0 L194.2,30.5 L195.3,38.0 L196.4,52.9 L197.5,74.4 L198.6,89.6 L199.7,108.3 L200.8,142.5 L201.9,142.7 L203.0,143.2 L204.1,139.4 L205.2,143.0 L206.3,134.5 L207.4,132.7 L208.5,111.4 L209.6,100.9 L210.7,91.5 L211.8,86.6 L212.9,84.8 L214.0,82.3 L215.1,78.9 L216.2,88.0 L217.3,98.0 L218.4,121.0 L219.5,135.9 L220.6,151.0 L221.7,144.4 L222.8,143.4 L223.9,131.3 L225.0,130.0 L226.1,110.2 L227.2,102.7 L228.3,86.3 L229.4,72.8 L230.5,58.4 L231.6,61.2 L232.7,58.7 L233.8,41.3 L234.9,30.4 L236.0,36.7 L237.1,51.1 L238.2,66.4 L239.3,72.7 L240.4,91.9 L241.5,106.3 L242.6,116.9 L243.7,129.3 L244.8,139.9 L245.9,157.8 L247.0,164.1 L248.1,159.3 L249.2,145.6 L250.3,135.2 L251.4,111.8 L252.5,103.4 L253.6,92.5 L254.7,74.5 L255.8,69.7 L256.9,57.8 L258.0,64.1 L259.1,66.9 L260.2,84.9 L261.3,104.8 L262.4,120.0 L263.5,127.7 L264.6,140.8 L265.7,151.5 L266.8,139.4 L267.9,128.4 L269.0,125.1 L270.1,107.1 L271.2,77.4 L272.3,69.3 L273.4,56.6 L274.5,36.9 L275.6,30.0 L276.7,30.0 L277.8,30.0 L278.9,30.0 L280.0,30.0 L281.1,37.7 L282.2,52.4 L283.3,62.5 L284.4,74.0 L285.5,100.1 L286.6,107.7 L287.7,135.3 L288.8,151.7 L289.9,164.8 L291.0,154.0 L292.1,139.9 L293.2,136.1 L294.3,111.9 L295.4,97.9 L296.5,87.4 L297.6,79.9 L298.7,72.8 L299.8,70.0 L300.9,80.3 L302.0,96.0 L303.1,112.6 L304.2,118.1 L305.3,137.6 L306.4,158.0 L307.5,150.7 L308.6,153.7 L309.7,148.2 L310.8,144.8 L311.9,133.4 L313.0,119.6 L314.1,99.2 L315.2,89.0 L316.3,74.3 L317.4,54.3 L318.5,31.3 L319.6,40.0 L320.7,41.3 L321.8,30.0 L322.9,41.6 L324.0,36.4 L325.1,40.6 L326.2,49.6 L327.3,76.9 L328.4,100.5 L329.5,119.2 L330.6,136.5 L331.7,152.5 L332.8,152.6 L333.9,158.6 L335.0,145.2 L336.1,132.4 L337.2,108.4 L338.3,103.3 L339.4,91.8 L340.5,83.6 L341.6,84.6 L342.7,79.7 L343.8,76.1 L344.9,74.4 L346.0,92.3 L347.1,113.8 L348.2,125.3 L349.3,141.7 L350.4,156.0 L351.5,161.0 L352.6,158.1 L353.7,146.2 L354.8,130.9 L355.9,98.6 L357.0,76.6 L358.1,66.4 L359.2,52.7 L360.3,48.6 L361.4,41.2 L362.5,40.8 L363.6,36.1 L364.7,30.0 L365.8,30.0 L366.9,30.0 L368.0,30.0 L369.1,47.0 L370.2,73.2 L371.3,99.5 L372.4,113.9 L373.5,125.8 L374.6,144.4 L375.7,144.9 L376.8,142.4 L377.9,155.3 L379.0,136.4 L380.1,124.1 L381.2,117.4 L382.3,113.7 L383.4,101.0 L384.5,85.7 L385.6,77.9 L386.7,73.9 L387.8,63.3 L388.9,82.6 L390.0,97.4 L391.1,122.6 L392.2,124.3 L393.3,125.7 L394.4,138.4 L395.5,157.8 L396.6,140.5 L397.7,120.6 L398.8,100.4 L399.9,86.7 L401.0,58.3 L402.1,52.0 L403.2,33.1 L404.3,30.0 L405.4,30.0 L406.5,30.0 L407.6,30.0 L408.7,30.0 L409.8,30.0 L410.9,52.0 L412.0,61.7 L413.1,80.2 L414.2,94.0 L415.3,112.3 L416.4,139.0 L417.5,150.8 L418.6,159.3 L419.7,154.5 L420.8,161.6 L421.9,152.0 L423.0,146.5 L424.1,122.9 L425.2,106.8 L426.3,101.2 L427.4,91.5 L428.5,69.0 L429.6,63.2 L430.7,65.0 L431.8,69.0 L432.9,76.3 L434.0,83.7 L435.1,103.8 L436.2,128.2 L437.3,137.1 L438.4,151.4 L439.5,137.9 L440.6,132.8 L441.7,132.6 L442.8,114.9 L443.9,98.0 L445.0,79.0 L446.1,62.4 L447.2,53.0 L448.3,33.7 L449.4,30.0 L450.5,37.4 L451.6,36.7 L452.7,32.1 L453.8,37.7 L454.9,45.2 L456.0,69.5 L457.1,87.1 L458.2,123.6 L459.3,124.6 L460.4,139.2 L461.5,160.3 L462.6,174.7 L463.7,160.0 L464.8,173.8 L465.9,147.2 L467.0,135.0 L468.1,126.7 L469.2,109.7 L470.3,97.6 L471.4,82.3 L472.5,68.1 L473.6,65.3 L474.7,76.0 L475.8,69.3 L476.9,84.0 L478.0,78.4 L479.1,105.2 L480.2,117.0 L481.3,130.7 L482.4,123.0 L483.5,113.3 L484.6,101.4 L485.7,84.9 L486.8,69.2 L487.9,68.2 L489.0,62.5 L490.1,36.2 L491.2,33.9 L492.3,36.6 L493.4,30.0 L494.5,36.8 L495.6,40.7 L496.7,47.4 L497.8,52.0 L498.9,46.6"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M60.0,218.8 L61.1,231.3 L62.2,221.5 L63.3,190.7 L64.4,204.3 L65.5,141.0 L66.6,155.1 L67.7,243.4 L68.8,228.0 L69.9,226.8 L71.0,219.7 L72.1,207.7 L73.2,207.0 L74.3,212.9 L75.4,214.5 L76.5,193.4 L77.6,188.5 L78.7,206.2 L79.8,179.3 L80.9,218.7 L82.0,232.2 L83.1,227.8 L84.2,229.3 L85.3,240.1 L86.4,219.9 L87.5,197.4 L88.6,213.0 L89.7,209.4 L90.8,219.1 L91.9,212.1 L93.0,202.1 L94.1,206.4 L95.2,211.0 L96.3,216.2 L97.4,232.7 L98.5,233.6 L99.6,214.4 L100.7,209.8 L101.8,204.3 L102.9,214.0 L104.0,206.0 L105.1,203.7 L106.2,215.7 L107.3,211.8 L108.4,219.8 L109.5,227.0 L110.6,231.7 L111.7,222.5 L112.8,233.7 L113.9,234.0 L115.0,223.1 L116.1,224.4 L117.2,230.2 L118.3,228.7 L119.4,224.2 L120.5,221.2 L121.6,219.1 L122.7,209.5 L123.8,215.6 L124.9,224.9 L126.0,239.5 L127.1,232.5 L128.2,236.5 L129.3,230.3 L130.4,214.3 L131.5,214.0 L132.6,211.1 L133.7,224.7 L134.8,226.5 L135.9,222.0 L137.0,212.9 L138.1,212.4 L139.2,202.8 L140.3,199.8 L141.4,209.3 L142.5,204.0 L143.6,188.2 L144.7,191.5 L145.8,199.9 L146.9,215.3 L148.0,206.0 L149.1,205.0 L150.2,199.3 L151.3,215.7 L152.4,227.5 L153.5,212.4 L154.6,217.5 L155.7,200.7 L156.8,221.7 L157.9,212.0 L159.0,213.7 L160.1,224.3 L161.2,235.9 L162.3,239.8 L163.4,237.3 L164.5,241.1 L165.6,223.6 L166.7,213.8 L167.8,218.6 L168.9,206.3 L170.0,202.2 L171.1,200.8 L172.2,202.9 L173.3,204.8 L174.4,217.3 L175.5,231.3 L176.6,228.6 L177.7,228.7 L178.8,234.0 L179.9,230.9 L181.0,229.1 L182.1,239.2 L183.2,227.3 L184.3,227.9 L185.4,219.2 L186.5,228.7 L187.6,217.6 L188.7,217.0 L189.8,217.7 L190.9,218.5 L192.0,234.1 L193.1,235.2 L194.2,242.4 L195.3,242.8 L196.4,240.1 L197.5,233.8 L198.6,235.1 L199.7,233.0 L200.8,225.5 L201.9,223.4 L203.0,230.0 L204.1,233.9 L205.2,245.5 L206.3,244.6 L207.4,229.1 L208.5,228.5 L209.6,223.4 L210.7,222.4 L211.8,220.6 L212.9,230.9 L214.0,232.8 L215.1,242.7 L216.2,217.4 L217.3,210.6 L218.4,217.4 L219.5,216.8 L220.6,217.1 L221.7,233.7 L222.8,230.4 L223.9,232.4 L225.0,226.5 L226.1,231.4 L227.2,228.7 L228.3,227.2 L229.4,221.8 L230.5,222.8 L231.6,203.5 L232.7,202.1 L233.8,210.6 L234.9,219.0 L236.0,222.3 L237.1,207.4 L238.2,208.5 L239.3,219.7 L240.4,221.2 L241.5,227.5 L242.6,237.4 L243.7,245.8 L244.8,240.9 L245.9,233.3 L247.0,235.6 L248.1,236.9 L249.2,227.8 L250.3,231.9 L251.4,239.9 L252.5,239.3 L253.6,239.7 L254.7,246.6 L255.8,237.1 L256.9,226.6 L258.0,215.4 L259.1,215.3 L260.2,220.1 L261.3,227.2 L262.4,216.7 L263.5,230.0 L264.6,227.4 L265.7,227.4 L266.8,239.2 L267.9,236.4 L269.0,227.0 L270.1,228.2 L271.2,239.0 L272.3,231.8 L273.4,216.2 L274.5,216.2 L275.6,225.5 L276.7,223.1 L277.8,221.3 L278.9,219.5 L280.0,222.6 L281.1,225.8 L282.2,231.3 L283.3,237.3 L284.4,243.2 L285.5,244.6 L286.6,229.1 L287.7,223.3 L288.8,225.0 L289.9,223.9 L291.0,228.7 L292.1,240.6 L293.2,228.9 L294.3,226.5 L295.4,243.5 L296.5,237.4 L297.6,235.2 L298.7,243.2 L299.8,247.6 L300.9,235.3 L302.0,225.8 L303.1,217.5 L304.2,220.9 L305.3,215.2 L306.4,205.6 L307.5,224.5 L308.6,219.6 L309.7,220.9 L310.8,214.3 L311.9,217.2 L313.0,218.8 L314.1,224.6 L315.2,214.7 L316.3,210.7 L317.4,214.1 L318.5,237.8 L319.6,217.6 L320.7,215.8 L321.8,227.3 L322.9,224.2 L324.0,228.8 L325.1,242.9 L326.2,223.5 L327.3,221.9 L328.4,228.3 L329.5,228.4 L330.6,230.8 L331.7,220.1 L332.8,216.8 L333.9,217.0 L335.0,232.0 L336.1,239.9 L337.2,239.4 L338.3,243.2 L339.4,239.5 L340.5,241.7 L341.6,224.7 L342.7,226.1 L343.8,226.0 L344.9,239.5 L346.0,236.8 L347.1,223.0 L348.2,222.2 L349.3,218.2 L350.4,210.7 L351.5,217.0 L352.6,217.0 L353.7,221.3 L354.8,230.4 L355.9,239.2 L357.0,239.9 L358.1,227.5 L359.2,239.3 L360.3,227.5 L361.4,228.0 L362.5,212.0 L363.6,210.5 L364.7,224.3 L365.8,235.5 L366.9,226.6 L368.0,234.7 L369.1,235.2 L370.2,234.0 L371.3,225.4 L372.4,207.9 L373.5,205.1 L374.6,215.0 L375.7,223.2 L376.8,233.0 L377.9,237.5 L379.0,232.1 L380.1,235.9 L381.2,227.5 L382.3,223.6 L383.4,224.7 L384.5,235.1 L385.6,236.4 L386.7,228.8 L387.8,224.7 L388.9,226.2 L390.0,219.9 L391.1,216.5 L392.2,215.9 L393.3,225.5 L394.4,223.3 L395.5,218.6 L396.6,229.9 L397.7,237.3 L398.8,244.9 L399.9,244.6 L401.0,240.5 L402.1,241.6 L403.2,239.7 L404.3,240.7 L405.4,232.2 L406.5,235.3 L407.6,230.2 L408.7,229.9 L409.8,238.8 L410.9,225.7 L412.0,224.7 L413.1,232.2 L414.2,236.7 L415.3,238.4 L416.4,231.4 L417.5,233.3 L418.6,238.9 L419.7,244.7 L420.8,231.4 L421.9,219.4 L423.0,214.0 L424.1,224.5 L425.2,228.1 L426.3,218.7 L427.4,219.9 L428.5,218.0 L429.6,223.3 L430.7,227.8 L431.8,235.1 L432.9,232.5 L434.0,225.0 L435.1,229.0 L436.2,232.2 L437.3,225.8 L438.4,222.6 L439.5,221.7 L440.6,216.4 L441.7,216.9 L442.8,209.5 L443.9,212.8 L445.0,221.1 L446.1,226.6 L447.2,222.8 L448.3,228.9 L449.4,233.8 L450.5,220.5 L451.6,224.3 L452.7,236.6 L453.8,227.7 L454.9,224.0 L456.0,230.5 L457.1,236.6 L458.2,217.8 L459.3,225.0 L460.4,222.5 L461.5,218.9 L462.6,216.7 L463.7,226.9 L464.8,211.7 L465.9,217.8 L467.0,220.7 L468.1,219.9 L469.2,225.7 L470.3,229.6 L471.4,237.0 L472.5,246.5 L473.6,239.6 L474.7,237.0 L475.8,232.4 L476.9,229.7 L478.0,212.4 L479.1,219.9 L480.2,224.4 L481.3,238.9 L482.4,232.2 L483.5,229.6 L484.6,233.9 L485.7,237.6 L486.8,231.3 L487.9,236.9 L489.0,226.8 L490.1,239.8 L491.2,228.6 L492.3,214.8 L493.4,221.6 L494.5,213.3 L495.6,221.9 L496.7,225.8 L497.8,234.7 L498.9,238.7"/>
+        <path class="ln" fill="none" stroke-width="1.4" stroke-dasharray="5 4" d="M60.0,218.8 L61.1,197.5 L62.2,211.6 L63.3,217.5 L64.4,210.6 L65.5,223.0 L66.6,208.8 L67.7,233.6 L68.8,220.5 L69.9,230.0 L71.0,209.3 L72.1,209.7 L73.2,209.6 L74.3,221.3 L75.4,236.0 L76.5,233.3 L77.6,225.2 L78.7,228.6 L79.8,238.7 L80.9,239.4 L82.0,229.2 L83.1,226.0 L84.2,220.4 L85.3,224.1 L86.4,215.3 L87.5,204.7 L88.6,213.4 L89.7,209.1 L90.8,224.9 L91.9,234.9 L93.0,227.5 L94.1,231.5 L95.2,230.0 L96.3,225.0 L97.4,232.0 L98.5,228.2 L99.6,241.4 L100.7,242.0 L101.8,247.5 L102.9,240.2 L104.0,238.7 L105.1,239.6 L106.2,242.6 L107.3,242.0 L108.4,238.9 L109.5,238.4 L110.6,235.1 L111.7,232.1 L112.8,226.7 L113.9,227.5 L115.0,217.5 L116.1,214.6 L117.2,224.4 L118.3,237.5 L119.4,238.9 L120.5,236.6 L121.6,235.0 L122.7,228.2 L123.8,225.4 L124.9,219.1 L126.0,224.6 L127.1,217.4 L128.2,220.7 L129.3,221.5 L130.4,214.0 L131.5,219.5 L132.6,216.4 L133.7,232.5 L134.8,242.9 L135.9,233.2 L137.0,228.5 L138.1,228.2 L139.2,221.9 L140.3,220.7 L141.4,222.3 L142.5,220.8 L143.6,203.4 L144.7,214.9 L145.8,213.2 L146.9,231.7 L148.0,238.1 L149.1,230.8 L150.2,229.6 L151.3,231.8 L152.4,230.9 L153.5,221.5 L154.6,226.3 L155.7,208.8 L156.8,225.6 L157.9,212.9 L159.0,211.5 L160.1,220.0 L161.2,234.4 L162.3,242.9 L163.4,240.4 L164.5,241.2 L165.6,233.3 L166.7,225.0 L167.8,228.4 L168.9,220.8 L170.0,217.0 L171.1,211.2 L172.2,223.5 L173.3,221.6 L174.4,223.4 L175.5,237.6 L176.6,225.6 L177.7,224.0 L178.8,225.5 L179.9,229.2 L181.0,224.0 L182.1,226.2 L183.2,226.9 L184.3,243.4 L185.4,236.4 L186.5,237.0 L187.6,237.6 L188.7,238.4 L189.8,237.4 L190.9,241.7 L192.0,229.5 L193.1,222.0 L194.2,232.4 L195.3,228.6 L196.4,228.4 L197.5,229.5 L198.6,228.1 L199.7,227.3 L200.8,231.6 L201.9,222.0 L203.0,224.2 L204.1,224.9 L205.2,237.2 L206.3,240.3 L207.4,238.8 L208.5,231.2 L209.6,227.5 L210.7,227.1 L211.8,226.6 L212.9,242.5 L214.0,239.7 L215.1,237.1 L216.2,218.8 L217.3,212.8 L218.4,226.1 L219.5,226.6 L220.6,229.3 L221.7,242.7 L222.8,235.3 L223.9,232.3 L225.0,232.8 L226.1,234.5 L227.2,243.9 L228.3,243.5 L229.4,237.5 L230.5,240.0 L231.6,223.1 L232.7,227.4 L233.8,227.9 L234.9,227.6 L236.0,236.3 L237.1,222.7 L238.2,226.1 L239.3,233.3 L240.4,236.8 L241.5,239.3 L242.6,242.4 L243.7,242.0 L244.8,235.7 L245.9,235.2 L247.0,241.1 L248.1,245.0 L249.2,231.3 L250.3,238.9 L251.4,237.5 L252.5,243.6 L253.6,243.0 L254.7,232.2 L255.8,228.1 L256.9,215.2 L258.0,209.1 L259.1,208.0 L260.2,216.3 L261.3,227.7 L262.4,219.8 L263.5,231.0 L264.6,231.7 L265.7,237.3 L266.8,246.7 L267.9,239.5 L269.0,238.5 L270.1,240.1 L271.2,235.9 L272.3,241.3 L273.4,223.3 L274.5,217.8 L275.6,218.1 L276.7,212.5 L277.8,211.7 L278.9,208.6 L280.0,219.7 L281.1,225.2 L282.2,231.4 L283.3,229.7 L284.4,227.4 L285.5,234.9 L286.6,220.4 L287.7,221.9 L288.8,225.8 L289.9,228.3 L291.0,229.6 L292.1,236.0 L293.2,233.2 L294.3,224.1 L295.4,234.5 L296.5,231.7 L297.6,231.0 L298.7,233.1 L299.8,232.8 L300.9,238.0 L302.0,241.7 L303.1,236.1 L304.2,234.6 L305.3,230.8 L306.4,220.3 L307.5,236.9 L308.6,228.5 L309.7,228.2 L310.8,222.6 L311.9,227.5 L313.0,232.3 L314.1,241.6 L315.2,231.7 L316.3,226.8 L317.4,226.2 L318.5,239.1 L319.6,235.6 L320.7,240.0 L321.8,236.3 L322.9,247.3 L324.0,227.8 L325.1,228.7 L326.2,214.8 L327.3,219.6 L328.4,228.4 L329.5,228.6 L330.6,231.0 L331.7,222.2 L332.8,217.2 L333.9,219.7 L335.0,231.4 L336.1,237.3 L337.2,228.0 L338.3,236.6 L339.4,234.9 L340.5,237.1 L341.6,229.7 L342.7,229.1 L343.8,225.2 L344.9,229.5 L346.0,240.7 L347.1,235.9 L348.2,233.5 L349.3,230.1 L350.4,221.5 L351.5,228.5 L352.6,226.9 L353.7,230.0 L354.8,241.6 L355.9,231.8 L357.0,227.0 L358.1,224.4 L359.2,234.1 L360.3,236.0 L361.4,245.7 L362.5,226.5 L363.6,223.5 L364.7,224.3 L365.8,223.6 L366.9,215.9 L368.0,218.6 L369.1,222.6 L370.2,230.4 L371.3,229.4 L372.4,209.8 L373.5,205.2 L374.6,215.6 L375.7,220.2 L376.8,226.1 L377.9,244.8 L379.0,232.1 L380.1,236.6 L381.2,234.4 L382.3,238.1 L383.4,237.5 L384.5,241.5 L385.6,236.1 L386.7,225.9 L387.8,214.5 L388.9,223.5 L390.0,221.8 L391.1,226.4 L392.2,220.0 L393.3,224.9 L394.4,225.9 L395.5,229.0 L396.6,236.0 L397.7,235.0 L398.8,232.9 L399.9,234.9 L401.0,222.4 L402.1,230.4 L403.2,224.4 L404.3,227.9 L405.4,218.4 L406.5,222.7 L407.6,229.3 L408.7,230.6 L409.8,234.4 L410.9,241.6 L412.0,231.8 L413.1,246.5 L414.2,241.7 L415.3,241.9 L416.4,242.0 L417.5,239.1 L418.6,244.7 L419.7,240.8 L420.8,238.8 L421.9,225.3 L423.0,223.1 L424.1,231.2 L425.2,233.2 L426.3,226.5 L427.4,226.8 L428.5,214.1 L429.6,215.6 L430.7,218.3 L431.8,221.5 L432.9,220.1 L434.0,214.7 L435.1,222.6 L436.2,234.3 L437.3,228.4 L438.4,230.7 L439.5,224.3 L440.6,220.7 L441.7,228.1 L442.8,218.9 L443.9,223.8 L445.0,234.2 L446.1,243.9 L447.2,241.5 L448.3,234.8 L449.4,233.3 L450.5,241.0 L451.6,243.0 L452.7,239.6 L453.8,226.1 L454.9,219.3 L456.0,231.9 L457.1,237.6 L458.2,229.5 L459.3,226.1 L460.4,223.1 L461.5,222.9 L462.6,223.2 L463.7,230.4 L464.8,221.6 L465.9,225.2 L467.0,230.7 L468.1,234.2 L469.2,240.8 L470.3,246.4 L471.4,239.3 L472.5,230.0 L473.6,224.9 L474.7,228.5 L475.8,217.6 L476.9,219.4 L478.0,202.1 L479.1,213.7 L480.2,218.8 L481.3,233.8 L482.4,224.8 L483.5,221.3 L484.6,223.5 L485.7,223.7 L486.8,220.3 L487.9,239.1 L489.0,243.4 L490.1,234.0 L491.2,235.6 L492.3,228.6 L493.4,229.3 L494.5,228.0 L495.6,241.1 L496.7,245.9 L497.8,241.6 L498.9,221.7"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">20</text>
+          <text x="500" y="268" text-anchor="end">40 s</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="144" text-anchor="end">6</text>
+          <text x="52" y="34" text-anchor="end">12 cm</text>
+        </g>
+        <g font-size="13">
+          <text x="64" y="16" class="t-tesis">ignora el desfase: 8,8 cm RMS</text>
+          <text x="290" y="16" class="t-accent">lo estima: 1,3 cm</text>
+          <text x="420" y="16" class="t-muted">conocido: 1,2</text>
+        </g>
+      </svg>
+      <figcaption>IMU a 200 Hz y posición visual a 20 Hz con 30 ms de desfase, en una trayectoria de hasta unos 3 m/s. Filtro de A4a con y sin el desfase como estado. Calculado en <code>figuras/figuras_a4b.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small">Modelo de medida con el desfase como estado: \(\mathbf p(t - t_d) \approx \mathbf p(t) - \mathbf v(t)\,t_d\), con jacobiano \(-\mathbf v\) respecto a \(t_d\). El filtro lo estima en 33 ms (real 30) y queda al 10 % en unos 2 s.</p>
+      <ul class="small">
+        <li><strong>Li y Mourikis:</strong> el desfase es localmente identificable salvo en movimientos degenerados <a class="cite" data-ref="li2014"></a>.</li>
+        <li><strong>VINS-Mono</strong> lo optimiza junto con los estados <a class="cite" data-ref="qinshen2018"></a>; <strong>OpenVINS</strong> lo activa con <code>calib_cam_timeoffset: true</code>.</li>
+        <li><strong>Kalibr</strong> lo estima fuera de línea en tiempo continuo, junto con la calibración espacial <a class="cite" data-ref="furgale2013"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Observabilidad otra vez</span>El jacobiano es la velocidad: en vuelo estacionario, el desfase no es observable. Hace falta moverse.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Convergencia del desfase</p>
+  <h2>Dos segundos de movimiento bastan para estimar 30 ms</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Evolución del desfase temporal estimado por el filtro frente al real">
+        <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
+        <line class="ln-dash" x1="60" y1="85.0" x2="500" y2="85.0"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,250.0 L61.1,135.8 L62.2,119.2 L63.3,136.5 L64.4,105.7 L65.5,175.3 L66.6,163.6 L67.7,56.7 L68.8,32.4 L69.9,30.0 L71.0,34.5 L72.1,30.0 L73.2,30.0 L74.3,30.0 L75.4,30.0 L76.5,30.0 L77.6,30.0 L78.7,34.1 L79.8,30.0 L80.9,47.7 L82.0,80.2 L83.1,82.3 L84.2,74.4 L85.3,56.5 L86.4,41.9 L87.5,30.0 L88.6,44.6 L89.7,50.0 L90.8,43.3 L91.9,40.3 L93.0,36.8 L94.1,39.4 L95.2,41.9 L96.3,45.6 L97.4,50.8 L98.5,50.6 L99.6,48.8 L100.7,48.5 L101.8,47.7 L102.9,51.1 L104.0,49.9 L105.1,49.7 L106.2,55.2 L107.3,54.6 L108.4,57.8 L109.5,59.2 L110.6,61.9 L111.7,60.9 L112.8,66.0 L113.9,65.4 L115.0,67.7 L116.1,63.9 L117.2,61.3 L118.3,61.6 L119.4,61.0 L120.5,60.9 L121.6,61.2 L122.7,61.0 L123.8,63.8 L124.9,68.0 L126.0,68.2 L127.1,69.5 L128.2,67.1 L129.3,64.9 L130.4,63.7 L131.5,60.3 L132.6,60.3 L133.7,60.5 L134.8,58.0 L135.9,58.6 L137.0,57.2 L138.1,57.8 L139.2,59.5 L140.3,60.0 L141.4,59.5 L142.5,59.6 L143.6,59.1 L144.7,58.5 L145.8,60.2 L146.9,60.3 L148.0,58.1 L149.1,57.8 L150.2,57.7 L151.3,61.4 L152.4,63.4 L153.5,60.8 L154.6,61.2 L155.7,59.9 L156.8,63.8 L157.9,65.1 L159.0,63.3 L160.1,62.9 L161.2,63.9 L162.3,62.7 L163.4,63.0 L164.5,62.8 L165.6,62.7 L166.7,62.7 L167.8,63.3 L168.9,62.5 L170.0,62.7 L171.1,64.2 L172.2,62.0 L173.3,63.2 L174.4,65.4 L175.5,65.8 L176.6,67.1 L177.7,67.5 L178.8,68.9 L179.9,67.5 L181.0,68.4 L182.1,66.8 L183.2,67.5 L184.3,66.9 L185.4,66.6 L186.5,67.2 L187.6,66.5 L188.7,66.6 L189.8,66.7 L190.9,66.8 L192.0,68.8 L193.1,69.3 L194.2,68.2 L195.3,68.4 L196.4,67.6 L197.5,66.7 L198.6,67.3 L199.7,66.6 L200.8,64.7 L201.9,65.8 L203.0,65.7 L204.1,65.6 L205.2,65.9 L206.3,65.8 L207.4,65.8 L208.5,66.0 L209.6,65.8 L210.7,65.9 L211.8,66.0 L212.9,65.9 L214.0,66.2 L215.1,67.0 L216.2,67.2 L217.3,67.3 L218.4,66.0 L219.5,66.0 L220.6,65.4 L221.7,66.3 L222.8,67.4 L223.9,67.2 L225.0,67.6 L226.1,66.3 L227.2,66.6 L228.3,66.6 L229.4,66.6 L230.5,66.6 L231.6,66.2 L232.7,65.7 L233.8,66.4 L234.9,67.2 L236.0,66.9 L237.1,65.6 L238.2,66.0 L239.3,67.0 L240.4,67.2 L241.5,68.5 L242.6,69.1 L243.7,69.0 L244.8,68.8 L245.9,68.0 L247.0,68.4 L248.1,68.2 L249.2,68.5 L250.3,68.2 L251.4,68.4 L252.5,68.3 L253.6,68.2 L254.7,68.8 L255.8,68.8 L256.9,69.4 L258.0,68.9 L259.1,69.0 L260.2,68.3 L261.3,67.3 L262.4,67.5 L263.5,67.4 L264.6,66.8 L265.7,66.5 L266.8,66.6 L267.9,66.6 L269.0,67.3 L270.1,67.3 L271.2,67.2 L272.3,67.0 L273.4,66.9 L274.5,67.1 L275.6,67.5 L276.7,67.7 L277.8,67.7 L278.9,67.5 L280.0,66.7 L281.1,66.2 L282.2,66.2 L283.3,66.7 L284.4,67.5 L285.5,66.6 L286.6,67.0 L287.7,66.4 L288.8,66.8 L289.9,66.6 L291.0,66.2 L292.1,66.1 L293.2,66.0 L294.3,66.0 L295.4,66.2 L296.5,66.1 L297.6,66.0 L298.7,66.2 L299.8,66.2 L300.9,65.7 L302.0,64.9 L303.1,64.1 L304.2,64.6 L305.3,64.5 L306.4,64.5 L307.5,66.0 L308.6,66.6 L309.7,67.0 L310.8,67.6 L311.9,67.6 L313.0,67.3 L314.1,67.0 L315.2,67.0 L316.3,66.9 L317.4,67.0 L318.5,67.4 L319.6,66.7 L320.7,66.3 L321.8,66.9 L322.9,66.8 L324.0,68.1 L325.1,68.1 L326.2,68.7 L327.3,67.8 L328.4,67.4 L329.5,67.6 L330.6,67.2 L331.7,67.3 L332.8,67.3 L333.9,67.5 L335.0,67.1 L336.1,67.0 L337.2,66.8 L338.3,66.7 L339.4,66.8 L340.5,66.7 L341.6,66.5 L342.7,66.6 L343.8,67.0 L344.9,67.2 L346.0,66.3 L347.1,65.6 L348.2,66.0 L349.3,65.9 L350.4,65.8 L351.5,66.1 L352.6,66.6 L353.7,66.8 L354.8,66.7 L355.9,66.6 L357.0,66.8 L358.1,66.9 L359.2,66.7 L360.3,66.5 L361.4,66.4 L362.5,66.3 L363.6,66.3 L364.7,67.0 L365.8,67.3 L366.9,67.2 L368.0,67.6 L369.1,67.1 L370.2,66.2 L371.3,65.7 L372.4,65.2 L373.5,65.7 L374.6,66.0 L375.7,66.4 L376.8,66.5 L377.9,66.7 L379.0,66.9 L380.1,66.8 L381.2,66.8 L382.3,66.6 L383.4,66.8 L384.5,67.1 L385.6,67.3 L386.7,67.3 L387.8,67.8 L388.9,66.9 L390.0,66.7 L391.1,66.1 L392.2,66.5 L393.3,67.3 L394.4,67.8 L395.5,66.8 L396.6,66.9 L397.7,66.9 L398.8,67.1 L399.9,67.2 L401.0,67.1 L402.1,67.1 L403.2,67.2 L404.3,67.1 L405.4,67.2 L406.5,67.0 L407.6,66.6 L408.7,66.5 L409.8,66.8 L410.9,66.1 L412.0,66.3 L413.1,66.7 L414.2,66.9 L415.3,66.8 L416.4,66.5 L417.5,66.4 L418.6,66.8 L419.7,66.9 L420.8,67.2 L421.9,67.4 L423.0,67.5 L424.1,67.4 L425.2,67.5 L426.3,67.4 L427.4,67.5 L428.5,68.2 L429.6,68.3 L430.7,68.2 L431.8,68.1 L432.9,67.9 L434.0,67.8 L435.1,67.6 L436.2,66.8 L437.3,67.2 L438.4,66.6 L439.5,67.1 L440.6,67.3 L441.7,67.4 L442.8,67.5 L443.9,67.6 L445.0,67.6 L446.1,67.5 L447.2,67.5 L448.3,67.7 L449.4,67.8 L450.5,67.2 L451.6,67.4 L452.7,67.8 L453.8,68.2 L454.9,68.5 L456.0,67.8 L457.1,67.6 L458.2,66.4 L459.3,67.8 L460.4,68.2 L461.5,68.0 L462.6,67.9 L463.7,67.9 L464.8,67.8 L465.9,67.8 L467.0,67.8 L468.1,67.7 L469.2,67.8 L470.3,67.8 L471.4,68.0 L472.5,68.4 L473.6,68.3 L474.7,67.9 L475.8,68.5 L476.9,68.2 L478.0,68.9 L479.1,67.7 L480.2,67.6 L481.3,66.9 L482.4,66.1 L483.5,65.9 L484.6,66.1 L485.7,66.3 L486.8,66.2 L487.9,66.3 L489.0,66.3 L490.1,66.5 L491.2,66.3 L492.3,66.1 L493.4,66.4 L494.5,66.2 L495.6,66.4 L496.7,66.4 L497.8,66.8 L498.9,67.6"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="268" text-anchor="middle">0</text>
+          <text x="280" y="268" text-anchor="middle">20</text>
+          <text x="500" y="268" text-anchor="end">40 s</text>
+          <text x="52" y="254" text-anchor="end">0</text>
+          <text x="52" y="89" text-anchor="end">30 ms</text>
+          <text x="52" y="34" text-anchor="end">40</text>
+        </g>
+        <text x="300" y="102" class="t-faint" font-size="12">desfase real (30 ms)</text>
+      </svg>
+      <figcaption>Desfase estimado por el filtro de la hoja anterior, que arranca suponiendo 0 ms. Calculado en <code>figuras/figuras_a4b.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>El filtro arranca con 0 ms y una incertidumbre de 50 ms; queda dentro del 10 % del real a los 2 s y acaba en 33 ms.</li>
+        <li>Converge porque la trayectoria tiene velocidad en los tres ejes. En estacionario, el jacobiano \(-\mathbf v\) se anula y el desfase deja de ser observable.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Calibrar el desfase con el dron en el banco, quieto, y darlo por bueno. El desfase depende del controlador del sensor, del sistema operativo y de la carga del procesador: puede cambiar en vuelo (C4, C6).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 · EVENTOS ============ -->
+<section class="slide divider" data-section="4 · Cámaras de eventos">
+  <p class="num">Parte 4</p>
+  <h2>Cámaras de eventos</h2>
+  <p>Un sensor que no hace fotos: cada píxel avisa cuando cambia su brillo. Microsegundos de resolución y mucho rango dinámico, a cambio de algoritmos nuevos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cómo funcionan</p>
+  <h2>Cada píxel dispara cuando el logaritmo del brillo cambia más que un umbral</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Un evento \(e_k = (x_k, y_k, t_k, p_k)\) se genera cuando, en el píxel \((x_k, y_k)\),</p>
+      \[ \log I(t_k) - \log I(t_k - \Delta t_k) = p_k\,C \]
+      <p class="small">con polaridad \(p_k = \pm1\), \(C\) el umbral de contraste y \(\Delta t_k\) el tiempo desde el último evento del píxel. No hay fotogramas: el flujo es asíncrono y su caudal depende del movimiento y de la textura <a class="cite" data-ref="gallego2022"></a>.</p>
+      <ul class="small">
+        <li>Resolución temporal del orden de <span class="hz">microsegundos</span> y ancho de banda por píxel del orden de kHz.</li>
+        <li>Rango dinámico de 140 dB frente a unos 60 dB de una cámara convencional; bajo consumo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Cuándo compensa</span>Movimiento rápido (sin desenfoque), contraluces y poca luz. Con el dron quieto y una escena sin cambios, apenas hay eventos: la información viene del movimiento.</div>
+      <div class="callout realidad"><span class="tag">En drones</span>Eventos, imágenes e IMU juntos: un 130 % mejor que solo eventos y un 85 % mejor que la VIO con imágenes, en el primer cuadricóptero que estima con eventos <a class="cite" data-ref="rosinol2018"></a>. PL-EVIO cierra el lazo en volteretas: 0,097 m y 6,0° de error medio en 15 m, hasta 1000 Hz en un Intel NUC (preprint) <a class="cite" data-ref="guan2024"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Los eventos son una observación con su propio ruido, latencia y sesgos. Un world model que los use tiene que aprender un modelo de observación muy distinto del de una cámara: B3a los modela.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 · APRENDIDOS ============ -->
+<section class="slide divider" data-section="5 · Estimadores aprendidos">
+  <p class="num">Parte 5</p>
+  <h2>Estimadores aprendidos</h2>
+  <p>De aprender piezas del filtro a aprender el SLAM entero: lo que funciona, con qué cómputo y dónde falla.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Un espectro</p>
+  <h2>Cuánto del estimador se aprende</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Nivel</th><th>Ejemplo</th><th>Resultado publicado</th></tr>
+      <tr><td><strong>Filtro diferenciable</strong></td><td>Backprop KF: un Kalman cuya medida produce una red, entrenado de extremo a extremo <a class="cite" data-ref="haarnoja2016"></a>; filtros de partículas diferenciables <a class="cite" data-ref="jonschkowski2018"></a></td><td>Filtros de partículas diferenciables: la estructura de predicción y actualización reduce los errores alrededor de un 80 % frente a aprender sin ella</td></tr>
+      <tr><td><strong>Odometría inercial aprendida</strong></td><td>TLIO: una red predice desplazamientos a partir de ventanas de IMU y un EKF los funde <a class="cite" data-ref="liu2020"></a></td><td>Ver la hoja siguiente para drones</td></tr>
+      <tr><td><strong>SLAM aprendido</strong></td><td>DROID-SLAM: actualización recurrente de flujo óptico y un ajuste de haces diferenciable <a class="cite" data-ref="teed2021"></a></td><td>62 % menos error (mono) en TartanAir; 2,2 cm de ATE medio en EuRoC monocular, sin fallos; tiempo real con dos RTX 3090</td></tr>
+      <tr><td><strong>Odometría visual dispersa aprendida</strong></td><td>DPVO <a class="cite" data-ref="teed2023"></a></td><td>Un tercio de la memoria de DROID-SLAM y 3 veces más rápido</td></tr>
+      <tr><td><strong>Modelos 3D fundacionales</strong></td><td>MASt3R-SLAM <a class="cite" data-ref="murai2025"></a></td><td>SLAM denso monocular a 15 FPS, sin IMU; estado del arte según los autores</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Cómputo limitado</span>Lo mejor de esta tabla necesita GPU de sobremesa. En un dron, los estimadores aprendidos que vuelan hoy son pequeños (odometría inercial) o corren fuera.</div>
+    <div class="callout tesis"><span class="tag">Tu tesis</span>Un filtro diferenciable es un belief con estructura de filtro entrenado con gradientes: el punto medio entre el ESKF de A4a y el RSSM de A8.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Odometría inercial aprendida en carreras</p>
+  <h2>Cuando la cámara se emborrona, la IMU con una red aguanta</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Cioffi et al. entrenan una red temporal que, con el giróscopo y los empujes colectivos mandados, predice desplazamientos que un EKF propagado con la IMU funde. En una carrera real a unos 70 km/h, con el estimador corriendo en una Jetson TX2 <a class="cite" data-ref="cioffi2023"></a>:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Estimador</th><th>Error de posición (ATE)</th></tr>
+          <tr><td>Su odometría inercial aprendida</td><td class="n">0,56 m</td></tr>
+          <tr><td>TLIO</td><td class="n">1,21 m</td></tr>
+          <tr><td>VIO con la posición de las puertas conocida</td><td class="n">0,48 m</td></tr>
+          <tr><td>SVO</td><td class="n">47,2 m</td></tr>
+          <tr><td>OpenVINS</td><td class="n">98,2 m</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Letra pequeña</span>El vuelo se controló con captura de movimiento; el estimador solo se evaluó, no cerró el lazo. Y la red aprende la dinámica de ese dron en ese tipo de vuelo: fuera de su distribución, nada garantiza el resultado.</div>
+      <div class="callout clave"><span class="tag">Por qué funciona</span>A alta velocidad, el desenfoque y el desfase arruinan la visión, pero la dinámica del dron es muy predecible: una red que conoce los mandos y la IMU estima bien el movimiento a corto plazo. Es un world model local.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Mapas y cierre de bucle</p>
+  <h2>Odometría frente a SLAM: corregir la deriva al volver a un sitio conocido</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Odometría (VIO):</strong> estima el movimiento con una ventana reciente; la posición y la guiñada derivan sin cota.</li>
+        <li><strong>SLAM:</strong> guarda un mapa y, al reconocer un lugar ya visitado, añade una restricción entre la pose actual y la antigua (cierre de bucle). Una optimización de grafo de poses reparte la corrección por toda la trayectoria.</li>
+        <li><strong>Relocalización y varios mapas:</strong> si el estimador se pierde, empieza un mapa nuevo y lo une a los anteriores cuando reconoce un sitio; ORB-SLAM3 lo hace con su sistema de varios mapas <a class="cite" data-ref="campos2021"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Matriz de información dispersa</span>Cada medida relaciona pocas variables (una pose y un punto, dos poses), así que el sistema normal es disperso: la optimización escala con el tamaño del mapa mucho mejor que un filtro con covarianza densa. Es la forma de información de A4a llevada al límite.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un cierre de bucle es una observación que reduce de golpe la incertidumbre de toda la trayectoria. Un explorador con belief debería valorar volver a sitios conocidos cuando su incertidumbre crece: es exploración frente a explotación en el espacio de beliefs (A7).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fallos en vuelo</p>
+  <h2>Cómo saber que el estimador visual se está perdiendo</h2>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Pocas características seguidas</strong> o mal repartidas en la imagen: poca textura, desenfoque, cambio brusco de luz.</li>
+      <li><strong>Innovaciones grandes</strong>: NIS por encima de su umbral \(\chi^2\) de forma sostenida (A4a).</li>
+      <li><strong>Movimiento degenerado</strong>: rotación pura con cámara monocular (sin traslación no hay paralaje) o vuelo a velocidad constante (sin escala).</li>
+      <li><strong>Sesgos que se disparan</strong> o covarianzas que dejan de crecer en las direcciones inobservables.</li>
+    </ul>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En drones</span>Es lo que separa un VIO que funciona en el banco de uno que vuela: en carreras, los VIO genéricos acumulan errores de decenas de metros por el desenfoque y la velocidad <a class="cite" data-ref="cioffi2023"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Estos indicadores son observaciones de la calidad del belief. Dárselos a la política (o al world model) le permite actuar con prudencia cuando su estimador está ciego: frenar, subir o buscar textura.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Datos</p>
+  <h2>Los conjuntos de datos que vas a usar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Conjunto</th><th>Qué tiene</th><th>Para qué</th></tr>
+      <tr><td>EuRoC <a class="cite" data-ref="burri2016"></a></td><td>Microdrón en una nave industrial y en una sala con captura de movimiento: estéreo, IMU y referencia de posición (láser) o de pose completa</td><td>El banco de pruebas estándar de VIO; lo usas en A4a y A4b</td></tr>
+      <tr><td>TUM-VI <a class="cite" data-ref="schubert2018"></a></td><td>Imágenes de 1024 × 1024 a 20 Hz, IMU a 200 Hz con sincronización por hardware; referencia de captura de movimiento a 120 Hz solo al principio y al final de cada secuencia</td><td>Secuencias largas, de mano; deriva</td></tr>
+      <tr><td>UZH-FPV <a class="cite" data-ref="delmerico2019"></a></td><td>Más de 27 secuencias y más de 10 km de vuelo de un dron de carreras, con eventos</td><td>Vuelo agresivo, desenfoque, eventos</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Error frecuente</span>Comparar errores de distintos artículos sin alinear igual las trayectorias (escala, guiñada y posición inicial son inobservables) ni usar la misma métrica: ATE y RPE miden cosas distintas. Usa una herramienta común, como evo, y di cómo alineas.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Geometría clásica con piezas aprendidas, y modelos 3D fundacionales</h2>
+  <div class="cols">
+    <div class="stack small">
+      <p><strong>Lo que ya se ve:</strong></p>
+      <ul>
+        <li>SLAM aprendido de extremo a extremo con precisión de referencia, pero con GPU de sobremesa <a class="cite" data-ref="teed2021,teed2023"></a>.</li>
+        <li>Odometría inercial aprendida que aguanta donde la visión cae <a class="cite" data-ref="cioffi2023"></a>.</li>
+        <li>SLAM denso sobre modelos 3D fundacionales <a class="cite" data-ref="murai2025"></a>.</li>
+        <li>Eventos cerrando el lazo de control en maniobras agresivas <a class="cite" data-ref="guan2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack small">
+      <p><strong>Previsión nuestra para 2027 y después:</strong></p>
+      <ul>
+        <li>Estimadores de a bordo con núcleo VIO clásico (por su consistencia y bajo coste) y módulos aprendidos donde la física no llega.</li>
+        <li>World models que reciben el estado del VIO y su covarianza, en lugar de imágenes crudas, para lo que necesita alta frecuencia.</li>
+        <li>Detección aprendida de cuándo el estimador está fallando, como entrada del planificador.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El estimador como parte del belief</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>En un dron con cámara, el belief no es solo «dónde estoy», sino también «qué hay alrededor» y «cuánto me fío de lo que creo». El VIO te da lo primero con una covarianza; el mapa y los objetos, lo segundo; y su consistencia, lo tercero. Un world model puede aprender las tres cosas o apoyarse en el VIO para la primera.</div>
+      <p class="small">Los fallos de percepción (desenfoque, desfase, poca textura, poca luz) son exactamente la observabilidad parcial de tu tesis en su forma más concreta.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol class="small">
+        <li>¿Entrenas tu world model con la salida del VIO, con imágenes crudas o con las dos cosas?</li>
+        <li>¿Cómo detecta tu agente que el VIO está fallando antes de que diverja?</li>
+        <li>¿Puede tu planificador elegir trayectorias que mantengan observable la escala y los sesgos?</li>
+        <li>¿Cómo trata tu modelo el desfase temporal de una cámara de verdad?</li>
+        <li>¿Te compensan los eventos para vuelo rápido o con poca luz, dado el coste de modelarlos?</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A4b</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>La cámara mide proyecciones; el error de reproyección es el residuo de todo VIO. Estéreo: \(\sigma_Z = Z^2\sigma_d/(fb)\), casi 1 m a 10 m con la base de EuRoC.</li>
+    <li>VIO no ve la posición global ni la guiñada global; la escala monocular necesita aceleración.</li>
+    <li>MSCKF: clones de poses y proyección al espacio nulo del punto. Ventana deslizante: optimizar y marginalizar con el complemento de Schur.</li>
+    <li>Preintegración: la IMU entre fotogramas en un factor que no depende de la pose inicial.</li>
+    <li>Desfase temporal: \(f\omega t_d\) píxeles; 30 ms sin corregir multiplican el error por 7 en el ejemplo, y estimarlo como estado lo arregla si hay movimiento.</li>
+    <li>Eventos: microsegundos y 140 dB, útiles en vuelo rápido y con poca luz.</li>
+    <li>Aprendidos: DROID-SLAM y DPVO precisos con GPU; odometría inercial aprendida que aguanta en carreras donde la VIO clásica falla.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Geometría y observabilidad</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Par estéreo con \(f\) = 460 px, base de 10 cm y ruido de disparidad de 0,5 px. ¿Incertidumbre de profundidad a 5 m?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 1 cm</button></li>
+        <li><button type="button">≈ 5 cm</button></li>
+        <li><button type="button">≈ 27 cm</button></li>
+        <li><button type="button">≈ 2,7 m</button></li>
+      </ol>
+      <p class="explain">\(\sigma_Z = Z^2\sigma_d/(fb) = 25\cdot0{,}5/(460\cdot0{,}1) \approx 0{,}27\) m. Crece con el cuadrado de la distancia.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. Un dron con VIO monocular vuela en línea recta a velocidad constante. ¿Qué deja de ser observable?</p>
+      <ol class="opts">
+        <li><button type="button">La inclinación</button></li>
+        <li><button type="button">La escala</button></li>
+        <li><button type="button">La velocidad angular</button></li>
+        <li><button type="button">Nada</button></li>
+      </ol>
+      <p class="explain">La IMU fija la escala a través de la aceleración; sin aceleración, la cámara monocular no la distingue. La inclinación sigue viéndose por la gravedad.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Filtros, optimización y tiempo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. En el MSCKF, ¿para qué se proyecta el residuo con el espacio nulo izquierdo de \(H_f\)?</p>
+      <ol class="opts">
+        <li><button type="button">Para eliminar la dependencia del punto del mapa sin meterlo en el estado</button></li>
+        <li><button type="button">Para normalizar el ruido</button></li>
+        <li><button type="button">Para estimar la escala</button></li>
+        <li><button type="button">Para detectar medidas atípicas</button></li>
+      </ol>
+      <p class="explain">\(N^\top H_f = 0\) quita las direcciones que dependen del punto: es una marginalización exacta que deja \(2m-3\) residuos que solo dependen de las poses.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. Tu dron gira a 3 rad/s y la cámara (\(f\) = 450 px) tiene 8 ms de desfase sin corregir. ¿Error equivalente?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 0,1 px</button></li>
+        <li><button type="button">≈ 1 px</button></li>
+        <li><button type="button">≈ 3 px</button></li>
+        <li><button type="button">≈ 11 px</button></li>
+      </ol>
+      <p class="explain">\(f\omega t_d = 450\cdot3\cdot0{,}008 \approx 10{,}8\) px: un orden de magnitud por encima del ruido de detección.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Eventos y aprendizaje</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. ¿Cuándo aporta menos una cámara de eventos?</p>
+      <ol class="opts">
+        <li><button type="button">En vuelo rápido</button></li>
+        <li><button type="button">Con el dron quieto frente a una escena estática</button></li>
+        <li><button type="button">Con contraluces fuertes</button></li>
+        <li><button type="button">Con poca luz</button></li>
+      </ol>
+      <p class="explain">Los eventos nacen de cambios de brillo. Sin movimiento ni cambios en la escena, casi no hay eventos y casi no hay información.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu dron explora interiores con una cámara monocular, una IMU y una GPU embarcada pequeña. ¿Qué estimador eliges (VIO clásico, odometría inercial aprendida, SLAM aprendido o una combinación) y cómo se lo pasas al world model?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Una elección defendible: VIO por filtro (tipo OpenVINS), por coste acotado, consistencia y desfase calibrado en línea, que da la pose y su covarianza a 100–200 Hz al control y al world model. Una odometría inercial aprendida como respaldo cuando la visión cae (desenfoque, poca textura), con detección de fallo por NIS. El world model recibe la pose y la covarianza del VIO, más imágenes a baja frecuencia para lo que la geometría no da (objetos, semántica). Un SLAM aprendido de extremo a extremo solo si la GPU lo permite a la frecuencia que necesita el planificador.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 75 MIN · ARXIV</span>
+      <h3>Preintegración en la variedad <a class="cite" data-ref="forster2017"></a></h3>
+      <p><strong>Lee:</strong> la preintegración, su covarianza y la corrección de primer orden por los sesgos.</p>
+      <p><strong>Busca:</strong> qué cantidades no dependen de la pose inicial y por qué.</p>
+      <p><strong>Responde:</strong> ¿cómo meterías estos factores en tu ESKF de A4a?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN</span>
+      <h3>VIO en drones: comparación <a class="cite" data-ref="delmerico2018"></a></h3>
+      <p><strong>Lee:</strong> el montaje (secuencias, placas) y las conclusiones.</p>
+      <p><strong>Busca:</strong> el compromiso entre precisión, robustez y cómputo de cada método.</p>
+      <p><strong>Responde:</strong> ¿cuál montarías en tu dron de tesis y en qué placa?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ARXIV</span>
+      <h3>Odometría inercial aprendida en carreras <a class="cite" data-ref="cioffi2023"></a></h3>
+      <p><strong>Lee:</strong> la red, su fusión con el EKF y los experimentos reales.</p>
+      <p><strong>Busca:</strong> qué entradas usa la red (giróscopo y empujes mandados) y por qué fallan los VIO clásicos en esas condiciones.</p>
+      <p><strong>Responde:</strong> ¿qué parte de esto es un world model?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> MSCKF <a class="cite" data-ref="mourikis2007"></a>; VINS-Mono <a class="cite" data-ref="qin2018"></a>; calibración del desfase <a class="cite" data-ref="li2014"></a>; la revisión de cámaras de eventos <a class="cite" data-ref="gallego2022"></a>; DROID-SLAM <a class="cite" data-ref="teed2021"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Estimación visual-inercial y el efecto del desfase temporal</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Desfase en tu ESKF</strong> de A4a con EuRoC: posiciones de la referencia como medida visual con desfase, sin y con el desfase como estado.</li>
+        <li><strong>OpenVINS en EuRoC</strong>: ejecutarlo, evaluar con evo y desplazar las marcas de tiempo de las imágenes 10 y 30 ms, con la calibración del desfase activada y desactivada.</li>
+        <li><strong>Geometría</strong>: profundidad estéreo y su incertidumbre con las cámaras de EuRoC.</li>
+        <li><strong>Odometría inercial aprendida</strong> mínima (opcional): una red pequeña que predice desplazamientos con ventanas de IMU.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>8,8 cm frente a 1,3 cm con 30 ms de desfase en la simulación; la tabla de \(f\omega t_d\); \(\sigma_Z\) del estéreo de EuRoC; y cómo empeora un VIO real con desfase sin calibrar.</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. OpenVINS se compila en Linux (o en un contenedor); los pasos 1 y 3 solo necesitan Python.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a4b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-campos2021">Campos, C., Elvira, R., Gómez Rodríguez, J. J., Montiel, J. M. M., Tardós, J. D. (2021). ORB-SLAM3: An accurate open-source library for visual, visual–inertial, and multimap SLAM. <span class="venue">IEEE Transactions on Robotics</span>, 37(6), 1874–1890. <a href="https://doi.org/10.1109/TRO.2021.3075644">doi:10.1109/TRO.2021.3075644</a></li>
+    <li id="ref-cioffi2023">Cioffi, G., Bauersfeld, L., Kaufmann, E., Scaramuzza, D. (2023). Learned inertial odometry for autonomous drone racing. <span class="venue">IEEE Robotics and Automation Letters</span>, 8(5), 2684–2691. <a href="https://arxiv.org/abs/2210.15287">arXiv:2210.15287</a></li>
+    <li id="ref-mourikis2007">Mourikis, A. I., Roumeliotis, S. I. (2007). A multi-state constraint Kalman filter for vision-aided inertial navigation. <span class="venue">ICRA 2007</span>, 3565–3572. <a href="https://doi.org/10.1109/ROBOT.2007.364024">doi:10.1109/ROBOT.2007.364024</a></li>
+    <li id="ref-furgale2013">Furgale, P., Rehder, J., Siegwart, R. (2013). Unified temporal and spatial calibration for multi-sensor systems. <span class="venue">IROS 2013</span>, 1280–1286. <a href="https://doi.org/10.1109/IROS.2013.6696514">doi:10.1109/IROS.2013.6696514</a></li>
+    <li id="ref-li2014">Li, M., Mourikis, A. I. (2014). Online temporal calibration for camera–IMU systems: Theory and algorithms. <span class="venue">International Journal of Robotics Research</span>, 33(7), 947–964. <a href="https://doi.org/10.1177/0278364913515286">doi:10.1177/0278364913515286</a></li>
+    <li id="ref-leutenegger2015">Leutenegger, S., Lynen, S., Bosse, M., Siegwart, R., Furgale, P. (2015). Keyframe-based visual–inertial odometry using nonlinear optimization. <span class="venue">International Journal of Robotics Research</span>, 34(3), 314–334. <a href="https://doi.org/10.1177/0278364914554813">doi:10.1177/0278364914554813</a></li>
+    <li id="ref-qin2018">Qin, T., Li, P., Shen, S. (2018). VINS-Mono: A robust and versatile monocular visual-inertial state estimator. <span class="venue">IEEE Transactions on Robotics</span>, 34(4), 1004–1020. <a href="https://arxiv.org/abs/1708.03852">arXiv:1708.03852</a></li>
+    <li id="ref-forster2017">Forster, C., Carlone, L., Dellaert, F., Scaramuzza, D. (2017). On-manifold preintegration for real-time visual–inertial odometry. <span class="venue">IEEE Transactions on Robotics</span>, 33(1), 1–21. <a href="https://arxiv.org/abs/1512.02363">arXiv:1512.02363</a></li>
+    <li id="ref-delmerico2018">Delmerico, J., Scaramuzza, D. (2018). A benchmark comparison of monocular visual-inertial odometry algorithms for flying robots. <span class="venue">ICRA 2018</span>, 2502–2509. <a href="https://doi.org/10.1109/ICRA.2018.8460664">doi:10.1109/ICRA.2018.8460664</a></li>
+    <li id="ref-rosinol2018">Rosinol Vidal, A., Rebecq, H., Horstschaefer, T., Scaramuzza, D. (2018). Ultimate SLAM? Combining events, images, and IMU for robust visual SLAM in HDR and high-speed scenarios. <span class="venue">IEEE Robotics and Automation Letters</span>, 3(2), 994–1001. <a href="https://doi.org/10.1109/LRA.2018.2793357">doi:10.1109/LRA.2018.2793357</a></li>
+    <li id="ref-geneva2020">Geneva, P., Eckenhoff, K., Lee, W., Yang, Y., Huang, G. (2020). OpenVINS: A research platform for visual-inertial estimation. <span class="venue">ICRA 2020</span>, 4666–4672. <a href="https://doi.org/10.1109/ICRA40945.2020.9196524">doi:10.1109/ICRA40945.2020.9196524</a></li>
+    <li id="ref-usenko2020">Usenko, V., Demmel, N., Schubert, D., Stückler, J., Cremers, D. (2020). Visual-inertial mapping with non-linear factor recovery. <span class="venue">IEEE Robotics and Automation Letters</span>, 5(2), 422–429. <a href="https://arxiv.org/abs/1904.06504">arXiv:1904.06504</a></li>
+    <li id="ref-liu2020">Liu, W., Caruso, D., Ilg, E., Dong, J., Mourikis, A. I., Daniilidis, K., Kumar, V., Engel, J. (2020). TLIO: Tight learned inertial odometry. <span class="venue">IEEE Robotics and Automation Letters</span>, 5(4), 5653–5660. <a href="https://arxiv.org/abs/2007.01867">arXiv:2007.01867</a></li>
+    <li id="ref-teed2021">Teed, Z., Deng, J. (2021). DROID-SLAM: Deep visual SLAM for monocular, stereo, and RGB-D cameras. <span class="venue">NeurIPS 34</span>, 16558–16569. <a href="https://arxiv.org/abs/2108.10869">arXiv:2108.10869</a></li>
+    <li id="ref-teed2023">Teed, Z., Lipson, L., Deng, J. (2023). Deep patch visual odometry. <span class="venue">NeurIPS 36</span>, 39033–39051. <a href="https://arxiv.org/abs/2208.04726">arXiv:2208.04726</a></li>
+    <li id="ref-guan2024">Guan, W., Chen, P., Xie, Y., Lu, P. (2024). PL-EVIO: Robust monocular event-based visual inertial odometry with point and line features. <span class="venue">IEEE Transactions on Automation Science and Engineering</span>, 21(4), 6277–6293. <a href="https://arxiv.org/abs/2209.12160">arXiv:2209.12160</a></li>
+    <li id="ref-murai2025">Murai, R., Dexheimer, E., Davison, A. J. (2025). MASt3R-SLAM: Real-time dense SLAM with 3D reconstruction priors. <span class="venue">CVPR 2025</span>, 16695–16705. <a href="https://arxiv.org/abs/2412.12392">arXiv:2412.12392</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="18">
+    <li id="ref-hesch2014">Hesch, J. A., Kottas, D. G., Bowman, S. L., Roumeliotis, S. I. (2014). Consistency analysis and improvement of vision-aided inertial navigation. <span class="venue">IEEE Transactions on Robotics</span>, 30(1), 158–176. <a href="https://doi.org/10.1109/TRO.2013.2277549">doi:10.1109/TRO.2013.2277549</a></li>
+    <li id="ref-qinshen2018">Qin, T., Shen, S. (2018). Online temporal calibration for monocular visual-inertial systems. <span class="venue">IROS 2018</span>, 3662–3669. <a href="https://arxiv.org/abs/1808.00692">arXiv:1808.00692</a></li>
+    <li id="ref-gallego2022">Gallego, G., Delbruck, T., Orchard, G., Bartolozzi, C., Taba, B., Censi, A., Leutenegger, S., Davison, A. J., Conradt, J., Daniilidis, K., Scaramuzza, D. (2022). Event-based vision: A survey. <span class="venue">IEEE Transactions on Pattern Analysis and Machine Intelligence</span>, 44(1), 154–180. <a href="https://arxiv.org/abs/1904.08405">arXiv:1904.08405</a></li>
+    <li id="ref-haarnoja2016">Haarnoja, T., Ajay, A., Levine, S., Abbeel, P. (2016). Backprop KF: Learning discriminative deterministic state estimators. <span class="venue">NeurIPS 29</span>. <a href="https://arxiv.org/abs/1605.07148">arXiv:1605.07148</a></li>
+    <li id="ref-jonschkowski2018">Jonschkowski, R., Rastogi, D., Brock, O. (2018). Differentiable particle filters: End-to-end learning with algorithmic priors. <span class="venue">Robotics: Science and Systems XIV</span>. <a href="https://arxiv.org/abs/1805.11122">arXiv:1805.11122</a></li>
+    <li id="ref-burri2016">Burri, M., Nikolic, J., Gohl, P., Schneider, T., Rehder, J., Omari, S., Achtelik, M. W., Siegwart, R. (2016). The EuRoC micro aerial vehicle datasets. <span class="venue">International Journal of Robotics Research</span>, 35(10), 1157–1163. <a href="https://doi.org/10.1177/0278364915620033">doi:10.1177/0278364915620033</a></li>
+    <li id="ref-schubert2018">Schubert, D., Goll, T., Demmel, N., Usenko, V., Stückler, J., Cremers, D. (2018). The TUM VI benchmark for evaluating visual-inertial odometry. <span class="venue">IROS 2018</span>, 1680–1687. <a href="https://arxiv.org/abs/1804.06120">arXiv:1804.06120</a></li>
+    <li id="ref-delmerico2019">Delmerico, J., Cieslewski, T., Rebecq, H., Faessler, M., Scaramuzza, D. (2019). Are we ready for autonomous drone racing? The UZH-FPV drone racing dataset. <span class="venue">ICRA 2019</span>, 6713–6719. <a href="https://doi.org/10.1109/ICRA.2019.8793887">doi:10.1109/ICRA.2019.8793887</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
