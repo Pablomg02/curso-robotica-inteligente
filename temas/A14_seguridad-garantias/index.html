@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A14 · Seguridad y garantías</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A14" data-deck-title="Seguridad y garantías · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 4 · Jornada 33 · Curso de robótica inteligente</p>
+  <h1>Seguridad y garantías</h1>
+  <p class="subtitle">Cómo dar garantías a un robot cuya política no se puede verificar: filtros de seguridad, funciones de barrera de control (CBF) y su programa cuadrático, el grado relativo de un dron, qué pasa con ruido, viento y latencia, alcanzabilidad de Hamilton-Jacobi y certificados aprendidos. Con un filtro CBF sobre una política agresiva que no ve los obstáculos.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A2, A3, A6, A13</span>
+    <span><b>Prepara</b> B7, B8</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A14</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar qué es un filtro de seguridad y por qué separa el rendimiento de la seguridad.</li>
+    <li>Demostrar por qué una CBF mantiene el robot en el conjunto seguro y resolver su programa cuadrático.</li>
+    <li>Escribir la CBF de orden 2 para un dron que manda aceleraciones y evita obstáculos.</li>
+    <li>Saber qué rompe la garantía (discretización, ruido de estimación, perturbaciones, límites de la entrada) y cómo se repara.</li>
+    <li>Situar la alcanzabilidad de Hamilton-Jacobi y los certificados aprendidos frente a las CBF.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Una política aprendida no se puede verificar; un filtro pequeño, sí</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Una red de millones de parámetros (A6, A10), un VLA (A12) o un LLM (A11) no vienen con garantías: RoboPAIR hizo que robots con LLM ejecutaran acciones dañinas (A11), y el mejor juez semántico de ASIMOV coincide con las personas el 84,3 % de las veces (A12b).</li>
+        <li>Un filtro de seguridad vigila en ejecución y solo interviene cuando la acción pedida llevaría a un fallo catastrófico <a class="cite" data-ref="hsu2024"></a>.</li>
+        <li>Con una CBF, ese filtro es un programa cuadrático pequeño que modifica lo mínimo la acción pedida <a class="cite" data-ref="ames2019"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu dron tomará decisiones con un belief y quizá con modelos aprendidos. Lo que garantiza que no entre en una zona prohibida ni choque no puede depender de que esos modelos acierten: tiene que ser una capa aparte, verificable.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Un filtro CBF sobre una política que va recta a la meta entre obstáculos: choques, intervenciones y llegadas, con ruido de estimación, viento y poca aceleración disponible. <code>figuras_a14.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De las barreras de control a los filtros de seguridad</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2014–2017</span>Programas cuadráticos con CBF para control de crucero adaptativo <a class="cite" data-ref="ames2014"></a> y su teoría completa <a class="cite" data-ref="ames2017"></a>. CBF exponenciales para grado relativo alto <a class="cite" data-ref="nguyen2016"></a>. Repaso de la alcanzabilidad de Hamilton-Jacobi <a class="cite" data-ref="bansal2017"></a>.</div>
+    <div class="ev"><span class="yr">2018–2020</span>Teleoperación segura de un Crazyflie con CBF <a class="cite" data-ref="xu2018"></a>. CBF de orden alto <a class="cite" data-ref="xiao2019"></a>; tutorial <a class="cite" data-ref="ames2019"></a>. CBF robustas a errores de medida <a class="cite" data-ref="dean2020"></a> y con retardo en la entrada <a class="cite" data-ref="singletary2020"></a>.</div>
+    <div class="ev"><span class="yr">2022–2024</span>Aprendizaje seguro en robótica <a class="cite" data-ref="brunke2022"></a>; filtros de seguridad basados en datos <a class="cite" data-ref="wabersich2023"></a>; certificados aprendidos <a class="cite" data-ref="dawson2023"></a>; una visión unificada del filtro de seguridad <a class="cite" data-ref="hsu2024"></a>.</div>
+    <div class="ev"><span class="yr">2026</span>CBF robustas aprendidas para errores de estimación <a class="cite" data-ref="rober2026"></a> y observadores pensados para la seguridad <a class="cite" data-ref="mousavi2026"></a> (preprints).</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="El filtro">
+  <p class="num">Parte 1</p>
+  <h2>El filtro de seguridad</h2>
+  <p>Vigilar, intervenir y tener siempre un plan de respaldo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">El filtro · en dibujo</p>
+  <h2>La política propone; el filtro deja pasar o corrige</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 230" role="img" aria-label="La política de la tarea propone una acción; el filtro de seguridad la vigila y, si llevaría a un fallo, la cambia por otra segura; el robot recibe la acción filtrada">
+        <defs><marker id="ff" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box-accent" x="10" y="80" width="130" height="60" rx="5"/><text x="75" y="105" text-anchor="middle">política de la</text><text x="75" y="123" text-anchor="middle">tarea (aprendida)</text>
+          <rect class="box-tesis" x="190" y="40" width="150" height="140" rx="5"/>
+          <text x="265" y="64" text-anchor="middle" font-weight="700">filtro</text>
+          <text x="265" y="94" text-anchor="middle">1. vigilar</text><text x="265" y="122" text-anchor="middle">2. intervenir</text><text x="265" y="150" text-anchor="middle">3. respaldo</text>
+          <rect class="box-time" x="390" y="80" width="100" height="60" rx="5"/><text x="440" y="115" text-anchor="middle">robot</text>
+        </g>
+        <g class="ln" marker-end="url(#ff)"><path d="M140,110 L188,110"/><path d="M340,110 L388,110"/><path d="M440,140 C 440,215 120,215 75,142"/></g>
+        <text x="150" y="100" class="t-muted" font-size="11">u_nom</text>
+        <text x="350" y="100" class="t-muted" font-size="11">u</text>
+        <text x="260" y="226" class="t-muted" font-size="12" text-anchor="middle">estado</text>
+      </svg>
+      <figcaption>Las tres partes de un filtro según Hsu, Hu y Fisac <a class="cite" data-ref="hsu2024"></a>: un monitor de seguridad, un esquema de intervención y una política de respaldo orientada a la seguridad.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Definición</span>«Un filtro de seguridad es un proceso automático que vigila el funcionamiento de un sistema autónomo en ejecución e interviene, cuando lo considera necesario, modificando la acción de control prevista para evitar un posible fallo catastrófico» <a class="cite" data-ref="hsu2024"></a>.</div>
+      <ul>
+        <li>Separa el problema en dos: la política busca rendimiento; el filtro, que es pequeño y tiene un modelo, da la garantía.</li>
+        <li>Un filtro «mínimamente restrictivo» solo cambia las acciones que sacarían al sistema del mayor conjunto seguro posible.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El filtro · tipos de intervención</p>
+  <h2>Conmutar al respaldo o corregir la acción lo mínimo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Intervención</th><th>Cómo funciona</th><th>Lo bueno</th><th>Lo malo</th></tr></thead>
+      <tbody>
+        <tr><td>Conmutar</td><td>si el monitor detecta peligro, manda la política de respaldo (frenar, volver, aterrizar)</td><td>sencillo de verificar</td><td>intervenciones bruscas; la política de la tarea deja de mandar</td></tr>
+        <tr><td>Corregir (CBF-QP)</td><td>busca la acción más parecida a la pedida que cumple una condición de seguridad</td><td>mínimamente invasivo; suave</td><td>necesita un modelo y una función de barrera</td></tr>
+        <tr><td>Predictivo</td><td>simula hacia delante la acción pedida y un respaldo; si el respaldo deja de ser posible, interviene</td><td>tiene en cuenta el futuro</td><td>coste de simular en cada paso</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="aparte"><span class="rotulo">Siempre hay un respaldo</span><p>Hsu et al. señalan que todo filtro de seguridad puede verse como apoyado en una política de respaldo: la que el monitor supone que existe cuando declara un estado seguro.</p></div>
+    <div class="callout tesis"><span class="tag">Para un dron</span>El respaldo típico es frenar y quedarse quieto: posible si hay aceleración suficiente y nada se mueve hacia el dron. La parte 6 muestra qué pasa cuando no la hay.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="CBF">
+  <p class="num">Parte 2</p>
+  <h2>Funciones de barrera de control</h2>
+  <p>Una condición sobre la derivada que mantiene el robot dentro del conjunto seguro.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · en dibujo</p>
+  <h2>Cuanto más cerca del borde, más despacio se le permite acercarse</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 250" role="img" aria-label="Un obstáculo circular y su borde de seguridad; fuera, el conjunto seguro donde h es positiva; flechas que muestran que la velocidad de acercamiento permitida baja al acercarse al borde">
+        <rect x="10" y="10" width="480" height="230" class="box-soft"/>
+        <circle cx="330" cy="125" r="60" class="box-time"/>
+        <circle cx="330" cy="125" r="78" fill="none" class="ln-tesis ln-dash" stroke-width="2"/>
+        <text x="330" y="130" text-anchor="middle" font-size="13">obstáculo</text>
+        <text x="235" y="40" font-size="13" class="t-tesis">h = 0 (borde de C)</text>
+        <text x="30" y="40" font-size="13">C: h &gt; 0, seguro</text>
+        <defs><marker id="fc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <g class="ln-accent" stroke-width="2.4" marker-end="url(#fc)">
+          <line x1="60" y1="125" x2="140" y2="125"/><line x1="160" y1="125" x2="205" y2="125"/><line x1="220" y1="125" x2="240" y2="125"/>
+        </g>
+        <text x="40" y="160" font-size="12" class="t-muted">lejos: puede acercarse deprisa</text>
+        <text x="175" y="200" font-size="12" class="t-muted">cerca: solo despacio</text>
+      </svg>
+      <figcaption>Esquema: las flechas son la velocidad de acercamiento máxima que permite \(\dot h \ge -\alpha h\); se acorta al llegar al borde.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Se define una función \(h(x)\) que es positiva en los estados seguros, cero en el borde y negativa dentro de lo prohibido. Para un obstáculo circular: \(h = |p - c|^2 - r^2\).</li>
+        <li>No se prohíbe acercarse: se limita la rapidez con que \(h\) puede bajar, en proporción a lo que queda de margen.</li>
+        <li>En el borde (\(h = 0\)), \(h\) no puede bajar más: el robot se desliza por él o se aleja.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · la definición</p>
+  <h2>Una CBF garantiza que siempre hay una acción que no saca del conjunto seguro</h2>
+  \[ \mathcal C = \{x : h(x) \ge 0\}, \qquad \sup_{u \in U}\big[L_f h(x) + L_g h(x)\,u\big] \ge -\alpha\big(h(x)\big) \]
+  <p><strong>Notación:</strong> \(x\), estado; \(u\), entrada, en el conjunto \(U\) de entradas posibles; sistema \(\dot x = f(x) + g(x)u\); \(h\), función de barrera; \(\mathcal C\), conjunto seguro; \(L_f h = \nabla h \cdot f\) y \(L_g h = \nabla h \cdot g\), derivadas de Lie, así que \(\dot h = L_f h + L_g h\,u\); \(\alpha\), función creciente con \(\alpha(0) = 0\) (aquí, \(\alpha(h) = \alpha h\)).</p>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Teorema (Ames et al.)</span>Si \(h\) es una CBF y \(\nabla h \ne 0\) en el borde, cualquier controlador lipschitziano que cumpla la condición en cada estado hace \(\mathcal C\) invariante hacia delante: si se empieza dentro, se sigue dentro <a class="cite" data-ref="ames2019"></a>.</div>
+    <div class="aparte"><span class="rotulo">Invariante hacia delante</span><p>Para todo estado inicial en \(\mathcal C\), la trayectoria sigue en \(\mathcal C\) mientras exista. Además, \(\mathcal C\) es asintóticamente estable: si se empieza fuera, el sistema vuelve.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · por qué funciona</p>
+  <h2>Por qué \(\dot h \ge -\alpha h\) nunca deja que \(h\) llegue a cero</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\dot h(t) \ge -\alpha\,h(t)\), con \(h(0) &gt; 0\)</td><td>El controlador cumple la condición en todo momento (con \(\alpha(h) = \alpha h\))</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\dfrac{d}{dt}\big(e^{\alpha t} h\big) = e^{\alpha t}(\dot h + \alpha h) \ge 0\)</td><td>Derivada de un producto; el paréntesis es no negativo por el paso 1</td></tr>
+      <tr><td><strong>3</strong></td><td>\(e^{\alpha t} h(t) \ge h(0)\)</td><td>Una función que no decrece no baja de su valor inicial</td></tr>
+      <tr><td><strong>4</strong></td><td>\(h(t) \ge h(0)\,e^{-\alpha t} &gt; 0\)</td><td>Dividir por \(e^{\alpha t} &gt; 0\): \(h\) puede tender a cero, pero no alcanzarlo</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script (derivaciones_a14.py)</span><p>Con \(h(0) = 1\): para \(\alpha = 0{,}5\), \(h \ge 0{,}607\) al cabo de 1 s y \(\ge 0{,}223\) a los 3 s; para \(\alpha = 2\), \(\ge 0{,}135\) y \(\ge 0{,}0025\). Un \(\alpha\) mayor deja acercarse antes al borde; uno menor es más conservador.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · el programa cuadrático</p>
+  <h2>La acción más parecida a la pedida que cumple la condición</h2>
+  \[ u^\star = \arg\min_{u}\ \tfrac12\,\|u - u_{\text{nom}}\|^2 \quad \text{sujeto a}\quad \underbrace{L_f h + \alpha h}_{a} + \underbrace{L_g h}_{b}\,u \ge 0 \]
+  <p><strong>Notación:</strong> \(u_{\text{nom}}\), acción que pide la política de la tarea; \(a\) y \(b\), escalar y vector fila que resumen la condición en el estado actual; \(\lambda\), multiplicador de Lagrange.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>si \(a + b\,u_{\text{nom}} \ge 0\), entonces \(u^\star = u_{\text{nom}}\)</td><td>La acción pedida ya es segura: el filtro no toca nada</td></tr>
+      <tr><td><strong>2</strong></td><td>si no, la restricción está activa: \(u^\star = u_{\text{nom}} + \lambda\, b^\top\)</td><td>Condición de KKT: el gradiente del coste es paralelo al de la restricción</td></tr>
+      <tr><td><strong>3</strong></td><td>\(a + b(u_{\text{nom}} + \lambda b^\top) = 0 \Rightarrow \lambda = \dfrac{-(a + b\,u_{\text{nom}})}{\|b\|^2}\)</td><td>Imponer la restricción con igualdad y despejar</td></tr>
+      <tr><td><strong>4</strong></td><td>\(u^\star = u_{\text{nom}} + \dfrac{\max(0,\,-(a + b\,u_{\text{nom}}))}{\|b\|^2}\, b^\top\)</td><td>Los dos casos juntos: la solución cerrada de mínima norma</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>\(u_{\text{nom}} = (3, 0)\), \(a = 2\), \(b = (-2, -1)\): \(a + b\,u_{\text{nom}} = -4\), inseguro. \(\lambda = 4/5 = 0{,}8\) y \(u^\star = (1{,}4,\ -0{,}8)\), que cumple la restricción justo con igualdad. Con varias restricciones o límites de la entrada no hay solución cerrada y se resuelve un QP pequeño.</p></div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Grado relativo 2">
+  <p class="num">Parte 3</p>
+  <h2>Un dron manda aceleraciones</h2>
+  <p>Grado relativo 2 y CBF de orden alto.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Grado relativo · el problema</p>
+  <h2>Si la entrada es la aceleración, \(\dot h\) no depende de ella</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Para un dron modelado como doble integrador, \(\dot p = v\), \(\dot v = u\), y un obstáculo con \(h = |p - c|^2 - r^2\): \(\dot h = 2(p - c)\cdot v\). La aceleración \(u\) no aparece.</li>
+        <li>Es decir, \(L_g h = 0\): la condición de la CBF o se cumple sola o no se puede cumplir con ninguna entrada. Ames et al. lo señalan: con grado relativo mayor que 1, el conjunto de entradas válidas es todo o nada <a class="cite" data-ref="ames2017"></a>.</li>
+        <li>La entrada aparece en \(\ddot h\): hay que imponer la condición un orden más arriba.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">La idea</span>Antes de poder frenar la posición hay que frenar la velocidad: la condición tiene que mirar dos derivadas. Las CBF exponenciales <a class="cite" data-ref="nguyen2016"></a> y las de orden alto <a class="cite" data-ref="xiao2019"></a> lo hacen encadenando condiciones.</div>
+      <div class="aparte"><span class="rotulo">En un Crazyflie real</span><p>Xu y Sreenath filtran con una CBF exponencial las aceleraciones que pide un piloto con un mando, con captura de movimiento: una caja virtual, un tubo alrededor de una trayectoria y obstáculos <a class="cite" data-ref="xu2018"></a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Grado relativo · paso a paso</p>
+  <h2>La condición de orden 2 para un dron y un obstáculo</h2>
+  <p><strong>Notación:</strong> \(p, v\), posición y velocidad; \(u\), aceleración mandada; \(c\), centro del obstáculo; \(r\), radio de seguridad (obstáculo más dron); \(d = p - c\); \(\psi_1\), condición intermedia; \(\alpha_1 = \alpha_2 = \alpha\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(h = d\cdot d - r^2,\quad \dot h = 2\,d\cdot v,\quad \ddot h = 2\,v\cdot v + 2\,d\cdot u\)</td><td>Derivar con \(\dot d = v\) y \(\dot v = u\); la entrada aparece en \(\ddot h\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\psi_1 = \dot h + \alpha h \ge 0\)</td><td>Primera condición de la cadena de Xiao y Belta: «acercarse, pero no demasiado deprisa»</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\dot\psi_1 + \alpha\,\psi_1 \ge 0\)</td><td>La condición de CBF aplicada a \(\psi_1\): mantiene \(\psi_1 \ge 0\), y con ello \(h \ge 0\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\ddot h + 2\alpha\,\dot h + \alpha^2 h \ge 0\)</td><td>Sustituir \(\psi_1\) y \(\dot\psi_1 = \ddot h + \alpha \dot h\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(2\,d\cdot u + 2\,v\cdot v + 2\alpha\,\dot h + \alpha^2 h \ge 0\)</td><td>Paso 1 en el 4: lineal en \(u\), así que el filtro sigue siendo un QP</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>Dron en \((4, 0)\) a 3 m/s hacia un poste en \((10, 0)\) con \(r = 1{,}3\): \(h = 34{,}31\), \(\dot h = -36\). Con \(\alpha = 1\), la condición exige \(u_x \le -1{,}64\) m/s²: frenar ya. Con \(\alpha = 2\), \(u_x \le 0{,}94\): todavía puede acelerar un poco. Si se empieza en el borde moviéndose hacia dentro, \(\psi_1 &lt; 0\) para cualquier \(\alpha\) y no hay garantía (Xiao y Belta).</p></div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Estado imperfecto">
+  <p class="num">Parte 4</p>
+  <h2>Cuando el estado no es el que se cree</h2>
+  <p>Discretización, ruido de estimación, perturbaciones y retardo: lo que rompe la garantía y cómo se repara.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · qué rompe la garantía</p>
+  <h2>El teorema supone un modelo exacto, estado perfecto y tiempo continuo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Lo que pasa en un dron real</th><th>Por qué rompe la garantía</th><th>Reparación</th></tr></thead>
+      <tbody>
+        <tr><td>El filtro se evalúa cada \(\Delta t\)</td><td>entre dos muestras el dron avanza sin que nadie mire</td><td>margen de lo que se recorre en un paso; teoría para sistemas muestreados <a class="cite" data-ref="singletary2020"></a></td></tr>
+        <tr><td>El estado sale de un estimador (A4)</td><td>la condición se cumple para el estado estimado, no para el real</td><td>CBF robusta a errores de medida: endurecer la condición según la cota del error <a class="cite" data-ref="dean2020"></a></td></tr>
+        <tr><td>Viento y dinámica sin modelar</td><td>\(\ddot h\) tiene un término que el filtro no ve</td><td>suponer una perturbación acotada y cubrir el peor caso</td></tr>
+        <tr><td>Retardo entre medida y actuación (A13)</td><td>la acción se aplica a un estado que ya cambió</td><td>predecir el estado con las entradas ya enviadas y evaluar ahí la CBF <a class="cite" data-ref="singletary2020"></a></td></tr>
+        <tr><td>Aceleración limitada</td><td>puede no existir ninguna entrada que cumpla la condición</td><td>elegir \(h\) y \(\alpha\) compatibles con la capacidad de frenada</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="aparte" style="margin-top:8px"><span class="rotulo">Lo dicen los propios autores</span><p>El tutorial de Ames et al. avisa de que el ruido y los errores de modelo pueden sacar al sistema del conjunto seguro; la revisión de Dawson et al. añade el error de estimación, la frecuencia de control, el retardo, las perturbaciones y los límites de los actuadores <a class="cite" data-ref="ames2019,dawson2023"></a>.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · error de medida paso a paso</p>
+  <h2>Endurecer la condición lo que pueda equivocarse el estimador</h2>
+  <p><strong>Notación:</strong> \(\hat x\), estado estimado; \(e = x - \hat x\), error de estimación, con \(\|e\| \le \varepsilon\); \(L\), constante de Lipschitz de la condición de la CBF respecto del estado (cuánto puede cambiar por metro de error).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>el filtro solo conoce \(\hat x\): impone \(\text{cond}(\hat x, u) \ge 0\)</td><td>«cond» es la condición de la CBF, \(L_f h + L_g h\,u + \alpha h\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(|\text{cond}(x, u) - \text{cond}(\hat x, u)| \le L\,\|e\| \le L\,\varepsilon\)</td><td>Definición de constante de Lipschitz y la cota del error</td></tr>
+      <tr><td><strong>3</strong></td><td>imponer \(\text{cond}(\hat x, u) \ge L\,\varepsilon\)</td><td>Así, en el peor caso, \(\text{cond}(x, u) \ge 0\) para el estado real</td></tr>
+      <tr><td><strong>4</strong></td><td>en Dean et al., el margen es \(\varepsilon\,(L_{L_f h} + L_{\alpha\circ h} + L_{L_g h}\|u\|)\)</td><td>Separan las constantes de cada término; como el margen crece con \(\|u\|\), el filtro pasa a ser un programa cónico de segundo orden</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">En el experimento</span><p>Usamos una versión sencilla: inflar el radio del obstáculo en \(2\sigma\) (dos desviaciones típicas del ruido de posición) más lo que se recorre en dos pasos. Es endurecer \(h\) en vez de la condición, con el mismo efecto: más distancia a cambio de menos rendimiento.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · tu tesis</p>
+  <h2>Seguridad con un belief: un problema abierto</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Hsu et al. plantean la seguridad con percepción imperfecta sobre el belief \(b_k = p(x_k \mid y_k)\), con \(y_k\) lo observado: como un POMDP o un juego estocástico, «en general intratable», que exige aproximaciones <a class="cite" data-ref="hsu2024"></a>.</li>
+        <li>Y señalan como trabajo futuro tener en cuenta la capacidad del robot de adquirir información nueva: un filtro que sepa que mirar reduce la incertidumbre.</li>
+        <li>Dos preprints de 2026 van por ahí: CBF robustas aprendidas para errores de odometría <a class="cite" data-ref="rober2026"></a> y observadores diseñados para la seguridad con CBF de orden alto, donde las ganancias de la CBF deciden qué hay que observar <a class="cite" data-ref="mousavi2026"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cómo se construye un filtro de seguridad sobre el belief de un dron de búsqueda (la incertidumbre de su posición y la de los obstáculos) que sea menos conservador que inflar los radios y que tenga en cuenta que observar reduce esa incertidumbre?</div>
+      <div class="callout realidad"><span class="tag">Lo que ya puedes hacer</span>Usar la covarianza del filtro (A4a) para el margen: un radio inflado en \(k\) desviaciones típicas en la dirección del obstáculo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Otras garantías">
+  <p class="num">Parte 5</p>
+  <h2>Otras formas de garantizar</h2>
+  <p>Alcanzabilidad de Hamilton-Jacobi, certificados aprendidos y normas.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Otras garantías · alcanzabilidad</p>
+  <h2>Hamilton-Jacobi: el mayor conjunto seguro, a un precio exponencial</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>El conjunto de alcanzabilidad hacia atrás es el de los estados desde los que el sistema puede ser llevado a un conjunto objetivo en un horizonte dado; si el objetivo es lo prohibido, su complementario es el conjunto seguro <a class="cite" data-ref="bansal2017"></a>.</li>
+        <li>Se plantea como un juego: el control intenta evitar el objetivo y la perturbación, alcanzarlo. Da el conjunto seguro máximo y la política que lo mantiene, con perturbaciones incluidas.</li>
+        <li>El problema: se resuelve una ecuación en derivadas parciales en una rejilla del espacio de estados, con un coste exponencial en la dimensión, «la maldición de la dimensionalidad».</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">CBF frente a alcanzabilidad</span>La alcanzabilidad calcula el conjunto seguro máximo; una CBF diseñada a mano solo garantiza el conjunto que define, normalmente más pequeño. Hsu et al. lo dicen así: las CBF ya no codifican ni aproximan el conjunto seguro máximo <a class="cite" data-ref="hsu2024"></a>.</div>
+      <div class="aparte"><span class="rotulo">Hasta dónde llega</span><p>El repaso de Bansal et al. muestra un cuadricóptero acrobático de 6 dimensiones y uno de 10 dimensiones cerca del vuelo estacionario, este último descomponiendo el sistema en partes.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Otras garantías · aprender el certificado</p>
+  <h2>Cuando no se sabe escribir \(h\), se puede aprender</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Certificados aprendidos (de Lyapunov, de barrera, de contracción): redes que se entrenan para cumplir las condiciones en muestras del espacio de estados, como pruebas «concisas y basadas en datos» <a class="cite" data-ref="dawson2023"></a>.</li>
+        <li>También se pueden aprender barreras a partir de demostraciones de un experto <a class="cite" data-ref="robey2020"></a>.</li>
+        <li>Revisiones de conjunto: aprendizaje seguro en robótica <a class="cite" data-ref="brunke2022"></a> y filtros de seguridad basados en datos, con alcanzabilidad, CBF y métodos predictivos <a class="cite" data-ref="wabersich2023"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">El precio</span>Un certificado aprendido solo se ha comprobado en las muestras: entre ellas, la garantía depende de constantes de Lipschitz o de verificación aparte. Es más flexible y menos firme que una \(h\) escrita a mano.</div>
+      <div class="aparte"><span class="rotulo">Normas</span><p>En aviación, la EASA publicó en 2024 (según su página) la segunda versión de su documento de concepto sobre inteligencia artificial, con guías para aplicaciones de aprendizaje automático de nivel 1 y 2 <a class="cite" data-ref="easa2024"></a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 6 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 6</p>
+  <h2>Un filtro CBF sobre una política que no ve los obstáculos</h2>
+  <p>Choques, llegadas e intervenciones, con estado perfecto, ruido, viento y poca aceleración.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>Ir recto a la meta entre siete obstáculos y una zona prohibida</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 320" role="img" aria-label="Una escena del experimento vista desde arriba: obstáculos, la zona prohibida, la trayectoria sin filtro que los atraviesa y la trayectoria con filtro que los rodea">
+        <rect x="20" y="20" width="480" height="280" class="box-soft"/>
+        <ellipse cx="273.1" cy="179.3" rx="48.0" ry="42.0" class="box-time"/><ellipse cx="273.1" cy="179.3" rx="52.8" ry="46.2" fill="none" class="ln ln-dash"/><ellipse cx="113.1" cy="268.3" rx="25.8" ry="22.6" class="box"/><ellipse cx="113.1" cy="268.3" rx="30.6" ry="26.8" fill="none" class="ln ln-dash"/><ellipse cx="392.1" cy="136.1" rx="24.5" ry="21.4" class="box"/><ellipse cx="392.1" cy="136.1" rx="29.3" ry="25.6" fill="none" class="ln ln-dash"/><ellipse cx="274.0" cy="62.5" rx="25.9" ry="22.7" class="box"/><ellipse cx="274.0" cy="62.5" rx="30.7" ry="26.9" fill="none" class="ln ln-dash"/><ellipse cx="100.9" cy="79.9" rx="13.3" ry="11.6" class="box"/><ellipse cx="100.9" cy="79.9" rx="18.1" ry="15.8" fill="none" class="ln ln-dash"/><ellipse cx="419.1" cy="52.3" rx="23.8" ry="20.8" class="box"/><ellipse cx="419.1" cy="52.3" rx="28.6" ry="25.0" fill="none" class="ln ln-dash"/><ellipse cx="118.7" cy="196.7" rx="15.2" ry="13.3" class="box"/><ellipse cx="118.7" cy="196.7" rx="20.0" ry="17.5" fill="none" class="ln ln-dash"/><ellipse cx="129.0" cy="142.0" rx="17.6" ry="15.4" class="box"/><ellipse cx="129.0" cy="142.0" rx="22.4" ry="19.6" fill="none" class="ln ln-dash"/>
+        <path d="M52.0,140.7 L52.0,140.7 L52.6,141.0 L54.2,141.5 L56.8,142.3 L60.3,143.2 L64.7,144.2 L70.2,145.4 L76.5,146.5 L83.9,147.7 L92.2,148.9 L101.4,150.0 L111.7,151.1 L122.9,152.1 L135.0,153.1 L148.1,154.0 L162.2,154.8 L177.2,155.6 L193.2,156.3 L210.1,156.9 L228.0,157.4 L246.7,157.9 L265.6,158.4 L284.4,158.7 L302.8,159.0 L320.5,159.3 L337.4,159.6 L353.3,159.7 L368.2,159.9 L382.2,160.0 L395.2,160.1 L407.3,160.2 L418.4,160.3 L428.5,160.3 L437.7,160.3 L445.9,160.4 L453.2,160.4 L459.5,160.4" fill="none" class="ln-time ln-dash" stroke-width="2"/>
+        <path d="M52.0,140.7 L52.0,140.7 L52.6,141.0 L54.2,141.5 L56.4,142.3 L59.0,143.2 L62.0,144.2 L65.1,145.4 L68.3,146.6 L71.5,147.9 L74.7,149.3 L77.9,150.7 L81.1,152.1 L84.3,153.6 L87.4,155.1 L90.5,156.5 L93.6,158.0 L96.8,159.3 L99.9,160.6 L103.1,161.8 L106.4,163.0 L110.0,164.1 L114.1,165.2 L119.0,166.1 L124.8,166.8 L131.0,167.2 L137.4,167.3 L143.9,167.2 L150.4,166.9 L156.7,166.4 L162.8,165.8 L168.7,165.0 L174.2,164.2 L179.5,163.3 L184.4,162.3 L189.1,161.2 L193.5,160.1 L197.5,159.0 L201.4,157.8 L205.0,156.5 L208.4,155.2 L211.6,153.9 L214.7,152.5 L217.6,151.1 L220.5,149.7 L223.3,148.2 L226.2,146.7 L229.0,145.1 L232.0,143.5 L235.1,141.9 L238.4,140.3 L242.0,138.6 L246.0,137.0 L250.4,135.4 L255.5,134.0 L261.2,132.9 L267.3,132.2 L273.5,132.2 L279.8,132.6 L286.1,133.4 L292.1,134.4 L298.0,135.8 L303.6,137.3 L309.0,138.9 L314.2,140.6 L319.1,142.4 L323.8,144.2 L328.3,146.1 L332.6,148.0 L336.8,150.0 L340.9,152.0 L344.9,154.0 L349.0,156.0 L353.1,158.1 L357.5,160.2 L362.2,162.3 L367.4,164.2 L373.1,165.9 L379.4,167.2 L386.1,168.1 L392.9,168.7 L399.7,169.0 L406.4,169.1 L412.9,169.0 L419.0,168.8 L424.9,168.4 L430.3,168.0 L435.4,167.5 L440.0,167.0 L444.2,166.4 L448.0,165.8 L451.4,165.3 L454.5,164.8 L457.1,164.2 L459.5,163.8" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <circle cx="468.0" cy="160.0" r="6" class="fill-tesis"/><text x="460.0" y="148.0" font-size="12" class="t-tesis">meta</text>
+      </svg>
+      <figcaption>Escena 0, vista desde arriba (30 × 20 m). Ocre: zona prohibida; gris: obstáculos; línea punteada: borde de seguridad (obstáculo más el radio del dron). Ocre discontinuo: la política sola, que los atraviesa; azul: con el filtro (\(\alpha = 2\)).</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Dron:</strong> doble integrador en el plano, aceleración de hasta 6 m/s² por eje, paso de 10 ms.</li>
+        <li><strong>Política «aprendida»:</strong> un PD hacia la meta que no ve nada; hace de política agresiva sin garantías.</li>
+        <li><strong>Filtro:</strong> la CBF de orden 2 de la parte 3 para cada obstáculo y la zona prohibida, más los límites de la entrada, en un QP resuelto con el método de Hildreth. Una llamada tarda 2,9 ms en CPU.</li>
+      </ul>
+      <p class="xsmall muted">200 escenas de 12 s. Choque: entrar en un obstáculo o en la zona prohibida, aunque sea una décima de milímetro. <code>figuras_a14.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · estado perfecto</p>
+  <h2>Sin filtro choca en el 100 % de los vuelos; con filtro y un margen de un paso, en ninguno</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>200 escenas</th><th>Choques</th><th>Llegan</th><th>Intervención media</th></tr></thead>
+        <tbody>
+          <tr><td>Sin filtro</td><td class="n">100 %</td><td class="n">0 %</td><td class="n">—</td></tr>
+          <tr><td>Filtro, \(\alpha = 0{,}5\)</td><td class="n">0 %</td><td class="n">0 %</td><td class="n">6,5 m/s²</td></tr>
+          <tr><td>Filtro, \(\alpha = 1\)</td><td class="n">0 %</td><td class="n">24 %</td><td class="n">5,8 m/s²</td></tr>
+          <tr><td>Filtro, \(\alpha = 2\)</td><td class="n">21 %</td><td class="n">77 %</td><td class="n">3,5 m/s²</td></tr>
+          <tr><td>Filtro, \(\alpha = 4\)</td><td class="n">44 %</td><td class="n">56 %</td><td class="n">2,0 m/s²</td></tr>
+          <tr><td>Filtro con margen de un paso, \(\alpha = 2\)</td><td class="n">0 %</td><td class="n">81 %</td><td class="n">3,9 m/s²</td></tr>
+          <tr><td>Filtro con margen de un paso, \(\alpha = 4\)</td><td class="n">0 %</td><td class="n">90 %</td><td class="n">2,7 m/s²</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <ul><li><strong>Elegir \(\alpha\):</strong> con 0,5 no choca nadie, pero tampoco llega nadie (0 %): el dron se queda bloqueado delante de los obstáculos. Con 2 llega el 77 %; con 4, el filtro deja acercarse tanto que la discretización hace rozar el borde.</li><li><strong>Margen de un paso:</strong> sin choques y más llegadas (81 % con \(\alpha = 2\), 90 % con \(\alpha = 4\)).</li></ul><div class="callout clave"><span class="tag">Seguridad no es progreso</span>El filtro garantiza no chocar, no llegar. Con una política que no sabe rodear, hay que elegir \(\alpha\) para que deje sitio a la política, o darle una política mejor.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · las cuentas</p>
+  <h2>Por qué un filtro correcto «choca» y cómo se evita</h2>
+  <p><strong>Notación:</strong> \(\Delta t\), paso del filtro (10 ms); \(v\), velocidad del dron; \(r\), radio de seguridad.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>la condición se impone en \(t_k\) y la entrada se mantiene hasta \(t_{k+1}\)</td><td>El filtro es digital: un QP por paso</td></tr>
+      <tr><td><strong>2</strong></td><td>con \(\alpha\) grande, el filtro deja al dron acercarse hasta casi \(h = 0\)</td><td>Paso 4 de la cota exponencial: \(h\) decae como \(e^{-\alpha t}\)</td></tr>
+      <tr><td><strong>3</strong></td><td>en un paso se recorren \(v\,\Delta t\): a 6 m/s, 6 cm</td><td>Lo que puede pasar entre dos evaluaciones</td></tr>
+      <tr><td><strong>4</strong></td><td>inflar el radio: \(r \to r + v\,\Delta t + 2\) cm</td><td>Cubre lo que se recorre sin vigilancia; es una versión sencilla de la teoría para sistemas muestreados</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Lo medido</span><p>Los «choques» con \(\alpha = 2\) entran una mediana de 0,01 mm en el obstáculo: el filtro funciona, pero la garantía es de tiempo continuo. Con el margen de un paso desaparecen todos. Con un paso de 50 ms serían 30 cm por paso: el margen tiene que crecer con el periodo del filtro.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · ruido y viento</p>
+  <h2>Con 0,3 m de ruido, el filtro normal choca en el 28 % de los vuelos; con margen robusto, en ninguno</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Con margen de un paso, \(\alpha = 2\)</th><th>Choques</th><th>Llegan</th><th>Distancia mínima</th></tr></thead>
+        <tbody>
+          <tr><td>Ruido 0,1 m, filtro normal</td><td class="n">2 %</td><td class="n">82 %</td><td class="n">0,08 m</td></tr>
+          <tr><td>Ruido 0,1 m, margen robusto</td><td class="n">0 %</td><td class="n">74 %</td><td class="n">0,31 m</td></tr>
+          <tr><td>Ruido 0,3 m, filtro normal</td><td class="n">28 %</td><td class="n">70 %</td><td class="n">0,07 m</td></tr>
+          <tr><td>Ruido 0,3 m, margen robusto</td><td class="n">0 %</td><td class="n">52 %</td><td class="n">0,62 m</td></tr>
+          <tr><td>Viento, filtro normal</td><td class="n">44 %</td><td class="n">51 %</td><td class="n">0,05 m</td></tr>
+          <tr><td>Viento, CBF robusta, \(w_{\max} = 1\)</td><td class="n">14 %</td><td class="n">61 %</td><td class="n">0,26 m</td></tr>
+          <tr><td>Viento, CBF robusta, \(w_{\max} = 2{,}5\)</td><td class="n">0 %</td><td class="n">30 %</td><td class="n">0,56 m</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <p class="xsmall muted">Ruido gaussiano en la posición y la velocidad estimadas. Viento: aceleración de Ornstein-Uhlenbeck de desviación 1 m/s², desconocida para el filtro; la CBF robusta resta \(2\,|p - c|\,w_{\max}\) a la condición (el peor caso de una perturbación acotada por \(w_{\max}\)). Distancia mínima: mediana.</p>
+      <div class="callout clave"><span class="tag">Lo que sale</span>Cubrir el ruido y el viento elimina los choques, pero aleja al dron de los obstáculos (de 0,07 a 0,62 m con 0,3 m de ruido) y reduce las llegadas: del 70 % al 52 % con ruido, y al 30 % con viento y \(w_{\max} = 2{,}5\). Con \(w_{\max} = 1\), a medio camino: 14 % de choques.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura</p>
+  <h2>El filtro elimina lo que su modelo cubre; lo demás se paga en margen</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul><li><strong>Estado perfecto:</strong> del 100 % de choques a ninguno, interviniendo de media 3,9 m/s² con \(\alpha = 2\).</li><li><strong>Imperfecciones:</strong> muestreo, ruido y viento vuelven a provocar choques si no se cubren; cubrirlos cuesta llegadas.</li><li><strong>Poca aceleración (2 m/s²):</strong> en este montaje el filtro sigue sin choques (el dron también va más despacio), pero el QP no se puede cumplir en el 1,4 % de los pasos: la garantía depende de que haya entrada suficiente.</li><li><strong>Coste:</strong> un QP de 12 restricciones en 2,9 ms con numpy, en Python.</li></ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Un doble integrador en el plano en vez de la dinámica de un cuadricóptero (actitud y empuje), obstáculos quietos y conocidos, una política nominal sencilla y una semilla. Lo robusto es el patrón: el filtro elimina los choques que su modelo cubre, y cada imperfección que no cubre se paga con un margen y con rendimiento.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>El margen que necesita tu filtro sale de tu estimador: con la covarianza de A4a, inflar en la dirección del obstáculo es la versión práctica de una CBF robusta a errores de medida.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Filtros que entienden la incertidumbre y aprenden lo que no se sabe escribir</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">HECHO</span><h3>El filtro como capa aparte</h3><p>Vigilar e intervenir con un respaldo es un patrón común a CBF, alcanzabilidad y métodos predictivos <a class="cite" data-ref="hsu2024,wabersich2023"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Robustez a la percepción</h3><p>Condiciones endurecidas según el error de estimación <a class="cite" data-ref="dean2020"></a>, aprendidas <a class="cite" data-ref="rober2026"></a> o diseñadas junto al observador <a class="cite" data-ref="mousavi2026"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Seguridad en el belief</h3><p>Formularla como POMDP es intratable en general; hacen falta aproximaciones que no sean tan conservadoras como inflar radios <a class="cite" data-ref="hsu2024"></a>.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>La garantía de una CBF es exactamente tan buena como su modelo. Lo que el modelo no cubre (muestreo, ruido, viento, límites de la entrada) hay que cubrirlo con márgenes, y cada margen se paga en rendimiento.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>La última capa de tu dron de búsqueda</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Dónde:</strong> entre el seguidor de trayectorias (A13) y la controladora: filtra las aceleraciones o velocidades de referencia a 50–100 Hz.</li>
+        <li><strong>Qué protege:</strong> obstáculos del mapa, zonas prohibidas de la orden (A11) y la geovalla; las restricciones semánticas las juzga otra capa (A12b).</li>
+        <li><strong>Con qué margen:</strong> el de la covarianza del estimador (A4a) y lo que se recorre en un paso del filtro.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Puede el planificador con belief tener en cuenta el filtro (no proponer lo que el filtro va a corregir) y el filtro usar el belief (márgenes que bajan cuando el dron ha observado mejor)?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> el margen crece con el periodo del filtro. <strong>Observabilidad parcial:</strong> la garantía es sobre el estado estimado. <strong>Sim-to-real:</strong> viento y dinámica sin modelar. <strong>Cómputo:</strong> 2,9 ms por QP en numpy.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A14</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un filtro de seguridad vigila, interviene y tiene un respaldo; separa el rendimiento (la política) de la garantía (el filtro).</li>
+    <li>Con \(\dot h \ge -\alpha h\), \(h(t) \ge h(0)e^{-\alpha t}\): el conjunto seguro es invariante; el CBF-QP busca la acción más parecida a la pedida que lo cumple.</li>
+    <li>Un dron que manda aceleraciones tiene grado relativo 2: la condición se encadena, \(\ddot h + 2\alpha\dot h + \alpha^2 h \ge 0\).</li>
+    <li>Muestreo, ruido, viento y retardo rompen la garantía; se reparan con márgenes, CBF robustas y predicción, y se pagan en llegadas.</li>
+    <li>La alcanzabilidad da el conjunto seguro máximo a coste exponencial; los certificados aprendidos, flexibilidad con garantías más débiles.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Barreras</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Con \(\dot h \ge -\alpha h\) y \(h(0) = 1\), ¿qué se puede decir de \(h(t)\)?</p>
+      <ol class="opts">
+        <li><button type="button">Que crece</button></li>
+        <li><button type="button">Que llega a cero en \(1/\alpha\) segundos</button></li>
+        <li><button type="button">Que \(h(t) \ge e^{-\alpha t} &gt; 0\): puede acercarse a cero, pero no alcanzarlo</button></li>
+        <li><button type="button">Nada sin conocer la política</button></li>
+      </ol>
+      <p class="explain">\(\frac{d}{dt}(e^{\alpha t}h) \ge 0\), así que \(e^{\alpha t}h(t) \ge h(0)\).</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">2. En el CBF-QP con una restricción, si la acción pedida ya cumple la condición, ¿qué devuelve el filtro?</p>
+      <ol class="opts">
+        <li><button type="button">La misma acción pedida</button></li>
+        <li><button type="button">Una acción más conservadora</button></li>
+        <li><button type="button">Cero</button></li>
+        <li><button type="button">La acción del respaldo</button></li>
+      </ol>
+      <p class="explain">Si \(a + b\,u_{\text{nom}} \ge 0\), \(\lambda = 0\) y \(u^\star = u_{\text{nom}}\): el filtro es mínimamente invasivo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Dron y garantías</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. ¿Por qué no sirve la CBF de orden 1 con \(h = |p - c|^2 - r^2\) para un dron que manda aceleraciones?</p>
+      <ol class="opts">
+        <li><button type="button">Porque \(h\) no es diferenciable</button></li>
+        <li><button type="button">Porque el obstáculo es circular</button></li>
+        <li><button type="button">Porque el QP es demasiado caro</button></li>
+        <li><button type="button">Porque \(\dot h = 2(p-c)\cdot v\) no depende de la aceleración: \(L_g h = 0\) y la condición no se puede imponer con la entrada</button></li>
+      </ol>
+      <p class="explain">La entrada aparece en \(\ddot h\): hace falta una CBF de orden 2.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. En el experimento, el filtro con \(\alpha = 0{,}5\) no choca nunca, pero ningún dron llega a la meta. ¿Por qué?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el QP no tiene solución</button></li>
+        <li><button type="button">Porque es tan conservador que, con una política que empuja recto contra los obstáculos, el dron se queda bloqueado delante de ellos</button></li>
+        <li><button type="button">Porque la política es mala</button></li>
+        <li><button type="button">Por el ruido</button></li>
+      </ol>
+      <p class="explain">El filtro garantiza seguridad, no progreso: con una política que no rodea y un \(\alpha\) pequeño, la condición frena antes de que el dron encuentre el camino.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>En tu dron</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">5. Tu estimador tiene un error de posición de unos 0,3 m. ¿Qué haces con el filtro?</p>
+      <ol class="opts">
+        <li><button type="button">Endurecer la condición o inflar los radios en función de esa cota, sabiendo que se perderá rendimiento</button></li>
+        <li><button type="button">Nada: la CBF ya garantiza la seguridad</button></li>
+        <li><button type="button">Bajar \(\alpha\) a cero</button></li>
+        <li><button type="button">Quitar el filtro</button></li>
+      </ol>
+      <p class="explain">En el experimento, con 0,3 m de ruido el filtro normal choca en el 28 % de los vuelos; con margen robusto, en ninguno, y llegan menos.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña el filtro de seguridad de tu dron de búsqueda. ¿Qué restricciones impone, sobre qué estado, con qué margen, cada cuánto y qué hace si el QP no tiene solución?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p>Restricciones: obstáculos del mapa y zonas prohibidas con CBF de orden 2 sobre la posición (el dron manda aceleraciones o velocidades), la geovalla y la altura mínima; límites de la entrada en el QP. Estado: el estimado, con un margen de \(k\) desviaciones típicas de su covarianza en la dirección de cada obstáculo, más lo que se recorre en un periodo del filtro. Frecuencia: la del seguidor (50–100 Hz), con predicción del estado si hay retardo hasta la controladora. Si el QP no tiene solución: respaldo verificado (frenar al máximo o mantener posición) y aviso al nivel de misión. Lo validaría en simulación barriendo ruido, viento y retardo, midiendo choques, llegadas y cuánto interviene.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ECC</span>
+      <h3>Tutorial de CBF <a class="cite" data-ref="ames2019"></a></h3>
+      <p><strong>Lee:</strong> las definiciones, el CBF-QP y la sección de grado relativo alto.</p>
+      <p><strong>Responde:</strong> ¿qué ganancias usarías para tu dron?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · ANNU. REV.</span>
+      <h3>El filtro de seguridad <a class="cite" data-ref="hsu2024"></a></h3>
+      <p><strong>Lee:</strong> la definición, las tres partes y la sección de percepción imperfecta.</p>
+      <p><strong>Responde:</strong> ¿cuál sería tu respaldo?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · CORL</span>
+      <h3>CBF robustas a la medida <a class="cite" data-ref="dean2020"></a></h3>
+      <p><strong>Lee:</strong> la definición y el teorema del margen.</p>
+      <p><strong>Responde:</strong> ¿qué cota de error te da tu estimador?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> CBF de orden alto <a class="cite" data-ref="xiao2019"></a>; alcanzabilidad <a class="cite" data-ref="bansal2017"></a>; certificados aprendidos <a class="cite" data-ref="dawson2023"></a>; CBF con retardo <a class="cite" data-ref="singletary2020"></a>; un Crazyflie con CBF <a class="cite" data-ref="xu2018"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Filtro de seguridad CBF sobre una política agresiva</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
+        <li><strong>Escenas, dron y política</strong> nominal.</li>
+        <li><strong>CBF de orden 2</strong> y QP con el método de Hildreth.</li>
+        <li><strong>Barrido de \(\alpha\)</strong> y margen de un paso.</li>
+        <li><strong>Ruido y viento:</strong> márgenes robustos.</li>
+        <li><strong>Retardo:</strong> predicción del estado (Singletary et al.).</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Que el filtro elimina los choques que su modelo cubre y cuánto rendimiento cuesta cubrir lo demás.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Solo CPU: todo el experimento tardó unos 2 minutos con numpy.</div>
+      <p class="xsmall muted">Los scripts que generan las cifras de esta presentación están en <code>figuras/</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-hsu2024">Hsu, K.-C., Hu, H., Fisac, J. F. (2024). The safety filter: A unified view of safety-critical control in autonomous systems. <span class="venue">Annual Review of Control, Robotics, and Autonomous Systems</span>, 7, 47–72. <a href="https://doi.org/10.1146/annurev-control-071723-102940">doi:10.1146/annurev-control-071723-102940</a>. <a href="https://arxiv.org/abs/2309.05837">arXiv:2309.05837</a></li>
+    <li id="ref-ames2019">Ames, A. D., Coogan, S., Egerstedt, M., Notomista, G., Sreenath, K., Tabuada, P. (2019). Control barrier functions: Theory and applications. <span class="venue">European Control Conference 2019</span> (según las citas que lo recogen). <a href="https://arxiv.org/abs/1903.11199">arXiv:1903.11199</a></li>
+    <li id="ref-ames2014">Ames, A. D., Grizzle, J. W., Tabuada, P. (2014). Control barrier function based quadratic programs with application to adaptive cruise control. <span class="venue">53rd IEEE Conference on Decision and Control</span>, 6271–6278. <a href="https://doi.org/10.1109/CDC.2014.7040372">doi:10.1109/CDC.2014.7040372</a></li>
+    <li id="ref-ames2017">Ames, A. D., Xu, X., Grizzle, J. W., Tabuada, P. (2017). Control barrier function based quadratic programs for safety critical systems. <span class="venue">IEEE Transactions on Automatic Control</span>, 62(8), 3861–3876. <a href="https://doi.org/10.1109/TAC.2016.2638961">doi:10.1109/TAC.2016.2638961</a>. <a href="https://arxiv.org/abs/1609.06408">arXiv:1609.06408</a></li>
+    <li id="ref-nguyen2016">Nguyen, Q., Sreenath, K. (2016). Exponential control barrier functions for enforcing high relative-degree safety-critical constraints. <span class="venue">American Control Conference 2016</span>, 322–328. <a href="https://doi.org/10.1109/ACC.2016.7524935">doi:10.1109/ACC.2016.7524935</a></li>
+    <li id="ref-bansal2017">Bansal, S., Chen, M., Herbert, S., Tomlin, C. J. (2017). Hamilton-Jacobi reachability: A brief overview and recent advances. <span class="venue">56th IEEE Conference on Decision and Control</span>, 2242–2253. <a href="https://doi.org/10.1109/CDC.2017.8263977">doi:10.1109/CDC.2017.8263977</a>. <a href="https://arxiv.org/abs/1709.07523">arXiv:1709.07523</a></li>
+    <li id="ref-xu2018">Xu, B., Sreenath, K. (2018). Safe teleoperation of dynamic UAVs through control barrier functions. <span class="venue">ICRA 2018</span>, 7848–7855. <a href="https://doi.org/10.1109/ICRA.2018.8463194">doi:10.1109/ICRA.2018.8463194</a></li>
+    <li id="ref-xiao2019">Xiao, W., Belta, C. (2019). Control barrier functions for systems with high relative degree. <span class="venue">58th IEEE Conference on Decision and Control</span>, 474–479. <a href="https://doi.org/10.1109/CDC40024.2019.9029455">doi:10.1109/CDC40024.2019.9029455</a>. <a href="https://arxiv.org/abs/1903.04706">arXiv:1903.04706</a>. Versión de revista: High-order control barrier functions, IEEE Transactions on Automatic Control, 67(7), 3655–3662 (2022)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="9">
+    <li id="ref-dean2020">Dean, S., Taylor, A. J., Cosner, R. K., Recht, B., Ames, A. D. (2020). Guaranteeing safety of learned perception modules via measurement-robust control barrier functions. <span class="venue">CoRL 2020</span> (según las citas que lo recogen). <a href="https://arxiv.org/abs/2010.16001">arXiv:2010.16001</a></li>
+    <li id="ref-singletary2020">Singletary, A., Chen, Y., Ames, A. D. (2020). Control barrier functions for sampled-data systems with input delays. <span class="venue">59th IEEE Conference on Decision and Control</span>, 804–809. <a href="https://doi.org/10.1109/CDC42340.2020.9304281">doi:10.1109/CDC42340.2020.9304281</a>. <a href="https://arxiv.org/abs/2005.06418">arXiv:2005.06418</a></li>
+    <li id="ref-brunke2022">Brunke, L., Greeff, M., Hall, A. W., Yuan, Z., Zhou, S., Panerati, J., Schoellig, A. P. (2022). Safe learning in robotics: From learning-based control to safe reinforcement learning. <span class="venue">Annual Review of Control, Robotics, and Autonomous Systems</span>, 5, 411–444. <a href="https://doi.org/10.1146/annurev-control-042920-020211">doi:10.1146/annurev-control-042920-020211</a>. <a href="https://arxiv.org/abs/2108.06266">arXiv:2108.06266</a></li>
+    <li id="ref-wabersich2023">Wabersich, K. P., Taylor, A. J., Choi, J. J., Sreenath, K., Tomlin, C. J., Ames, A. D., Zeilinger, M. N. (2023). Data-driven safety filters: Hamilton-Jacobi reachability, control barrier functions, and predictive methods for uncertain systems. <span class="venue">IEEE Control Systems Magazine</span>, 43(5), 137–177. <a href="https://doi.org/10.1109/MCS.2023.3291885">doi:10.1109/MCS.2023.3291885</a></li>
+    <li id="ref-dawson2023">Dawson, C., Gao, S., Fan, C. (2023). Safe control with learned certificates: A survey of neural Lyapunov, barrier, and contraction methods for robotics and control. <span class="venue">IEEE Transactions on Robotics</span>, 39(3), 1749–1767. <a href="https://doi.org/10.1109/TRO.2022.3232542">doi:10.1109/TRO.2022.3232542</a>. <a href="https://arxiv.org/abs/2202.11762">arXiv:2202.11762</a></li>
+    <li id="ref-rober2026">Rober, N., Jia, Y., How, J. P. (2026). Learning-based measurement-robust control barrier functions for obstacle avoidance under state estimation error. <a href="https://arxiv.org/abs/2608.20467">arXiv:2608.20467</a> (preprint)</li>
+    <li id="ref-mousavi2026">Mousavi, S. S., Mestres, P., Ames, A. D. (2026). Functional observers for output-feedback safety with high-order control barrier functions. <a href="https://arxiv.org/abs/2609.14104">arXiv:2609.14104</a> (preprint)</li>
+    <li id="ref-robey2020">Robey, A., Hu, H., Lindemann, L., Zhang, H., Dimarogonas, D. V., Tu, S., Matni, N. (2020). Learning control barrier functions from expert demonstrations. <span class="venue">59th IEEE Conference on Decision and Control</span>, 3717–3724. <a href="https://doi.org/10.1109/CDC42340.2020.9303785">doi:10.1109/CDC42340.2020.9303785</a>. <a href="https://arxiv.org/abs/2004.03315">arXiv:2004.03315</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="17">
+    <li id="ref-easa2024">EASA (2024). EASA Artificial Intelligence (AI) Concept Paper Issue 2: Guidance for Level 1 &amp; 2 machine learning applications. Agencia de la Unión Europea para la Seguridad Aérea; anuncio en <a href="https://www.easa.europa.eu">easa.europa.eu</a> (fecha según la página)</li>
+  </ol>
+</section>
+
+</main>
+<aside id="glosario" hidden>
+<h3>Funciones de barrera</h3>
+<p>Partes 1 y 2.</p>
+<dl>
+<dt>\(x\)</dt><dd data-hojas="10">Estado del sistema.</dd>
+<dt>\(u\)</dt><dd data-hojas="10">Entrada (acción de control); en el dron, la aceleración mandada.</dd>
+<dt>\(U\)</dt><dd data-hojas="10">Conjunto de entradas posibles (límites de los actuadores).</dd>
+<dt>\(f, g\)</dt><dd data-hojas="10">Términos del sistema afín en la entrada, \(\dot x = f(x) + g(x)u\).</dd>
+<dt>\(h\)</dt><dd data-hojas="10">Función de barrera: positiva en lo seguro, cero en el borde, negativa en lo prohibido.</dd>
+<dt>\(\mathcal C\)</dt><dd data-hojas="10">Conjunto seguro, \(\{x : h(x) \ge 0\}\).</dd>
+<dt>\(L_f h, L_g h\)</dt><dd data-hojas="10">Derivadas de Lie: \(\nabla h \cdot f\) y \(\nabla h \cdot g\); \(\dot h = L_f h + L_g h\,u\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="10">Ganancia de la CBF (en general, una función creciente con \(\alpha(0) = 0\)): cuánto se deja bajar \(h\) según el margen que queda.</dd>
+<dt>\(u_{\text{nom}}\)</dt><dd data-hojas="12">Acción que pide la política de la tarea, antes del filtro.</dd>
+<dt>\(u^\star\)</dt><dd data-hojas="12">Acción filtrada: la más parecida a \(u_{\text{nom}}\) que cumple la condición.</dd>
+<dt>\(a, b\)</dt><dd data-hojas="12">Escalar y vector fila que resumen la condición en el estado actual: \(a + b\,u \ge 0\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="12">Multiplicador de Lagrange del CBF-QP.</dd>
+</dl>
+<h3>Grado relativo 2</h3>
+<p>Parte 3: dron como doble integrador.</p>
+<dl>
+<dt>\(p, v\)</dt><dd data-hojas="15">Posición y velocidad del dron.</dd>
+<dt>\(c\)</dt><dd data-hojas="15">Centro de un obstáculo.</dd>
+<dt>\(r\)</dt><dd data-hojas="15">Radio de seguridad: radio del obstáculo más el del dron.</dd>
+<dt>\(d\)</dt><dd data-hojas="15">Vector del obstáculo al dron, \(d = p - c\).</dd>
+<dt>\(\psi_1\)</dt><dd data-hojas="15">Condición intermedia de la CBF de orden 2: \(\dot h + \alpha h\).</dd>
+</dl>
+<h3>Estado imperfecto</h3>
+<p>Parte 4.</p>
+<dl>
+<dt>\(\hat x\)</dt><dd data-hojas="18">Estado estimado.</dd>
+<dt>\(e\)</dt><dd data-hojas="18">Error de estimación, \(x - \hat x\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="18">Cota del error de estimación, \(\|e\| \le \varepsilon\).</dd>
+<dt>\(L\)</dt><dd data-hojas="18">Constante de Lipschitz de la condición respecto del estado.</dd>
+<dt>\(b_k\)</dt><dd data-hojas="19">Belief en el instante \(k\): distribución del estado dado lo observado.</dd>
+<dt>\(w_{\max}\)</dt><dd data-hojas="27">Cota de la perturbación (viento) que supone la CBF robusta del experimento.</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="26">Periodo del filtro (10 ms en el experimento).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>CBF</dt><dd data-hojas="1">Control barrier function: función de barrera de control.</dd>
+<dt>QP</dt><dd data-hojas="7">Quadratic program: programa cuadrático.</dd>
+<dt>KKT</dt><dd data-hojas="12">Condiciones de Karush-Kuhn-Tucker de optimalidad con restricciones.</dd>
+<dt>POMDP</dt><dd data-hojas="19">Partially observable Markov decision process (A7a).</dd>
+<dt>EASA</dt><dd data-hojas="22">Agencia de la Unión Europea para la Seguridad Aérea.</dd>
+<dt>PD</dt><dd data-hojas="24">Controlador proporcional-derivativo.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
+</body>
+</html>
