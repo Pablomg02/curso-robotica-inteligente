@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A15a · MARL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A15a" data-deck-title="MARL · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 26 · Curso de robótica inteligente</p>
+  <h1>Aprendizaje por refuerzo multiagente</h1>
+  <p class="subtitle">Dec-POMDP y por qué son tan difíciles, aprendices independientes y no estacionariedad, entrenamiento centralizado con ejecución descentralizada, factorización del valor, MAPPO y comunicación aprendida. Con tres drones que buscan un objetivo con y sin compartir lo que saben.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A6a, A7a, A7b</span>
+    <span><b>Prepara</b> A15b, H3</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A15a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Plantear un problema de varios drones como Dec-POMDP y explicar por qué no hay un belief compartido que lo resuelva.</li>
+    <li>Explicar la no estacionariedad de los aprendices independientes y cómo la evita un crítico centralizado.</li>
+    <li>Derivar la línea base contrafactual de COMA y la condición de monotonicidad de QMIX, y saber qué no pueden representar.</li>
+    <li>Entrenar MAPPO e IPPO con parámetros compartidos y medir lo que aporta comunicar.</li>
+    <li>Juzgar un benchmark multiagente: ¿exige de verdad observar y coordinarse?</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Varios drones baratos pueden buscar mejor que uno caro, si se coordinan</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Un enjambre de cuadricópteros controlado con RL de extremo a extremo escala a 128 drones en simulación y vuela con hasta 8 Crazyflie reales, con una política de unos \(10^3\) parámetros a 500 Hz en el microcontrolador <a class="cite" data-ref="batra2022"></a>.</li>
+        <li>PPO con un crítico centralizado (MAPPO) consigue resultados «competitivos o superiores» a los métodos fuera de política más fuertes en cuatro bancos de pruebas cooperativos <a class="cite" data-ref="yu2022"></a>.</li>
+        <li>MAPPO entrenado en simulación persigue con varios Crazyflie reales a un evasor en entornos desconocidos y con observabilidad parcial <a class="cite" data-ref="chen2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La búsqueda con varios drones es un Dec-POMDP: cada uno observa una parte, y lo que cada uno sabe del objetivo depende de lo que se hayan contado. El belief de A7a pasa a ser un belief por dron.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Tres drones buscan un objetivo en una rejilla con un mapa previo: un barrido por franjas, una heurística voraz centralizada, IPPO y MAPPO con y sin comunicación, y qué pasa cuando los mensajes llegan tarde o no llegan. <code>figuras_a15a.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De los juegos de Markov a los enjambres que vuelan</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1993–2002</span>Aprendices independientes frente a cooperativos <a class="cite" data-ref="tan1993"></a>. Juegos de Markov como marco del RL multiagente <a class="cite" data-ref="littman1994"></a>. Dinámica de los aprendices independientes <a class="cite" data-ref="claus1998"></a>. Los Dec-POMDP son NEXP-completos <a class="cite" data-ref="bernstein2002"></a>.</div>
+    <div class="ev"><span class="yr">2016–2019</span>Comunicación aprendida: RIAL y DIAL <a class="cite" data-ref="foerster2016"></a>, CommNet <a class="cite" data-ref="sukhbaatar2016"></a>, TarMAC <a class="cite" data-ref="das2019"></a>. Críticos centralizados: MADDPG <a class="cite" data-ref="lowe2017"></a>, COMA <a class="cite" data-ref="foerster2018"></a>. Factorización: VDN <a class="cite" data-ref="sunehag2018"></a>, QMIX <a class="cite" data-ref="rashid2018"></a>, QTRAN <a class="cite" data-ref="son2019"></a>. SMAC <a class="cite" data-ref="samvelyan2019"></a>.</div>
+    <div class="ev"><span class="yr">2020–2022</span>IPPO <a class="cite" data-ref="dewitt2020"></a>, QPLEX <a class="cite" data-ref="wang2021"></a> y MAPPO <a class="cite" data-ref="yu2022"></a>. Enjambres de Crazyflie con RL de extremo a extremo <a class="cite" data-ref="batra2022"></a>.</div>
+    <div class="ev"><span class="yr">2023–2026</span>SMACv2 critica a SMAC <a class="cite" data-ref="ellis2023"></a>; entornos y algoritmos en JAX <a class="cite" data-ref="rutherford2024"></a>. Enjambres que esquivan obstáculos <a class="cite" data-ref="huang2024"></a>, persecución con varios UAV <a class="cite" data-ref="chen2025"></a> y carreras con varios drones (preprint) <a class="cite" data-ref="geles2026"></a>. Un libro de referencia <a class="cite" data-ref="albrecht2024"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Dec-POMDP">
+  <p class="num">Parte 1</p>
+  <h2>Decidir juntos sin saber lo mismo</h2>
+  <p>Dec-POMDP, su complejidad y los aprendices independientes.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dec-POMDP · definición</p>
+  <h2>Un POMDP en el que cada agente tiene sus propias observaciones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Un Dec-POMDP es \(\langle \mathcal I, S, \{A_i\}, T, R, \{\Omega_i\}, O, h\rangle\): \(n\) agentes, estados \(S\), acciones de cada uno \(A_i\), transición \(T(s'\mid s, \mathbf a)\) con la acción conjunta \(\mathbf a = (a_1, \dots, a_n)\), <strong>una recompensa común</strong> \(R(s, \mathbf a)\), observaciones propias \(o_i\in\Omega_i\) con \(O(\mathbf o\mid s', \mathbf a)\) y horizonte \(h\) <a class="cite" data-ref="oliehoek2016"></a>.</p>
+      <p class="small">Cada agente decide con su propia historia, \(a_i = \pi_i(o_{i,1}, \dots, o_{i,t})\): la política conjunta es descentralizada aunque el objetivo sea común.</p>
+      <ul class="small">
+        <li><strong>Juego de Markov:</strong> lo mismo, con una recompensa por agente; cubre la competición <a class="cite" data-ref="littman1994"></a>.</li>
+        <li><strong>Dec-MDP:</strong> las observaciones de todos juntas determinan el estado.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lo que cambia frente a A7a</span>En un POMDP, el belief \(b(s)\) es un estado suficiente. En un Dec-POMDP no hay un belief común: lo que el agente \(i\) debería hacer depende también de lo que <em>cree que saben los demás</em>, y esas creencias dependen de historias que no ve.</div>
+      <div class="callout tesis"><span class="tag">En tu búsqueda</span>Si los drones comparten todo lo que observan, sin retraso, el equipo es un POMDP con un belief común. Sin comunicación, o con mensajes que llegan tarde, cada dron tiene el suyo y el problema vuelve a ser un Dec-POMDP.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dec-POMDP · complejidad</p>
+  <h2>NEXP-completo: el espacio de políticas conjuntas crece doblemente exponencial</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Bernstein et al.: decidir si existe una política conjunta con recompensa total al menos \(K\) es NEXP-completo para horizonte finito (\(T &lt; |S|\)) y dos o más agentes <a class="cite" data-ref="bernstein2002"></a>. Un POMDP de horizonte finito es «solo» PSPACE-completo <a class="cite" data-ref="papadimitriou1987"></a>: según Bernstein et al., los descentralizados no admiten algoritmos polinómicos y, si EXP ≠ NEXP, exigen tiempo superexponencial en el peor caso.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Horizonte</th><th>Nodos por árbol</th><th>Políticas por agente</th><th>Conjuntas</th></tr></thead>
+          <tbody>
+            <tr><td>2</td><td class="n">3</td><td class="n">8</td><td class="n">64</td></tr>
+            <tr><td>4</td><td class="n">15</td><td class="n">\(10^{4,5}\)</td><td class="n">\(10^{9,0}\)</td></tr>
+            <tr><td>5</td><td class="n">31</td><td class="n">\(10^{9,3}\)</td><td class="n">\(10^{18,7}\)</td></tr>
+            <tr><td>6</td><td class="n">63</td><td class="n">\(10^{19,0}\)</td><td class="n">\(10^{37,9}\)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Dos agentes con dos acciones y dos observaciones. <code>figuras_a15a.py</code>, sección 1.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: contar políticas</summary>
+        <p class="small">Una política determinista de horizonte \(h\) es un árbol: una acción en la raíz y una por cada historia de observaciones hasta \(h-1\). El árbol tiene \(\sum_{k=0}^{h-1}|\Omega|^k = \frac{|\Omega|^h - 1}{|\Omega| - 1}\) nodos, y cada nodo elige una de \(|A|\) acciones: \(|A|^{(|\Omega|^h-1)/(|\Omega|-1)}\) políticas por agente, elevado a \(n\) para la conjunta. Con \(|A| = |\Omega| = 2\) y \(h = 6\): \(2^{63}\) por agente.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Por eso se aprende</span>Los métodos exactos solo resuelven problemas diminutos. El RL multiagente renuncia al óptimo y busca políticas parametrizadas que funcionen, con todos los riesgos de la optimización local.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dec-POMDP · aprendices independientes</p>
+  <h2>Que cada uno aprenda por su cuenta: sencillo y no estacionario</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Aprendices independientes:</strong> cada agente aplica Q-learning ignorando a los demás; los que aprenden sobre acciones conjuntas tienen mucha más información, pero en la aplicación directa de Q-learning «no rinden muy distinto» <a class="cite" data-ref="claus1998"></a>. La comparación de independientes y cooperativos viene de Tan <a class="cite" data-ref="tan1993"></a>.</li>
+        <li><strong>No estacionariedad:</strong> como todos actualizan sus políticas a la vez, «el entorno parece no estacionario desde el punto de vista de cada agente», lo que viola las hipótesis de convergencia de Q-learning <a class="cite" data-ref="lowe2017"></a>.</li>
+        <li>Aun así, IPPO, PPO independiente con un valor local por agente, rinde tan bien o mejor que métodos conjuntos en SMAC, quizá por su robustez a cierta no estacionariedad (preprint) <a class="cite" data-ref="dewitt2020"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: por qué un crítico con todas las acciones es estacionario</summary>
+        <p class="small">Para el agente \(i\), la transición que ve es \(P(s'\mid s, a_i) = \sum_{\mathbf a_{-i}} \prod_{j\ne i}\pi_j(a_j\mid\cdot)\,T(s'\mid s, a_i, \mathbf a_{-i})\): depende de las políticas de los demás, que cambian al aprender. Si se condiciona a la acción conjunta, \(P(s'\mid s, a_1, \dots, a_n, \pi_1, \dots, \pi_n) = T(s'\mid s, a_1, \dots, a_n)\) para cualesquiera políticas: el entorno es estacionario <a class="cite" data-ref="lowe2017"></a>. Esa es la idea del crítico centralizado.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="CTDE">
+  <p class="num">Parte 2</p>
+  <h2>Entrenar juntos, actuar por separado</h2>
+  <p>Críticos centralizados y factorización del valor.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">CTDE · críticos centralizados</p>
+  <h2>El crítico ve todo durante el entrenamiento; el actor, solo lo suyo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>MADDPG</strong> <a class="cite" data-ref="lowe2017"></a>: cada actor \(\pi_i(a_i\mid o_i)\) usa sus observaciones; el crítico \(Q_i(x, a_1, \dots, a_n)\) recibe información global \(x\) (en el caso más sencillo, todas las observaciones) y las acciones de todos:</p>
+      \[ \nabla_{\theta_i} J = \mathbb E\big[\nabla_{\theta_i}\log\pi_i(a_i\mid o_i)\,Q_i(x, a_1, \dots, a_n)\big]. \]
+      <p class="small"><strong>COMA</strong> <a class="cite" data-ref="foerster2018"></a> ataca la asignación de crédito: con una recompensa común, ¿cuánto aportó cada agente? Su ventaja contrafactual cambia solo la acción del agente \(a\) y deja fijas las de los demás:</p>
+      \[ A^a(s, \mathbf u) = Q(s, \mathbf u) - \sum_{u'^a}\pi^a(u'^a\mid\tau^a)\,Q\big(s, (\mathbf u^{-a}, u'^a)\big). \]
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: la línea base no sesga el gradiente</summary>
+        <p class="small">Sea \(b(s, \mathbf u^{-a}) = \sum_{u'}\pi^a(u'\mid\tau^a)Q(s, (\mathbf u^{-a}, u'))\). No depende de \(u^a\), así que \(\mathbb E_{u^a\sim\pi^a}[\nabla\log\pi^a(u^a\mid\tau^a)\,b] = b\sum_{u^a}\nabla\pi^a(u^a\mid\tau^a) = b\,\nabla 1 = 0\). Restarla no cambia el gradiente esperado y reduce su varianza; y responde a la pregunta «¿qué habría pasado si solo yo hubiera actuado de otra forma?».</p>
+      </details>
+      <div class="callout clave"><span class="tag">En la ejecución</span>El crítico se tira: cada dron vuela con su actor y sus observaciones. Lo centralizado solo cuesta en el simulador, donde tienes el estado verdadero.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CTDE · factorización del valor</p>
+  <h2>Descomponer \(Q_{\text{tot}}\) para que el máximo conjunto sea local</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>VDN</strong> <a class="cite" data-ref="sunehag2018"></a>: \(Q_{\text{tot}}(\boldsymbol\tau, \mathbf a) \approx \sum_i Q_i(\tau_i, a_i)\). Que cada agente maximice su \(Q_i\) equivale a que un árbitro central maximice la suma.</li>
+        <li><strong>IGM</strong> (máximo individual y global), definido en QTRAN <a class="cite" data-ref="son2019"></a>: la acción conjunta que maximiza \(Q_{\text{tot}}\) es la que forman los \(\arg\max_{a_i}Q_i\) de cada agente.</li>
+        <li><strong>QMIX</strong> <a class="cite" data-ref="rashid2018"></a>: \(Q_{\text{tot}}\) es una red de mezcla de los \(Q_i\) con pesos no negativos generados por hiperredes que ven el estado. La condición \(\partial Q_{\text{tot}}/\partial Q_i \ge 0\) basta para IGM.</li>
+        <li><strong>QTRAN y QPLEX:</strong> VDN y QMIX solo cubren una parte de las tareas factorizables por la aditividad y la monotonicidad; QTRAN transforma la \(Q\) conjunta en otra fácil de factorizar con las mismas acciones óptimas <a class="cite" data-ref="son2019"></a>, y QPLEX lleva IGM a la arquitectura con una clase IGM completa <a class="cite" data-ref="wang2021"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: monotonicidad implica IGM</summary>
+        <p class="small">Sea \(a_i^* = \arg\max Q_i\). Si \(Q_{\text{tot}} = f(Q_1, \dots, Q_n)\) con \(f\) no decreciente en cada argumento, para cualquier \(\mathbf a\): \(Q_i(a_i)\le Q_i(a_i^*)\) para todo \(i\), así que \(f(Q_1(a_1), \dots) \le f(Q_1(a_1^*), \dots)\). El máximo de \(Q_{\text{tot}}\) se alcanza en \((a_1^*, \dots, a_n^*)\): cada agente puede elegir solo. El precio: \(f\) no puede representar pagos en los que lo mejor para uno depende de lo que haga el otro de forma no monótona.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CTDE · lo que la monotonicidad no ve</p>
+  <h2>Un óptimo aislado: VDN y una mezcla monótona eligen lo seguro</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Pagos</th><th>\(a_2 = 0\)</th><th>\(a_2 = 1\)</th><th>\(a_2 = 2\)</th></tr></thead>
+          <tbody>
+            <tr><td>\(a_1 = 0\)</td><td class="n">8</td><td class="n">−12</td><td class="n">−12</td></tr>
+            <tr><td>\(a_1 = 1\)</td><td class="n">−12</td><td class="n">0</td><td class="n">0</td></tr>
+            <tr><td>\(a_1 = 2\)</td><td class="n">−12</td><td class="n">0</td><td class="n">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Juego cooperativo de un paso con datos uniformes sobre las 9 acciones conjuntas; 5 semillas. Cada agente elige con su \(Q_i\) (salvo la \(Q\) conjunta, que elige el máximo de la tabla).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Método</th><th>Acción conjunta</th><th>Pago medio</th></tr></thead>
+          <tbody>
+            <tr><td>VDN</td><td>(1, 1) en las 5</td><td class="n">0,0</td></tr>
+            <tr><td>Mezcla monótona (como QMIX)</td><td>(1, 1) en 4 de 5; (2, 1) en 1 de 5</td><td class="n">0,0</td></tr>
+            <tr><td>\(Q\) conjunta (tabla)</td><td>(0, 0) en las 5</td><td class="n">8,0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>\(Q_{\text{tot}}\) aprendida por la mezcla monótona</strong> (semilla 0): [−8,0, −8,0, −8,0] / [−8,0, 0,0, 0,0] / [−8,0, 0,0, 0,0]</p>
+      <div class="callout clave"><span class="tag">Qué pasa</span>Con VDN, cada \(Q_i\) aprende, salvo una constante, la media de su fila o columna: la acción 0 vale de media \((8 - 24)/3 \approx -5{,}3\) y las otras \(-4\), así que cada agente evita la 0 aunque juntos en (0, 0) ganarían 8. La mezcla monótona aplana el pago a un escalón de dos valores y elige lo mismo. La \(Q\) conjunta acierta, pero no se puede ejecutar de forma descentralizada sin coordinar.</div>
+      <p class="xsmall muted"><code>figuras_a15a.py</code>, sección 2. La mezcla es una red de una capa oculta de 16 unidades con pesos en valor absoluto; sin estado, es lo que queda de QMIX.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="MAPPO">
+  <p class="num">Parte 3</p>
+  <h2>MAPPO, benchmarks y comunicación</h2>
+  <p>PPO bien ajustado, bancos de pruebas que engañan y mensajes aprendidos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">MAPPO · PPO con crítico centralizado</p>
+  <h2>La sorprendente eficacia de PPO en juegos cooperativos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">MAPPO es PPO con parámetros compartidos entre agentes y una función de valor que recibe información global <a class="cite" data-ref="yu2022"></a>. Sus autores identifican cinco factores de implementación: «normalización del valor, entradas de la función de valor, uso de los datos de entrenamiento, recorte de política y valor, y tamaño del lote».</p>
+      <ul class="small">
+        <li>Valor: rasgos locales del agente <em>y</em> globales, sin inflar la dimensión.</li>
+        <li>Como mucho 10 épocas en entornos difíciles y 15 en fáciles, y mejor sin dividir en minilotes.</li>
+        <li>Recorte \(\varepsilon\) por debajo de 0,2; lotes grandes.</li>
+      </ul>
+      <p class="xsmall muted">Sección 5 de Yu et al. <a class="cite" data-ref="yu2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Resultado</th><th>MAPPO</th><th>QMix</th></tr></thead>
+          <tbody>
+            <tr><td>SMAC corridor (% victorias, mediana)</td><td class="n">100,0</td><td class="n">84,4</td></tr>
+            <tr><td>SMAC 6h_vs_8z</td><td class="n">88,3</td><td class="n">9,4</td></tr>
+            <tr><td>SMAC 27m_vs_30m</td><td class="n">93,8</td><td class="n">39,1</td></tr>
+            <tr><td>Google Research Football 3 contra 1 (% éxito)</td><td class="n">88,03</td><td class="n">8,12</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Tablas 1 y 2 de Yu et al.; SMAC con 6 semillas y hasta 10 millones de pasos.</p>
+      <div class="callout realidad"><span class="tag">Sin exagerar</span>No gana siempre: en Hanabi con 4 jugadores, la mejor semilla de SAD y de VDN supera a la de MAPPO. Su lectura es «comparable o superior» en casi todos los casos, y que el crítico centralizado importa más cuantos más agentes hay.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Benchmarks · ¿exigen observar?</p>
+  <h2>SMACv2: muchas tareas de SMAC se ganan sin mirar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>SMAC</strong> <a class="cite" data-ref="samvelyan2019"></a>: micro-gestión cooperativa en StarCraft II, el banco de pruebas de QMIX, QPLEX y MAPPO.</li>
+        <li><strong>La crítica de SMACv2</strong> <a class="cite" data-ref="ellis2023"></a>: «una política de lazo abierto condicionada solo al paso de tiempo puede lograr tasas de victoria no triviales en muchos escenarios de SMAC». Solo en cuatro mapas no aprende nada útil.</li>
+        <li>El argumento formal: si el estado inicial y la dinámica de un Dec-POMDP son deterministas, existe una política conjunta óptima que ignora todo salvo el tiempo y la identidad del agente.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial, otra vez</span>Un banco de pruebas solo mide observar y coordinarse si la aleatoriedad lo exige. En tu búsqueda, el objetivo cambia de sitio en cada episodio: sin observar no se gana.</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">JaxMARL: velocidad</span>Entornos y algoritmos multiagente en JAX: según sus autores, su entrenamiento es unas 14 veces más rápido que las alternativas en una ejecución y hasta 12 500 veces más al vectorizar muchas ejecuciones; 1024 entrenamientos de QMIX en MPE en 198,4 s frente a 1 h 10 min de uno solo con PyMARL <a class="cite" data-ref="rutherford2024"></a>.</div>
+      <p class="small">La comparación es entre su GPU y las implementaciones de referencia en CPU. Es lo mismo que mediste en B6 con el x500: vectorizar en la GPU cambia lo que se puede probar en una tarde. Nuestro experimento entrena 12 políticas con una RTX 4060 Ti en unos 25 minutos.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Comunicación · mensajes aprendidos</p>
+  <h2>Qué decir, a quién y cuánto cuesta decirlo</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>RIAL y DIAL</strong> <a class="cite" data-ref="foerster2016"></a>: RIAL aprende los mensajes con Q-learning; DIAL retropropaga el error a través del canal (con ruido) durante el entrenamiento, que es centralizado, y ejecuta de forma descentralizada.</li>
+        <li><strong>CommNet</strong> <a class="cite" data-ref="sukhbaatar2016"></a>: comunicación continua aprendida a la vez que la política en tareas cooperativas.</li>
+        <li><strong>TarMAC</strong> <a class="cite" data-ref="das2019"></a>: los agentes aprenden qué mensajes enviar y a quién dirigirlos, en entornos parcialmente observables, solo con la recompensa de la tarea.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">El coste real</span>Batra et al. descartan los métodos que intercambian varios mensajes por paso: es «prohibitivamente caro» en nano-cuadricópteros como el Crazyflie, cuyos controladores corren a 500 Hz <a class="cite" data-ref="batra2022"></a>.</div>
+      <div class="callout clave"><span class="tag">Latencia y frecuencia</span>Un mensaje por radio llega tarde, a veces no llega, y el ancho de banda es limitado. Una política entrenada con mensajes perfectos puede no saber qué hacer cuando faltan: lo medimos en la parte 5 con mensajes retrasados 10 pasos y sin mensajes.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Drones">
+  <p class="num">Parte 4</p>
+  <h2>Varios drones de verdad</h2>
+  <p>Enjambres, persecución y carreras con RL multiagente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · resultados reales</p>
+  <h2>Lo que ya vuela: políticas pequeñas, observaciones locales, parámetros compartidos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Método</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>Batra et al. 2021 <a class="cite" data-ref="batra2022"></a></td><td>PPO con parámetros compartidos, vecinos cercanos</td><td>hasta 128 drones en simulación; hasta 8 Crazyflie reales, con una política de ~\(10^3\) parámetros a 500 Hz</td></tr>
+        <tr><td>Huang et al. 2024 <a class="cite" data-ref="huang2024"></a></td><td>RL de extremo a extremo con atención</td><td>32 drones con un 80 % de densidad de obstáculos en simulación; 8 reales con un 20 %; huecos de 0,15 m con drones de 0,05 m de radio</td></tr>
+        <tr><td>Chen et al. 2025 <a class="cite" data-ref="chen2025"></a></td><td>MAPPO con predicción del evasor</td><td>captura cercana al 100 % en cuatro escenarios simulados no vistos; Crazyflie reales sin ajuste</td></tr>
+        <tr><td>Wang et al. 2024 (preprint) <a class="cite" data-ref="wang2024"></a></td><td>PPO, entrenamiento centralizado</td><td>dos cuadricópteros reales a 13,65 m/s, con todo el cómputo a bordo</td></tr>
+        <tr><td>Geles et al. 2026 (preprint) <a class="cite" data-ref="geles2026"></a></td><td>self-play en liga, con la estela entre drones</td><td>según su resumen, superan a un piloto campeón en carreras con varios drones a más de 22 m/s y reducen a la mitad las colisiones frente a las alternativas de un solo agente</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:6px">
+    <div class="callout clave"><span class="tag">El patrón</span>Lo que funciona en real comparte parámetros, observa a pocos vecinos y no depende de mensajes en cada paso; en Batra et al., la política cabe en el microcontrolador del Crazyflie.</div>
+    <div class="callout realidad"><span class="tag">Lo que falta</span>Búsqueda cooperativa con belief y varios drones reales: los resultados con números son de evitar colisiones, perseguir o competir. Las cifras de los preprints son afirmaciones de sus autores.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 5</p>
+  <h2>Tres drones buscan un objetivo</h2>
+  <p>Coordinarse, comunicarse y qué pasa cuando el canal falla.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>Una rejilla, un mapa previo y un sensor que falla</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Rejilla de 12 × 12 celdas; el objetivo está en una celda según un mapa previo con dos zonas probables, en sitios al azar en cada episodio (más un 20 % repartido por igual).</li>
+        <li>Tres drones salen de la esquina; en cada paso se mueven a una celda vecina o se quedan, y miran su celda: detectan el objetivo con probabilidad 0,7. Episodios de 80 pasos.</li>
+        <li><strong>Sin comunicación,</strong> cada dron conoce su belief (el mapa previo actualizado con <em>sus</em> miradas). <strong>Con comunicación,</strong> el del equipo y la posición de los demás.</li>
+        <li>Observación en mapas de 23 × 23 centrados en el dron, más su identidad, el tiempo y su posición. PPO con parámetros compartidos, 600 actualizaciones de 512 episodios, 3 semillas.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: la recompensa del belief-MDP</summary>
+        <p class="small">Sea \(m_t(c) = P(\text{objetivo en } c \text{ y no detectado antes de } t) = p_0(c)\,q^{n_t(c)}\), con \(q = 0{,}3\) y \(n_t(c)\) las miradas a \(c\) hasta \(t\). Si en el paso \(t\) miran \(c\) \(k_t(c)\) drones, la probabilidad de detectarlo por primera vez en ese paso es</p>
+        \[ r_t = \sum_c m_t(c)\big(1 - q^{k_t(c)}\big), \qquad m_{t+1}(c) = m_t(c)\,q^{k_t(c)}. \]
+        <p class="small">La suma de \(r_t\) es la probabilidad de encontrarlo antes del final, y \(\sum_t\sum_c m_t(c)\) los pasos esperados hasta encontrarlo (con tope 80). Es la recompensa esperada del belief-MDP de A7a: el mismo objetivo que premiar la detección real, sin su varianza.</p>
+      </details>
+      <p class="xsmall muted"><code>figuras_a15a.py</code>, sección 3. Evaluación en 2000 episodios con los mismos mapas para todos.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · resultados</p>
+  <h2>Con mensajes, MAPPO supera a la heurística centralizada</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Probabilidad de encontrar el objetivo frente a las actualizaciones de PPO, con las referencias heurísticas como líneas horizontales">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0,6</text>
+        <text x="52" y="191.1" text-anchor="end" class="t-mono t-faint" font-size="12">0,7</text>
+        <text x="52" y="128.3" text-anchor="end" class="t-mono t-faint" font-size="12">0,8</text>
+        <text x="52" y="65.4" text-anchor="end" class="t-mono t-faint" font-size="12">0,9</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">300</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">600</text>
+        <line x1="60" y1="128.2" x2="520" y2="128.2" class="ln-dash"/>
+        <line x1="60" y1="69.1" x2="520" y2="69.1" class="ln-time ln-dash" stroke-width="1.4"/>
+        <text x="516" y="128.2" dy="14" text-anchor="end" class="t-faint" font-size="12">barrido por franjas</text>
+        <path d="M60.8,250.0 L75.3,225.4 L90.7,176.7 L106.0,156.9 L121.3,144.6 L136.7,131.1 L152.0,123.6 L167.3,115.2 L182.7,108.5 L198.0,103.4 L213.3,99.2 L228.7,96.4 L244.0,93.4 L259.3,90.6 L274.7,88.6 L290.0,86.1 L305.3,85.5 L320.7,84.1 L336.0,81.9 L351.3,80.8 L366.7,78.3 L382.0,77.1 L397.3,76.0 L412.7,74.9 L428.0,74.1 L443.3,74.4 L458.7,72.7 L474.0,71.8 L489.3,71.6 L504.7,70.2 L520.0,69.6" fill="none" class="ln" stroke-width="1.6"/>
+        <path d="M60.8,250.0 L75.3,176.7 L90.7,123.0 L106.0,114.6 L121.3,92.8 L136.7,88.1 L152.0,91.7 L167.3,87.2 L182.7,80.8 L198.0,79.1 L213.3,75.7 L228.7,76.9 L244.0,76.3 L259.3,74.9 L274.7,73.0 L290.0,72.4 L305.3,73.2 L320.7,73.8 L336.0,74.4 L351.3,74.6 L366.7,73.8 L382.0,74.6 L397.3,75.2 L412.7,75.7 L428.0,77.1 L443.3,75.5 L458.7,77.1 L474.0,78.0 L489.3,78.0 L504.7,77.4 L520.0,78.5" fill="none" class="ln-accent" stroke-width="1.6" stroke-dasharray="5 3"/>
+        <path d="M60.8,250.0 L75.3,98.1 L90.7,86.9 L106.0,82.2 L121.3,82.5 L136.7,81.6 L152.0,78.8 L167.3,80.5 L182.7,77.4 L198.0,77.1 L213.3,73.5 L228.7,74.9 L244.0,73.2 L259.3,73.2 L274.7,71.0 L290.0,76.0 L305.3,72.4 L320.7,71.3 L336.0,67.4 L351.3,69.3 L366.7,70.2 L382.0,69.3 L397.3,69.6 L412.7,71.3 L428.0,70.7 L443.3,68.8 L458.7,70.7 L474.0,69.9 L489.3,69.9 L504.7,70.7 L520.0,70.2" fill="none" class="ln-accent" stroke-width="2.2"/>
+        <path d="M60.8,250.0 L75.3,95.0 L90.7,78.5 L106.0,72.7 L121.3,68.2 L136.7,66.8 L152.0,65.4 L167.3,64.8 L182.7,64.0 L198.0,63.7 L213.3,63.7 L228.7,64.3 L244.0,62.6 L259.3,61.8 L274.7,61.5 L290.0,61.2 L305.3,60.9 L320.7,60.6 L336.0,59.8 L351.3,60.1 L366.7,60.4 L382.0,59.8 L397.3,59.8 L412.7,59.5 L428.0,59.2 L443.3,59.2 L458.7,59.2 L474.0,59.5 L489.3,59.2 L504.7,59.0 L520.0,58.7" fill="none" class="ln-tesis" stroke-width="2.2"/>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">actualizaciones de PPO</text>
+      </svg>
+      <figcaption>P(encontrarlo en 80 pasos), media de 3 semillas en 256 episodios (el azar, 0,282, queda fuera de la escala). Azul discontinuo: IPPO sin comunicación; azul: MAPPO sin comunicación; morado: MAPPO con comunicación; gris: lo mismo con mapas sin centrar; naranja discontinuo: voraz centralizada.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>2000 episodios</th><th>P(encontrarlo)</th><th>Pasos esperados</th><th>Solapamiento</th></tr></thead>
+          <tbody>
+            <tr><td>Aleatorio</td><td class="n">0,282</td><td class="n">69,9</td><td class="n">0,41</td></tr>
+            <tr><td>Barrido por franjas</td><td class="n">0,798</td><td class="n">41,7</td><td class="n">0,05</td></tr>
+            <tr><td>Voraz centralizada</td><td class="n">0,894</td><td class="n">31,4</td><td class="n">0,51</td></tr>
+            <tr><td>IPPO sin comunicación</td><td class="n">0,878</td><td class="n">32,7</td><td class="n">0,27</td></tr>
+            <tr><td>MAPPO sin comunicación</td><td class="n">0,892</td><td class="n">30,7</td><td class="n">0,33</td></tr>
+            <tr><td>MAPPO con comunicación</td><td class="n">0,910</td><td class="n">29,4</td><td class="n">0,36</td></tr>
+            <tr><td>Ídem, mapas sin centrar</td><td class="n">0,893</td><td class="n">31,1</td><td class="n">0,42</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Muestreando la acción; medias de 3 semillas (rango de P de MAPPO con comunicación: 0,910–0,911). Solapamiento: fracción de las celdas vistas que vio más de un dron.</p>
+      <ul class="small">
+        <li>El barrido por franjas apenas solapa (0,05), pero ignora el mapa previo; la voraz centralizada lo usa y llega a 0,894.</li>
+        <li>MAPPO sin comunicación (0,892) se queda cerca sin saber dónde han mirado los demás y solapa menos que la voraz: se reparten la rejilla por convención. Con mensajes, 0,910.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · el canal</p>
+  <h2>Entrenada con mensajes perfectos, sin mensajes busca peor que la entrenada sin ellos</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 700 250" role="img" aria-label="Mapa previo de un episodio y recorridos de los tres drones con MAPPO sin comunicación, con comunicación y con la heurística voraz">
+        <g transform="translate(6,6)"><rect x="0" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="198" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="72" y="198" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="90" y="198" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="108" y="198" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="126" y="198" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="144" y="198" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="162" y="198" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="180" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="180" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="72" y="180" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="90" y="180" width="18" height="18" class="fill-time" fill-opacity="0.40"/><rect x="108" y="180" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="126" y="180" width="18" height="18" class="fill-time" fill-opacity="0.52"/><rect x="144" y="180" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="162" y="180" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="180" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="198" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="162" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="162" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="90" y="162" width="18" height="18" class="fill-time" fill-opacity="0.53"/><rect x="108" y="162" width="18" height="18" class="fill-time" fill-opacity="0.74"/><rect x="126" y="162" width="18" height="18" class="fill-time" fill-opacity="0.71"/><rect x="144" y="162" width="18" height="18" class="fill-time" fill-opacity="0.50"/><rect x="162" y="162" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="180" y="162" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="0" y="144" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="144" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="144" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="90" y="144" width="18" height="18" class="fill-time" fill-opacity="0.49"/><rect x="108" y="144" width="18" height="18" class="fill-time" fill-opacity="0.69"/><rect x="126" y="144" width="18" height="18" class="fill-time" fill-opacity="0.70"/><rect x="144" y="144" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="144" width="18" height="18" class="fill-time" fill-opacity="0.45"/><rect x="180" y="144" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="198" y="144" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="0" y="126" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="126" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="72" y="126" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="90" y="126" width="18" height="18" class="fill-time" fill-opacity="0.33"/><rect x="108" y="126" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="126" y="126" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="144" y="126" width="18" height="18" class="fill-time" fill-opacity="0.61"/><rect x="162" y="126" width="18" height="18" class="fill-time" fill-opacity="0.65"/><rect x="180" y="126" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="198" y="126" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="0" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="108" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="90" y="108" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="108" y="108" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="126" y="108" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="144" y="108" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="108" width="18" height="18" class="fill-time" fill-opacity="0.76"/><rect x="180" y="108" width="18" height="18" class="fill-time" fill-opacity="0.72"/><rect x="198" y="108" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="0" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="90" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="108" y="90" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="126" y="90" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="144" y="90" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="162" y="90" width="18" height="18" class="fill-time" fill-opacity="0.64"/><rect x="180" y="90" width="18" height="18" class="fill-time" fill-opacity="0.62"/><rect x="198" y="90" width="18" height="18" class="fill-time" fill-opacity="0.42"/><rect x="0" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="72" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="126" y="72" width="18" height="18" class="fill-time" fill-opacity="0.18"/><rect x="144" y="72" width="18" height="18" class="fill-time" fill-opacity="0.29"/><rect x="162" y="72" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="180" y="72" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="198" y="72" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="0" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="54" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="144" y="54" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="162" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="180" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="54" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="0" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="36" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="162" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="180" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="198" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="162" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="180" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="144" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="162" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="180" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="198" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/> <path d="M7.6,208.4 L25.6,208.4 L43.6,208.4 L61.6,208.4 L79.6,208.4 L97.6,208.4 L115.6,208.4 L115.6,190.4 L133.6,190.4 L133.6,172.4 L151.6,172.4 L151.6,154.4 L169.6,154.4 L187.6,154.4 L187.6,136.4 L169.6,136.4 L187.6,136.4 L205.6,136.4 L205.6,118.4 L205.6,100.4 L205.6,82.4 L187.6,82.4 L169.6,82.4 L169.6,100.4 L187.6,100.4 L187.6,118.4 L205.6,118.4 L205.6,136.4 L205.6,154.4 L205.6,172.4 L187.6,172.4 L187.6,190.4 L169.6,190.4 L151.6,190.4 L169.6,190.4 L169.6,172.4 L187.6,172.4 L205.6,172.4 L205.6,190.4 L205.6,208.4 L187.6,208.4 L169.6,208.4 L151.6,208.4 L133.6,208.4 L115.6,208.4 L115.6,190.4 L133.6,190.4 L133.6,172.4 L151.6,172.4 L151.6,154.4 L169.6,154.4 L187.6,154.4 L205.6,154.4 L205.6,172.4 L205.6,190.4 L205.6,208.4 L187.6,208.4 L169.6,208.4 L151.6,208.4 L133.6,208.4 L133.6,190.4 L151.6,190.4 L169.6,190.4 L169.6,172.4 L151.6,172.4 L133.6,172.4 L151.6,172.4 L151.6,154.4 L169.6,154.4 L187.6,154.4 L187.6,172.4 L187.6,190.4 L169.6,190.4 L151.6,190.4 L151.6,208.4 L133.6,208.4 L115.6,208.4 L97.6,208.4 L97.6,190.4 L115.6,190.4 L115.6,172.4" fill="none" class="ln-accent" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.0,207.0 L9.0,189.0 L9.0,171.0 L27.0,171.0 L45.0,171.0 L63.0,171.0 L81.0,171.0 L99.0,171.0 L99.0,153.0 L117.0,153.0 L117.0,135.0 L135.0,135.0 L135.0,117.0 L153.0,117.0 L171.0,117.0 L189.0,117.0 L189.0,99.0 L171.0,99.0 L153.0,99.0 L135.0,99.0 L153.0,99.0 L153.0,81.0 L171.0,81.0 L171.0,63.0 L189.0,63.0 L189.0,45.0 L189.0,27.0 L189.0,9.0 L171.0,9.0 L153.0,9.0 L135.0,9.0 L117.0,9.0 L99.0,9.0 L81.0,9.0 L63.0,9.0 L45.0,9.0 L27.0,9.0 L9.0,9.0 L9.0,27.0 L9.0,45.0 L9.0,63.0 L9.0,81.0 L9.0,99.0 L9.0,117.0 L9.0,135.0 L9.0,153.0 L27.0,153.0 L45.0,153.0 L63.0,153.0 L81.0,153.0 L81.0,135.0 L99.0,135.0 L99.0,117.0 L117.0,117.0 L117.0,99.0 L117.0,81.0 L135.0,81.0 L135.0,63.0 L153.0,63.0 L153.0,45.0 L171.0,45.0 L171.0,27.0 L171.0,9.0 L153.0,9.0 L135.0,9.0 L117.0,9.0 L99.0,9.0 L81.0,9.0 L63.0,9.0 L45.0,9.0 L27.0,9.0 L9.0,9.0 L9.0,27.0 L9.0,45.0 L27.0,45.0 L27.0,63.0 L27.0,45.0 L45.0,45.0 L45.0,27.0 L27.0,27.0 L45.0,27.0" fill="none" class="ln-tesis" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.4,205.6 L10.4,187.6 L28.4,187.6 L46.4,187.6 L64.4,187.6 L82.4,187.6 L100.4,187.6 L100.4,169.6 L118.4,169.6 L118.4,151.6 L136.4,151.6 L136.4,133.6 L154.4,133.6 L154.4,115.6 L172.4,115.6 L172.4,133.6 L190.4,133.6 L208.4,133.6 L208.4,115.6 L208.4,97.6 L208.4,79.6 L190.4,79.6 L172.4,79.6 L172.4,61.6 L190.4,61.6 L208.4,61.6 L208.4,43.6 L208.4,25.6 L208.4,7.6 L190.4,7.6 L172.4,7.6 L154.4,7.6 L154.4,25.6 L136.4,25.6 L118.4,25.6 L100.4,25.6 L82.4,25.6 L82.4,43.6 L64.4,43.6 L64.4,61.6 L46.4,61.6 L46.4,79.6 L28.4,79.6 L28.4,97.6 L28.4,115.6 L28.4,133.6 L28.4,151.6 L46.4,151.6 L64.4,151.6 L82.4,151.6 L82.4,133.6 L100.4,133.6 L100.4,151.6 L118.4,151.6 L118.4,169.6 L118.4,151.6 L136.4,151.6 L136.4,133.6 L154.4,133.6 L172.4,133.6 L172.4,115.6 L190.4,115.6 L190.4,97.6 L208.4,97.6 L208.4,79.6 L208.4,61.6 L208.4,43.6 L208.4,25.6 L208.4,7.6 L208.4,7.6 L190.4,7.6 L172.4,7.6 L154.4,7.6 L136.4,7.6 L136.4,25.6 L118.4,25.6 L118.4,43.6 L100.4,43.6 L100.4,61.6 L82.4,61.6 L82.4,79.6" fill="none" class="ln" stroke-width="1.8" stroke-linejoin="round"/><text x="108" y="236" text-anchor="middle" class="t-bold" font-size="13">Sin comunicación · P 0,88</text></g>
+        <g transform="translate(240,6)"><rect x="0" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="198" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="72" y="198" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="90" y="198" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="108" y="198" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="126" y="198" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="144" y="198" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="162" y="198" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="180" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="180" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="72" y="180" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="90" y="180" width="18" height="18" class="fill-time" fill-opacity="0.40"/><rect x="108" y="180" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="126" y="180" width="18" height="18" class="fill-time" fill-opacity="0.52"/><rect x="144" y="180" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="162" y="180" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="180" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="198" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="162" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="162" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="90" y="162" width="18" height="18" class="fill-time" fill-opacity="0.53"/><rect x="108" y="162" width="18" height="18" class="fill-time" fill-opacity="0.74"/><rect x="126" y="162" width="18" height="18" class="fill-time" fill-opacity="0.71"/><rect x="144" y="162" width="18" height="18" class="fill-time" fill-opacity="0.50"/><rect x="162" y="162" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="180" y="162" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="0" y="144" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="144" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="144" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="90" y="144" width="18" height="18" class="fill-time" fill-opacity="0.49"/><rect x="108" y="144" width="18" height="18" class="fill-time" fill-opacity="0.69"/><rect x="126" y="144" width="18" height="18" class="fill-time" fill-opacity="0.70"/><rect x="144" y="144" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="144" width="18" height="18" class="fill-time" fill-opacity="0.45"/><rect x="180" y="144" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="198" y="144" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="0" y="126" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="126" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="72" y="126" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="90" y="126" width="18" height="18" class="fill-time" fill-opacity="0.33"/><rect x="108" y="126" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="126" y="126" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="144" y="126" width="18" height="18" class="fill-time" fill-opacity="0.61"/><rect x="162" y="126" width="18" height="18" class="fill-time" fill-opacity="0.65"/><rect x="180" y="126" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="198" y="126" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="0" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="108" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="90" y="108" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="108" y="108" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="126" y="108" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="144" y="108" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="108" width="18" height="18" class="fill-time" fill-opacity="0.76"/><rect x="180" y="108" width="18" height="18" class="fill-time" fill-opacity="0.72"/><rect x="198" y="108" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="0" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="90" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="108" y="90" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="126" y="90" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="144" y="90" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="162" y="90" width="18" height="18" class="fill-time" fill-opacity="0.64"/><rect x="180" y="90" width="18" height="18" class="fill-time" fill-opacity="0.62"/><rect x="198" y="90" width="18" height="18" class="fill-time" fill-opacity="0.42"/><rect x="0" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="72" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="126" y="72" width="18" height="18" class="fill-time" fill-opacity="0.18"/><rect x="144" y="72" width="18" height="18" class="fill-time" fill-opacity="0.29"/><rect x="162" y="72" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="180" y="72" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="198" y="72" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="0" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="54" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="144" y="54" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="162" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="180" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="54" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="0" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="36" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="162" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="180" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="198" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="162" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="180" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="144" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="162" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="180" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="198" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/> <path d="M7.6,208.4 L25.6,208.4 L25.6,190.4 L43.6,190.4 L61.6,190.4 L79.6,190.4 L97.6,190.4 L115.6,190.4 L115.6,172.4 L133.6,172.4 L133.6,154.4 L151.6,154.4 L151.6,136.4 L133.6,136.4 L151.6,136.4 L151.6,118.4 L133.6,118.4 L115.6,118.4 L133.6,118.4 L133.6,100.4 L151.6,100.4 L151.6,82.4 L169.6,82.4 L187.6,82.4 L205.6,82.4 L187.6,82.4 L187.6,100.4 L187.6,118.4 L169.6,118.4 L169.6,100.4 L151.6,100.4 L151.6,82.4 L169.6,82.4 L169.6,64.4 L187.6,64.4 L205.6,64.4 L205.6,82.4 L205.6,100.4 L205.6,118.4 L205.6,136.4 L187.6,136.4 L169.6,136.4 L169.6,154.4 L169.6,172.4 L187.6,172.4 L205.6,172.4 L205.6,190.4 L205.6,208.4 L187.6,208.4 L169.6,208.4 L151.6,208.4 L169.6,208.4 L187.6,208.4 L187.6,190.4 L187.6,172.4 L187.6,154.4 L205.6,154.4 L205.6,136.4 L187.6,136.4 L187.6,118.4 L187.6,100.4 L205.6,100.4 L187.6,100.4 L187.6,82.4 L187.6,64.4 L187.6,46.4 L205.6,46.4 L205.6,28.4 L205.6,10.4 L187.6,10.4 L169.6,10.4 L151.6,10.4 L133.6,10.4 L115.6,10.4 L97.6,10.4 L79.6,10.4 L79.6,28.4 L97.6,28.4 L115.6,28.4 L115.6,46.4 L133.6,46.4" fill="none" class="ln-accent" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.0,207.0 L9.0,189.0 L9.0,171.0 L27.0,171.0 L45.0,171.0 L63.0,171.0 L81.0,171.0 L99.0,171.0 L99.0,153.0 L117.0,153.0 L117.0,135.0 L99.0,135.0 L117.0,135.0 L135.0,135.0 L153.0,135.0 L171.0,135.0 L189.0,135.0 L189.0,117.0 L171.0,117.0 L171.0,99.0 L189.0,99.0 L207.0,99.0 L207.0,117.0 L207.0,135.0 L207.0,153.0 L189.0,153.0 L171.0,153.0 L153.0,153.0 L135.0,153.0 L135.0,171.0 L135.0,189.0 L117.0,189.0 L99.0,189.0 L99.0,171.0 L81.0,171.0 L81.0,153.0 L63.0,153.0 L45.0,153.0 L27.0,153.0 L9.0,153.0 L9.0,135.0 L27.0,135.0 L27.0,117.0 L45.0,117.0 L63.0,117.0 L63.0,135.0 L81.0,135.0 L81.0,117.0 L81.0,99.0 L99.0,99.0 L99.0,81.0 L81.0,81.0 L63.0,81.0 L63.0,63.0 L45.0,63.0 L45.0,45.0 L27.0,45.0 L27.0,27.0 L45.0,27.0 L63.0,27.0 L63.0,9.0 L45.0,9.0 L27.0,9.0 L9.0,9.0 L9.0,27.0 L9.0,45.0 L9.0,63.0 L9.0,81.0 L9.0,99.0 L27.0,99.0 L45.0,99.0 L63.0,99.0 L63.0,81.0 L45.0,81.0 L27.0,81.0 L27.0,63.0 L45.0,63.0 L63.0,63.0 L81.0,63.0 L99.0,63.0 L117.0,63.0" fill="none" class="ln-tesis" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.4,205.6 L28.4,205.6 L46.4,205.6 L64.4,205.6 L82.4,205.6 L100.4,205.6 L118.4,205.6 L136.4,205.6 L136.4,187.6 L154.4,187.6 L172.4,187.6 L172.4,169.6 L154.4,169.6 L136.4,169.6 L154.4,169.6 L154.4,187.6 L154.4,205.6 L136.4,205.6 L118.4,205.6 L118.4,187.6 L118.4,169.6 L118.4,151.6 L100.4,151.6 L82.4,151.6 L82.4,133.6 L100.4,133.6 L100.4,115.6 L118.4,115.6 L118.4,97.6 L136.4,97.6 L154.4,97.6 L154.4,79.6 L136.4,79.6 L136.4,61.6 L154.4,61.6 L172.4,61.6 L172.4,79.6 L172.4,97.6 L172.4,115.6 L154.4,115.6 L172.4,115.6 L172.4,133.6 L172.4,151.6 L172.4,169.6 L190.4,169.6 L208.4,169.6 L208.4,187.6 L190.4,187.6 L172.4,187.6 L154.4,187.6 L154.4,169.6 L154.4,151.6 L136.4,151.6 L118.4,151.6 L118.4,169.6 L118.4,151.6 L100.4,151.6 L100.4,169.6 L100.4,187.6 L82.4,187.6 L82.4,205.6 L100.4,205.6 L118.4,205.6 L136.4,205.6 L136.4,187.6 L136.4,169.6 L136.4,151.6 L136.4,133.6 L118.4,133.6 L118.4,115.6 L136.4,115.6 L154.4,115.6 L172.4,115.6 L154.4,115.6 L136.4,115.6 L118.4,115.6 L100.4,115.6 L100.4,97.6 L118.4,97.6 L118.4,79.6 L136.4,79.6" fill="none" class="ln" stroke-width="1.8" stroke-linejoin="round"/><text x="108" y="236" text-anchor="middle" class="t-bold" font-size="13">Con comunicación · P 0,92</text></g>
+        <g transform="translate(474,6)"><rect x="0" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="198" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="198" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="72" y="198" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="90" y="198" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="108" y="198" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="126" y="198" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="144" y="198" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="162" y="198" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="180" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="198" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="180" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="72" y="180" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="90" y="180" width="18" height="18" class="fill-time" fill-opacity="0.40"/><rect x="108" y="180" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="126" y="180" width="18" height="18" class="fill-time" fill-opacity="0.52"/><rect x="144" y="180" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="162" y="180" width="18" height="18" class="fill-time" fill-opacity="0.21"/><rect x="180" y="180" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="198" y="180" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="162" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="162" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="162" width="18" height="18" class="fill-time" fill-opacity="0.28"/><rect x="90" y="162" width="18" height="18" class="fill-time" fill-opacity="0.53"/><rect x="108" y="162" width="18" height="18" class="fill-time" fill-opacity="0.74"/><rect x="126" y="162" width="18" height="18" class="fill-time" fill-opacity="0.71"/><rect x="144" y="162" width="18" height="18" class="fill-time" fill-opacity="0.50"/><rect x="162" y="162" width="18" height="18" class="fill-time" fill-opacity="0.30"/><rect x="180" y="162" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="162" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="0" y="144" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="144" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="144" width="18" height="18" class="fill-time" fill-opacity="0.14"/><rect x="72" y="144" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="90" y="144" width="18" height="18" class="fill-time" fill-opacity="0.49"/><rect x="108" y="144" width="18" height="18" class="fill-time" fill-opacity="0.69"/><rect x="126" y="144" width="18" height="18" class="fill-time" fill-opacity="0.70"/><rect x="144" y="144" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="144" width="18" height="18" class="fill-time" fill-opacity="0.45"/><rect x="180" y="144" width="18" height="18" class="fill-time" fill-opacity="0.35"/><rect x="198" y="144" width="18" height="18" class="fill-time" fill-opacity="0.23"/><rect x="0" y="126" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="36" y="126" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="126" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="72" y="126" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="90" y="126" width="18" height="18" class="fill-time" fill-opacity="0.33"/><rect x="108" y="126" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="126" y="126" width="18" height="18" class="fill-time" fill-opacity="0.54"/><rect x="144" y="126" width="18" height="18" class="fill-time" fill-opacity="0.61"/><rect x="162" y="126" width="18" height="18" class="fill-time" fill-opacity="0.65"/><rect x="180" y="126" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="198" y="126" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="0" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="108" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="108" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="108" width="18" height="18" class="fill-time" fill-opacity="0.13"/><rect x="90" y="108" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="108" y="108" width="18" height="18" class="fill-time" fill-opacity="0.26"/><rect x="126" y="108" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="144" y="108" width="18" height="18" class="fill-time" fill-opacity="0.58"/><rect x="162" y="108" width="18" height="18" class="fill-time" fill-opacity="0.76"/><rect x="180" y="108" width="18" height="18" class="fill-time" fill-opacity="0.72"/><rect x="198" y="108" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="0" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="90" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="54" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="90" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="90" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="108" y="90" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="126" y="90" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="144" y="90" width="18" height="18" class="fill-time" fill-opacity="0.47"/><rect x="162" y="90" width="18" height="18" class="fill-time" fill-opacity="0.64"/><rect x="180" y="90" width="18" height="18" class="fill-time" fill-opacity="0.62"/><rect x="198" y="90" width="18" height="18" class="fill-time" fill-opacity="0.42"/><rect x="0" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="72" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="72" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="90" y="72" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="72" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="126" y="72" width="18" height="18" class="fill-time" fill-opacity="0.18"/><rect x="144" y="72" width="18" height="18" class="fill-time" fill-opacity="0.29"/><rect x="162" y="72" width="18" height="18" class="fill-time" fill-opacity="0.39"/><rect x="180" y="72" width="18" height="18" class="fill-time" fill-opacity="0.38"/><rect x="198" y="72" width="18" height="18" class="fill-time" fill-opacity="0.27"/><rect x="0" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="54" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="108" y="54" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="54" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="144" y="54" width="18" height="18" class="fill-time" fill-opacity="0.16"/><rect x="162" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="180" y="54" width="18" height="18" class="fill-time" fill-opacity="0.19"/><rect x="198" y="54" width="18" height="18" class="fill-time" fill-opacity="0.15"/><rect x="0" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="36" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="126" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="36" width="18" height="18" class="fill-time" fill-opacity="0.11"/><rect x="162" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="180" y="36" width="18" height="18" class="fill-time" fill-opacity="0.12"/><rect x="198" y="36" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="18" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="144" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="162" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="180" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="198" y="18" width="18" height="18" class="fill-time" fill-opacity="0.10"/><rect x="0" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="18" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="36" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="54" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="72" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="90" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="108" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="126" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="144" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="162" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="180" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/><rect x="198" y="0" width="18" height="18" class="fill-time" fill-opacity="0.09"/> <path d="M7.6,208.4 L25.6,208.4 L43.6,208.4 L61.6,208.4 L79.6,208.4 L97.6,208.4 L115.6,208.4 L115.6,190.4 L115.6,172.4 L133.6,172.4 L133.6,154.4 L151.6,154.4 L169.6,154.4 L169.6,136.4 L169.6,118.4 L187.6,118.4 L187.6,100.4 L169.6,100.4 L151.6,100.4 L133.6,100.4 L133.6,118.4 L133.6,136.4 L115.6,136.4 L97.6,136.4 L97.6,154.4 L97.6,172.4 L97.6,190.4 L115.6,190.4 L133.6,190.4 L151.6,190.4 L151.6,208.4 L133.6,208.4 L115.6,208.4 L97.6,208.4 L79.6,208.4 L79.6,190.4 L79.6,172.4 L97.6,172.4 L115.6,172.4 L133.6,172.4 L151.6,172.4 L169.6,172.4 L169.6,190.4 L187.6,190.4 L187.6,172.4 L205.6,172.4 L187.6,172.4 L187.6,154.4 L187.6,136.4 L187.6,118.4 L187.6,100.4 L169.6,100.4 L151.6,100.4 L151.6,82.4 L151.6,100.4 L151.6,118.4 L151.6,136.4 L151.6,154.4 L151.6,172.4 L151.6,190.4 L133.6,190.4 L115.6,190.4 L97.6,190.4 L79.6,190.4 L61.6,190.4 L79.6,190.4 L97.6,190.4 L115.6,190.4 L133.6,190.4 L151.6,190.4 L169.6,190.4 L169.6,208.4 L151.6,208.4 L169.6,208.4 L187.6,208.4 L205.6,208.4 L205.6,190.4 L205.6,172.4 L205.6,154.4 L205.6,136.4 L205.6,118.4" fill="none" class="ln-accent" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.0,207.0 L27.0,207.0 L45.0,207.0 L63.0,207.0 L81.0,207.0 L99.0,207.0 L117.0,207.0 L135.0,207.0 L135.0,189.0 L135.0,171.0 L153.0,171.0 L171.0,171.0 L171.0,153.0 L171.0,135.0 L189.0,135.0 L189.0,117.0 L171.0,117.0 L153.0,117.0 L171.0,117.0 L189.0,117.0 L207.0,117.0 L207.0,99.0 L207.0,117.0 L207.0,135.0 L189.0,135.0 L189.0,153.0 L171.0,153.0 L189.0,153.0 L207.0,153.0 L189.0,153.0 L171.0,153.0 L153.0,153.0 L135.0,153.0 L117.0,153.0 L99.0,153.0 L81.0,153.0 L99.0,153.0 L117.0,153.0 L135.0,153.0 L153.0,153.0 L153.0,135.0 L171.0,135.0 L189.0,135.0 L207.0,135.0 L189.0,135.0 L189.0,117.0 L171.0,117.0 L171.0,99.0 L171.0,81.0 L171.0,63.0 L153.0,63.0 L135.0,63.0 L135.0,81.0 L135.0,99.0 L117.0,99.0 L99.0,99.0 L99.0,117.0 L99.0,135.0 L99.0,153.0 L99.0,171.0 L81.0,171.0 L63.0,171.0 L63.0,153.0 L63.0,135.0 L81.0,135.0 L99.0,135.0 L117.0,135.0 L135.0,135.0 L153.0,135.0 L171.0,135.0 L189.0,135.0 L207.0,135.0 L207.0,153.0 L207.0,171.0 L207.0,189.0 L207.0,171.0 L207.0,153.0 L207.0,135.0 L207.0,117.0 L207.0,99.0 L189.0,99.0" fill="none" class="ln-tesis" stroke-width="1.8" stroke-linejoin="round"/><path d="M10.4,205.6 L28.4,205.6 L46.4,205.6 L64.4,205.6 L82.4,205.6 L100.4,205.6 L118.4,205.6 L118.4,187.6 L118.4,169.6 L118.4,151.6 L136.4,151.6 L154.4,151.6 L154.4,133.6 L172.4,133.6 L172.4,115.6 L172.4,97.6 L154.4,97.6 L172.4,97.6 L172.4,79.6 L190.4,79.6 L208.4,79.6 L208.4,97.6 L190.4,97.6 L190.4,115.6 L172.4,115.6 L154.4,115.6 L154.4,97.6 L154.4,79.6 L136.4,79.6 L118.4,79.6 L118.4,97.6 L118.4,115.6 L100.4,115.6 L82.4,115.6 L82.4,133.6 L82.4,151.6 L100.4,151.6 L118.4,151.6 L136.4,151.6 L136.4,133.6 L118.4,133.6 L136.4,133.6 L136.4,115.6 L154.4,115.6 L172.4,115.6 L172.4,97.6 L172.4,79.6 L190.4,79.6 L208.4,79.6 L208.4,61.6 L190.4,61.6 L190.4,43.6 L172.4,43.6 L154.4,43.6 L136.4,43.6 L118.4,43.6 L118.4,61.6 L118.4,79.6 L118.4,97.6 L118.4,115.6 L100.4,115.6 L82.4,115.6 L64.4,115.6 L82.4,115.6 L82.4,97.6 L100.4,97.6 L100.4,79.6 L82.4,79.6 L64.4,79.6 L64.4,97.6 L46.4,97.6 L46.4,115.6 L46.4,133.6 L46.4,151.6 L46.4,169.6 L46.4,187.6 L28.4,187.6 L28.4,169.6 L28.4,151.6 L28.4,133.6 L28.4,115.6" fill="none" class="ln" stroke-width="1.8" stroke-linejoin="round"/><text x="108" y="236" text-anchor="middle" class="t-bold" font-size="13">Voraz centralizada · P 0,89</text></g>
+      </svg>
+      <figcaption>Un episodio: el mapa previo (más intenso, más probable) y los recorridos de los tres drones (azul, morado y gris), que salen de la esquina inferior izquierda. <code>figuras_a15a.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>MAPPO entrenado con comunicación</th><th>P</th><th>Pasos</th><th>Solap.</th></tr></thead>
+          <tbody>
+            <tr><td>Mensajes al instante</td><td class="n">0,910</td><td class="n">29,4</td><td class="n">0,36</td></tr>
+            <tr><td>Mensajes de hace 10 pasos</td><td class="n">0,880</td><td class="n">34,1</td><td class="n">0,66</td></tr>
+            <tr><td>Sin mensajes</td><td class="n">0,820</td><td class="n">37,1</td><td class="n">0,82</td></tr>
+            <tr><td><em>MAPPO entrenado sin comunicación</em></td><td class="n">0,892</td><td class="n">30,7</td><td class="n">0,33</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li><strong>Mensajes de hace 10 pasos:</strong> P baja a 0,880 y el solapamiento sube de 0,36 a 0,66: los drones vuelven a mirar donde los demás ya miraron.</li>
+        <li><strong>Sin mensajes:</strong> 0,820, por debajo de la política entrenada sin comunicación (0,892). Aprendió a depender del canal y no sabe buscar sin él.</li>
+        <li>La comunicación perfecta aporta 1,8 puntos porcentuales de P; perderla cuesta 9,0. Hay que entrenar con el canal que habrá (A15b).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura</p>
+  <h2>Lo que pesa: el canal, la representación y el azar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Representación:</strong> con los mismos mapas sin centrar en el dron, MAPPO con comunicación llega a 0,893 en lugar de 0,910 y aprende mucho más despacio (curva gris). Es el segundo factor de MAPPO, las entradas, aplicado también a la política.</li>
+        <li><strong>Azar:</strong> con comunicación, elegir siempre la acción más probable baja P a 0,864: con la misma información, los drones toman las mismas decisiones, y muestrear rompe la simetría. Sin comunicación no cambia nada (0,893).</li>
+        <li><strong>Crítico centralizado:</strong> poca diferencia final entre IPPO y MAPPO, como ya vio el trabajo de IPPO <a class="cite" data-ref="dewitt2020"></a>; sí aprende antes.</li>
+        <li><strong>Heurísticas:</strong> la voraz centralizada no necesita entrenamiento y es difícil de batir; solo la política con mensajes la supera.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Una rejilla, movimientos discretos, un sensor de una celda, sin dinámica de vuelo ni colisiones, y redes densas en lugar de convolucionales. Las cifras ordenan métodos en esta tarea, no en general; la heurística voraz, además, es centralizada y conoce el modelo del sensor.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>El mismo esquema escala a drones de verdad con observaciones de cámara: un belief local por dron (un world model), mensajes que lo actualizan cuando llegan y un crítico con el estado verdadero solo en el simulador.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Del laboratorio de StarCraft al enjambre que vuela</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>PPO compartido funciona</h3><p>Parámetros compartidos, un crítico con información global y buenas prácticas de PPO son una base difícil de batir <a class="cite" data-ref="yu2022,dewitt2020"></a>, y es lo que ya vuela en enjambres reales <a class="cite" data-ref="batra2022,chen2025"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Bancos de pruebas honestos y rápidos</h3><p>Tareas que exigen observar de verdad <a class="cite" data-ref="ellis2023"></a> y entornos vectorizados en GPU que permiten miles de entrenamientos <a class="cite" data-ref="rutherford2024"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Comunicación con canales reales</h3><p>Mensajes que llegan tarde o no llegan, ancho de banda limitado y compañeros que cambian (A15b). Búsqueda cooperativa con belief y varios drones reales, sin resultados publicados con números.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>Descentralizar es mucho más difícil que observar parcialmente. Entrenar con información centralizada ayuda; ejecutar con lo que cada dron sabe es obligatorio; y una política entrenada con comunicación perfecta hay que probarla con la comunicación que habrá.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Un belief por dron y un canal imperfecto entre ellos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Belief por dron:</strong> en nuestro experimento, cada dron sin comunicación lleva el belief que le dan sus propias miradas; con comunicación, el de todo el equipo. Tu world model (A8a) puede hacer de belief local, y los mensajes, de actualización compartida.</li>
+        <li><strong>Crítico privilegiado:</strong> en el simulador, el crítico puede ver el estado verdadero y lo que sabe cada dron; en vuelo, solo queda el actor. Es el maestro y alumno de A6b llevado a varios agentes.</li>
+        <li><strong>Recompensa del belief-MDP:</strong> premiar la probabilidad de detección según el belief del equipo, no la detección realizada, quita varianza sin cambiar el objetivo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Qué deberían contarse los drones (observaciones, beliefs comprimidos, intenciones) para buscar casi tan bien como con un belief común, con un canal de radio con retraso y pérdidas?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> mensajes de hace 10 pasos. <strong>Observabilidad parcial:</strong> cada dron ve una celda. <strong>Sim-to-real:</strong> el canal simulado es perfecto o se degrada a propósito. <strong>Cómputo:</strong> lo que vuela en real tiene unos \(10^3\) parámetros.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A15a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un Dec-POMDP es un POMDP con observaciones por agente y recompensa común; no tiene un belief compartido y es NEXP-completo.</li>
+    <li>Los aprendices independientes ven un entorno no estacionario; un crítico que ve las acciones de todos lo vuelve estacionario.</li>
+    <li>COMA asigna el crédito con una línea base contrafactual; VDN y QMIX factorizan el valor con una suma o una mezcla monótona, y no representan pagos no monótonos.</li>
+    <li>MAPPO, PPO compartido con crítico centralizado y bien ajustado, es una base muy fuerte; IPPO también.</li>
+    <li>Comprueba que tu banco de pruebas exige observar, y prueba la comunicación con retrasos y pérdidas.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Dec-POMDP</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. ¿Por qué un Dec-POMDP no se resuelve calculando un belief y planificando sobre él, como un POMDP?</p>
+      <ol class="opts">
+        <li><button type="button">Porque tiene más estados</button></li>
+        <li><button type="button">Porque la recompensa no es común</button></li>
+        <li><button type="button">Porque cada agente tiene su historia y no hay un belief común: lo que conviene hacer depende de lo que saben los demás</button></li>
+        <li><button type="button">Porque las acciones son continuas</button></li>
+      </ol>
+      <p class="explain">Si todos compartieran todas sus observaciones sin retraso, el equipo sería un POMDP.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. ¿Qué arregla un crítico que recibe las acciones de todos los agentes?</p>
+      <ol class="opts">
+        <li><button type="button">La observabilidad parcial</button></li>
+        <li><button type="button">La no estacionariedad que ve cada agente al cambiar las políticas de los demás</button></li>
+        <li><button type="button">La necesidad de comunicarse en vuelo</button></li>
+        <li><button type="button">El tamaño de la red</button></li>
+      </ol>
+      <p class="explain">Condicionada a la acción conjunta, la transición no depende de las políticas.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>CTDE y factorización</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. ¿Por qué la línea base contrafactual de COMA no sesga el gradiente de la política?</p>
+      <ol class="opts">
+        <li><button type="button">Porque no depende de la acción del propio agente, y la esperanza de \(\nabla\log\pi\) por algo que no depende de la acción es cero</button></li>
+        <li><button type="button">Porque es la media de las recompensas</button></li>
+        <li><button type="button">Porque se calcula con el estado verdadero</button></li>
+        <li><button type="button">Sí lo sesga, pero poco</button></li>
+      </ol>
+      <p class="explain">Marginaliza la acción del agente con su política y deja fijas las de los demás.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. En el juego con un óptimo aislado (8 en (0, 0), −12 si solo uno elige 0), ¿por qué VDN elige (1, 1)?</p>
+      <ol class="opts">
+        <li><button type="button">Por falta de entrenamiento</button></li>
+        <li><button type="button">Porque la red es pequeña</button></li>
+        <li><button type="button">Porque las semillas son malas</button></li>
+        <li><button type="button">Porque cada \(Q_i\) aprende la media sobre las acciones del otro, y de media la acción 0 es la peor</button></li>
+      </ol>
+      <p class="explain">Una suma no puede representar que la acción 0 solo es buena si el otro también la elige.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Búsqueda con varios drones</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Según SMACv2, ¿cuándo basta una política de lazo abierto que solo mira el tiempo y la identidad del agente?</p>
+      <ol class="opts">
+        <li><button type="button">Cuando hay pocos agentes</button></li>
+        <li><button type="button">Cuando el estado inicial y la dinámica son deterministas</button></li>
+        <li><button type="button">Cuando la recompensa es común</button></li>
+        <li><button type="button">Nunca</button></li>
+      </ol>
+      <p class="explain">Sin aleatoriedad no hay nada que observar: la secuencia óptima de acciones se puede fijar de antemano.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tus drones se comunican por radio a 10 Hz con pérdidas del 20 %. ¿Cómo entrenas y pruebas su política de búsqueda?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Entrena con el canal que habrá, no con uno perfecto: mensajes a 10 Hz, con retraso y con un 20 % de pérdidas aleatorias (y algo más, para tener margen). Que cada dron mantenga su belief con sus observaciones y lo funda con los mensajes que reciba, con la edad de cada mensaje como entrada. El crítico, centralizado y con el estado verdadero, solo en el simulador. Prueba con pérdidas y retrasos mayores que los de entrenamiento, con un dron que deja de emitir y sin comunicación, y compara con la política entrenada sin mensajes: la comunicación debe ayudar cuando llega y no estropear nada cuando falta.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · NEURIPS</span>
+      <h3>MAPPO <a class="cite" data-ref="yu2022"></a></h3>
+      <p><strong>Lee:</strong> la sección 5, los cinco factores.</p>
+      <p><strong>Responde:</strong> ¿qué entradas darías al crítico de tus drones?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · ICML</span>
+      <h3>QMIX <a class="cite" data-ref="rashid2018"></a></h3>
+      <p><strong>Lee:</strong> la monotonicidad y las hiperredes.</p>
+      <p><strong>Responde:</strong> ¿qué juego no puede representar?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · NEURIPS</span>
+      <h3>SMACv2 <a class="cite" data-ref="ellis2023"></a></h3>
+      <p><strong>Lee:</strong> el argumento del lazo abierto.</p>
+      <p><strong>Responde:</strong> ¿exige tu tarea de búsqueda observar?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> el libro de Albrecht et al. <a class="cite" data-ref="albrecht2024"></a>; Dec-POMDP <a class="cite" data-ref="oliehoek2016"></a>; COMA <a class="cite" data-ref="foerster2018"></a>; enjambres de Crazyflie <a class="cite" data-ref="batra2022"></a>; persecución con MAPPO <a class="cite" data-ref="chen2025"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>MAPPO con tres drones que buscan</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Entorno:</strong> rejilla, mapa previo, sensor con fallos y recompensa del belief-MDP.</li>
+        <li><strong>Referencias:</strong> aleatorio, barrido por franjas y voraz centralizada.</li>
+        <li><strong>IPPO y MAPPO</strong> con parámetros compartidos, con y sin comunicación.</li>
+        <li><strong>Canal imperfecto:</strong> mensajes retrasados, perdidos, ninguno.</li>
+        <li><strong>Juego matricial:</strong> VDN, mezcla monótona y \(Q\) conjunta.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Cuánto aporta coordinarse y comunicarse, qué pasa cuando el canal falla y qué no puede representar una factorización monótona.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo: unos 25 minutos el script entero (12 entrenamientos). En CPU, con menos actualizaciones y una semilla.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a15a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-batra2022">Batra, S., Huang, Z., Petrenko, A., Kumar, T., Molchanov, A., Sukhatme, G. S. (2022). Decentralized control of quadrotor swarms with end-to-end deep reinforcement learning. <span class="venue">CoRL 2021</span>, PMLR 164, 576–586. <a href="https://arxiv.org/abs/2109.07735">arXiv:2109.07735</a></li>
+    <li id="ref-yu2022">Yu, C., Velu, A., Vinitsky, E., Gao, J., Wang, Y., Bayen, A., Wu, Y. (2022). The surprising effectiveness of PPO in cooperative multi-agent games. <span class="venue">NeurIPS 2022, Datasets and Benchmarks</span>, 35, 24611–24624. <a href="https://arxiv.org/abs/2103.01955">arXiv:2103.01955</a></li>
+    <li id="ref-chen2025">Chen, J., Yu, C., Li, G., Tang, W., Ji, S., Yang, X., Xu, B., Yang, H., Wang, Y. (2025). Online planning for multi-UAV pursuit-evasion in unknown environments using deep reinforcement learning. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(8), 8196–8203. <a href="https://doi.org/10.1109/LRA.2025.3583620">doi:10.1109/LRA.2025.3583620</a>. <a href="https://arxiv.org/abs/2409.15866">arXiv:2409.15866</a></li>
+    <li id="ref-tan1993">Tan, M. (1993). Multi-agent reinforcement learning: Independent vs. cooperative agents. <span class="venue">ICML 1993</span>, 330–337. <a href="https://doi.org/10.1016/B978-1-55860-307-3.50049-6">doi:10.1016/B978-1-55860-307-3.50049-6</a></li>
+    <li id="ref-littman1994">Littman, M. L. (1994). Markov games as a framework for multi-agent reinforcement learning. <span class="venue">ICML 1994</span>, 157–163. <a href="https://doi.org/10.1016/B978-1-55860-335-6.50027-1">doi:10.1016/B978-1-55860-335-6.50027-1</a></li>
+    <li id="ref-claus1998">Claus, C., Boutilier, C. (1998). The dynamics of reinforcement learning in cooperative multiagent systems. <span class="venue">AAAI-98</span>. <a href="https://cdn.aaai.org/AAAI/1998/AAAI98-106.pdf">cdn.aaai.org</a></li>
+    <li id="ref-bernstein2002">Bernstein, D. S., Givan, R., Immerman, N., Zilberstein, S. (2002). The complexity of decentralized control of Markov decision processes. <span class="venue">Mathematics of Operations Research</span>, 27(4), 819–840. <a href="https://doi.org/10.1287/moor.27.4.819.297">doi:10.1287/moor.27.4.819.297</a>. Versión de congreso (UAI 2000): <a href="https://arxiv.org/abs/1301.3836">arXiv:1301.3836</a></li>
+    <li id="ref-foerster2016">Foerster, J. N., Assael, Y. M., de Freitas, N., Whiteson, S. (2016). Learning to communicate with deep multi-agent reinforcement learning. <span class="venue">NeurIPS 2016</span>. <a href="https://arxiv.org/abs/1605.06676">arXiv:1605.06676</a></li>
+    <li id="ref-sukhbaatar2016">Sukhbaatar, S., Szlam, A., Fergus, R. (2016). Learning multiagent communication with backpropagation. <span class="venue">NeurIPS 2016</span>. <a href="https://arxiv.org/abs/1605.07736">arXiv:1605.07736</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="10">
+    <li id="ref-das2019">Das, A., Gervet, T., Romoff, J., Batra, D., Parikh, D., Rabbat, M., Pineau, J. (2019). TarMAC: Targeted multi-agent communication. <span class="venue">ICML 2019</span>, PMLR 97, 1538–1546. <a href="https://arxiv.org/abs/1810.11187">arXiv:1810.11187</a></li>
+    <li id="ref-lowe2017">Lowe, R., Wu, Y., Tamar, A., Harb, J., Abbeel, P., Mordatch, I. (2017). Multi-agent actor-critic for mixed cooperative-competitive environments. <span class="venue">NeurIPS 2017</span>. <a href="https://arxiv.org/abs/1706.02275">arXiv:1706.02275</a></li>
+    <li id="ref-foerster2018">Foerster, J., Farquhar, G., Afouras, T., Nardelli, N., Whiteson, S. (2018). Counterfactual multi-agent policy gradients. <span class="venue">AAAI 2018</span>, 32(1). <a href="https://doi.org/10.1609/aaai.v32i1.11794">doi:10.1609/aaai.v32i1.11794</a>. <a href="https://arxiv.org/abs/1705.08926">arXiv:1705.08926</a></li>
+    <li id="ref-sunehag2018">Sunehag, P., Lever, G., Gruslys, A., Czarnecki, W. M., Zambaldi, V., Jaderberg, M., Lanctot, M., Sonnerat, N., Leibo, J. Z., Tuyls, K., Graepel, T. (2018). Value-decomposition networks for cooperative multi-agent learning based on team reward. <span class="venue">AAMAS 2018</span> (resumen extendido). <a href="https://www.ifaamas.org/Proceedings/aamas2018/pdfs/p2085.pdf">ifaamas.org</a>. <a href="https://arxiv.org/abs/1706.05296">arXiv:1706.05296</a></li>
+    <li id="ref-rashid2018">Rashid, T., Samvelyan, M., Schroeder de Witt, C., Farquhar, G., Foerster, J., Whiteson, S. (2018). QMIX: Monotonic value function factorisation for deep multi-agent reinforcement learning. <span class="venue">ICML 2018</span>, PMLR 80, 4295–4304. <a href="https://arxiv.org/abs/1803.11485">arXiv:1803.11485</a>. Versión ampliada en <span class="venue">JMLR</span> 21(178), 2020, según arXiv: <a href="https://arxiv.org/abs/2003.08839">arXiv:2003.08839</a></li>
+    <li id="ref-son2019">Son, K., Kim, D., Kang, W. J., Hostallero, D. E., Yi, Y. (2019). QTRAN: Learning to factorize with transformation for cooperative multi-agent reinforcement learning. <span class="venue">ICML 2019</span>, PMLR 97, 5887–5896. <a href="https://arxiv.org/abs/1905.05408">arXiv:1905.05408</a></li>
+    <li id="ref-samvelyan2019">Samvelyan, M., Rashid, T., Schroeder de Witt, C., Farquhar, G., Nardelli, N., Rudner, T. G. J., Hung, C.-M., Torr, P. H. S., Foerster, J., Whiteson, S. (2019). The StarCraft multi-agent challenge. <span class="venue">AAMAS 2019</span> (resumen extendido). <a href="https://www.ifaamas.org/Proceedings/aamas2019/pdfs/p2186.pdf">ifaamas.org</a>. <a href="https://arxiv.org/abs/1902.04043">arXiv:1902.04043</a></li>
+    <li id="ref-dewitt2020">Schroeder de Witt, C., Gupta, T., Makoviichuk, D., Makoviychuk, V., Torr, P. H. S., Sun, M., Whiteson, S. (2020). Is independent learning all you need in the StarCraft multi-agent challenge? <a href="https://arxiv.org/abs/2011.09533">arXiv:2011.09533</a> (preprint)</li>
+    <li id="ref-wang2021">Wang, J., Ren, Z., Liu, T., Yu, Y., Zhang, C. (2021). QPLEX: Duplex dueling multi-agent Q-learning. <span class="venue">ICLR 2021</span> (según la cabecera de su PDF). <a href="https://arxiv.org/abs/2008.01062">arXiv:2008.01062</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="19">
+    <li id="ref-ellis2023">Ellis, B., Cook, J., Moalla, S., Samvelyan, M., Sun, M., Mahajan, A., Foerster, J. N., Whiteson, S. (2023). SMACv2: An improved benchmark for cooperative multi-agent reinforcement learning. <span class="venue">NeurIPS 2023, Datasets and Benchmarks</span> (según su PDF). <a href="https://arxiv.org/abs/2212.07489">arXiv:2212.07489</a></li>
+    <li id="ref-rutherford2024">Rutherford, A., Ellis, B., Gallici, M., Cook, J., Lupu, A., Ingvarsson, G., Willi, T., Hammond, R., Khan, A., Schroeder de Witt, C., et al. (2024). JaxMARL: Multi-agent RL environments and algorithms in JAX. <span class="venue">NeurIPS 2024, Datasets and Benchmarks</span> (según su PDF). <a href="https://arxiv.org/abs/2311.10090">arXiv:2311.10090</a></li>
+    <li id="ref-huang2024">Huang, Z., Yang, Z., Krupani, R., Şenbaşlar, B., Batra, S., Sukhatme, G. S. (2024). Collision avoidance and navigation for a quadrotor swarm using end-to-end deep reinforcement learning. <span class="venue">ICRA 2024</span>, 300–306. <a href="https://doi.org/10.1109/ICRA57147.2024.10611499">doi:10.1109/ICRA57147.2024.10611499</a>. <a href="https://arxiv.org/abs/2309.13285">arXiv:2309.13285</a></li>
+    <li id="ref-geles2026">Geles, I., Bauersfeld, L., Wulfmeier, M., Scaramuzza, D. (2026). Superhuman safe and agile racing through multi-agent reinforcement learning. <a href="https://arxiv.org/abs/2605.22748">arXiv:2605.22748</a> (preprint)</li>
+    <li id="ref-albrecht2024">Albrecht, S. V., Christianos, F., Schäfer, L. (2024). <span class="venue">Multi-Agent Reinforcement Learning: Foundations and Modern Approaches</span>. MIT Press. <a href="https://www.marl-book.com">marl-book.com</a></li>
+    <li id="ref-oliehoek2016">Oliehoek, F. A., Amato, C. (2016). <span class="venue">A Concise Introduction to Decentralized POMDPs</span>. SpringerBriefs in Intelligent Systems, Springer. <a href="https://doi.org/10.1007/978-3-319-28929-8">doi:10.1007/978-3-319-28929-8</a></li>
+    <li id="ref-papadimitriou1987">Papadimitriou, C. H., Tsitsiklis, J. N. (1987). The complexity of Markov decision processes. <span class="venue">Mathematics of Operations Research</span>, 12(3), 441–450. <a href="https://doi.org/10.1287/moor.12.3.441">doi:10.1287/moor.12.3.441</a></li>
+    <li id="ref-wang2024">Wang, X., Zhou, J., Feng, Y., Mei, J., Chen, J., Li, S. (2024). Dashing for the golden snitch: Multi-drone time-optimal motion planning with multi-agent reinforcement learning. <a href="https://arxiv.org/abs/2409.16720">arXiv:2409.16720</a> (preprint)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
