@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<link rel="stylesheet" href="../../assets/curso.css?v=11">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -48,7 +48,7 @@
   <h2>En el mundo real, los compañeros cambian, fallan y no siempre dicen la verdad</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Un enjambre de 30 drones voló al aire libre sin control central, el mayor de su tipo cuando se publicó, con un modelo que tiene en cuenta movimiento y comunicación limitados, retrasos y perturbaciones <a class="cite" data-ref="vasarhelyi2018"></a>.</li>
         <li>En la final del DARPA SubT, el equipo ganador exploró con cuatro robots cuadrúpedos y dejó que salieran a propósito del alcance de la radio; de sus ocho repetidores, desplegó tres <a class="cite" data-ref="tranzatto2022"></a>.</li>
         <li>Un agente de Hanabi entrenado por autojuego puntúa 23,97 con copias de sí mismo y 2,52 con otros entrenados igual pero con otra semilla <a class="cite" data-ref="hu2020"></a>.</li>
@@ -80,16 +80,181 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Enjambres · reglas locales</p>
-  <h2>Tres reglas y una transición de fase</h2>
-  <div class="cols">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra en boids y en Vicsek</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:16%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo en un enjambre de drones</th></tr>
+      <tr><td>\(i\), \(j\)</td><td>El agente que decide y uno de sus vecinos</td><td>El dron \(i\) oye por radio al dron \(j\)</td></tr>
+      <tr><td>\(\mathbf x_i\), \(\mathbf v_i\)</td><td>Posición (m) y velocidad (m/s) del agente \(i\), vectores en el plano</td><td>\(\mathbf x_i = (0, 0)\), \(\mathbf v_i = (1, 0)\): va hacia el este a 1 m/s</td></tr>
+      <tr><td>\(r\), \(r_s\)</td><td>Radio de vecindad (a quién se tiene en cuenta) y radio de separación, menor (de quién hay que apartarse)</td><td>\(r = 3\) m, \(r_s = 1\) m</td></tr>
+      <tr><td>\(\mathcal N_i\), \(|\mathcal N_i|\)</td><td>Conjunto de vecinos de \(i\) (los que están a menos de \(r\)) y cuántos son</td><td>Tres drones a menos de 3 m: \(|\mathcal N_i| = 3\)</td></tr>
+      <tr><td>\(\mathbf a_i\), \(w\)</td><td>Aceleración que pide cada regla de los boids y peso con que se suma</td><td>\(\mathbf a^{\text{sep}}_i\), \(\mathbf a^{\text{ali}}_i\), \(\mathbf a^{\text{coh}}_i\)</td></tr>
+      <tr><td>\(\theta_i(t)\), \(v_0\)</td><td>Rumbo de la partícula \(i\) en el paso \(t\) (rad) y su rapidez, la misma para todas y constante</td><td>\(\theta_i = 0\): hacia el este</td></tr>
+      <tr><td>\(\eta\), \(\Delta\theta_i\)</td><td>Amplitud del ruido (rad) y ruido sorteado en cada paso, uniforme en \([-\eta/2, \eta/2]\)</td><td>\(\eta = 0{,}5\): hasta ±14° de error de rumbo</td></tr>
+      <tr><td>\(v_a\)</td><td>Parámetro de orden: 1 si todas van en la misma dirección, cerca de 0 si van al azar</td><td>Hoja «Vicsek · 2»</td></tr>
+      <tr><td>\(N\), \(\rho\)</td><td>Número de partículas y densidad (partículas por unidad de área)</td><td>\(N = 400\), \(\rho = 4\)</td></tr>
+      <tr><td>\(\eta_c\), \(\beta\)</td><td>Ruido crítico, donde el orden desaparece, y exponente de la transición</td><td>\(\beta \simeq 0{,}45\) en Vicsek et al.</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Ojo: \(N\) (recta) es un número; \(\mathcal N_i\) (caligráfica), un conjunto. En la parte 2, \(\mathcal N_i\) serán los vecinos en el grafo de comunicación.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · boids · 1</p>
+  <h2>Qué hace cada pájaro: mirar a sus vecinos y pedir una aceleración</h2>
+  <div class="cols w40">
     <div class="stack">
-      <p class="small"><strong>Boids</strong> <a class="cite" data-ref="reynolds1987"></a>: cada pájaro es un actor independiente que navega con su percepción local. Tres reglas, en orden de precedencia decreciente: evitar colisiones con los vecinos, igualar su velocidad y mantenerse cerca de ellos. El coste ingenuo crece como \(O(N^2)\).</p>
-      <p class="small"><strong>Vicsek</strong> <a class="cite" data-ref="vicsek1995"></a>: partículas a velocidad constante que en cada paso toman la dirección media de sus vecinas más un ruido \(\eta\). Al bajar el ruido aparece una transición de fase cinética del desorden al movimiento colectivo, con \(v_a \propto (\eta_c - \eta)^{\beta}\) y \(\beta \simeq 0{,}45\).</p>
-      <div class="callout clave"><span class="tag">Lo que enseña</span>Nadie lleva el mando y el grupo se ordena; pero el orden depende de la densidad y del ruido, y desaparece de golpe al pasar un umbral. El ruido de un dron real (sensores, viento, retrasos) cuenta.</div>
+      <p>Los <strong>boids</strong> de Reynolds <a class="cite" data-ref="reynolds1987"></a>: cada pájaro es un actor independiente que navega con su percepción local. Nadie ve la bandada entera.</p>
+      <p><strong>Entra:</strong> posición y velocidad de los vecinos. <strong>Sale:</strong> una aceleración. Tres reglas, en orden de precedencia decreciente:</p>
+      <ol>
+        <li><strong>Evitar colisiones</strong> con los vecinos cercanos.</li>
+        <li><strong>Igualar la velocidad</strong> (rumbo y rapidez) de los vecinos.</li>
+        <li><strong>Mantenerse cerca</strong> de los vecinos: ir hacia su centro.</li>
+      </ol>
+      <p class="small muted">En el original, la vecindad es una zona esférica cuya sensibilidad decae con la distancia (un radio y un exponente). Si cada pájaro mira a todos los demás, el coste crece como \(O(N^2)\).</p>
     </div>
     <figure class="fig">
-      <svg viewBox="0 0 560 290" role="img" aria-label="Parámetro de orden del modelo de Vicsek frente al ruido para 100 y 400 partículas">
+      <svg viewBox="0 0 400 290" style="max-height:440px" role="img" aria-label="Un pájaro con su radio de vecindad, su radio de separación, cuatro vecinos y las tres aceleraciones que piden las reglas">
+        <defs><marker id="a15ba-boids1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker><marker id="a15bh-boids1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker><marker id="a15bk-boids1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker><marker id="a15bt-boids1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker></defs>
+        <circle cx="130" cy="145" r="120" fill="none" class="ln-dash"/>
+        <circle cx="130" cy="145" r="40" fill="none" class="ln-dash"/>
+        <text x="215" y="38" class="t-mono t-faint" font-size="12">vecindad: r = 3</text>
+        <text x="96" y="99" class="t-mono t-faint" font-size="11">r_s = 1</text>
+        <circle cx="150" cy="125" r="5" class="fill-ink3"/><path class="ln" d="M150 125 L174 113" marker-end="url(#a15bk-boids1)"/>
+        <text x="156" y="140" class="t-mono t-muted" font-size="12">1</text>
+        <circle cx="210" cy="105" r="5" class="fill-ink3"/><path class="ln" d="M210 105 L222 81" marker-end="url(#a15bk-boids1)"/>
+        <text x="218" y="118" class="t-mono t-muted" font-size="12">2</text>
+        <circle cx="170" cy="225" r="5" class="fill-ink3"/><path class="ln" d="M170 225 L194 225" marker-end="url(#a15bk-boids1)"/>
+        <text x="160" y="245" class="t-mono t-muted" font-size="12">3</text>
+        <circle cx="290" cy="145" r="5" class="fill-ink3" fill-opacity="0.45"/><path class="ln" d="M290 145 L290 121" marker-end="url(#a15bk-boids1)" stroke-opacity="0.45"/>
+        <text x="268" y="166" class="t-mono t-faint" font-size="12">4: fuera</text>
+        <path class="ln-tesis" d="M130 145 L90 185" marker-end="url(#a15bt-boids1)" stroke-width="2.4"/>
+        <text x="20" y="205" class="t-tesis t-bold" font-size="13">separación</text>
+        <path class="ln-time" d="M130 145 L123.3 125" marker-end="url(#a15bh-boids1)" stroke-width="2.4"/>
+        <text x="64" y="128" class="t-time t-bold" font-size="13">alineación</text>
+        <path class="ln-accent" d="M130 145 L176.7 151.7" marker-end="url(#a15ba-boids1)" stroke-width="2.4"/>
+        <path class="ln-accent" d="M171 146 L183 158 M183 146 L171 158" stroke-width="1.4"/>
+        <text x="186" y="172" class="t-accent t-bold" font-size="13">cohesión</text>
+        <circle cx="130" cy="145" r="6.5" class="fill-accent"/>
+        <text x="138" y="166" class="t-mono t-bold" font-size="13">i</text>
+        <text x="20" y="284" class="t-faint" font-size="12">finas: velocidades · ✕: centro de los vecinos 1–3</text>
+      </svg>
+      <figcaption>El pájaro \(i\) en \((0, 0)\) va a \((1, 0)\). Vecinos 1–3 dentro de \(r\); el 1, además, dentro de \(r_s\); el 4 no cuenta. Las tres flechas gruesas son las aceleraciones de la hoja siguiente. <code>ejemplos_a15b.py</code>, ejemplo 1.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · boids · 2</p>
+  <h2>Una ecuación por regla, con los números del dibujo</h2>
+  <p>Reynolds da las reglas en palabras; esta es una forma habitual de escribirlas. Las sumas recorren los vecinos \(j \in \mathcal N_i\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Regla</th><th style="width:33%">Ecuación</th><th>Por qué tiene esa forma</th><th style="width:19%">En el dibujo</th></tr>
+      <tr><td>Separación</td><td>\(\displaystyle \mathbf a^{\text{sep}}_i = \sum_{\|\mathbf x_i - \mathbf x_j\| \lt r_s} \frac{\mathbf x_i - \mathbf x_j}{\|\mathbf x_i - \mathbf x_j\|^2}\)</td><td>Apunta lejos de cada vecino demasiado cercano; su tamaño es \(1/\text{distancia}\): cuanto más cerca, más empuja</td><td class="n">vecino 1, a 0,707: (−1; −1)</td></tr>
+      <tr><td>Alineación</td><td>\(\displaystyle \mathbf a^{\text{ali}}_i = \frac{1}{|\mathcal N_i|}\sum_j \mathbf v_j - \mathbf v_i\)</td><td>Diferencia entre la velocidad media de los vecinos y la propia: cero si ya vuela como ellos</td><td class="n">(0,833; 0,5) − (1; 0) = (−0,167; 0,5)</td></tr>
+      <tr><td>Cohesión</td><td>\(\displaystyle \mathbf a^{\text{coh}}_i = \frac{1}{|\mathcal N_i|}\sum_j \mathbf x_j - \mathbf x_i\)</td><td>Vector que va del pájaro al centro de sus vecinos</td><td class="n">(1,167; −0,167)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Sumarlas con pesos</strong>, \(\mathbf a_i = w_s\mathbf a^{\text{sep}}_i + w_a\mathbf a^{\text{ali}}_i + w_c\mathbf a^{\text{coh}}_i\), es lo más común. Con pesos 1,5, 1 y 1: \(\mathbf a_i = (-0{,}5;\ -1{,}167)\); con un paso de 0,1 s, la velocidad pasa de \((1, 0)\) a \((0{,}95;\ -0{,}117)\).</p>
+    </div>
+    <div class="aparte"><span class="rotulo">Cómo las combina Reynolds</span>
+      <p>No las promedia: reparte una aceleración máxima por orden de prioridad. Con un tope de 1,6, la separación (tamaño 1,414) entra entera, la alineación (0,527) se recorta al 35 % y la cohesión no recibe nada: en una emergencia, primero lo urgente <a class="cite" data-ref="reynolds1987"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · Vicsek · 1</p>
+  <h2>Una sola regla: tomar el rumbo medio de las vecinas, con ruido</h2>
+  <div class="stack">
+  <p>Vicsek et al. <a class="cite" data-ref="vicsek1995"></a> quitan todo menos la alineación: partículas a rapidez constante \(v_0\) que en cada paso toman el rumbo medio de las vecinas a menos de \(r\) (ella incluida) y le suman un error:</p>
+  \[ \theta_i(t+1) = \underbrace{\operatorname{atan2}\Big(\textstyle\sum_{j\in\mathcal N_i}\sin\theta_j(t),\ \sum_{j\in\mathcal N_i}\cos\theta_j(t)\Big)}_{\text{rumbo medio de las vecinas}} + \Delta\theta_i, \qquad \Delta\theta_i \sim \mathcal U\big[-\tfrac{\eta}{2}, \tfrac{\eta}{2}\big] \]
+  \[ \mathbf x_i(t+1) = \mathbf x_i(t) + v_0\,\big(\cos\theta_i(t+1),\ \sin\theta_i(t+1)\big) \]
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Por qué senos y cosenos:</strong> se promedian los vectores unitarios de cada rumbo y se toma el ángulo del resultado. Promediar ángulos a secas falla al dar la vuelta (350° y 10°).</li>
+        <li>\(\mathcal U[a, b]\) es la distribución uniforme: \(\eta\) mide cuánto se equivoca cada partícula al copiar.</li>
+        <li>La posición avanza \(v_0\) en la dirección nueva, en una caja periódica (lo que sale por un lado entra por el otro).</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 36 330 226" style="max-height:235px" role="img" aria-label="Una partícula con dos vecinas dentro de su radio y una fuera; la flecha del rumbo medio y el abanico del ruido">
+        <defs><marker id="a15ba-vicsek1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker><marker id="a15bh-vicsek1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker><marker id="a15bk-vicsek1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <circle cx="150" cy="150" r="100" fill="none" class="ln-dash"/>
+        <text x="40" y="250" class="t-mono t-faint" font-size="12">radio r</text>
+        <path d="M150,150 L234.7,142.6 A85,85 0 0 0 220.8,102.9 Z" class="fill-time" fill-opacity="0.16"/>
+        <path class="ln-dash" d="M150 150 L234.7 142.6 M150 150 L220.8 102.9"/>
+        <path class="ln-accent" d="M150 150 L230.2 121.9" marker-end="url(#a15ba-vicsek1)" stroke-width="2.6"/>
+        <path class="ln-time" d="M150 150 L227 114" marker-end="url(#a15bh-vicsek1)" stroke-width="1.6"/>
+        <circle cx="150" cy="150" r="5" class="fill-ink3"/><path class="ln" d="M150 150 L189.4 156.9" marker-end="url(#a15bk-vicsek1)"/>
+        <circle cx="200" cy="110" r="5" class="fill-ink3"/><path class="ln" d="M200 110 L239.4 103.1" marker-end="url(#a15bk-vicsek1)"/>
+        <circle cx="120" cy="90" r="5" class="fill-ink3"/><path class="ln" d="M120 90 L140 55.4" marker-end="url(#a15bk-vicsek1)"/>
+        <circle cx="290" cy="60" r="5" class="fill-ink3" fill-opacity="0.45"/><path class="ln" d="M290 60 L252.4 73.7" marker-end="url(#a15bk-vicsek1)" stroke-opacity="0.45"/>
+        <text x="126" y="176" class="t-mono t-muted" font-size="12">i: 350°</text>
+        <text x="196" y="96" class="t-mono t-muted" font-size="12">10°</text>
+        <text x="84" y="117" class="t-mono t-muted" font-size="12">60°</text>
+        <text x="262" y="50" class="t-mono t-faint" font-size="12">fuera</text>
+        <text x="254" y="118" class="t-accent t-bold" font-size="12">media 19,3°</text>
+        <text x="254" y="146" class="t-time" font-size="12">±η/2</text>
+      </svg>
+      <figcaption>Gruesa: rumbo medio de las tres del círculo. Sombra: lo que puede sumar el ruido con \(\eta = 0{,}5\); fina: un sorteo. <code>ejemplos_a15b.py</code>, ejemplo 2.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · Vicsek · 2</p>
+  <h2>Un paso a mano, y cómo se mide el orden del grupo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>El paso del dibujo</strong>: rumbos 350°, 10° y 60°.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th>Cálculo</th><th style="width:30%">Resultado</th></tr>
+          <tr><td>1</td><td>Media aritmética de los ángulos (mal)</td><td class="n">140°: hacia atrás</td></tr>
+          <tr><td>2</td><td>\(\sum\sin\theta_j\), \(\sum\cos\theta_j\)</td><td class="n">0,866 y 2,470</td></tr>
+          <tr><td>3</td><td>\(\operatorname{atan2}(0{,}866;\ 2{,}470)\)</td><td class="n">19,32°</td></tr>
+          <tr><td>4</td><td>Ruido con \(\eta = 0{,}5\): uniforme en ±0,25 rad; sale +0,1 rad</td><td class="n">θ nuevo = 25,05°</td></tr>
+          <tr><td>5</td><td>Avance con \(v_0 = 0{,}03\)</td><td class="n">(0,0272; 0,0127)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>El parámetro de orden</strong> es el tamaño de la velocidad media del grupo, dividido por \(v_0\):</p>
+      \[ v_a = \frac{1}{N v_0}\Big\|\sum_{i=1}^{N}\mathbf v_i\Big\| = \Big\|\frac1N\sum_{i=1}^{N}\big(\cos\theta_i,\ \sin\theta_i\big)\Big\| \]
+      <p>La segunda forma sale de \(\mathbf v_i = v_0(\cos\theta_i, \sin\theta_i)\): \(v_0\) se cancela.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Rumbos</th><th>\(v_a\)</th></tr>
+          <tr><td>30°, 30°, 30° (alineados)</td><td class="n">1,000</td></tr>
+          <tr><td>350°, 10°, 60° (los del dibujo)</td><td class="n">0,872</td></tr>
+          <tr><td>0°, 120°, 240° (repartidos)</td><td class="n">0,000</td></tr>
+        </table>
+      </div>
+      <p class="small muted">\(v_a = 0\) no distingue «al azar» de «en dos grupos opuestos»: 0°, 0°, 180°, 180° también da 0.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · Vicsek · 3</p>
+  <h2>Al subir el ruido, el orden colectivo se pierde: una transición de fase</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con la regla de las dos hojas anteriores, Vicsek et al. <a class="cite" data-ref="vicsek1995"></a> encuentran que al bajar el ruido aparece una transición de fase cinética del desorden al movimiento colectivo. Cerca del umbral \(\eta_c\),</p>
+      \[ v_a \propto (\eta_c - \eta)^{\beta}, \qquad \beta \simeq 0{,}45: \]
+      <p>el orden crece como una potencia de la distancia al umbral, como la imanación de un imán al enfriarse.</p>
+      <div class="callout clave"><span class="tag">Lo que enseña</span>Nadie lleva el mando y el grupo se ordena; pero el orden depende de la densidad y del ruido, y desaparece de golpe al pasar un umbral. El ruido de un dron real (sensores, viento, retrasos) cuenta.</div>
+    </div>
+    <div class="stack">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" style="max-height:235px" role="img" aria-label="Parámetro de orden del modelo de Vicsek frente al ruido para 100 y 400 partículas">
         <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
         <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
         <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
@@ -105,6 +270,10 @@
       </svg>
       <figcaption>Nuestra simulación del modelo de Vicsek con densidad 4 y radio 1: azul, 400 partículas; naranja, 100. Con más partículas, el orden cae más cerca de cero cuando hay mucho ruido (efecto del tamaño finito). Media de 3 semillas. <code>figuras/vicsek_a15b.py</code>.</figcaption>
     </figure>
+      <div class="aparte"><span class="rotulo">Por qué el orden no llega a cero</span>
+        <p>Con \(N\) rumbos al azar, la media de \(N\) vectores unitarios mide del orden de \(1/\sqrt N\): \(\sqrt\pi/(2\sqrt N)\) = 0,089 con 100 y 0,044 con 400. Con \(\eta = 5\) (aún no del todo al azar: haría falta \(2\pi\)) la simulación da 0,125 y 0,062, y su cociente, 2,02, es el \(\sqrt 4\) que se espera. <code>ejemplos_a15b.py</code>, ejemplo 2.</p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -136,19 +305,156 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Coordinación · consenso</p>
-  <h2>Ponerse de acuerdo hablando solo con los vecinos</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Grafos, laplaciano y consenso: qué es cada letra</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:16%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo con 4 drones</th></tr>
+      <tr><td>\(n\)</td><td>Número de agentes (nodos del grafo)</td><td>\(n = 4\)</td></tr>
+      <tr><td>\(\mathcal N_i\)</td><td>Vecinos de \(i\) en el <strong>grafo de comunicación</strong>: los que oye. Grafo no dirigido: si \(i\) oye a \(j\), \(j\) oye a \(i\)</td><td>En una cadena 1–2–3–4, \(\mathcal N_2 = \{1, 3\}\)</td></tr>
+      <tr><td>\(A = [a_{ij}]\)</td><td>Matriz de adyacencia: \(a_{ij} = 1\) si \(i\) y \(j\) se oyen, 0 si no</td><td>\(a_{12} = 1\), \(a_{13} = 0\)</td></tr>
+      <tr><td>\(D\), \(d_i\)</td><td>Matriz diagonal de grados; \(d_i = \sum_j a_{ij}\) es cuántos vecinos tiene \(i\)</td><td>\(d_1 = 1\), \(d_2 = 2\)</td></tr>
+      <tr><td>\(L = D - A\)</td><td>Laplaciano del grafo, matriz \(n\times n\)</td><td>Se construye en la hoja siguiente</td></tr>
+      <tr><td>\(x_i\), \(\mathbf x\)</td><td>Valor de cada agente y vector con los \(n\) valores</td><td>Dónde cree cada dron que está el objetivo: \(\mathbf x = (0, 2, 6, 12)\) m</td></tr>
+      <tr><td>\(\mathbf 1\), \(\bar x\), \(\mathbf e\)</td><td>Vector de unos; media \(\bar x = \tfrac1n\mathbf 1^\top\mathbf x\); error \(\mathbf e = \mathbf x - \bar x\mathbf 1\) (cuánto se aparta cada uno de la media)</td><td>\(\bar x = 5\), \(\mathbf e = (-5, -3, 1, 7)\)</td></tr>
+      <tr><td>\(\lambda_k\), \(\mathbf u_k\)</td><td>Autovalores de \(L\) ordenados, \(\lambda_1 \le \lambda_2 \le \dots \le \lambda_n = \lambda_{\max}\), y sus autovectores</td><td>Cadena: 0; 0,586; 2; 3,414</td></tr>
+      <tr><td>\(\varepsilon\)</td><td>Paso de la versión en tiempo discreto, la que corre un dron</td><td>Hoja «Consenso · 4»</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: \(A\) es aquí la matriz de adyacencia; en ORCA y en CBBA, A y B serán los nombres de dos drones. \(L\) es el laplaciano.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · consenso · 1</p>
+  <h2>El problema y el laplaciano, construido a mano para 4 drones</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Cada agente tiene un valor \(x_i\) (una estimación, una posición de encuentro) y lo acerca al de sus vecinos en el grafo de comunicación:</p>
-      \[ \dot x_i = \sum_{j\in\mathcal N_i}(x_j - x_i) \quad\Longleftrightarrow\quad \dot{\mathbf x} = -L\,\mathbf x, \]
-      <p class="small">con \(L = D - A\) el laplaciano del grafo. Olfati-Saber, Fax y Murray dan el marco para analizar estos algoritmos: el papel del flujo de información dirigido, la robustez a cambios de topología por fallos de enlaces o nodos, los retrasos, y la relación entre las propiedades espectrales del grafo y la velocidad con que se difunde la información <a class="cite" data-ref="olfatisaber2007"></a>.</p>
+      <p><strong>Qué resolvemos:</strong> cuatro drones estiman la misma cantidad (dónde está el objetivo a lo largo de un túnel) y deben acabar de acuerdo hablando solo con quien tienen al alcance. <strong>Entra:</strong> el valor propio y el de los vecinos. <strong>Sale:</strong> un valor nuevo, en cada instante.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 420 150" style="max-height:170px" role="img" aria-label="Cuatro drones en cadena con sus valores iniciales; un enlace opcional del 4 al 1 y el enlace 2-3 que puede romperse">
+          <path class="ln" d="M60 50 H170 M250 50 H360" stroke-width="2"/>
+          <path class="ln-accent" d="M170 50 H250" stroke-width="2"/>
+          <path class="ln-dash" d="M60 50 C 120 130, 300 130, 360 50" fill="none"/>
+          <circle cx="60" cy="50" r="20" class="box"/><circle cx="170" cy="50" r="20" class="box"/>
+          <circle cx="250" cy="50" r="20" class="box"/><circle cx="360" cy="50" r="20" class="box"/>
+          <text x="60" y="55" text-anchor="middle" class="t-bold" font-size="15">1</text>
+          <text x="170" y="55" text-anchor="middle" class="t-bold" font-size="15">2</text>
+          <text x="250" y="55" text-anchor="middle" class="t-bold" font-size="15">3</text>
+          <text x="360" y="55" text-anchor="middle" class="t-bold" font-size="15">4</text>
+          <text x="60" y="18" text-anchor="middle" class="t-mono t-muted" font-size="13">x = 0</text>
+          <text x="170" y="18" text-anchor="middle" class="t-mono t-muted" font-size="13">x = 2</text>
+          <text x="250" y="18" text-anchor="middle" class="t-mono t-muted" font-size="13">x = 6</text>
+          <text x="360" y="18" text-anchor="middle" class="t-mono t-muted" font-size="13">x = 12</text>
+          <text x="210" y="42" text-anchor="middle" class="t-accent" font-size="12">2–3</text>
+          <text x="210" y="138" text-anchor="middle" class="t-mono t-faint" font-size="12">enlace 4–1 (solo en el anillo)</text>
+        </svg>
+        <figcaption>Cadena 1–2–3–4 (como robots que se pasan la señal en un túnel). Con el enlace punteado, anillo; sin el 2–3, la cadena se rompe en dos.</figcaption>
+      </figure>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: converge a la media, a ritmo \(\lambda_2\)</summary>
-        <p class="small">Con el grafo no dirigido y conexo, \(L\) es simétrica y semidefinida positiva, \(L\mathbf 1 = 0\) y sus autovalores son \(0 = \lambda_1 &lt; \lambda_2 \le \dots\). Como \(\mathbf 1^\top L = 0\), la media \(\bar x = \tfrac1n\mathbf 1^\top\mathbf x\) se conserva. El error \(\mathbf e = \mathbf x - \bar x\mathbf 1\) cumple \(\dot{\mathbf e} = -L\mathbf e\) y es ortogonal a \(\mathbf 1\), así que \(\|\mathbf e(t)\|\le e^{-\lambda_2 t}\|\mathbf e(0)\|\). Un grafo mal conectado (\(\lambda_2\) pequeño) tarda en ponerse de acuerdo; uno roto en dos (\(\lambda_2 = 0\)) no lo consigue nunca.</p>
-      </details>
+      <p>Fila \(i\) de \(A\): con quién habla \(i\). \(D\): cuántos vecinos tiene cada uno. \(L = D - A\), para la cadena:</p>
+      \[ A = \begin{bmatrix}0&1&0&0\\1&0&1&0\\0&1&0&1\\0&0&1&0\end{bmatrix} \quad D = \begin{bmatrix}1&&&\\&2&&\\&&2&\\&&&1\end{bmatrix} \]
+      \[ L = \begin{bmatrix}\phantom{-}1&-1&\phantom{-}0&\phantom{-}0\\-1&\phantom{-}2&-1&\phantom{-}0\\\phantom{-}0&-1&\phantom{-}2&-1\\\phantom{-}0&\phantom{-}0&-1&\phantom{-}1\end{bmatrix} \]
+      <ul>
+        <li>Cada fila suma 0: \(L\mathbf 1 = \mathbf 0\). Es la propiedad que hará que todos acaben en el mismo valor.</li>
+        <li>\(L\) es simétrica porque el grafo es no dirigido.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · consenso · 2</p>
+  <h2>La regla de cada dron y la misma regla para todo el equipo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cada agente acerca su valor \(x_i\) al de cada vecino, en proporción a la diferencia:</p>
+      \[ \dot x_i = \sum_{j\in\mathcal N_i}(x_j - x_i) \quad\Longleftrightarrow\quad \dot{\mathbf x} = -L\,\mathbf x \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\sum_{j\in\mathcal N_i}(x_j - x_i) = \sum_j a_{ij}x_j - d_i x_i\)</td><td>\(a_{ij} = 1\) solo para los vecinos, y hay \(d_i\) de ellos</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= -\big(d_i x_i - \sum_j a_{ij}x_j\big) = -(L\mathbf x)_i\)</td><td>Fila \(i\) de \(L = D - A\): \(d_i\) en la diagonal y \(-a_{ij}\) fuera</td></tr>
+        </table>
+      </div>
+      <p class="small">Olfati-Saber, Fax y Murray dan el marco para analizar estos algoritmos: el flujo de información dirigido, la robustez a cambios de topología por fallos de enlaces o nodos, los retrasos, y la relación entre las propiedades espectrales del grafo y la velocidad con que se difunde la información <a class="cite" data-ref="olfatisaber2007"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En la cadena, en t = 0</span>
+        <p>\(-L\,\mathbf x(0) = (2,\ 2,\ 2,\ -6)\). El dron 1 (en 0) solo oye al 2 (en 2): sube a ritmo 2. El 3 oye al 2 y al 4: \((2 - 6) + (12 - 6) = 2\). El 4 solo oye al 3: \(6 - 12 = -6\).</p>
+        <p>Las cuatro velocidades suman 0: lo que uno gana, otro lo pierde, y la media (5) no se mueve.</p>
+      </div>
       <div class="callout clave"><span class="tag">Para drones</span>Fundir beliefs entre drones es un consenso: con mensajes que se pierden, el grafo cambia en cada paso, y lo que importa es que esté conectado a menudo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · consenso · 3</p>
+  <h2>Por qué converge a la media, y a ritmo \(\lambda_2\)</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(L\) tiene autovalores reales y autovectores ortonormales \(\mathbf u_1, \dots, \mathbf u_n\)</td><td>Es simétrica (grafo no dirigido): teorema espectral</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathbf x^\top L\,\mathbf x = \sum_{\text{enlaces } (i,j)}(x_i - x_j)^2 \ge 0\), así que todo \(\lambda_k \ge 0\)</td><td>Multiplicar la fila \(i\), \(\sum_j a_{ij}(x_i - x_j)\), por \(x_i\) y sumar: cada enlace aparece dos veces</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\lambda_1 = 0\) con \(\mathbf u_1 = \mathbf 1/\sqrt n\); si el grafo es conexo, \(\lambda_2 \gt 0\)</td><td>\(L\mathbf 1 = 0\). La suma del paso 2 solo es 0 si los vecinos son iguales, y en un grafo conexo eso obliga a que lo sean todos</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\tfrac{d}{dt}(\mathbf 1^\top\mathbf x) = -\mathbf 1^\top L\,\mathbf x = 0\): la media \(\bar x\) no cambia</td><td>\(\mathbf 1^\top L = (L\mathbf 1)^\top = 0\) por la simetría</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\dot{\mathbf e} = -L\,\mathbf e\) y \(\mathbf 1^\top\mathbf e = 0\)</td><td>\(\mathbf e = \mathbf x - \bar x\mathbf 1\), con \(\bar x\) constante y \(L\mathbf 1 = 0\)</td></tr>
+      <tr><td><strong>6</strong></td><td>\(\mathbf e(t) = \sum_{k\ge 2} c_k\, e^{-\lambda_k t}\,\mathbf u_k\), con \(c_k = \mathbf u_k^\top\mathbf e(0)\)</td><td>En la base de autovectores, cada coordenada cumple \(\dot c = -\lambda_k c\); \(c_1 = 0\) por el paso 5</td></tr>
+      <tr><td><strong>7</strong></td><td>\(\|\mathbf e(t)\|^2 = \sum_{k\ge2} c_k^2 e^{-2\lambda_k t} \le e^{-2\lambda_2 t}\|\mathbf e(0)\|^2\)</td><td>Base ortonormal (Pitágoras) y \(\lambda_k \ge \lambda_2\) para \(k \ge 2\)</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Resultado</span>\(\|\mathbf e(t)\| \le e^{-\lambda_2 t}\,\|\mathbf e(0)\|\). Un grafo mal conectado (\(\lambda_2\) pequeño) tarda en ponerse de acuerdo; uno roto en dos (\(\lambda_2 = 0\)) no lo consigue nunca. \(\lambda_2\) se llama <em>conectividad algebraica</em>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · consenso · 4</p>
+  <h2>Los números: cadena, anillo y cadena rota, desde \(\mathbf x(0) = (0, 2, 6, 12)\)</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Grafo</th><th>Autovalores de \(L\)</th><th>\(\lambda_2\)</th><th>\(\|\mathbf e\|\) en \(t\) = 0 / 1 / 2 / 4</th><th>\(\ln 10/\lambda_2\)</th></tr>
+          <tr><td>Cadena</td><td class="n">0; 0,586; 2; 3,414</td><td class="n">0,586</td><td class="n">9,17 / 4,97 / 2,77 / 0,86</td><td class="n">3,93</td></tr>
+          <tr><td>Anillo</td><td class="n">0; 2; 2; 4</td><td class="n">2</td><td class="n">9,17 / 1,12 / 0,15 / 0,003</td><td class="n">1,15</td></tr>
+          <tr><td>Rota</td><td class="n">0; 0; 2; 2</td><td class="n">0</td><td class="n">9,17 / 8,02 / 8,00 / 8,00</td><td class="n">∞</td></tr>
+        </table>
+      </div>
+      <ul>
+        <li><strong>Cota del paso 7</strong> en la cadena: \(9{,}17\,e^{-0{,}586 t}\) = 5,10 / 2,84 / 0,88; el error real queda justo debajo. \(\ln 10/\lambda_2\) es el tiempo para dividir el error por 10.</li>
+        <li><strong>Un enlace más</strong> (el 4–1) triplica \(\lambda_2\). <strong>Uno menos</strong> (el 2–3): cada mitad se pone de acuerdo consigo misma, en 1 y en 9, y la media global (5) no la alcanza nadie.</li>
+        <li>El modo lento de la cadena es \(\mathbf u_2 = (0{,}65;\ 0{,}27;\ -0{,}27;\ -0{,}65)\): el desacuerdo entre los dos extremos, que solo se hablan a través de todos los demás.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 290" role="img" aria-label="Valores de los cuatro drones de la cadena frente al tiempo, que convergen a la media 5">
+          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+          <line x1="60" y1="158.3" x2="520" y2="158.3" class="ln-dash"/>
+          <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="16">0</text>
+          <text x="52" y="162" text-anchor="end" class="t-mono t-faint" font-size="16">5</text>
+          <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="16">12</text>
+          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="16">0</text>
+          <text x="213.3" y="268" text-anchor="middle" class="t-mono t-faint" font-size="16">2</text>
+          <text x="366.7" y="268" text-anchor="middle" class="t-mono t-faint" font-size="16">4</text>
+          <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="16">6</text>
+          <path d="M60.0,250.0 L75.3,242.7 L90.7,235.4 L106.0,228.4 L121.3,221.7 L136.7,215.4 L152.0,209.6 L167.3,204.3 L182.7,199.5 L198.0,195.1 L213.3,191.1 L228.7,187.6 L244.0,184.4 L259.3,181.5 L274.7,179.0 L290.0,176.7 L305.3,174.7 L320.7,172.9 L336.0,171.3 L351.3,169.9 L366.7,168.6 L382.0,167.5 L397.3,166.4 L412.7,165.6 L428.0,164.8 L443.3,164.0 L458.7,163.4 L474.0,162.9 L489.3,162.4 L504.7,161.9 L520.0,161.5" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <path d="M60.0,213.3 L75.3,206.2 L90.7,199.6 L106.0,194.0 L121.3,189.2 L136.7,185.2 L152.0,181.8 L167.3,178.9 L182.7,176.4 L198.0,174.2 L213.3,172.4 L228.7,170.8 L244.0,169.3 L259.3,168.1 L274.7,167.0 L290.0,166.0 L305.3,165.2 L320.7,164.4 L336.0,163.7 L351.3,163.1 L366.7,162.6 L382.0,162.1 L397.3,161.7 L412.7,161.3 L428.0,161.0 L443.3,160.7 L458.7,160.4 L474.0,160.2 L489.3,160.0 L504.7,159.8 L520.0,159.7" fill="none" class="ln-time" stroke-width="2.2"/>
+          <path d="M60.0,140.0 L75.3,135.1 L90.7,133.5 L106.0,133.7 L121.3,134.8 L136.7,136.4 L152.0,138.2 L167.3,140.0 L182.7,141.8 L198.0,143.4 L213.3,145.0 L228.7,146.4 L244.0,147.6 L259.3,148.8 L274.7,149.8 L290.0,150.7 L305.3,151.6 L320.7,152.3 L336.0,153.0 L351.3,153.6 L366.7,154.1 L382.0,154.6 L397.3,155.0 L412.7,155.3 L428.0,155.7 L443.3,156.0 L458.7,156.2 L474.0,156.5 L489.3,156.7 L504.7,156.9 L520.0,157.0" fill="none" class="ln-tesis" stroke-width="2.2"/>
+          <path d="M60.0,30.0 L75.3,49.4 L90.7,64.8 L106.0,77.2 L121.3,87.6 L136.7,96.3 L152.0,103.7 L167.3,110.1 L182.7,115.7 L198.0,120.6 L213.3,124.9 L228.7,128.7 L244.0,132.0 L259.3,134.9 L274.7,137.5 L290.0,139.9 L305.3,141.9 L320.7,143.7 L336.0,145.3 L351.3,146.8 L366.7,148.1 L382.0,149.2 L397.3,150.2 L412.7,151.1 L428.0,151.9 L443.3,152.6 L458.7,153.3 L474.0,153.8 L489.3,154.3 L504.7,154.8 L520.0,155.2" fill="none" class="ln" stroke-width="2.2"/>
+          <text x="80" y="236" class="t-accent t-mono" font-size="16">x₁</text>
+          <text x="80" y="196" class="t-time t-mono" font-size="16">x₂</text>
+          <text x="80" y="126" class="t-tesis t-mono" font-size="16">x₃</text>
+          <text x="84" y="50" class="t-mono t-muted" font-size="16">x₄</text>
+          <text x="512" y="148" text-anchor="end" class="t-mono t-faint" font-size="16">media 5</text>
+          <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="16">tiempo t</text>
+        </svg>
+        <figcaption>La cadena: \(x_3\) sube al principio (su vecino 4 tira fuerte) y luego baja hacia 5. <code>ejemplos_a15b.py</code>, ejemplo 3.</figcaption>
+      </figure>
+      <div class="aparte"><span class="rotulo">En tiempo discreto</span>
+        <p>Un dron hace \(\mathbf x_{k+1} = \mathbf x_k - \varepsilon L\mathbf x_k\). Los autovalores de \(I - \varepsilon L\) son \(1 - \varepsilon\lambda_k\): converge si \(\varepsilon \lt 2/\lambda_{\max}\), 0,586 en la cadena. Con 0,55 llega a 5; con 0,6 oscila y diverge.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -162,6 +468,250 @@
     <div class="card"><span class="meta">PLANES</span><h3>Dec-MCTS</h3><p>Cada robot mantiene una distribución sobre planes en el espacio de acciones conjuntas y envía de vez en cuando una versión comprimida de su árbol de búsqueda; con comunicación intermitente, se compara bien con un MCTS centralizado <a class="cite" data-ref="best2019"></a>.</p></div>
   </div>
   <div class="callout tesis"><span class="tag">Percepción activa en equipo</span>Dec-MCTS se probó precisamente en percepción activa: decidir dónde mirar entre varios robots. Es la versión planificada de lo que la parte 5 aprende con PPO.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · ORCA · 1</p>
+  <h2>El obstáculo de velocidades: las velocidades que acaban en choque</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Qué resolvemos:</strong> cada dron elige su velocidad sin hablar con los demás, viendo solo su posición y su velocidad, y nadie debe chocar en los próximos \(\tau\) segundos.</p>
+      \[ VO^\tau_{A|B} = \big\{\mathbf v \;\big|\; \exists\, t\in[0,\tau]:\ \|t\,\mathbf v - \mathbf p\| \lt R\big\} \]
+      <p>con \(\mathbf p = \mathbf p_B - \mathbf p_A\) y \(R = r_A + r_B\): las velocidades <em>relativas</em> \(\mathbf v = \mathbf v_A - \mathbf v_B\) con las que A entra en el disco de radio \(R\) alrededor de B antes de \(\tau\).</p>
+      <ul>
+        <li><strong>Por qué un cono:</strong> \(t\mathbf v\) cae en el disco \(D(\mathbf p, R)\) si \(\mathbf v\) cae en \(D(\mathbf p/t, R/t)\). Al variar \(t\), esos discos llenan el cono tangente a \(D(\mathbf p, R)\) con vértice en el origen, de semiapertura \(\arcsin(R/\|\mathbf p\|)\).</li>
+        <li><strong>Por qué truncado:</strong> \(t \le \tau\) lo corta en \(D(\mathbf p/\tau, R/\tau)\): con velocidades pequeñas, el choque llega después de \(\tau\).</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 440 372" style="max-height:470px" role="img" aria-label="Arriba, los dos drones en el plano; abajo, el obstáculo de velocidades en el espacio de velocidades relativas, con la velocidad relativa dentro y el vector u hasta el borde">
+        <defs><marker id="a15ba-orca1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker><marker id="a15bh-orca1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker><marker id="a15bt-orca1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker></defs>
+        <text x="10" y="18" class="t-bold" font-size="13">Plano (1 m = 50 px)</text>
+        <path class="ln-dash" d="M40 72 H420 M240 47 H20"/>
+        <circle cx="40" cy="72" r="25" class="box"/>
+        <circle cx="240" cy="47" r="25" class="box-soft"/>
+        <path class="ln-accent" d="M40 72 H90" marker-end="url(#a15ba-orca1)" stroke-width="2.2"/>
+        <path class="ln-tesis" d="M240 47 H190" marker-end="url(#a15bt-orca1)" stroke-width="2.2"/>
+        <text x="40" y="77" text-anchor="middle" class="t-bold" font-size="14">A</text>
+        <text x="240" y="52" text-anchor="middle" class="t-bold" font-size="14">B</text>
+        <text x="96" y="92" class="t-mono t-accent" font-size="12">v_A = (1, 0)</text>
+        <text x="272" y="40" class="t-mono t-tesis" font-size="12">v_B = (−1, 0)</text>
+        <text x="10" y="122" class="t-bold" font-size="13">Velocidades relativas (1 m/s = 100 px)</text>
+        <line x1="40" y1="260" x2="430" y2="260" class="ln-rule"/>
+        <line x1="90" y1="140" x2="90" y2="365" class="ln-rule"/>
+        <path d="M211.1,212.3 L387.8,142.8 L407.4,300.3 L219.1,276.4 A33.3,33.3 0 0 1 211.1,212.3 Z" class="fill-accent" fill-opacity="0.13"/>
+        <path class="ln-accent" d="M211.1,212.3 L387.8,142.8 M219.1,276.4 L407.4,300.3" stroke-width="1.8"/>
+        <path class="ln-accent" d="M211.1,212.3 A33.3,33.3 0 0 0 219.1,276.4" fill="none" stroke-width="1.8"/>
+        <path class="ln-dash" d="M90 260 L211.1 212.3 M90 260 L219.1 276.4"/>
+        <circle cx="223.3" cy="243.3" r="2.5" class="fill-ink3"/>
+        <text x="150" y="232" class="t-mono t-faint" font-size="11">p/τ</text>
+        <circle cx="90" cy="260" r="3" class="fill-ink3"/>
+        <text x="72" y="278" class="t-mono t-faint" font-size="12">0</text>
+        <text x="330" y="222" class="t-accent t-bold" font-size="14">VO</text>
+        <circle cx="290" cy="260" r="4.5" class="fill-time"/>
+        <path class="ln-time" d="M290 260 L287.2 282" marker-end="url(#a15bh-orca1)" stroke-width="2"/>
+        <text x="296" y="254" class="t-mono t-time" font-size="12">v_A − v_B = (2, 0)</text>
+        <text x="300" y="282" class="t-mono t-time t-bold" font-size="13">u</text>
+        <text x="40" y="358" class="t-mono t-faint" font-size="12">r_A = r_B = 0,5 m; τ = 3 s</text>
+      </svg>
+      <figcaption>B está 4 m a la derecha y 0,5 m arriba. La velocidad relativa \((2, 0)\) está dentro: chocarían en \(t = 1{,}57\) s. \(\mathbf u\) lleva al punto más cercano del borde. <code>ejemplos_a15b.py</code>, ejemplo 4.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · ORCA · 2</p>
+  <h2>Cada uno corrige la mitad: un semiplano por vecino y un programa lineal</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>\(\mathbf u\) es el cambio mínimo de velocidad relativa que saca del obstáculo; \(\mathbf n\), la normal hacia fuera del borde en ese punto. Cada dron asume la mitad <a class="cite" data-ref="vandenberg2011"></a>:</p>
+      \[ ORCA^\tau_{A|B} = \big\{\mathbf v \;\big|\; \big(\mathbf v - (\mathbf v_A^{\text{opt}} + \tfrac12\mathbf u)\big)\cdot\mathbf n \ge 0\big\} \]
+      \[ \mathbf v_A^{\text{new}} = \arg\min_{\mathbf v\,\in\, D(\mathbf 0,\, v_{\max})\ \cap\ \bigcap_{B} ORCA^\tau_{A|B}} \|\mathbf v - \mathbf v_A^{\text{pref}}\| \]
+      <ul>
+        <li>\(\mathbf v^{\text{opt}}\): la velocidad de partida (normalmente la actual); \(\mathbf v^{\text{pref}}\): la que llevaría hacia su meta; \(v_{\max}\): su velocidad máxima.</li>
+        <li><strong>Por qué \(\tfrac12\):</strong> B aplica \(-\tfrac12\mathbf u\) con la misma regla; juntos cambian la velocidad relativa en \(\mathbf u\), justo hasta el borde, sin haberse hablado.</li>
+        <li>Cada vecino añade un semiplano: la región es un polígono convexo y el óptimo se busca con un programa lineal en dos dimensiones.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 78 400 156" style="max-height:205px" role="img" aria-label="Espacio de velocidades del dron A: la recta del semiplano ORCA y el lado permitido">
+        <defs><marker id="a15ba-orca2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker><marker id="a15bh-orca2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+          <path d="M7.7,113.7 L382.7,161.3 L382.7,225 L7.7,225 Z" class="fill-tesis" fill-opacity="0.12"/>
+          <path class="ln-tesis" d="M7.7 113.7 L382.7 161.3" stroke-width="1.8"/>
+          <circle cx="200" cy="100" r="4.5" class="fill-ink3"/>
+          <path class="ln-time" d="M200 100 L195.2 137.5" marker-end="url(#a15bh-orca2)" stroke-width="2"/>
+          <circle cx="195.2" cy="137.5" r="4.5" class="fill-accent"/>
+          <path class="ln-accent" d="M195.2 137.5 L190.3 176.2" marker-end="url(#a15ba-orca2)" stroke-width="1.6"/>
+          <text x="212" y="98" class="t-mono t-muted" font-size="13">v_A = v_pref = (1, 0)</text>
+          <text x="208" y="166" class="t-mono t-accent" font-size="13">v_A + u/2</text><text x="208" y="184" class="t-mono t-accent" font-size="13">= (0,984; −0,125)</text>
+          <text x="174" y="188" class="t-mono t-accent t-bold" font-size="15">n</text>
+          <text x="20" y="222" class="t-tesis t-bold" font-size="14">ORCA_A|B: permitidas para A</text>
+        </svg>
+        <figcaption>Espacio de velocidades de A (1 m/s = 300 px). La mejor velocidad permitida, la más cercana a la preferida, es la proyección sobre la recta.</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Ejemplo de la hoja anterior</th><th>Valor</th></tr>
+          <tr><td>Punto del borde más cercano</td><td class="n">(1,968; −0,250)</td></tr>
+          <tr><td>\(\mathbf u\), \(\|\mathbf u\|\), \(\mathbf n\)</td><td class="n">(−0,032; −0,250); 0,252; (−0,126; −0,992)</td></tr>
+          <tr><td>\(\mathbf v_A^{\text{new}}\), \(\mathbf v_B^{\text{new}}\)</td><td class="n">(0,984; −0,125), (−0,984; 0,125)</td></tr>
+          <tr><td>Distancia mínima en 3 s</td><td class="n">1,000 m = \(R\), en \(t\) = 1,97 s</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · CBBA · 1</p>
+  <h2>Repartir tareas con subastas: cada dron puja solo, el consenso decide</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Qué resolvemos:</strong> \(n\) drones y una lista de tareas (zonas que inspeccionar); cada tarea, para un solo dron; nadie conoce las puntuaciones de los demás. CBBA alterna dos fases hasta que nada cambia <a class="cite" data-ref="choi2009"></a>:</p>
+      <ol>
+        <li><strong>Construir el lote</strong> (<em>bundle</em>), cada dron por su cuenta: añade, una a una, la tarea que más puntuación marginal le da, entre las que superan la mejor puja que conoce.</li>
+        <li><strong>Consenso</strong> con los vecinos: se intercambian las pujas; en cada tarea gana la más alta. Quien pierde una tarea la suelta <em>y también las que añadió después</em>, porque se puntuaron suponiendo que pasaría por ella.</li>
+      </ol>
+      <div class="aparte"><span class="rotulo">La condición de las garantías</span>
+        <p>La puntuación marginal de una tarea no debe crecer al crecer el lote (<em>diminishing marginal gain</em>). Con ella, CBBA converge a un reparto sin conflictos con garantías de peor caso <a class="cite" data-ref="choi2009"></a>.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:22%">Símbolo</th><th>Qué es</th></tr>
+          <tr><td>\(\mathbf b_i\)</td><td>Lote del dron \(i\): sus tareas, en el orden en que las visitará</td></tr>
+          <tr><td>\(c_{ij}\)</td><td>Puntuación marginal: cuánto sube la puntuación de \(\mathbf b_i\) al añadir la tarea \(j\)</td></tr>
+          <tr><td>\(y_j\), \(z_j\)</td><td>Mejor puja conocida por la tarea \(j\) y quién la hizo</td></tr>
+        </table>
+      </div>
+      <figure class="fig">
+        <svg viewBox="0 0 420 110" style="max-height:120px" role="img" aria-label="Línea de 0 a 10 con el dron A en 0, el dron B en 10 y tres tareas en 4, 7 y 9">
+          <line x1="30" y1="50" x2="390" y2="50" class="ln-rule"/>
+          <rect x="18" y="38" width="24" height="24" rx="5" class="box-accent"/><text x="30" y="55" text-anchor="middle" class="t-bold" font-size="13">A</text>
+          <rect x="378" y="38" width="24" height="24" rx="5" class="box-tesis"/><text x="390" y="55" text-anchor="middle" class="t-bold" font-size="13">B</text>
+          <circle cx="174" cy="50" r="9" class="box-soft"/><circle cx="282" cy="50" r="9" class="box-soft"/><circle cx="354" cy="50" r="9" class="box-soft"/>
+          <text x="174" y="28" text-anchor="middle" class="t-mono" font-size="12">T1</text><text x="282" y="28" text-anchor="middle" class="t-mono" font-size="12">T2</text><text x="354" y="28" text-anchor="middle" class="t-mono" font-size="12">T3</text>
+          <text x="30" y="84" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text><text x="174" y="84" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text><text x="282" y="84" text-anchor="middle" class="t-mono t-faint" font-size="12">7</text><text x="354" y="84" text-anchor="middle" class="t-mono t-faint" font-size="12">9</text><text x="390" y="84" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+          <text x="210" y="104" text-anchor="middle" class="t-muted" font-size="12">cada tarea vale 10 · 0,9^(distancia recorrida al llegar)</text>
+        </svg>
+        <figcaption>El ejemplo de las dos hojas siguientes: 2 drones, 3 tareas, hasta 3 tareas por lote.</figcaption>
+      </figure>
+      <p class="small muted">Simplificado para seguirlo a mano: cada tarea se añade al final del recorrido y se omiten las marcas de tiempo con que el artículo resuelve mensajes cruzados.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · CBBA · 2</p>
+  <h2>Ronda 1, fase 1: cada dron arma su lote sin saber nada del otro</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Dron A</strong>, desde 0. Todas las pujas conocidas valen 0.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Lote actual</th><th>Marginales \(c_{Aj}\)</th><th>Añade</th></tr>
+          <tr><td>—</td><td class="n">T1 6,56 · T2 4,78 · T3 3,87</td><td>T1</td></tr>
+          <tr><td>T1</td><td class="n">T2 4,78 · T3 3,87</td><td>T2</td></tr>
+          <tr><td>T1, T2</td><td class="n">T3 3,87</td><td>T3</td></tr>
+        </table>
+      </div>
+      <p>T1 está a 4: \(10 \cdot 0{,}9^4 = 6{,}56\). Tras T1, T2 se alcanza a distancia recorrida 7: \(10\cdot 0{,}9^7 = 4{,}78\); T3, a 9: 3,87.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Dron B</strong>, desde 10.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Lote actual</th><th>Marginales \(c_{Bj}\)</th><th>Añade</th></tr>
+          <tr><td>—</td><td class="n">T1 5,31 · T2 7,29 · T3 9,00</td><td>T3</td></tr>
+          <tr><td>T3</td><td class="n">T1 5,31 · T2 7,29</td><td>T2</td></tr>
+          <tr><td>T3, T2</td><td class="n">T1 5,31</td><td>T1</td></tr>
+        </table>
+      </div>
+      <p>T3 está a 1: 9,00. Luego T2 a distancia recorrida 3: 7,29; T1, a 6: 5,31.</p>
+      <div class="callout clave"><span class="tag">Conflicto</span>Los dos han pujado por las tres tareas. Nadie sabe aún que el otro existe: lo resuelve la fase 2.</div>
+    </div>
+  </div>
+  <p class="small muted">En una línea, pasar por una tarea camino de otra no alarga el recorrido, así que la marginal de T2 no cambia tras añadir T1; nunca sube, y la condición de la hoja anterior se cumple. <code>ejemplos_a15b.py</code>, ejemplo 5.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · CBBA · 3</p>
+  <h2>Fase 2: gana la puja más alta, y quien pierde suelta lo que venía detrás</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Tarea</th><th>Puja de A</th><th>Puja de B</th><th>Gana</th></tr>
+          <tr><td>T1</td><td class="n"><strong>6,56</strong></td><td class="n">5,31</td><td>A</td></tr>
+          <tr><td>T2</td><td class="n">4,78</td><td class="n"><strong>7,29</strong></td><td>B</td></tr>
+          <tr><td>T3</td><td class="n">3,87</td><td class="n"><strong>9,00</strong></td><td>B</td></tr>
+        </table>
+      </div>
+      <ul>
+        <li><strong>A</strong> pierde T2, la segunda de su lote: suelta T2 y T3. Le queda {T1}.</li>
+        <li><strong>B</strong> pierde T1, la última de su lote: la suelta. Le queda {T3, T2}.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p><strong>Ronda 2</strong>, ya con las pujas ganadoras \(y = (6{,}56;\ 7{,}29;\ 9{,}00)\):</p>
+      <ul>
+        <li>A, tras T1: T2 le daría 4,78 (no supera 7,29) y T3, 3,87 (no supera 9,00). No añade nada.</li>
+        <li>B, tras T3 y T2: T1 le daría 5,31 (no supera 6,56). No añade nada.</li>
+      </ul>
+      <p>El consenso no cambia nada: <strong>convergido</strong>. A hace T1; B, T3 y luego T2. Total 22,85.</p>
+      <div class="callout realidad"><span class="tag">Comprobación</span>Por fuerza bruta, con los 8 repartos posibles y el mejor orden en cada uno, el óptimo es este mismo: 22,85. Todo para B daría 21,60; todo para A, 15,22.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · Dec-MCTS</p>
+  <h2>Un árbol propio y una distribución sobre los planes ajenos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="-10 0 570 300" role="img" aria-label="Bucle de tres fases de Dec-MCTS en un robot, y el intercambio intermitente con los demás robots">
+        <defs><marker id="a15bk-decmcts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="20" y="20" width="250" height="70" rx="10" class="box-accent"/>
+        <text x="145" y="44" text-anchor="middle" class="t-bold" font-size="14">1 · Crecer el árbol</text>
+        <text x="145" y="64" text-anchor="middle" class="t-muted" font-size="12">MCTS con D-UCT; en cada simulación,</text>
+        <text x="145" y="80" text-anchor="middle" class="t-muted" font-size="12">planes de los demás sorteados de su q</text>
+        <rect x="20" y="125" width="250" height="70" rx="10" class="box-accent"/>
+        <text x="145" y="149" text-anchor="middle" class="t-bold" font-size="14">2 · Actualizar qʳ</text>
+        <text x="145" y="169" text-anchor="middle" class="t-muted" font-size="12">sobre X̂ʳ, las mejores secuencias</text>
+        <text x="145" y="185" text-anchor="middle" class="t-muted" font-size="12">del árbol; descenso de gradiente</text>
+        <rect x="20" y="230" width="250" height="60" rx="10" class="box-accent"/>
+        <text x="145" y="255" text-anchor="middle" class="t-bold" font-size="14">3 · Comunicar (X̂ʳ, qʳ)</text>
+        <text x="145" y="275" text-anchor="middle" class="t-muted" font-size="12">si el mensaje se pierde, se sigue</text>
+        <path class="ln" d="M145 92 V119" marker-end="url(#a15bk-decmcts)" stroke-width="1.6"/>
+        <path class="ln" d="M145 197 V224" marker-end="url(#a15bk-decmcts)" stroke-width="1.6"/>
+        <path class="ln" d="M20 262 C -8 210, -8 100, 14 58" fill="none" marker-end="url(#a15bk-decmcts)" stroke-width="1.6"/>
+        <rect x="360" y="110" width="180" height="90" rx="10" class="box-soft"/>
+        <text x="450" y="140" text-anchor="middle" class="t-bold" font-size="14">Los demás robots</text>
+        <text x="450" y="162" text-anchor="middle" class="t-muted" font-size="12">cada uno, el mismo bucle,</text>
+        <text x="450" y="180" text-anchor="middle" class="t-muted" font-size="12">asíncrono</text>
+        <path class="ln-dash" d="M270 255 C 330 255, 400 240, 430 202" fill="none" marker-end="url(#a15bk-decmcts)"/>
+        <path class="ln-dash" d="M360 135 C 320 100, 300 60, 272 55" fill="none" marker-end="url(#a15bk-decmcts)"/>
+        <text x="330" y="270" class="t-mono t-faint" font-size="12">envía</text>
+        <text x="300" y="40" class="t-mono t-faint" font-size="12">recibe (X̂, q)</text>
+      </svg>
+      <figcaption>El bucle de un robot \(r\), según Best et al. <a class="cite" data-ref="best2019"></a>. Al agotar el presupuesto devuelve la secuencia más probable de \(q^r\), ejecuta su primera acción y replanifica.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:24%">Símbolo</th><th>Qué es</th></tr>
+          <tr><td>\(x^r\), \(x^{(r)}\)</td><td>Secuencia de acciones del robot \(r\) y las de todos los demás</td></tr>
+          <tr><td>\(g\)</td><td>Objetivo global del equipo (p. ej., la información recogida)</td></tr>
+          <tr><td>\(\hat X^r_n\), \(q^r_n\)</td><td>Conjunto reducido de secuencias candidatas y su probabilidad, en la iteración \(n\)</td></tr>
+        </table>
+      </div>
+      <p>Cada robot optimiza su <strong>contribución</strong> al equipo:</p>
+      \[ f^r(x) = g\big(x^r \cup x^{(r)}\big) - g\big(x^r_\varnothing \cup x^{(r)}\big) \]
+      <p>\(x^r_\varnothing\): una secuencia que no aporta nada, típicamente vacía. Restarla no cambia qué plan propio es mejor, y según los autores mejora el rendimiento: \(f^r\) es más sensible al plan propio y su varianza depende menos de la incertidumbre sobre los planes ajenos.</p>
+    </div>
+  </div>
 </section>
 
 <section class="slide">
@@ -206,7 +756,7 @@
   <h2>Colaborar sin coordinación previa</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Stone et al. 2010</strong> <a class="cite" data-ref="stone2010"></a>: los agentes tendrán que formar equipo con compañeros que no conocen; las estrategias de equipo no pueden fijarse de antemano y un agente debe estar preparado para cooperar con muchos tipos de compañeros, «sin coordinación previa».</li>
         <li><strong>Hoy</strong> <a class="cite" data-ref="mirsky2022"></a>: el trabajo en equipos ad hoc es diseñar agentes que colaboren con compañeros nuevos sin coordinación previa.</li>
         <li><strong>Coordinación sin acuerdo previo</strong> (<em>zero-shot coordination</em>) <a class="cite" data-ref="hu2020"></a>: construir agentes que se coordinen con compañeros nuevos que nunca han visto. El autojuego puede producir convenciones muy especializadas que no se transfieren.</li>
@@ -217,6 +767,25 @@
       <div class="callout tesis"><span class="tag">En tus drones</span>¿Qué pasa si un dron de tu flota se entrenó con otra semilla, otra versión del simulador o es de otro grupo? Si el equipo se reparte la zona por una convención (el dron 1 va al norte), el recién llegado no la conoce.</div>
     </div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Autojuego, juego cruzado y other-play, con símbolos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:30%">En la búsqueda con tres drones</th></tr>
+      <tr><td>\(\pi^1\), \(\pi^2\)</td><td>Políticas de los dos jugadores (o de las dos partes del equipo)</td><td>\(\pi^1\): el dron 0; \(\pi^2\): los drones 1 y 2</td></tr>
+      <tr><td>\(J(\pi^1, \pi^2)\)</td><td>Rendimiento esperado del equipo cuando juegan juntos</td><td>P(encontrarlo en 80 pasos)</td></tr>
+      <tr><td>\(s\), \(\pi_s\), \(S\)</td><td>Semilla de entrenamiento, la política que sale con ella y cuántas semillas hay</td><td>\(S = 4\) semillas de MAPPO</td></tr>
+      <tr><td>\(J_{\text{SP}}\)</td><td>Autojuego (<em>self-play</em>): \(\tfrac1S\sum_s J(\pi_s, \pi_s)\), cada política con copias de sí misma</td><td>La diagonal de la matriz: 0,894</td></tr>
+      <tr><td>\(J_{\text{XP}}\)</td><td>Juego cruzado (<em>cross-play</em>): \(\tfrac{1}{S(S-1)}\sum_{s\ne s'} J(\pi_s, \pi_{s'})\), con políticas de otra semilla</td><td>Fuera de la diagonal: 0,879</td></tr>
+      <tr><td>\(\varphi\), \(\Phi\)</td><td>Simetría del problema: un cambio de etiquetas que deja el juego igual (colores en Hanabi, nombres de palancas o de drones); \(\Phi\), el conjunto de todas</td><td>Intercambiar los nombres «dron 1» y «dron 2»</td></tr>
+      <tr><td>\(\varphi(\pi)\)</td><td>La política \(\pi\) con las etiquetas cambiadas por \(\varphi\)</td><td>Lo que hacía el dron 1 lo hace el 2</td></tr>
+      <tr><td>\(J_{\text{OP}}\)</td><td>Objetivo de other-play: \(\mathbb E_{\varphi\sim\Phi}\,J\big(\pi^1, \varphi(\pi^2)\big)\)</td><td>Hojas «Other-play · 1 y 2»</td></tr>
+    </table>
+  </div>
+  <p class="small muted">\(J\) es aquí un rendimiento que se maximiza, no un coste ni un jacobiano.</p>
 </section>
 
 <section class="slide">
@@ -236,23 +805,126 @@
         </table>
       </div>
       <p class="xsmall muted">Tabla 1 de Hu et al. <a class="cite" data-ref="hu2020"></a>: media de las parejas de agentes entrenados con el mismo método.</p>
-      <p class="small">Con personas: 15,75 de media con el agente de other-play frente a 9,15 con el de autojuego.</p>
+      <p>Con personas: 15,75 de media con el agente de other-play frente a 9,15 con el de autojuego.</p>
     </div>
     <div class="stack">
-      <p class="small"><strong>Other-play</strong> aprovecha las simetrías conocidas del problema: entrena para jugar bien con el compañero transformado por una simetría del problema elegida al azar, lo que impide apoyarse en convenciones arbitrarias que esa simetría cambiaría.</p>
-      <div class="callout clave"><span class="tag">El juego de las palancas</span>Diez palancas: nueve pagan 1 y una paga 0,9, y hay que elegir la misma que el compañero sin hablar. Elegir al azar entre las de 1 da 0,11 de media con un desconocido; other-play elige la de 0,9, la única que no se confunde con otra, y obtiene 0,9.</div>
+      <p><strong>Other-play</strong> aprovecha las simetrías conocidas del problema: entrena para jugar bien con el compañero transformado por una simetría del problema elegida al azar, lo que impide apoyarse en convenciones arbitrarias que esa simetría cambiaría.</p>
+      <div class="callout clave"><span class="tag">Cómo funciona</span>Con un juego de tres palancas en la hoja siguiente, y con el de diez palancas del artículo en la otra.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · other-play · 1</p>
+  <h2>Un juego de coordinación con dos etiquetas intercambiables</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Dos jugadores eligen una palanca sin hablar. Si coinciden, ganan lo que pague esa palanca; si no, 0. Las palancas a y b pagan 1; c paga 0,9. <strong>Nada distingue a de b salvo el nombre</strong>: intercambiarlas (\(\varphi\)) deja el juego igual.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 380 130" style="max-height:140px" role="img" aria-label="Tres palancas: a y b pagan 1 y son intercambiables; c paga 0,9">
+        <defs><marker id="a15bh-op1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+          <rect x="30" y="40" width="70" height="60" rx="8" class="box-accent"/>
+          <rect x="150" y="40" width="70" height="60" rx="8" class="box-accent"/>
+          <rect x="280" y="40" width="70" height="60" rx="8" class="box-tesis"/>
+          <text x="65" y="66" text-anchor="middle" class="t-bold" font-size="16">a</text><text x="65" y="88" text-anchor="middle" class="t-mono" font-size="13">paga 1</text>
+          <text x="185" y="66" text-anchor="middle" class="t-bold" font-size="16">b</text><text x="185" y="88" text-anchor="middle" class="t-mono" font-size="13">paga 1</text>
+          <text x="315" y="66" text-anchor="middle" class="t-bold" font-size="16">c</text><text x="315" y="88" text-anchor="middle" class="t-mono" font-size="13">paga 0,9</text>
+          <path class="ln-time" d="M70 36 C 100 18, 150 18, 180 36" fill="none" marker-start="url(#a15bh-op1)" marker-end="url(#a15bh-op1)" stroke-width="1.8"/>
+          <text x="125" y="13" text-anchor="middle" class="t-time" font-size="12">φ: a ↔ b</text>
+          <text x="315" y="122" text-anchor="middle" class="t-faint" font-size="12">φ no la mueve</text>
+        </svg>
+      </figure>
+      <p><strong>Autojuego</strong>: una semilla converge a «siempre a» y otra a «siempre b»; las dos puntúan 1 consigo mismas. <strong>Juego cruzado</strong>: si cada semilla elige a o b con probabilidad ½, coinciden la mitad de las veces: 0,5.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Other-play</strong> puntúa una política contra su compañero con las etiquetas permutadas al azar (\(\varphi\) = identidad o intercambio, ½ cada una):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Política</th><th>\(\varphi\) = identidad</th><th>\(\varphi\) = a ↔ b</th><th>\(J_{\text{OP}}\)</th></tr>
+          <tr><td>«Siempre a»</td><td class="n">1</td><td class="n">0 (el otro elige b)</td><td class="n">0,5</td></tr>
+          <tr><td>«Siempre b»</td><td class="n">1</td><td class="n">0</td><td class="n">0,5</td></tr>
+          <tr><td>«Siempre c»</td><td class="n">0,9</td><td class="n">0,9 (c no cambia)</td><td class="n"><strong>0,9</strong></td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Por qué rompe la convención</span>«Elegir a» solo funciona si el compañero llama «a» a lo mismo: es una convención arbitraria, y la permutación la castiga. «Elegir c» se apoya en algo real del juego (paga distinto), que ninguna simetría cambia: dos desconocidos que la sigan coinciden siempre.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · other-play · 2</p>
+  <h2>Con diez palancas, y qué serían las etiquetas en tus drones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El juego del artículo <a class="cite" data-ref="hu2020"></a>: diez palancas, nueve pagan 1 y una paga 0,9. Con \(\varphi\) uniforme entre las permutaciones de las nueve de 1:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td>1</td><td>Elegir una de 1: el compañero permutado coincide con probabilidad 1/9</td><td>La permutación la manda a cualquiera de las nueve por igual</td></tr>
+          <tr><td>2</td><td>\(J_{\text{OP}} = \tfrac19\cdot 1 = 0{,}11\)</td><td>Pago por probabilidad de coincidir</td></tr>
+          <tr><td>3</td><td>Elegir la de 0,9: \(J_{\text{OP}} = 0{,}9\)</td><td>Es la única de su pago: ninguna simetría la mueve</td></tr>
+        </table>
+      </div>
+      <p>En general, \(J_{\text{OP}}\) de una palanca es su pago dividido por cuántas palancas pagan lo mismo. El 0,11 es también lo que saca el autojuego con un desconocido: other-play puntúa cada política, ya al entrenar, como le iría con un compañero que solo comparte lo que las simetrías no cambian.</p>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">En la búsqueda de la parte 5</span>Cada dron recibe en su observación su número (0, 1 o 2). Una convención como «el dron 1 va al norte» depende de esa etiqueta. Intercambiar los números de los drones es una simetría de la tarea; entrenar con ella permutada al azar obligaría a repartirse la zona por algo físico (quién está más cerca), que un dron de otra semilla también ve.</div>
+      <div class="aparte"><span class="rotulo">Lo que other-play necesita</span>
+        <p>Conocer las simetrías de antemano. En Hanabi son las permutaciones de colores; en tareas sin simetrías exactas, como una zona de búsqueda irregular, no hay \(\Phi\) que dar y hacen falta otras vías, como las poblaciones de compañeros de la hoja siguiente.</p>
+      </div>
+      <p class="small muted">Con 20 000 permutaciones al azar: 0,112 y 0,900 (<code>ejemplos_a15b.py</code>, ejemplo 6).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · Fictitious Co-Play</p>
+  <h2>Una población de compañeros de todos los niveles, y un agente que aprende a jugar con todos</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1000 250" style="max-height:250px" role="img" aria-label="Fictitious Co-Play en dos etapas: entrenar agentes de autojuego guardando puntos de control, y entrenar un agente como mejor respuesta a la población congelada">
+        <defs><marker id="a15bk-fcp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="20" y="22" class="t-bold" font-size="15">Etapa 1 · autojuego, una semilla por fila</text>
+      <path class="ln" d="M40 60 H380 M40 110 H380 M40 190 H380" stroke-width="1.6"/>
+      <text x="210" y="152" text-anchor="middle" class="t-faint" font-size="18">⋮</text>
+      <circle cx="60" cy="60" r="9" class="box-soft"/><circle cx="210" cy="60" r="9" class="box-time"/><circle cx="370" cy="60" r="9" class="box-accent"/>
+      <circle cx="60" cy="110" r="9" class="box-soft"/><circle cx="210" cy="110" r="9" class="box-time"/><circle cx="370" cy="110" r="9" class="box-accent"/>
+      <circle cx="60" cy="190" r="9" class="box-soft"/><circle cx="210" cy="190" r="9" class="box-time"/><circle cx="370" cy="190" r="9" class="box-accent"/>
+      <text x="60" y="226" text-anchor="middle" class="t-muted" font-size="13">inicio</text>
+      <text x="210" y="226" text-anchor="middle" class="t-muted" font-size="13">mitad</text>
+      <text x="370" y="226" text-anchor="middle" class="t-muted" font-size="13">final</text>
+      <path class="ln" d="M395 125 H470" marker-end="url(#a15bk-fcp)" stroke-width="1.6"/>
+      <text x="432" y="114" text-anchor="middle" class="t-faint" font-size="12">congelar</text>
+      <rect x="480" y="50" width="200" height="150" rx="12" class="box"/>
+      <text x="580" y="76" text-anchor="middle" class="t-bold" font-size="14">Población</text>
+      <circle cx="530" cy="110" r="8" class="box-soft"/><circle cx="560" cy="110" r="8" class="box-time"/><circle cx="590" cy="110" r="8" class="box-accent"/><circle cx="620" cy="110" r="8" class="box-soft"/><circle cx="650" cy="110" r="8" class="box-time"/>
+      <circle cx="530" cy="140" r="8" class="box-accent"/><circle cx="560" cy="140" r="8" class="box-soft"/><circle cx="590" cy="140" r="8" class="box-time"/><circle cx="620" cy="140" r="8" class="box-accent"/><circle cx="650" cy="140" r="8" class="box-soft"/>
+      <text x="580" y="180" text-anchor="middle" class="t-muted" font-size="12">compañeros fijos, de varios niveles</text>
+      <path class="ln" d="M680 125 H770" marker-end="url(#a15bk-fcp)" stroke-width="1.6"/>
+      <text x="725" y="114" text-anchor="middle" class="t-faint" font-size="12">uno al azar</text>
+      <text x="725" y="146" text-anchor="middle" class="t-faint" font-size="12">por episodio</text>
+      <rect x="780" y="70" width="200" height="110" rx="12" class="box-tesis"/>
+      <text x="880" y="22" text-anchor="middle" class="t-bold" font-size="15">Etapa 2</text>
+      <text x="880" y="108" text-anchor="middle" class="t-bold" font-size="14">Agente FCP</text>
+      <text x="880" y="132" text-anchor="middle" class="t-muted" font-size="12">aprende; los compañeros no</text>
+      <text x="880" y="152" text-anchor="middle" class="t-muted" font-size="12">mejor respuesta a la población</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Fictitious Co-Play</strong> <a class="cite" data-ref="strouse2021"></a>: el agente se entrena como mejor respuesta a una población de agentes de autojuego <em>y a sus puntos de control anteriores</em> (32 agentes, con su inicio, su mitad y su final). Con 114 personas en Overcooked, los equipos con FCP superan a todos los demás agentes, y las personas lo prefieren.</p>
+    </div>
+    <div class="stack">
+      <p>Quitar los puntos de control anteriores (inicio y mitad) importa: con compañeros reservados, de 10,6 a 4,7 platos servidos con el modelo de persona y de 8,6 a 1,0 con compañeros aleatorios. <strong>En la parte 5:</strong> 3 semillas × 3 puntos (actualizaciones 150, 300 y 600) = 9 compañeros.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <p class="kicker">Equipos ad hoc · poblaciones</p>
-  <h2>Entrenar con muchos compañeros distintos</h2>
+  <h2>Jugar bien consigo mismo no es jugar bien con otros</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Fictitious Co-Play</strong> <a class="cite" data-ref="strouse2021"></a>: el agente se entrena como mejor respuesta a una población de agentes de autojuego <em>y a sus puntos de control anteriores</em> (32 agentes, con su inicio, su mitad y su final). Con 114 personas en Overcooked, los equipos con FCP superan a todos los demás agentes, y las personas lo prefieren.</li>
-        <li>Quitar los puntos de control anteriores (inicio y mitad) importa: con compañeros reservados, de 10,6 a 4,7 platos servidos con el modelo de persona y de 8,6 a 1,0 con compañeros aleatorios.</li>
+      <ul>
         <li><strong>Carroll et al.</strong> <a class="cite" data-ref="carroll2019"></a>: los agentes de autojuego y de entrenamiento por poblaciones juegan muy bien consigo mismos y bastante peor con un modelo de persona que los diseñados para jugar con él.</li>
         <li><strong>Modelar al compañero</strong> <a class="cite" data-ref="papoudakis2021"></a>: aprender una representación de los demás agentes a partir solo de las observaciones propias, sin necesitar su información al ejecutar. Es un belief sobre el compañero.</li>
       </ul>
@@ -276,7 +948,7 @@
   <h2>Un adversario no necesita ser fuerte: le basta con ser raro</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Políticas adversarias</strong> <a class="cite" data-ref="gleave2020"></a>: en un juego de dos humanoides simulados, un adversario entrenado unos 20 millones de pasos (menos del 3 % del entrenamiento de la víctima) gana el 86 % de los episodios, frente al 47 % de un rival normal, con un comportamiento que parece aleatorio. Si se oculta a la víctima la posición del adversario, gana ella el 99 %.</li>
         <li><strong>M3DDPG</strong> <a class="cite" data-ref="li2019"></a>: una política multiagente puede quedarse en un mal óptimo local respecto a sus compañeros de entrenamiento; la extensión minimax de MADDPG entrena contra la peor perturbación de los demás.</li>
         <li><strong>Comunicación manipuladora</strong> <a class="cite" data-ref="blumenkamp2020"></a>: un solo agente egoísta aprende estrategias de comunicación muy manipuladoras que le permiten superar con mucho a un equipo cooperativo.</li>
@@ -298,11 +970,31 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 5</p>
+  <h2>La búsqueda de A15a, con sus letras</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:30%">Valor aquí</th></tr>
+      <tr><td>\(c\)</td><td>Una celda de la rejilla</td><td>144 celdas (12 × 12)</td></tr>
+      <tr><td>\(p_0(c)\)</td><td>Mapa previo: probabilidad de que el objetivo esté en \(c\)</td><td>Dos zonas probables, al azar en cada episodio</td></tr>
+      <tr><td>\(q\)</td><td>Probabilidad de que una mirada a la celda del objetivo no lo detecte</td><td>\(q = 0{,}3\) (detección 0,7)</td></tr>
+      <tr><td>\(n_t(c)\), \(k_t(c)\)</td><td>Miradas a \(c\) hasta el paso \(t\); drones que la miran en el paso \(t\)</td><td>—</td></tr>
+      <tr><td>\(m_t(c) = p_0(c)\,q^{n_t(c)}\)</td><td>Probabilidad de que el objetivo esté en \(c\) y siga sin detectar: cada mirada fallida multiplica por \(q\)</td><td>Mirar dos veces una celda de 0,2: \(0{,}2\cdot 0{,}09 = 0{,}018\)</td></tr>
+      <tr><td>\(r_t = \sum_c m_t(c)\big(1 - q^{k_t(c)}\big)\)</td><td>Recompensa del belief-MDP: probabilidad de detectarlo por primera vez en el paso \(t\)</td><td>Una mirada a una celda de 0,2: 0,14</td></tr>
+      <tr><td>\(P = \sum_t r_t\)</td><td>Probabilidad de encontrarlo en los 80 pasos: la cifra de todas las tablas</td><td>0,910 con comunicación</td></tr>
+      <tr><td>\(\hat n^j_t(c)\)</td><td>Miradas a \(c\) que <em>anuncia</em> el dron \(j\): las reales más las falsas, si miente</td><td>Lo que viaja en los mensajes</td></tr>
+      <tr><td>\(M_{ij}\)</td><td>\(P\) con el dron 0 de la semilla \(i\) y los drones 1 y 2 de la semilla \(j\)</td><td>Matriz 4 × 4 del juego cruzado</td></tr>
+    </table>
+  </div>
+  <p class="small muted">De dónde salen \(m_t\) y \(r_t\): A15a, parte «Tres drones buscan un objetivo».</p>
+</section>
+
+<section class="slide">
   <p class="kicker">Experimento · montaje</p>
   <h2>La búsqueda de A15a, ahora con sorpresas</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>La tarea</strong> de A15a: tres drones, rejilla de 12 × 12, mapa previo con dos zonas probables, detección con probabilidad 0,7, 80 pasos y la recompensa del belief-MDP.</li>
         <li><strong>Equipos por autojuego:</strong> MAPPO sin y con comunicación, 4 semillas cada uno, 600 actualizaciones; el crítico ve la verdad.</li>
         <li><strong>Condiciones de prueba:</strong> normal; el dron 2 cae en el paso 30 (deja de moverse y de mirar); el dron 2 miente (en cada paso anuncia haber mirado la celda más probable según el equipo, sin mirarla); mensajes con 10 pasos de retraso.</li>
@@ -312,6 +1004,80 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">La referencia sin aprendizaje</span>Voraz descentralizada: cada dron va hacia la celda con más masa de su propio belief, descontada por la distancia, sin saber qué harán los demás. Con mensajes, su belief es el del equipo.</div>
       <div class="callout realidad"><span class="tag">Cómo se mide</span>P(encontrarlo en 80 pasos) en 2000 episodios con los mismos mapas para todos. <code>figuras_a15b.py</code> (JAX en GPU, determinista; unos 36 minutos).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · las cuatro condiciones</p>
+  <h2>Qué cambia en cada condición, en la línea de tiempo de un episodio</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 300" role="img" aria-label="Línea temporal de 80 pasos con las cuatro condiciones de prueba: normal, un dron que cae en el paso 30, un dron que miente en cada paso y mensajes con 10 pasos de retraso">
+        <defs><marker id="a15bh-condiciones" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+        <text x="20" y="44" class="t-bold" font-size="13">Normal</text>
+        <text x="20" y="104" class="t-bold" font-size="13">Cae</text>
+        <text x="20" y="164" class="t-bold" font-size="13">Miente</text>
+        <text x="20" y="224" class="t-bold" font-size="13">Retraso</text>
+        <path class="ln-accent" d="M110 40 H570" stroke-width="3"/>
+        <path class="ln-accent" d="M110 100 H282.5" stroke-width="3"/>
+        <path class="ln-dash" d="M282.5 100 H570"/>
+        <path class="ln-tesis" d="M276 94 L289 106 M289 94 L276 106" stroke-width="2.4"/>
+        <text x="296" y="90" class="t-tesis" font-size="12">dron 2: ni se mueve ni mira</text>
+        <path class="ln-accent" d="M110 160 H570" stroke-width="3"/>
+        <path class="ln-tesis" d="M139 150 V170 M196 150 V170 M254 150 V170 M311 150 V170 M369 150 V170 M426 150 V170 M484 150 V170 M541 150 V170" stroke-width="1.6"/>
+        <text x="340" y="142" text-anchor="middle" class="t-tesis" font-size="12">cada paso, el dron 2 anuncia una mirada falsa</text>
+        <path class="ln-accent" d="M110 220 H570" stroke-width="3"/>
+        <circle cx="340" cy="220" r="5" class="fill-time"/>
+        <circle cx="397.5" cy="220" r="5" class="fill-time"/>
+        <path class="ln-time" d="M340 210 C 355 190, 382 190, 395 208" fill="none" marker-end="url(#a15bh-condiciones)" stroke-width="1.8"/>
+        <text x="368" y="186" text-anchor="middle" class="t-time" font-size="12">10 pasos</text>
+        <text x="340" y="242" text-anchor="middle" class="t-mono t-faint" font-size="11">enviado en t − 10</text>
+        <text x="410" y="242" class="t-mono t-faint" font-size="11">llega en t</text>
+        <line x1="110" y1="265" x2="570" y2="265" class="ln-rule"/>
+        <text x="110" y="284" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="282.5" y="284" text-anchor="middle" class="t-mono t-faint" font-size="12">30</text>
+        <text x="570" y="284" text-anchor="middle" class="t-mono t-faint" font-size="12">80</text>
+        <text x="420" y="284" text-anchor="middle" class="t-muted" font-size="12">paso t</text>
+      </svg>
+      <figcaption>Una sola condición por episodio, siempre en el dron 2. En «miente», la mirada falsa va a la celda con más \(m_t\) según lo que cree el equipo. <code>figuras_a15b.py</code>, <code>CONDS</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué recibe cada dron</strong> si hay comunicación: dos mapas de 144 números, la <em>suma</em> de las miradas anunciadas \(\sum_{j\ne i}\hat n^j_t(c)\) y la suma de las posiciones de los demás. Con ellos su belief es</p>
+      \[ m^{(i)}_t(c) \propto p_0(c)\; q^{\,n^i_t(c) + \sum_{j\ne i}\hat n^j_t(c)} \]
+      <ul>
+        <li><strong>Cae:</strong> se pierde un tercio del equipo a mitad de búsqueda.</li>
+        <li><strong>Miente:</strong> el equipo rebaja la celda más prometedora sin que nadie la haya mirado.</li>
+        <li><strong>Retraso:</strong> los mapas son los de hace 10 pasos; sin comunicación, las cuatro condiciones salvo «cae» son la misma.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · qué es el juego cruzado</p>
+  <h2>Quién juega con quién: 16 equipos con 4 semillas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cada casilla es un equipo: el <strong>dron 0</strong> sale de la semilla de la fila; los <strong>drones 1 y 2</strong>, de la semilla de la columna. Sin comunicación:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Dron 0 \ drones 1 y 2</th><th>Semilla 0</th><th>Semilla 1</th><th>Semilla 2</th><th>Semilla 3</th></tr>
+          <tr><td>Semilla 0</td><td class="n"><strong>0,895</strong></td><td class="n">0,891</td><td class="n">0,864</td><td class="n">0,891</td></tr>
+          <tr><td>Semilla 1</td><td class="n">0,891</td><td class="n"><strong>0,892</strong></td><td class="n">0,861</td><td class="n">0,891</td></tr>
+          <tr><td>Semilla 2</td><td class="n">0,871</td><td class="n">0,877</td><td class="n"><strong>0,895</strong></td><td class="n">0,876</td></tr>
+          <tr><td>Semilla 3</td><td class="n">0,891</td><td class="n">0,890</td><td class="n">0,859</td><td class="n"><strong>0,893</strong></td></tr>
+        </table>
+      </div>
+      <p class="small muted">En negrita, la diagonal: el equipo tal como se entrenó. <code>salida_gpu.txt</code>; medias en <code>ejemplos_a15b.py</code>, ejemplo 7.</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Autojuego</strong> (4 casillas): \(J_{\text{SP}} = 3{,}575/4 = 0{,}894\), la media de la diagonal.</li>
+        <li><strong>Juego cruzado</strong> (12 casillas): \(J_{\text{XP}} = 10{,}553/12 = 0{,}879\). La peor, 0,859.</li>
+        <li><strong>La semilla 2</strong>: su columna fuera de la diagonal da 0,861 de media, y su fila, 0,875. Sin ella, el juego cruzado de las otras tres sube a 0,891, casi su autojuego.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Qué mide</span>Si el equipo funciona igual con compañeros entrenados igual pero con otra semilla, no depende de convenciones arbitrarias. Aquí casi todo el coste lo pone una semilla que se reparte la rejilla de otra manera.</div>
     </div>
   </div>
 </section>
@@ -365,15 +1131,55 @@
     </table>
   </div>
   <div class="cols" style="margin-top:8px">
-    <div class="stack"><ul class="small">
+    <div class="stack"><ul>
       <li><strong>Un dron cae:</strong> todos pierden unos 5 puntos (sin mensajes, de 0,894 a 0,839; con ellos, de 0,910 a 0,864). Entrenar con caídas no lo mejora (0,863): perder un tercio del equipo a mitad de la búsqueda cuesta lo que cuesta.</li>
       <li><strong>El mentiroso</strong> baja al equipo con mensajes de 0,910 a 0,898, todavía por encima del equipo sin mensajes; entrenar con mentirosos no lo cambia (0,898).</li>
     </ul></div>
-    <div class="stack"><ul class="small">
+    <div class="stack"><ul>
       <li><strong>Retraso:</strong> de 0,910 a 0,879. Entrenado con retrasos, 0,894, el nivel del equipo sin mensajes, sin perder nada en condiciones normales (0,909).</li>
       <li><strong>Sorpresa:</strong> los voraces con mensajes <em>mejoran</em> con el mentiroso (de 0,794 a 0,857). Sin coordinarse, todos persiguen la misma celda; las miradas falsas a esa celda los dispersan. Un error que ayuda por casualidad sigue siendo un error.</li>
     </ul></div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · por qué no se puede atribuir</p>
+  <h2>Con los mensajes sumados, el mentiroso es invisible</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 420 150" style="max-height:150px" role="img" aria-label="Los drones 1 y 2 envían miradas a Y y a X; un sumador las junta y el dron 0 solo recibe el total">
+        <defs><marker id="a15bk-mentiroso" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <rect x="20" y="20" width="110" height="40" rx="8" class="box"/><text x="75" y="45" text-anchor="middle" font-size="13">dron 1: «miré Y»</text>
+          <rect x="20" y="90" width="110" height="40" rx="8" class="box-tesis"/><text x="75" y="115" text-anchor="middle" font-size="13">dron 2: «miré X»</text>
+          <circle cx="200" cy="75" r="20" class="box-soft"/><text x="200" y="81" text-anchor="middle" class="t-bold" font-size="18">Σ</text>
+          <path class="ln" d="M130 40 L182 66 M130 110 L182 84" marker-end="url(#a15bk-mentiroso)"/>
+          <path class="ln" d="M220 75 H268" marker-end="url(#a15bk-mentiroso)"/>
+          <rect x="272" y="50" width="135" height="50" rx="8" class="box-accent"/>
+          <text x="340" y="72" text-anchor="middle" font-size="13">dron 0 recibe:</text>
+          <text x="340" y="90" text-anchor="middle" class="t-mono" font-size="13">X: 1, Y: 1</text>
+        </svg>
+      </figure>
+      <p>Mapa previo \(p_0\): X 0,5; Y 0,3; resto 0,2. Tres mundos dan el <strong>mismo</strong> mensaje sumado:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Mundo</th><th>Masas \(m\) (X, Y, resto)</th><th>Belief en X</th></tr>
+          <tr><td>Las dos miradas son reales</td><td class="n">0,15 · 0,09 · 0,2</td><td class="n">0,341</td></tr>
+          <tr><td>La de X es falsa</td><td class="n">0,5 · 0,09 · 0,2</td><td class="n">0,633</td></tr>
+          <tr><td>La de Y es falsa</td><td class="n">0,15 · 0,3 · 0,2</td><td class="n">0,231</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Lo que cree el dron 0:</strong> el primer mundo, \(m(X) = 0{,}5 \cdot 0{,}3 = 0{,}15\). Mirar X le parece que rinde \(0{,}15 \cdot 0{,}7 = 0{,}105\).</li>
+        <li><strong>Lo que hay</strong> si miente el dron 2: X sigue en 0,5 y mirarla rinde \(0{,}5 \cdot 0{,}7 = 0{,}35\), más del triple. El equipo deja de lado la mejor celda.</li>
+        <li><strong>Por qué entrenar con mentirosos no basta:</strong> la política solo ve la suma. Nada en su entrada separa el segundo mundo del primero, así que no puede aprender a descontar al dron 2: como mucho, a fiarse algo menos de todos los mensajes.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">El remedio</span>Un mapa por emisor. Entonces se ve que el dron 2 anuncia miradas en celdas donde su posición dice que no está: es el filtro por compañero de la parte 4, y el paso 4.2 del laboratorio.</div>
+    </div>
+  </div>
+  <p class="small muted">\(q = 0{,}3\): cada mirada fallida multiplica la masa por 0,3. <code>ejemplos_a15b.py</code>, ejemplo 8.</p>
 </section>
 
 <section class="slide">
@@ -394,7 +1200,7 @@
       <p class="xsmall muted">Población: los equipos de autojuego sin comunicación de las semillas 0 a 2, en las actualizaciones 150, 300 y 600 (como los puntos de control de Fictitious Co-Play). Compañeros nuevos: los drones 1 y 2 de la semilla 3, que no estaba en la población.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>El dron 0 de autojuego ya funciona con compañeros nuevos (0,886, casi como el equipo nuevo completo, 0,893); el entrenado con la población, igual (0,887).</li>
         <li>Con compañeros voraces, que no se parecen a nadie de la población, tampoco cambia (0,833 frente a 0,832); los dos mejoran a un equipo de tres voraces (0,777).</li>
       </ul>
@@ -408,7 +1214,7 @@
   <h2>Lo que arregla cada cosa: mensajes, entrenamiento variado y quién dice qué</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Mensajes:</strong> con el belief y las posiciones compartidos, el equipo deja de depender de la semilla de sus compañeros.</li>
         <li><strong>Entrenamiento variado:</strong> cura lo que se puede aprender (no fiarse de un mensaje viejo) y no lo que es una pérdida física (un dron menos).</li>
         <li><strong>El mentiroso:</strong> entrenar con él no ayuda porque nuestra observación suma las miradas anunciadas por todos: el dron no puede saber quién miente. Defenderse exige poder atribuir cada mensaje a quien lo envía y estimar su fiabilidad, como en la parte 4.</li>
@@ -439,7 +1245,7 @@
   <h2>El belief de cada dron incluye a sus compañeros</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Belief sobre el objetivo:</strong> fundir los mensajes de los compañeros es un consenso sobre beliefs, con un grafo que cambia cuando la radio se corta.</li>
         <li><strong>Belief sobre los compañeros:</strong> qué política siguen, si siguen activos y cuánto fiarse de lo que dicen. Es estado oculto, y se puede estimar igual que el resto.</li>
         <li><strong>World model compartido:</strong> si cada dron aprende su modelo (A8a), los modelos de distintos drones pueden diferir; comunicarse en el espacio latente exige que se entiendan.</li>
@@ -641,86 +1447,140 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Negrita: vector que reúne a todos los agentes (\(\mathbf x\), \(\mathbf e\), \(\mathbf 1\)). Subíndice \(i\), \(j\): agente concreto.</p>
+<p>Negrita: vector (\(\mathbf x\), \(\mathbf v\), \(\mathbf e\), \(\mathbf 1\)). Subíndice \(i\), \(j\): agente concreto.</p>
 <dl>
-<dt>\(\dot x\)</dt><dd data-hojas="9">Derivada temporal de \(x\): la velocidad con que cambia el valor del agente.</dd>
-<dt>\(^\top\)</dt><dd data-hojas="9">Traspuesta de un vector o matriz.</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="9">Norma euclídea de un vector; mide el tamaño del error de consenso.</dd>
-<dt>\(\propto\)</dt><dd data-hojas="6">«Proporcional a»: el orden de Vicsek sigue una ley de potencias cerca del umbral.</dd>
-<dt>\(\simeq\)</dt><dd data-hojas="6">«Aproximadamente igual a», p. ej. \(\beta \simeq 0{,}45\).</dd>
-<dt>\(\Longleftrightarrow\)</dt><dd data-hojas="9">«Equivale a»: la ecuación por agente equivale a la ecuación matricial del conjunto.</dd>
-<dt>\(O(N^2)\)</dt><dd data-hojas="6">Orden del coste computacional ingenuo de los boids: cada pájaro mira a todos los demás.</dd>
+<dt>\(\dot x\)</dt><dd data-hojas="16">Derivada temporal de \(x\): la velocidad con que cambia el valor del agente.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="14,17">Traspuesta de un vector o matriz.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="8,17">Norma euclídea de un vector: distancia entre agentes, tamaño de una aceleración o del error de consenso.</dd>
+<dt>\(\propto\)</dt><dd data-hojas="11,40">«Proporcional a»: el orden de Vicsek sigue una ley de potencias cerca del umbral; el belief es proporcional a la masa \(m\).</dd>
+<dt>\(\simeq\)</dt><dd data-hojas="11">«Aproximadamente igual a», p. ej. \(\beta \simeq 0{,}45\).</dd>
+<dt>\(\Longleftrightarrow\)</dt><dd data-hojas="16">«Equivale a»: la ecuación por agente equivale a la ecuación matricial del conjunto.</dd>
+<dt>\(O(N^2)\)</dt><dd data-hojas="7">Orden del coste computacional ingenuo de los boids: cada pájaro mira a todos los demás.</dd>
+<dt>\(\operatorname{atan2}(s, c)\)</dt><dd data-hojas="9,10">Ángulo del vector \((c, s)\), en su cuadrante correcto. Da el rumbo medio a partir de la suma de senos \(s\) y de cosenos \(c\).</dd>
+<dt>\(\mathcal U[a, b]\)</dt><dd data-hojas="9">Distribución uniforme entre \(a\) y \(b\): el ruido de Vicsek.</dd>
+<dt>\(\mathbb E_{\varphi\sim\Phi}\)</dt><dd data-hojas="29,31">Esperanza con \(\varphi\) sorteada uniformemente en \(\Phi\).</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="21">El punto que hace mínima la expresión: la velocidad permitida más cercana a la preferida en ORCA.</dd>
+<dt>\(D(\mathbf c, r)\)</dt><dd data-hojas="20,21">Disco de centro \(\mathbf c\) y radio \(r\).</dd>
 </dl>
 <h3>Orden a partir de reglas locales</h3>
 <p>Parte 1: boids, Vicsek y enjambres reales.</p>
 <dl>
-<dt>\(N\)</dt><dd data-hojas="6">Número de pájaros o partículas del enjambre.</dd>
-<dt>\(\eta\)</dt><dd data-hojas="6">Ruido del modelo de Vicsek, en radianes: se suma a la dirección media de las vecinas. Es el eje horizontal de la figura.</dd>
-<dt>\(\eta_c\)</dt><dd data-hojas="6">Ruido crítico, el umbral donde el orden colectivo desaparece.</dd>
-<dt>\(v_a\)</dt><dd data-hojas="6">Parámetro de orden de Vicsek: velocidad media normalizada de las partículas. Es 1 si todas van en la misma dirección y casi 0 si el movimiento es desordenado.</dd>
-<dt>\(\beta\)</dt><dd data-hojas="6">Exponente de la transición de fase: \(v_a \propto (\eta_c - \eta)^{\beta}\), con \(\beta \simeq 0{,}45\).</dd>
+<dt>\(\mathbf x_i\), \(\mathbf v_i\)</dt><dd data-hojas="6,8">Posición (m) y velocidad (m/s) del agente \(i\) en el plano.</dd>
+<dt>\(r\)</dt><dd data-hojas="6,7">Radio de vecindad: los agentes a menos de \(r\) cuentan como vecinos (3 en el ejemplo de los boids; 1 en Vicsek).</dd>
+<dt>\(r_s\)</dt><dd data-hojas="6,8">Radio de separación de los boids, menor que \(r\): de los vecinos más cercanos que \(r_s\) hay que apartarse.</dd>
+<dt>\(\mathcal N_i\), \(|\mathcal N_i|\)</dt><dd data-hojas="6,8">Conjunto de vecinos de \(i\) y cuántos son. En la parte 1, por distancia; en la parte 2, en el grafo de comunicación.</dd>
+<dt>\(\mathbf a^{\text{sep}}_i\), \(\mathbf a^{\text{ali}}_i\), \(\mathbf a^{\text{coh}}_i\)</dt><dd data-hojas="8">Aceleraciones que piden las tres reglas de los boids: separación, alineación y cohesión.</dd>
+<dt>\(w_s\), \(w_a\), \(w_c\)</dt><dd data-hojas="8">Pesos con que se suman las tres aceleraciones en la forma habitual (Reynolds las reparte por prioridad).</dd>
+<dt>\(\theta_i(t)\)</dt><dd data-hojas="9,10">Rumbo de la partícula \(i\) en el paso \(t\), en radianes.</dd>
+<dt>\(\Delta\theta_i\)</dt><dd data-hojas="9">Ruido sorteado en cada paso, uniforme en \([-\eta/2, \eta/2]\).</dd>
+<dt>\(v_0\)</dt><dd data-hojas="9,10">Rapidez de las partículas de Vicsek, igual para todas y constante (0,03 en nuestra simulación).</dd>
+<dt>\(N\)</dt><dd data-hojas="6,11">Número de pájaros o partículas del enjambre (100 y 400 en la figura).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="6,11">Densidad: partículas por unidad de área (4 en nuestra simulación).</dd>
+<dt>\(\eta\)</dt><dd data-hojas="9,11">Amplitud del ruido del modelo de Vicsek, en radianes. Es el eje horizontal de la figura.</dd>
+<dt>\(\eta_c\)</dt><dd data-hojas="11">Ruido crítico, el umbral donde el orden colectivo desaparece.</dd>
+<dt>\(v_a\)</dt><dd data-hojas="10,11">Parámetro de orden de Vicsek: tamaño de la velocidad media normalizada por \(v_0\). Es 1 si todas van en la misma dirección y casi 0 si el movimiento es desordenado.</dd>
+<dt>\(\beta\)</dt><dd data-hojas="11">Exponente de la transición de fase: \(v_a \propto (\eta_c - \eta)^{\beta}\), con \(\beta \simeq 0{,}45\).</dd>
 </dl>
 <h3>Consenso</h3>
 <p>Parte 2: coordinarse sin centro. El grafo de comunicación decide quién oye a quién.</p>
 <dl>
-<dt>\(x_i\)</dt><dd data-hojas="9">Valor del agente \(i\) (una estimación o una posición de encuentro) que el consenso acerca al de sus vecinos.</dd>
-<dt>\(\mathbf x\)</dt><dd data-hojas="9">Vector con los valores de todos los agentes.</dd>
-<dt>\(\mathcal N_i\)</dt><dd data-hojas="9">Vecinos del agente \(i\) en el grafo de comunicación.</dd>
-<dt>\(L\)</dt><dd data-hojas="9">Laplaciano del grafo, \(L = D - A\). En grafos no dirigidos conexos es simétrico y semidefinido positivo.</dd>
-<dt>\(D\)</dt><dd data-hojas="9">Matriz de grados del grafo (diagonal), parte del laplaciano \(L = D - A\).</dd>
-<dt>\(A\)</dt><dd data-hojas="9">Matriz de adyacencia del grafo, parte del laplaciano \(L = D - A\).</dd>
-<dt>\(\mathbf 1\)</dt><dd data-hojas="9">Vector de unos; \(L\mathbf 1 = 0\) y \(\mathbf 1^\top L = 0\).</dd>
-<dt>\(\lambda_1, \lambda_2, \dots\)</dt><dd data-hojas="9">Autovalores del laplaciano, \(0 = \lambda_1 \lt \lambda_2 \le \dots\) para un grafo conexo.</dd>
-<dt>\(\lambda_2\)</dt><dd data-hojas="9,27">Segundo autovalor del laplaciano (conectividad algebraica): fija el ritmo de convergencia del consenso. Si vale 0, el grafo está partido y no hay acuerdo.</dd>
-<dt>\(\lambda_{\max}\)</dt><dd data-hojas="27">Autovalor mayor del laplaciano, opción incorrecta de la autoevaluación.</dd>
-<dt>\(\bar x\)</dt><dd data-hojas="9">Media de los valores, \(\tfrac1n\mathbf 1^\top\mathbf x\); se conserva y es hacia donde converge el consenso.</dd>
-<dt>\(n\)</dt><dd data-hojas="9">Número de agentes del grafo.</dd>
-<dt>\(\mathbf e\)</dt><dd data-hojas="9">Error de consenso, \(\mathbf x - \bar x\mathbf 1\): ortogonal a \(\mathbf 1\), con \(\dot{\mathbf e} = -L\mathbf e\).</dd>
-<dt>\(e^{-\lambda_2 t}\)</dt><dd data-hojas="9">Factor con que decae el error: \(\|\mathbf e(t)\|\le e^{-\lambda_2 t}\|\mathbf e(0)\|\).</dd>
-<dt>\(t\)</dt><dd data-hojas="9">Tiempo continuo del consenso.</dd>
+<dt>\(x_i\)</dt><dd data-hojas="14,16">Valor del agente \(i\) (una estimación o una posición de encuentro) que el consenso acerca al de sus vecinos.</dd>
+<dt>\(\mathbf x\)</dt><dd data-hojas="14,15">Vector con los valores de todos los agentes; en el ejemplo, \((0, 2, 6, 12)\).</dd>
+<dt>\(A\), \(a_{ij}\)</dt><dd data-hojas="14,15">Matriz de adyacencia del grafo: \(a_{ij} = 1\) si \(i\) y \(j\) se oyen. No confundir con el dron A de ORCA y CBBA.</dd>
+<dt>\(D\), \(d_i\)</dt><dd data-hojas="14,15">Matriz diagonal de grados; \(d_i\) es el número de vecinos de \(i\).</dd>
+<dt>\(L\)</dt><dd data-hojas="14,15">Laplaciano del grafo, \(L = D - A\). En grafos no dirigidos es simétrico y semidefinido positivo, y \(L\mathbf 1 = 0\).</dd>
+<dt>\(\mathbf 1\)</dt><dd data-hojas="14,17">Vector de unos; \(L\mathbf 1 = 0\) y \(\mathbf 1^\top L = 0\).</dd>
+<dt>\(\lambda_1, \lambda_2, \dots\)</dt><dd data-hojas="14,17">Autovalores del laplaciano ordenados, \(0 = \lambda_1 \lt \lambda_2 \le \dots\) para un grafo conexo.</dd>
+<dt>\(\mathbf u_k\)</dt><dd data-hojas="17,18">Autovector \(k\) del laplaciano; \(\mathbf u_1 = \mathbf 1/\sqrt n\) y \(\mathbf u_2\) es el modo lento del desacuerdo.</dd>
+<dt>\(c_k\)</dt><dd data-hojas="17">Coordenada del error inicial sobre el autovector \(\mathbf u_k\): \(\mathbf u_k^\top\mathbf e(0)\).</dd>
+<dt>\(\lambda_2\)</dt><dd data-hojas="17,18,50">Segundo autovalor del laplaciano (conectividad algebraica): fija el ritmo de convergencia del consenso. Si vale 0, el grafo está partido y no hay acuerdo.</dd>
+<dt>\(\lambda_{\max}\)</dt><dd data-hojas="18,50">Autovalor mayor del laplaciano; fija el paso máximo de la versión discreta, \(\varepsilon \lt 2/\lambda_{\max}\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="14,18">Paso de la versión en tiempo discreto, \(\mathbf x_{k+1} = \mathbf x_k - \varepsilon L\mathbf x_k\).</dd>
+<dt>\(\bar x\)</dt><dd data-hojas="14,17">Media de los valores, \(\tfrac1n\mathbf 1^\top\mathbf x\); se conserva y es hacia donde converge el consenso.</dd>
+<dt>\(n\)</dt><dd data-hojas="14">Número de agentes del grafo.</dd>
+<dt>\(\mathbf e\)</dt><dd data-hojas="14,17">Error de consenso, \(\mathbf x - \bar x\mathbf 1\): ortogonal a \(\mathbf 1\), con \(\dot{\mathbf e} = -L\mathbf e\).</dd>
+<dt>\(e^{-\lambda_2 t}\)</dt><dd data-hojas="17,18">Factor con que decae el error: \(\|\mathbf e(t)\|\le e^{-\lambda_2 t}\|\mathbf e(0)\|\).</dd>
+<dt>\(t\)</dt><dd data-hojas="16,17">Tiempo continuo del consenso.</dd>
+</dl>
+<h3>Colisiones, tareas y planes</h3>
+<p>Parte 2: ORCA, CBBA y Dec-MCTS. A y B son aquí dos drones.</p>
+<dl>
+<dt>\(\mathbf p_A\), \(\mathbf p_B\), \(\mathbf p\)</dt><dd data-hojas="20">Posiciones de los drones A y B, y \(\mathbf p = \mathbf p_B - \mathbf p_A\).</dd>
+<dt>\(\mathbf v_A\), \(\mathbf v_B\)</dt><dd data-hojas="20">Velocidades de A y B; \(\mathbf v_A - \mathbf v_B\) es la velocidad relativa.</dd>
+<dt>\(r_A\), \(r_B\), \(R\)</dt><dd data-hojas="20">Radios de los drones y su suma \(R = r_A + r_B\): chocan si sus centros se acercan a menos de \(R\).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="20,21">Horizonte de ORCA, en segundos: solo cuentan los choques antes de \(\tau\) (3 s en el ejemplo).</dd>
+<dt>\(VO^\tau_{A|B}\)</dt><dd data-hojas="20">Obstáculo de velocidades: velocidades relativas con las que A choca con B antes de \(\tau\). Un cono truncado.</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="20,21">Cambio mínimo de la velocidad relativa que la saca del obstáculo de velocidades (\(\|\mathbf u\| = 0{,}252\) m/s en el ejemplo).</dd>
+<dt>\(\mathbf n\)</dt><dd data-hojas="21">Normal hacia fuera del borde del obstáculo de velocidades, en el punto al que lleva \(\mathbf u\).</dd>
+<dt>\(ORCA^\tau_{A|B}\)</dt><dd data-hojas="21">Semiplano de velocidades permitidas para A frente a B: A asume la mitad de \(\mathbf u\).</dd>
+<dt>\(\mathbf v^{\text{opt}}\), \(\mathbf v^{\text{pref}}\), \(\mathbf v^{\text{new}}\)</dt><dd data-hojas="21">Velocidad de partida, velocidad preferida (hacia la meta) y velocidad elegida por ORCA.</dd>
+<dt>\(v_{\max}\)</dt><dd data-hojas="21">Velocidad máxima del dron.</dd>
+<dt>\(\mathbf b_i\)</dt><dd data-hojas="22,23">Lote (bundle) del dron \(i\) en CBBA: sus tareas, en el orden de visita.</dd>
+<dt>\(c_{ij}\)</dt><dd data-hojas="22,23">Puntuación marginal de la tarea \(j\) para el dron \(i\): cuánto sube la puntuación de su lote al añadirla.</dd>
+<dt>\(y_j\), \(z_j\)</dt><dd data-hojas="22,24">Mejor puja conocida por la tarea \(j\) y quién la hizo.</dd>
+<dt>\(x^r\), \(x^{(r)}\)</dt><dd data-hojas="25">Secuencia de acciones del robot \(r\) y las de los demás robots, en Dec-MCTS.</dd>
+<dt>\(g\)</dt><dd data-hojas="25">Objetivo global del equipo en Dec-MCTS.</dd>
+<dt>\(f^r\)</dt><dd data-hojas="25">Utilidad local del robot \(r\): su contribución a \(g\) frente a una secuencia que no aporta nada, \(x^r_\varnothing\).</dd>
+<dt>\(\hat X^r_n\), \(q^r_n\)</dt><dd data-hojas="25">Conjunto reducido de secuencias candidatas del robot \(r\) y su distribución de probabilidad en la iteración \(n\): lo que se comunica.</dd>
 </dl>
 <h3>Equipos ad hoc y compañeros</h3>
 <p>Partes 3 y 4.</p>
 <dl>
-<dt>Puntos, máx. 25</dt><dd data-hojas="14">Puntuación de Hanabi, de 0 a 25; la tabla compara juego cruzado con autojuego.</dd>
-<dt>Juego cruzado, autojuego</dt><dd data-hojas="13">Autojuego: el agente juega con copias de sí mismo. Juego cruzado: con agentes entrenados con el mismo método y otra semilla.</dd>
-<dt>Palancas (1, 0,9, 0,11)</dt><dd data-hojas="14">Juego de diez palancas: nueve pagan 1 y una paga 0,9. Elegir al azar entre las de 1 da 0,11 con un desconocido; other-play elige la de 0,9 y obtiene 0,9.</dd>
+<dt>\(\pi^1\), \(\pi^2\)</dt><dd data-hojas="29">Políticas de los dos jugadores o de las dos partes del equipo.</dd>
+<dt>\(J(\pi^1, \pi^2)\)</dt><dd data-hojas="29">Rendimiento esperado cuando juegan juntos (puntos de Hanabi, P de encontrarlo). Se maximiza.</dd>
+<dt>\(s\), \(\pi_s\), \(S\)</dt><dd data-hojas="29">Semilla de entrenamiento, política entrenada con ella y número de semillas.</dd>
+<dt>\(J_{\text{SP}}\), \(J_{\text{XP}}\)</dt><dd data-hojas="29,41">Autojuego (media de la diagonal) y juego cruzado (media fuera de la diagonal) de la matriz de parejas de semillas.</dd>
+<dt>\(\varphi\), \(\Phi\)</dt><dd data-hojas="29,31">Simetría del problema (un cambio de etiquetas que deja el juego igual) y conjunto de todas.</dd>
+<dt>\(J_{\text{OP}}\)</dt><dd data-hojas="29,31,32">Objetivo de other-play: rendimiento con el compañero transformado por una simetría al azar.</dd>
+<dt>Puntos, máx. 25</dt><dd data-hojas="30">Puntuación de Hanabi, de 0 a 25; la tabla compara juego cruzado con autojuego.</dd>
+<dt>Juego cruzado, autojuego</dt><dd data-hojas="28,41">Autojuego: el agente juega con copias de sí mismo. Juego cruzado: con agentes entrenados con el mismo método y otra semilla.</dd>
+<dt>Palancas (1, 0,9, 0,11)</dt><dd data-hojas="31,32">Juego de coordinación: con tres palancas (a y b pagan 1, c paga 0,9) y con diez (nueve pagan 1, una 0,9). Elegir al azar entre las de 1 da 0,11 con un desconocido; other-play elige la de 0,9 y obtiene 0,9.</dd>
 </dl>
 <h3>Experimento: la búsqueda con sorpresas</h3>
 <p>Parte 5: la tarea de A15a (tres drones, rejilla de 12 × 12, detección con probabilidad 0,7, 80 pasos).</p>
 <dl>
-<dt>\(P\)</dt><dd data-hojas="19,20">Probabilidad de encontrar el objetivo en 80 pasos, medida en 2000 episodios con los mismos mapas para todos.</dd>
-<dt>Dron 0, 1, 2</dt><dd data-hojas="19">Los tres agentes del equipo. El dron 2 es el que cae o miente; el dron 0 es el que se entrena con población.</dd>
-<dt>Peor pareja</dt><dd data-hojas="20">El menor \(P\) entre todas las combinaciones de semilla del dron 0 y de los drones 1 y 2.</dd>
-<dt>Brecha</dt><dd data-hojas="20,22">Diferencia entre autojuego y juego cruzado (por ejemplo, de 0,894 a 0,879 sin comunicación).</dd>
-<dt>Normal, cae, miente, retraso</dt><dd data-hojas="19,21">Las cuatro condiciones de prueba: sin sorpresas; el dron 2 cae en el paso 30; el dron 2 anuncia miradas que no ha hecho; mensajes con 10 pasos de retraso.</dd>
+<dt>\(c\)</dt><dd data-hojas="38">Una celda de la rejilla (144 en total).</dd>
+<dt>\(p_0(c)\)</dt><dd data-hojas="38,44">Mapa previo: probabilidad de que el objetivo esté en \(c\).</dd>
+<dt>\(q\)</dt><dd data-hojas="38,44">Probabilidad de que una mirada a la celda del objetivo no lo detecte: 0,3.</dd>
+<dt>\(n_t(c)\), \(k_t(c)\)</dt><dd data-hojas="38">Miradas a \(c\) hasta el paso \(t\) y drones que la miran en el paso \(t\).</dd>
+<dt>\(m_t(c)\)</dt><dd data-hojas="38,44">Probabilidad de que el objetivo esté en \(c\) y siga sin detectar: \(p_0(c)\,q^{n_t(c)}\).</dd>
+<dt>\(m^{(i)}_t(c)\)</dt><dd data-hojas="40">Masa según el dron \(i\): sus miradas más las que anuncian los demás.</dd>
+<dt>\(r_t\)</dt><dd data-hojas="38">Recompensa del belief-MDP: probabilidad de detectar el objetivo por primera vez en el paso \(t\).</dd>
+<dt>\(\hat n^j_t(c)\)</dt><dd data-hojas="38,40">Miradas a \(c\) que anuncia el dron \(j\): las reales más las falsas, si miente.</dd>
+<dt>\(M_{ij}\)</dt><dd data-hojas="38,41">\(P\) con el dron 0 de la semilla \(i\) y los drones 1 y 2 de la semilla \(j\).</dd>
+<dt>\(P\)</dt><dd data-hojas="38,42">Probabilidad de encontrar el objetivo en 80 pasos, \(\sum_t r_t\), medida en 2000 episodios con los mismos mapas para todos.</dd>
+<dt>Dron 0, 1, 2</dt><dd data-hojas="39">Los tres agentes del equipo. El dron 2 es el que cae o miente; el dron 0 es el que se entrena con población.</dd>
+<dt>Peor pareja</dt><dd data-hojas="41,42">El menor \(P\) entre todas las combinaciones de semilla del dron 0 y de los drones 1 y 2.</dd>
+<dt>Brecha</dt><dd data-hojas="42,45">Diferencia entre autojuego y juego cruzado (por ejemplo, de 0,894 a 0,879 sin comunicación).</dd>
+<dt>Normal, cae, miente, retraso</dt><dd data-hojas="40,43">Las cuatro condiciones de prueba: sin sorpresas; el dron 2 cae en el paso 30; el dron 2 anuncia miradas que no ha hecho; mensajes con 10 pasos de retraso.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>MADDPG</dt><dd data-hojas="17">Multi-agent deep deterministic policy gradient: método multiagente cuya extensión minimax entrena contra la peor perturbación de los demás.</dd>
-<dt>MAPPO</dt><dd data-hojas="19">PPO con parámetros compartidos y un crítico centralizado (de A15a); aquí entrena los equipos de autojuego.</dd>
-<dt>PPO</dt><dd data-hojas="10">Proximal policy optimization: algoritmo de policy gradient con recorte.</dd>
-<dt>MDP, belief-MDP</dt><dd data-hojas="19">MDP sobre beliefs, cuya recompensa esperada da la recompensa de la tarea.</dd>
-<dt>POMDP</dt><dd data-hojas="15">Partially observable Markov decision process: un equipo ad hoc lo es, con el tipo de compañero como parte oculta del estado.</dd>
-<dt>ORCA</dt><dd data-hojas="10">Optimal reciprocal collision avoidance: cada agente asume la mitad de la responsabilidad de evitar la colisión; la velocidad sale de un programa lineal pequeño.</dd>
-<dt>CBBA</dt><dd data-hojas="10">Consensus-based bundle algorithm: subastas con consenso local que reparten tareas sin conflictos.</dd>
-<dt>Dec-MCTS</dt><dd data-hojas="10">Versión descentralizada de la búsqueda de árbol Monte Carlo: cada robot mantiene una distribución sobre planes y envía una versión comprimida de su árbol.</dd>
-<dt>MCTS</dt><dd data-hojas="10">Monte Carlo tree search: planificación por búsqueda en árbol con simulaciones.</dd>
-<dt>DARPA SubT</dt><dd data-hojas="11">Subterranean Challenge de DARPA: exploración de entornos subterráneos con robots y comunicación intermitente.</dd>
-<dt>CERBERUS</dt><dd data-hojas="11">Equipo ganador de la final del DARPA SubT (23 puntos), con cuatro robots ANYmal C.</dd>
-<dt>CSIRO Data61</dt><dd data-hojas="11">Equipo con 23 puntos en la final; SLAM multiagente descentralizado en cada robot.</dd>
-<dt>MARBLE, Explorer, CoSTAR</dt><dd data-hojas="11">Otros equipos de la final con 18, 17 y 13 puntos; CoSTAR razona en el espacio de beliefs.</dd>
-<dt>SLAM</dt><dd data-hojas="11">Simultaneous localization and mapping: localización y mapeo simultáneos.</dd>
-<dt>SAD</dt><dd data-hojas="14">Agente de Hanabi entrenado por autojuego; puntúa 23,97 en autojuego y 2,52 en juego cruzado.</dd>
-<dt>FCP</dt><dd data-hojas="15">Fictitious Co-Play: el agente se entrena como mejor respuesta a una población de agentes de autojuego y a sus puntos de control anteriores.</dd>
-<dt>Hanabi</dt><dd data-hojas="3,14">Juego cooperativo de cartas con información parcial, usado para medir autojuego frente a juego cruzado.</dd>
-<dt>Overcooked</dt><dd data-hojas="15">Entorno cooperativo de cocina donde FCP se evaluó con 114 personas.</dd>
-<dt>M3DDPG</dt><dd data-hojas="17">Extensión minimax de MADDPG: entrena contra la peor perturbación de los demás.</dd>
-<dt>Crazyswarm</dt><dd data-hojas="7">Plataforma con hasta 49 microdrones Crazyflie en formación densa en interiores.</dd>
-<dt>Kilobots</dt><dd data-hojas="7">Robots pequeños con los que se autoensamblan formas en un enjambre de mil.</dd>
-<dt>GPU</dt><dd data-hojas="19">Procesador gráfico en que se entrena el experimento.</dd>
-<dt>JAX</dt><dd data-hojas="19">Librería de cálculo en GPU con que se escribe el script del experimento.</dd>
-<dt>CPU</dt><dd data-hojas="31">Central processing unit: el script de Vicsek corre en unos minutos en CPU.</dd>
+<dt>MADDPG</dt><dd data-hojas="36">Multi-agent deep deterministic policy gradient: método multiagente cuya extensión minimax entrena contra la peor perturbación de los demás.</dd>
+<dt>MAPPO</dt><dd data-hojas="39">PPO con parámetros compartidos y un crítico centralizado (de A15a); aquí entrena los equipos de autojuego.</dd>
+<dt>PPO</dt><dd data-hojas="19">Proximal policy optimization: algoritmo de policy gradient con recorte.</dd>
+<dt>MDP, belief-MDP</dt><dd data-hojas="38,39">MDP sobre beliefs, cuya recompensa esperada da la recompensa de la tarea.</dd>
+<dt>POMDP</dt><dd data-hojas="34">Partially observable Markov decision process: un equipo ad hoc lo es, con el tipo de compañero como parte oculta del estado.</dd>
+<dt>ORCA</dt><dd data-hojas="19,20,21">Optimal reciprocal collision avoidance: cada agente asume la mitad de la responsabilidad de evitar la colisión; la velocidad sale de un programa lineal pequeño.</dd>
+<dt>CBBA</dt><dd data-hojas="19,22">Consensus-based bundle algorithm: subastas con consenso local que reparten tareas sin conflictos.</dd>
+<dt>Dec-MCTS</dt><dd data-hojas="19,25">Versión descentralizada de la búsqueda de árbol Monte Carlo: cada robot mantiene una distribución sobre planes y envía una versión comprimida de su árbol.</dd>
+<dt>MCTS</dt><dd data-hojas="19,25">Monte Carlo tree search: planificación por búsqueda en árbol con simulaciones.</dd>
+<dt>D-UCT</dt><dd data-hojas="25">Variante de UCT (la regla de selección por cotas de confianza de MCTS) que Dec-MCTS usa porque las recompensas cambian al cambiar los planes de los demás.</dd>
+<dt>DARPA SubT</dt><dd data-hojas="26">Subterranean Challenge de DARPA: exploración de entornos subterráneos con robots y comunicación intermitente.</dd>
+<dt>CERBERUS</dt><dd data-hojas="26">Equipo ganador de la final del DARPA SubT (23 puntos), con cuatro robots ANYmal C.</dd>
+<dt>CSIRO Data61</dt><dd data-hojas="26">Equipo con 23 puntos en la final; SLAM multiagente descentralizado en cada robot.</dd>
+<dt>MARBLE, Explorer, CoSTAR</dt><dd data-hojas="26">Otros equipos de la final con 18, 17 y 13 puntos; CoSTAR razona en el espacio de beliefs.</dd>
+<dt>SLAM</dt><dd data-hojas="26">Simultaneous localization and mapping: localización y mapeo simultáneos.</dd>
+<dt>SAD</dt><dd data-hojas="30">Agente de Hanabi entrenado por autojuego; puntúa 23,97 en autojuego y 2,52 en juego cruzado.</dd>
+<dt>FCP</dt><dd data-hojas="33,45">Fictitious Co-Play: el agente se entrena como mejor respuesta a una población de agentes de autojuego y a sus puntos de control anteriores.</dd>
+<dt>Hanabi</dt><dd data-hojas="3,30">Juego cooperativo de cartas con información parcial, usado para medir autojuego frente a juego cruzado.</dd>
+<dt>Overcooked</dt><dd data-hojas="33">Entorno cooperativo de cocina donde FCP se evaluó con 114 personas.</dd>
+<dt>M3DDPG</dt><dd data-hojas="36">Extensión minimax de MADDPG: entrena contra la peor perturbación de los demás.</dd>
+<dt>Crazyswarm</dt><dd data-hojas="12">Plataforma con hasta 49 microdrones Crazyflie en formación densa en interiores.</dd>
+<dt>Kilobots</dt><dd data-hojas="12">Robots pequeños con los que se autoensamblan formas en un enjambre de mil.</dd>
+<dt>GPU</dt><dd data-hojas="39">Procesador gráfico en que se entrena el experimento.</dd>
+<dt>JAX</dt><dd data-hojas="39">Librería de cálculo en GPU con que se escribe el script del experimento.</dd>
+<dt>CPU</dt><dd data-hojas="54">Central processing unit: el script de Vicsek corre en unos minutos en CPU.</dd>
 </dl>
 </aside>
 

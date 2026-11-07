@@ -1,0 +1,241 @@
+
+========================================================================
+Ejemplo 1. Boids: las tres reglas para un pájaro con cuatro vecinos (SUPUESTO)
+========================================================================
+  distancias a los vecinos: [0.707 2.236 2.236 4.   ] (radio de vecindad r = 3.0, radio de separación r_s = 1.0)
+  en la vecindad: [ True  True  True False] | demasiado cerca: [ True False False False]
+  separación  a_sep = sum (x_i - x_j)/|x_i - x_j|^2 = [-1. -1.]
+  alineación  a_ali = media(v_j) - v_i = [0.833 0.5  ] - [1. 0.] = [-0.167  0.5  ]
+  cohesión    a_coh = media(x_j) - x_i = [ 1.167 -0.167]
+  suma con pesos (1.5, 1.0, 1.0): a = [-0.5   -1.167]; nueva velocidad con dt = 0,1: [ 0.95  -0.117]
+  prioridad: separación |a| = 1.414 entra entera (gastado 1.414 de 1.6)
+  prioridad: alineación |a| = 0.527 se recorta a 0.353 de su tamaño (gastado 1.600)
+  prioridad: cohesión |a| = 1.179 se recorta a 0.000 de su tamaño (gastado 1.600)
+  aceleración por prioridad: [-1.059 -0.824]
+  figura: escala 40 px por unidad; origen en (130, 145) ; radios r y r_s: 120.0 40.0 px
+   vecino 1: (150.0, 125.0); flecha de velocidad x0.6 hasta (174.0, 113.0)
+   vecino 2: (210.0, 105.0); flecha de velocidad x0.6 hasta (222.0, 81.0)
+   vecino 3: (170.0, 225.0); flecha de velocidad x0.6 hasta (194.0, 225.0)
+   vecino 4: (290.0, 145.0); flecha de velocidad x0.6 hasta (290.0, 121.0)
+   flecha sep desde el pájaro hasta (90.0, 185.0)
+   flecha ali desde el pájaro hasta (123.3, 125.0)
+   flecha coh desde el pájaro hasta (176.7, 151.7)
+
+========================================================================
+Ejemplo 2. Vicsek: un paso para una partícula con dos vecinas, y el parámetro de orden (SUPUESTO)
+========================================================================
+  ángulos (grados): [350.  10.  60.] | media aritmética (incorrecta): 140.0
+  suma de senos 0.8660, suma de cosenos 2.4696, dirección media atan2 = 19.32 grados
+  con eta = 0.5 rad, el ruido es uniforme en [-0.25, 0.25] rad = [-14.3, 14.3] grados
+  con eta = 2.0 rad, el ruido es uniforme en [-1.00, 1.00] rad = [-57.3, 57.3] grados
+  si el sorteo da 0.1 rad (+5.73 grados): nuevo ángulo 25.05 grados
+  avance con v0 = 0.03: dx = 0.0272, dy = 0.0127
+  v_a (los tres de arriba, [350, 10, 60]) = |media de e^(i theta)| = 0.872
+  v_a (alineados, [30, 30, 30]) = |media de e^(i theta)| = 1.000
+  v_a (a 120 grados, [0, 120, 240]) = |media de e^(i theta)| = 0.000
+  v_a (dos y dos opuestos, [0, 0, 180, 180]) = |media de e^(i theta)| = 0.000
+  N = 100: direcciones al azar, sqrt(pi)/(2 sqrt N) = 0.0886, Monte Carlo 0.0889; simulación con eta = 5 (salida_vicsek.txt): 0.125
+  N = 400: direcciones al azar, sqrt(pi)/(2 sqrt N) = 0.0443, Monte Carlo 0.0443; simulación con eta = 5 (salida_vicsek.txt): 0.062
+  figura regla: i rumbo 350 grados, flecha (150.0, 150.0) -> (189.4, 156.9)
+  figura regla: j1 rumbo 10 grados, flecha (200.0, 110.0) -> (239.4, 103.1)
+  figura regla: j2 rumbo 60 grados, flecha (120.0, 90.0) -> (140.0, 55.4)
+  figura regla: fuera rumbo 200 grados, flecha (290.0, 60.0) -> (252.4, 73.7)
+  figura regla: dirección media (150.0, 150.0) -> (230.2, 121.9); bordes del ruido (eta = 0,5) (150.0, 150.0) -> (234.7, 142.6) y (150.0, 150.0) -> (220.8, 102.9); sorteado (150.0, 150.0) -> (227.0, 114.0)
+  distancias en la figura: j1 64.0 px, j2 67.1 px, fuera 166.4 px (radio 100)
+  cociente 100/400: al azar 2.00; simulación 2.02
+
+========================================================================
+Ejemplo 3. Consenso: laplaciano de 4 drones a mano, autovalores y convergencia (SUPUESTO)
+========================================================================
+  valores iniciales x(0) = [ 0.  2.  6. 12.] | media 5.0
+
+  cadena 1-2-3-4:
+  A =
+[[0. 1. 0. 0.]
+ [1. 0. 1. 0.]
+ [0. 1. 0. 1.]
+ [0. 0. 1. 0.]]
+  D = diag(np.float64(1.0), np.float64(2.0), np.float64(2.0), np.float64(1.0))
+  L = D - A =
+[[ 1. -1.  0.  0.]
+ [-1.  2. -1.  0.]
+ [ 0. -1.  2. -1.]
+ [ 0.  0. -1.  1.]]
+  L 1 = [0. 0. 0. 0.]; autovalores [-0.     0.586  2.     3.414]; lambda_2 = 0.5858; lambda_max = 3.4142
+  dx/dt en t = 0: -L x(0) = [ 2.  2.  2. -6.]; suma 0.0 (la media no cambia)
+   t = 0.0: x = [ 0.  2.  6. 12.], |e| = 9.165, cota e^(-lambda2 t)|e(0)| = 9.165
+   t = 1.0: x = [1.885 3.534 6.195 8.385], |e| = 4.974, cota e^(-lambda2 t)|e(0)| = 5.102
+   t = 2.0: x = [3.212 4.234 5.729 6.825], |e| = 2.765, cota e^(-lambda2 t)|e(0)| = 2.840
+   t = 4.0: x = [4.441 4.768 5.231 5.56 ], |e| = 0.857, cota e^(-lambda2 t)|e(0)| = 0.880
+  tiempo para dividir el error por 10: ln 10 / lambda_2 = 3.93
+
+  anillo (cadena + 4-1):
+  A =
+[[0. 1. 0. 1.]
+ [1. 0. 1. 0.]
+ [0. 1. 0. 1.]
+ [1. 0. 1. 0.]]
+  D = diag(np.float64(2.0), np.float64(2.0), np.float64(2.0), np.float64(2.0))
+  L = D - A =
+[[ 2. -1.  0. -1.]
+ [-1.  2. -1.  0.]
+ [ 0. -1.  2. -1.]
+ [-1.  0. -1.  2.]]
+  L 1 = [0. 0. 0. 0.]; autovalores [-0.  2.  2.  4.]; lambda_2 = 2.0000; lambda_max = 4.0000
+  dx/dt en t = 0: -L x(0) = [ 14.   2.   2. -18.]; suma 0.0 (la media no cambia)
+   t = 0.0: x = [-0.  2.  6. 12.], |e| = 9.165, cota e^(-lambda2 t)|e(0)| = 9.165
+   t = 1.0: x = [4.557 4.36  5.369 5.713], |e| = 1.118, cota e^(-lambda2 t)|e(0)| = 1.240
+   t = 2.0: x = [4.944 4.909 5.054 5.092], |e| = 0.151, cota e^(-lambda2 t)|e(0)| = 0.168
+   t = 4.0: x = [4.999 4.998 5.001 5.002], |e| = 0.003, cota e^(-lambda2 t)|e(0)| = 0.003
+  tiempo para dividir el error por 10: ln 10 / lambda_2 = 1.15
+
+  cadena rota (sin 2-3):
+  A =
+[[0. 1. 0. 0.]
+ [1. 0. 0. 0.]
+ [0. 0. 0. 1.]
+ [0. 0. 1. 0.]]
+  D = diag(np.float64(1.0), np.float64(1.0), np.float64(1.0), np.float64(1.0))
+  L = D - A =
+[[ 1. -1.  0.  0.]
+ [-1.  1.  0.  0.]
+ [ 0.  0.  1. -1.]
+ [ 0.  0. -1.  1.]]
+  L 1 = [0. 0. 0. 0.]; autovalores [0. 0. 2. 2.]; lambda_2 = 0.0000; lambda_max = 2.0000
+  dx/dt en t = 0: -L x(0) = [ 2. -2.  6. -6.]; suma 0.0 (la media no cambia)
+   t = 0.0: x = [-0.  2.  6. 12.], |e| = 9.165, cota e^(-lambda2 t)|e(0)| = 9.165
+   t = 1.0: x = [0.865 1.135 8.594 9.406], |e| = 8.023, cota e^(-lambda2 t)|e(0)| = 9.165
+   t = 2.0: x = [0.982 1.018 8.945 9.055], |e| = 8.000, cota e^(-lambda2 t)|e(0)| = 9.165
+   t = 4.0: x = [1.    1.    8.999 9.001], |e| = 8.000, cota e^(-lambda2 t)|e(0)| = 9.165
+
+  cadena: autovalores teóricos 2 - 2 cos(k pi / 4): [0.    0.586 2.    3.414]
+  autovector de lambda_2 (modo lento): [ 0.653  0.271 -0.271 -0.653]
+  coordenadas del error inicial en la base de autovectores: [ 0.    -8.922  2.     0.634]
+  discreto, eps = 0.3 (límite 2/lambda_max = 0.586): tras 40 pasos x = [4.997 4.999 5.001 5.003]
+  discreto, eps = 0.55 (límite 2/lambda_max = 0.586): tras 40 pasos x = [4.999 5.002 4.998 5.001]
+  discreto, eps = 0.6 (límite 2/lambda_max = 0.586): tras 40 pasos x = [3.858 7.757 2.243 6.142]
+  path consenso x1: M60.0,250.0 L75.3,242.7 L90.7,235.4 L106.0,228.4 L121.3,221.7 L136.7,215.4 L152.0,209.6 L167.3,204.3 L182.7,199.5 L198.0,195.1 L213.3,191.1 L228.7,187.6 L244.0,184.4 L259.3,181.5 L274.7,179.0 L290.0,176.7 L305.3,174.7 L320.7,172.9 L336.0,171.3 L351.3,169.9 L366.7,168.6 L382.0,167.5 L397.3,166.4 L412.7,165.6 L428.0,164.8 L443.3,164.0 L458.7,163.4 L474.0,162.9 L489.3,162.4 L504.7,161.9 L520.0,161.5
+  path consenso x2: M60.0,213.3 L75.3,206.2 L90.7,199.6 L106.0,194.0 L121.3,189.2 L136.7,185.2 L152.0,181.8 L167.3,178.9 L182.7,176.4 L198.0,174.2 L213.3,172.4 L228.7,170.8 L244.0,169.3 L259.3,168.1 L274.7,167.0 L290.0,166.0 L305.3,165.2 L320.7,164.4 L336.0,163.7 L351.3,163.1 L366.7,162.6 L382.0,162.1 L397.3,161.7 L412.7,161.3 L428.0,161.0 L443.3,160.7 L458.7,160.4 L474.0,160.2 L489.3,160.0 L504.7,159.8 L520.0,159.7
+  path consenso x3: M60.0,140.0 L75.3,135.1 L90.7,133.5 L106.0,133.7 L121.3,134.8 L136.7,136.4 L152.0,138.2 L167.3,140.0 L182.7,141.8 L198.0,143.4 L213.3,145.0 L228.7,146.4 L244.0,147.6 L259.3,148.8 L274.7,149.8 L290.0,150.7 L305.3,151.6 L320.7,152.3 L336.0,153.0 L351.3,153.6 L366.7,154.1 L382.0,154.6 L397.3,155.0 L412.7,155.3 L428.0,155.7 L443.3,156.0 L458.7,156.2 L474.0,156.5 L489.3,156.7 L504.7,156.9 L520.0,157.0
+  path consenso x4: M60.0,30.0 L75.3,49.4 L90.7,64.8 L106.0,77.2 L121.3,87.6 L136.7,96.3 L152.0,103.7 L167.3,110.1 L182.7,115.7 L198.0,120.6 L213.3,124.9 L228.7,128.7 L244.0,132.0 L259.3,134.9 L274.7,137.5 L290.0,139.9 L305.3,141.9 L320.7,143.7 L336.0,145.3 L351.3,146.8 L366.7,148.1 L382.0,149.2 L397.3,150.2 L412.7,151.1 L428.0,151.9 L443.3,152.6 L458.7,153.3 L474.0,153.8 L489.3,154.3 L504.7,154.8 L520.0,155.2
+  path error cadena 1-2-3-4: M60.0,52.6 L75.3,56.3 L90.7,59.9 L106.0,63.4 L121.3,66.9 L136.7,70.3 L152.0,73.7 L167.3,77.1 L182.7,80.5 L198.0,83.9 L213.3,87.3 L228.7,90.7 L244.0,94.1 L259.3,97.4 L274.7,100.8 L290.0,104.2 L305.3,107.6 L320.7,111.0 L336.0,114.4 L351.3,117.8 L366.7,121.2 L382.0,124.6 L397.3,128.0 L412.7,131.4 L428.0,134.7 L443.3,138.1 L458.7,141.5 L474.0,144.9 L489.3,148.3 L504.7,151.7 L520.0,155.1
+  path cota cadena 1-2-3-4: M60.0,52.6 L75.3,56.0 L90.7,59.4 L106.0,62.8 L121.3,66.1 L136.7,69.5 L152.0,72.9 L167.3,76.3 L182.7,79.7 L198.0,83.1 L213.3,86.5 L228.7,89.9 L244.0,93.3 L259.3,96.7 L274.7,100.1 L290.0,103.5 L305.3,106.8 L320.7,110.2 L336.0,113.6 L351.3,117.0 L366.7,120.4 L382.0,123.8 L397.3,127.2 L412.7,130.6 L428.0,134.0 L443.3,137.4 L458.7,140.8 L474.0,144.1 L489.3,147.5 L504.7,150.9 L520.0,154.3
+  path error anillo (cadena + 4-1): M60.0,52.6 L75.3,65.8 L90.7,78.1 L106.0,90.1 L121.3,101.8 L136.7,113.5 L152.0,125.1 L167.3,136.7 L182.7,148.3 L198.0,159.8 L213.3,171.4 L228.7,183.0 L244.0,194.6 L259.3,206.2 L274.7,217.7 L290.0,229.3 L305.3,240.9 L320.7,250.0 L336.0,250.0 L351.3,250.0 L366.7,250.0 L382.0,250.0 L397.3,250.0 L412.7,250.0 L428.0,250.0 L443.3,250.0 L458.7,250.0 L474.0,250.0 L489.3,250.0 L504.7,250.0 L520.0,250.0
+  path cota anillo (cadena + 4-1): M60.0,52.6 L75.3,64.2 L90.7,75.7 L106.0,87.3 L121.3,98.9 L136.7,110.5 L152.0,122.1 L167.3,133.6 L182.7,145.2 L198.0,156.8 L213.3,168.4 L228.7,179.9 L244.0,191.5 L259.3,203.1 L274.7,214.7 L290.0,226.2 L305.3,237.8 L320.7,249.4 L336.0,250.0 L351.3,250.0 L366.7,250.0 L382.0,250.0 L397.3,250.0 L412.7,250.0 L428.0,250.0 L443.3,250.0 L458.7,250.0 L474.0,250.0 L489.3,250.0 L504.7,250.0 L520.0,250.0
+  marcas eje log: 0.01: y 250.0, 0.1: y 183.4, 1: y 116.7, 10: y 50.1
+
+========================================================================
+Ejemplo 4. ORCA: dos drones que se cruzan (SUPUESTO)
+========================================================================
+  p_B - p_A = [4.  0.5], |p| = 4.0311; r_A + r_B = 1.0; tau = 3.0 s
+  velocidad relativa v_A - v_B = [2. 0.]
+  ¿v_rel dentro del obstáculo de velocidades? True
+  con estas velocidades chocarían en t = 1.567 s (menor que tau = 3.0)
+  disco de corte: centro p/tau = [1.333 0.167], radio R/tau = 0.3333333333333333; semiapertura del cono asin(R/|p|) = 14.363 grados
+   el punto del círculo más cercano [1.657 0.086] no está en el arco frontal: no es frontera
+   candidato pata izquierda: [1.732 0.682], distancia 0.7326
+   candidato pata derecha: [ 1.968 -0.25 ], distancia 0.2520
+  punto más cercano de la frontera: pata derecha [ 1.968 -0.25 ]
+  u = [-0.032 -0.25 ] (|u| = 0.2520); n = [-0.126 -0.992]
+  comprobación por rejilla: punto fuera del VO más cercano [ 1.965 -0.25 ], distancia 0.2524
+  ORCA_A|B: (v - (v_A + u/2)) . n >= 0, con v_A + u/2 = [ 0.984 -0.125]
+  ORCA_B|A: (v - (v_B - u/2)) . (-n) >= 0, con v_B - u/2 = [-0.984  0.125]
+  con v_pref = velocidad actual, el programa lineal da v_A' = [ 0.984 -0.125], v_B' = [-0.984  0.125]
+  nueva velocidad relativa [ 1.968 -0.25 ]; distancia mínima entre centros en [0, tau]: 1.0000 (R = 1.0) en t = 1.968
+  cambio de velocidad de cada dron: |u|/2 = 0.1260 m/s
+  figura: origen (90.0, 160.0); centro disco (223.3, 143.3) radio 33.3
+   pata +1: de (211.1, 112.3) a (387.8, 42.8)
+   pata -1: de (219.1, 176.4) a (407.4, 200.3)
+  figura semiplano: v_A (200.0, 100.0); v_A + u/2 (195.2, 137.5)
+   extremo de la recta (382.7, 161.3)
+   extremo de la recta (7.7, 113.7)
+   flecha n hasta (190.3, 176.2); lado permitido: hacia n
+   v_rel (290.0, 160.0); punto más cercano (286.8, 185.0)
+
+========================================================================
+Ejemplo 5. CBBA simplificado: 2 drones y 3 tareas en una línea (SUPUESTO)
+========================================================================
+
+  RONDA 1 · fase 1 (construir el lote), con las pujas ganadoras conocidas {'T1': 0.0, 'T2': 0.0, 'T3': 0.0}
+   A, lote []: puntuaciones marginales T1 6.56, T2 4.78, T3 3.87
+   A, lote ['T1']: puntuaciones marginales T2 4.78, T3 3.87
+   A, lote ['T1', 'T2']: puntuaciones marginales T3 3.87
+   A: lote ['T1', 'T2', 'T3'] con pujas {'T1': 6.56, 'T2': 4.78, 'T3': 3.87}
+   B, lote []: puntuaciones marginales T1 5.31, T2 7.29, T3 9.00
+   B, lote ['T3']: puntuaciones marginales T1 5.31, T2 7.29
+   B, lote ['T3', 'T2']: puntuaciones marginales T1 5.31
+   B: lote ['T3', 'T2', 'T1'] con pujas {'T3': 9.0, 'T2': 7.29, 'T1': 5.31}
+  RONDA 1 · fase 2 (consenso): se intercambian pujas y gana la más alta en cada tarea
+   T1: ofertas {'A': 6.56, 'B': 5.31} -> gana A con 6.56
+   T2: ofertas {'A': 4.78, 'B': 7.29} -> gana B con 7.29
+   T3: ofertas {'A': 3.87, 'B': 9.0} -> gana B con 9.00
+   A pierde T2: suelta ['T2', 'T3'] (lo que iba detrás se puntuó suponiendo que pasaba por T2)
+   B pierde T1: suelta ['T1'] (lo que iba detrás se puntuó suponiendo que pasaba por T1)
+   lotes tras el consenso: {'A': ['T1'], 'B': ['T3', 'T2']}
+
+  RONDA 2 · fase 1 (construir el lote), con las pujas ganadoras conocidas {'T1': 6.56, 'T2': 7.29, 'T3': 9.0}
+   A, lote ['T1']: puntuaciones marginales T2 4.78 (no supera 7.29), T3 3.87 (no supera 9.00)
+   A: lote ['T1'] con pujas {'T1': 6.56}
+   B, lote ['T3', 'T2']: puntuaciones marginales T1 5.31 (no supera 6.56)
+   B: lote ['T3', 'T2'] con pujas {'T3': 9.0, 'T2': 7.29}
+  RONDA 2 · fase 2 (consenso): se intercambian pujas y gana la más alta en cada tarea
+   T1: ofertas {'A': 6.56} -> gana A con 6.56
+   T2: ofertas {'B': 7.29} -> gana B con 7.29
+   T3: ofertas {'B': 9.0} -> gana B con 9.00
+   lotes tras el consenso: {'A': ['T1'], 'B': ['T3', 'T2']}
+
+  asignación final {'A': ['T1'], 'B': ['T3', 'T2']}, puntuación total 22.851
+  óptimo por fuerza bruta (8 repartos, mejor orden en cada uno): A ['T1'], B ['T2', 'T3'], total 22.851
+  todo para A en orden T1, T2, T3: 15.218; todo para B en orden T3, T2, T1: 21.604
+
+========================================================================
+Ejemplo 6. Other-play: palancas con etiquetas permutadas
+========================================================================
+
+  3 palancas, pagos [1.0, 1.0, 0.9]
+   autojuego J(a, a): palanca 0: 1.0, palanca 1: 1.0, palanca 2: 0.9
+   juego cruzado entre semillas que eligen al azar una de las 2 palancas de 1: 0.5000 = 1/2
+   other-play J_OP(palanca 0, pago 1.0) = pago / tamaño del grupo = 0.5000; Monte Carlo 0.4973
+   other-play J_OP(palanca 2, pago 0.9) = pago / tamaño del grupo = 0.9000; Monte Carlo 0.9000
+
+  10 palancas, pagos [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9]
+   autojuego J(a, a): palanca 0: 1.0, palanca 1: 1.0, palanca 2: 1.0, palanca 3: 1.0, palanca 4: 1.0, palanca 5: 1.0, palanca 6: 1.0, palanca 7: 1.0, palanca 8: 1.0, palanca 9: 0.9
+   juego cruzado entre semillas que eligen al azar una de las 9 palancas de 1: 0.1111 = 1/9
+   other-play J_OP(palanca 0, pago 1.0) = pago / tamaño del grupo = 0.1111; Monte Carlo 0.1125
+   other-play J_OP(palanca 9, pago 0.9) = pago / tamaño del grupo = 0.9000; Monte Carlo 0.9000
+
+  3 palancas, tabla J(a, phi(a)) para phi = identidad y phi = intercambiar 0 y 1:
+   palanca 0: identidad 1.0; intercambio 0.0; media 0.50
+   palanca 1: identidad 1.0; intercambio 0.0; media 0.50
+   palanca 2: identidad 0.9; intercambio 0.9; media 0.90
+
+========================================================================
+Ejemplo 7. Juego cruzado: medias de la matriz 4 x 4 sin comunicación (copiada de salida_gpu.txt)
+========================================================================
+  M[i, j] = P(encontrarlo) con el dron 0 de la semilla i y los drones 1 y 2 de la semilla j
+[[0.895 0.891 0.864 0.891]
+ [0.891 0.892 0.861 0.891]
+ [0.871 0.877 0.895 0.876]
+ [0.891 0.89  0.859 0.893]]
+  diagonal (autojuego): [0.895 0.892 0.895 0.893] -> media 0.89375
+  fuera de la diagonal (12 casillas, juego cruzado): suma 10.553 -> media 0.87942; mínimo 0.859
+  brecha 0.0143
+  semilla 0: dron 0 con otras (fila) 0.8820; drones 1-2 con otros (columna) 0.8843
+  semilla 1: dron 0 con otras (fila) 0.8810; drones 1-2 con otros (columna) 0.8860
+  semilla 2: dron 0 con otras (fila) 0.8747; drones 1-2 con otros (columna) 0.8613
+  semilla 3: dron 0 con otras (fila) 0.8800; drones 1-2 con otros (columna) 0.8860
+  sin la semilla 2: juego cruzado 0.8908
+  parejas posibles: 4 x 4 = 16; autojuego 4; juego cruzado 12
+
+========================================================================
+Ejemplo 8. El mentiroso: mensajes sumados frente a mensajes por emisor (SUPUESTO)
+========================================================================
+  mapa previo p0 = {'X': 0.5, 'Y': 0.3, 'resto': 0.2}; q = 0.3 (una mirada que no encuentra multiplica la masa por q)
+  el dron 0 recibe la suma de lo anunciado por los drones 1 y 2: X 1 mirada, Y 1 mirada (igual en los tres mundos)
+   las dos miradas son reales: masas {'X': 0.15, 'Y': 0.09, 'resto': 0.2}, P(encontrarlo antes) = 0.5600, belief {'X': 0.341, 'Y': 0.205, 'resto': 0.455}
+   la mirada a X es falsa (el dron 2 miente): masas {'X': 0.5, 'Y': 0.09, 'resto': 0.2}, P(encontrarlo antes) = 0.2100, belief {'X': 0.633, 'Y': 0.114, 'resto': 0.253}
+   la mirada a Y es falsa: masas {'X': 0.15, 'Y': 0.3, 'resto': 0.2}, P(encontrarlo antes) = 0.3500, belief {'X': 0.231, 'Y': 0.462, 'resto': 0.308}
+  si el dron 0 cree el mapa sumado, ve X con 0.341; la verdad (X falsa) es 0.633
+  mirar X ahora rendiría de verdad m(X)(1 - q) = 0.3500; según lo creído, 0.1050
+  con un mapa por emisor: dron 1 -> Y; dron 2 -> X, pero la posición anunciada del dron 2 no está en X: la mirada es incompatible y se puede descartar
+  notación: mirar dos veces una celda de 0,2 deja m = 0,2 q^2 = 0.018; una mirada a una celda de 0,2 la detecta con probabilidad r = 0,2 (1 - q) = 0.14

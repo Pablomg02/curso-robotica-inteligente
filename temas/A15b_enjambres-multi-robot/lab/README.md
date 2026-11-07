@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Medir qué le pasa a un equipo de drones aprendido cuando cambia lo que dio por hecho al entrenar: sus compañeros, el número de drones que funcionan y la fiabilidad y puntualidad de los mensajes. Probar dos remedios. Comprueba con tus números lo que calcula la presentación (`figuras/vicsek_a15b.py` y `figuras/figuras_a15b.py`, salidas en `figuras/salida_vicsek.txt` y `figuras/salida_gpu.txt`):
+Medir qué le pasa a un equipo de drones aprendido cuando cambia lo que dio por hecho al entrenar: sus compañeros, el número de drones que funcionan y la fiabilidad y puntualidad de los mensajes. Probar dos remedios. Comprueba con tus números lo que calcula la presentación (`figuras/vicsek_a15b.py` y `figuras/figuras_a15b.py`, salidas en `figuras/salida_vicsek.txt` y `figuras/salida_gpu.txt`; los ejemplos a mano de boids, Vicsek, consenso, ORCA, CBBA, other-play y el mentiroso salen de `figuras/ejemplos_a15b.py`, numpy en segundos, con su salida en `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación (determinista en la misma GPU) | Valor | Paso |
 |---|---|---|
