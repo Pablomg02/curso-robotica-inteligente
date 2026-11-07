@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A7b · Deep RL bajo observabilidad parcial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A7b" data-deck-title="Deep RL bajo observabilidad parcial · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 20 · Curso de robótica inteligente</p>
+  <h1>Deep RL bajo observabilidad parcial</h1>
+  <p class="subtitle">Cuando no hay modelo para filtrar: memoria recurrente, qué arquitectura elegir, beliefs aprendidos y cómo comprobar que existen, y agentes que aprenden a mirar. Con PPO en JAX sobre la búsqueda con un dron de A7a: sin memoria, con pila, con GRU y con el belief exacto.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A6a, A6b, A7a</span>
+    <span><b>Prepara</b> A8a, A9a, A15a, H3</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A7b</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Entrenar una política recurrente con PPO sin errores de implementación (estados ocultos, reinicios, minilotes por secuencias).</li>
+    <li>Elegir entre pila de observaciones, GRU, LSTM y transformers con evidencia, no por moda.</li>
+    <li>Distinguir belief implícito, explícito y moldeado por predicción, y comprobar con un sondeo qué hay en un estado oculto.</li>
+    <li>Reconocer la percepción activa en una política aprendida y saber cuándo dar el belief como entrada.</li>
+    <li>Situar los resultados de drones con memoria de 2024–2025 y lo que aún no se ha demostrado.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Sin modelo no hay filtro de Bayes: la red tiene que hacer de filtro</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En A7a el belief salía de Bayes con \(T\) y \(O\) conocidos. Con cámaras, viento y dinámica aprendida, no tienes ese modelo: la política tiene que resumir la historia ella sola.</li>
+        <li>Un estudio de 2022 encuentra que un RL recurrente sin modelo, bien configurado, iguala o supera a métodos especializados para POMDP en 18 de 21 entornos <a class="cite" data-ref="ni2022"></a>.</li>
+        <li>En 2025, una red recurrente sobre imágenes de profundidad de 16 × 12 píxeles, entrenada con simulación diferenciable (B6) y no con RL, vuela entre árboles sin odometría explícita: 90 % de éxito frente al 60 % del mejor método previo, hasta 20 m/s, con un ordenador de 21 dólares, según sus autores <a class="cite" data-ref="zhang2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>«Belief states y world models» se concreta aquí en una pregunta medible: ¿el estado de tu red contiene un belief útil, y es mejor dárselo explícito o dejar que lo aprenda? Este tema da las herramientas para responderla.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>La búsqueda de A7a con cuatro entradas de política, tres semillas cada una, evaluada con los mismos objetivos que las heurísticas y POMCP de A7a; y un sondeo lineal del belief exacto en el estado de la GRU. <code>figuras_a7b.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De apilar fotogramas a volar sin odometría</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2015</span>DQN recurrente: una LSTM en lugar de apilar fotogramas <a class="cite" data-ref="hausknecht2015"></a>. Gradientes de política deterministas y estocásticos con redes recurrentes <a class="cite" data-ref="heess2015"></a>.</div>
+    <div class="ev"><span class="yr">2017–2019</span>Beliefs con estructura: QMDP-net <a class="cite" data-ref="karkus2017"></a>, filtros de partículas diferenciables <a class="cite" data-ref="karkus2018"></a>, DVRL <a class="cite" data-ref="igl2018"></a>. Una mano robótica que necesita memoria por la aleatorización de dominio <a class="cite" data-ref="openai2020"></a>. Beliefs moldeados con modelos generativos <a class="cite" data-ref="gregor2019"></a>.</div>
+    <div class="ev"><span class="yr">2020–2022</span>Transformers estables para RL <a class="cite" data-ref="parisotto2020"></a>. El RL recurrente bien hecho es una referencia fuerte <a class="cite" data-ref="ni2022"></a>; los estados ocultos se correlacionan con el belief <a class="cite" data-ref="lambrechts2022"></a>.</div>
+    <div class="ev"><span class="yr">2023</span>POPGym: 13 memorias en 15 entornos <a class="cite" data-ref="morad2023"></a>; los transformers recuerdan, pero no asignan mejor el crédito <a class="cite" data-ref="ni2023"></a>.</div>
+    <div class="ev"><span class="yr">2024–2025</span>Drones: memoria recurrente en lugar de odometría <a class="cite" data-ref="zhang2025"></a>; percepción activa que aparece sola en un world model <a class="cite" data-ref="romero2025"></a>; mapas de belief como entrada para buscar <a class="cite" data-ref="vanessen2025"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Memoria">
+  <p class="num">Parte 1</p>
+  <h2>Memoria en la política</h2>
+  <p>Qué se le da a la red, cómo se entrena una política recurrente y qué ocurre cuando no tiene memoria.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · por qué</p>
+  <h2>Sin memoria, la mejor política puede tener que tirar una moneda</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Dos estados, A y B, que dan la <em>misma</em> observación. En A, «izquierda» da +1 y lleva a B; «derecha» da 0 y se queda en A. En B, al revés. \(\gamma = 0{,}9\), arranque en A o B con ½.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Política</th><th>Valor esperado</th></tr></thead>
+          <tbody>
+            <tr><td>Sin memoria, determinista («siempre izquierda»)</td><td class="n">0,5</td></tr>
+            <tr><td>Sin memoria, estocástica (½ cada acción)</td><td class="n">5</td></tr>
+            <tr><td>Con memoria de la última acción y recompensa</td><td class="n">9,5</td></tr>
+            <tr><td>Estado visible (cota)</td><td class="n">10</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo nuestro, calculado a mano en la derivación.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: los cuatro valores</summary>
+        <p class="small"><strong>Determinista:</strong> desde A, +1 y pasa a B, donde «izquierda» da 0 para siempre: valor 1. Desde B, 0 para siempre. Media: 0,5.</p>
+        <p class="small"><strong>Estocástica:</strong> en cualquier estado acierta con ½ en cada paso: \(\tfrac12/(1-\gamma) = 5\).</p>
+        <p class="small"><strong>Con memoria:</strong> primero «izquierda». Si da +1, estaba en A y ahora está en B; si da 0, está en B. A partir de ahí sabe el estado y acierta siempre: \(\tfrac12(1 + 10\gamma) + \tfrac12(0 + 10\gamma) = 9{,}5\).</p>
+      </details>
+      <div class="callout clave"><span class="tag">Dos lecciones</span>La recompensa anterior desambigua el estado: por eso ayuda darla como entrada <a class="cite" data-ref="ni2022"></a>. Y sin memoria, el azar es la mejor defensa contra el aliasing: es lo que aprende la política «solo casilla» de la búsqueda, que recorre la rejilla de forma aleatoria sesgada.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · opciones</p>
+  <h2>Cuatro formas de darle historia a la política</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Opción</th><th>Qué recuerda</th><th>Coste y riesgo</th></tr></thead>
+          <tbody>
+            <tr><td>Pila de \(k\) observaciones</td><td>exactamente los \(k\) últimos pasos</td><td>entrada \(k\) veces mayor; nada más allá de \(k\)</td></tr>
+            <tr><td>Red recurrente (GRU, LSTM)</td><td>un resumen aprendido de toda la historia</td><td>entrenamiento por secuencias; estados ocultos que gestionar</td></tr>
+            <tr><td>Transformer</td><td>una ventana de contexto con atención</td><td>coste cuadrático en la ventana; delicado de optimizar en RL <a class="cite" data-ref="parisotto2020"></a></td></tr>
+            <tr><td>Belief explícito</td><td>lo que diga el filtro (A4a, A7a)</td><td>necesita un modelo o aprenderlo (parte 3)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small"><strong>Qué entra:</strong> la observación, y también la acción y la recompensa anteriores. Añadir las recompensas pasadas aumentó el retorno hasta un 30 % en Ni et al. <a class="cite" data-ref="ni2022"></a>; la acción anterior ya la usabas en A6a.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lo que importa según Ni et al.</span>RNN <strong>separadas</strong> para actor y crítico: con un codificador compartido, el gradiente del crítico domina y la política no aprende. La longitud de contexto depende de la tarea (empieza por una media); LSTM o GRU apenas cambian el resultado <a class="cite" data-ref="ni2022"></a>.</div>
+      <div class="callout error"><span class="tag">Matiz sobre DRQN</span>En Pong con fotogramas que desaparecen la mitad de las veces, la versión recurrente sacó 12,1 frente a −9,9; pero en diez juegos con parpadeo «no observamos una mejora sistemática» al usar recurrencia, dicen sus autores <a class="cite" data-ref="hausknecht2015"></a>. La memoria ayuda cuando la tarea la necesita, no por defecto.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · implementación</p>
+  <h2>PPO recurrente: tres cosas que suelen salir mal</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li><strong>Reinicios.</strong> El estado oculto se pone a cero cuando termina un episodio, en el despliegue <em>y</em> al recalcular en la pérdida. Si no, la red arrastra información de otro episodio.</li>
+        <li><strong>Minilotes por secuencias.</strong> Se barajan entornos, no pasos sueltos: cada minilote recorre sus secuencias completas desde el estado oculto guardado al inicio del tramo.</li>
+        <li><strong>Estado guardado desfasado.</strong> El estado al inicio del tramo se calculó con los parámetros de antes; tras varias épocas, ya no es el que daría la red actual. Con PPO y tramos cortos el efecto es pequeño; con datos viejos de un búfer (fuera de política) hay que reconstruirlo recorriendo unos pasos previos antes de empezar a calcular la pérdida.</li>
+      </ol>
+    </div>
+    <div class="stack">
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:13px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere;"><code># en la pérdida: recorrer el tramo desde h0
+def paso(h, x):
+    o, termino_antes = x
+    h = where(termino_antes, 0, h)   # reinicio
+    logits, h = actor(params, h, o)
+    return h, logits
+_, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
+# idx: entornos del minilote (secuencias enteras)</code></pre>
+      <p class="xsmall muted">Esquema de <code>figuras_a7b.py</code>: actor y crítico con GRU separadas, tramos de 32 pasos, 4 minilotes de 256 entornos.</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>Barajar pasos individuales como en el PPO de A6a. Rompe las secuencias: la GRU recibe historias que no existieron.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · experimento</p>
+  <h2>Cuatro entradas para buscar: la memoria ayuda, el belief un poco más</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Entrada de la política (PPO)</th><th>Pasos hasta detectar</th><th>Mediana</th><th>Sin encontrar en 80</th></tr></thead>
+          <tbody>
+            <tr><td>Solo la casilla actual</td><td class="n">35,0 (34,5–35,7)</td><td class="n">24–25</td><td class="n">19–21 %</td></tr>
+            <tr><td>Las 8 últimas casillas</td><td class="n">32,9 (32,6–33,6)</td><td class="n">22–24</td><td class="n">16–17 %</td></tr>
+            <tr><td>GRU (actor y crítico separados)</td><td class="n">32,3 (31,4–32,9)</td><td class="n">24–25</td><td class="n">14–17 %</td></tr>
+            <tr><td>Belief exacto y casilla</td><td class="n">31,9 (31,5–32,3)</td><td class="n">22–23</td><td class="n">12–17 %</td></tr>
+            <tr><td class="muted">A7a: barrido · máximo del belief · ganancia</td><td class="n muted">37,9 · 34,0 · 32,4</td><td class="n muted">30 · 27 · 24</td><td class="n muted">12,5 · 14,0 · 12,5 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Media de 3 semillas (entre paréntesis, el rango; cada semilla con un error típico de ≈ 1,1 pasos); 16,4 M pasos de entrenamiento por semilla, de 20 a 56 s en una RTX 4060 Ti. Evaluación con los 600 objetivos y la semilla de detección de A7a. <code>figuras_a7b.py</code>, sección 1.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 290" role="img" aria-label="Longitud media de los episodios durante el entrenamiento para las cuatro entradas">
+          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+          <text x="52" y="211.7" text-anchor="end" class="t-mono t-faint" font-size="12">35</text>
+          <text x="52" y="127.1" text-anchor="end" class="t-mono t-faint" font-size="12">45</text>
+          <text x="52" y="42.5" text-anchor="end" class="t-mono t-faint" font-size="12">55</text>
+          <path d="M69.2,63.0 L78.4,93.2 L87.6,101.5 L96.8,145.7 L106.0,161.6 L115.2,164.0 L124.4,169.9 L133.6,158.6 L142.8,175.8 L152.0,178.0 L161.2,173.7 L170.4,169.1 L179.6,183.4 L188.8,188.8 L198.0,190.1 L207.2,188.5 L216.4,200.1 L225.6,178.8 L234.8,192.5 L244.0,200.9 L253.2,198.5 L262.4,195.0 L271.6,203.0 L280.8,175.8 L290.0,196.6 L299.2,193.1 L308.4,188.5 L317.6,194.7 L326.8,177.7 L336.0,195.5 L345.2,187.4 L354.4,183.4 L363.6,170.2 L372.8,202.8 L382.0,183.9 L391.2,193.3 L400.4,193.3 L409.6,182.3 L418.8,181.8 L428.0,183.7 L437.2,192.5 L446.4,197.4 L455.6,181.8 L464.8,180.7 L474.0,183.4 L483.2,185.5 L492.4,197.9 L501.6,194.4 L510.8,187.7 L519.1,196.0" fill="none" class="ln" stroke-width="1.6"/>
+          <path d="M69.2,89.4 L78.4,152.4 L87.6,154.6 L96.8,182.6 L106.0,162.4 L115.2,162.4 L124.4,160.2 L133.6,176.1 L142.8,190.7 L152.0,180.7 L161.2,190.1 L170.4,173.7 L179.6,201.2 L188.8,186.6 L198.0,193.6 L207.2,187.4 L216.4,211.9 L225.6,208.2 L234.8,208.7 L244.0,211.9 L253.2,200.9 L262.4,207.6 L271.6,218.1 L280.8,205.5 L290.0,196.8 L299.2,220.3 L308.4,213.5 L317.6,213.3 L326.8,211.4 L336.0,198.2 L345.2,206.3 L354.4,213.3 L363.6,206.0 L372.8,212.2 L382.0,211.9 L391.2,214.6 L400.4,198.5 L409.6,223.0 L418.8,204.4 L428.0,217.0 L437.2,204.1 L446.4,200.6 L455.6,182.6 L464.8,211.9 L474.0,194.4 L483.2,203.8 L492.4,200.9 L501.6,206.0 L510.8,201.4 L519.1,193.6" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M69.2,118.8 L78.4,148.9 L87.6,138.4 L96.8,158.9 L106.0,147.0 L115.2,167.2 L124.4,175.8 L133.6,189.0 L142.8,188.8 L152.0,170.5 L161.2,160.2 L170.4,200.1 L179.6,176.9 L188.8,203.0 L198.0,180.7 L207.2,203.8 L216.4,209.0 L225.6,194.4 L234.8,189.8 L244.0,208.7 L253.2,213.8 L262.4,200.9 L271.6,187.4 L280.8,198.2 L290.0,210.3 L299.2,213.8 L308.4,196.0 L317.6,204.7 L326.8,201.2 L336.0,211.9 L345.2,213.5 L354.4,222.2 L363.6,205.5 L372.8,209.5 L382.0,218.1 L391.2,214.6 L400.4,228.6 L409.6,202.5 L418.8,218.4 L428.0,214.6 L437.2,213.5 L446.4,224.8 L455.6,196.6 L464.8,220.0 L474.0,220.5 L483.2,216.0 L492.4,209.5 L501.6,214.6 L510.8,193.3 L519.1,202.5" fill="none" class="ln-accent" stroke-width="2"/>
+          <path d="M69.2,73.3 L78.4,105.6 L87.6,142.5 L96.8,184.5 L106.0,171.8 L115.2,162.4 L124.4,168.6 L133.6,171.3 L142.8,190.7 L152.0,174.2 L161.2,189.0 L170.4,185.5 L179.6,172.9 L188.8,182.3 L198.0,188.8 L207.2,199.5 L216.4,188.0 L225.6,202.5 L234.8,183.4 L244.0,201.7 L253.2,226.2 L262.4,213.5 L271.6,208.7 L280.8,204.7 L290.0,209.0 L299.2,200.1 L308.4,205.5 L317.6,230.0 L326.8,218.9 L336.0,193.1 L345.2,207.6 L354.4,216.8 L363.6,200.6 L372.8,206.3 L382.0,194.2 L391.2,218.7 L400.4,213.0 L409.6,209.5 L418.8,213.3 L428.0,200.9 L437.2,197.1 L446.4,216.2 L455.6,205.5 L464.8,220.8 L474.0,218.7 L483.2,208.2 L492.4,215.2 L501.6,200.1 L510.8,212.2 L519.1,211.9" fill="none" class="ln-time" stroke-width="2"/>
+          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">16,4 M</text>
+          <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">pasos de entrenamiento</text>
+          <text x="510" y="50" text-anchor="end" class="t-muted" font-size="12">gris: casilla · morado: pila</text>
+          <text x="510" y="66" text-anchor="end" class="t-muted" font-size="12">azul: GRU · naranja: belief</text>
+        </svg>
+        <figcaption>Longitud media de los episodios durante el entrenamiento (semilla 0), en el entorno de entrenamiento.</figcaption>
+      </figure>
+      <ul class="small">
+        <li>Sin memoria, la política recorre la rejilla de forma aleatoria sesgada hacia la zona caliente: no sabe dónde ha mirado. Cualquier memoria recupera unos 2–3 pasos.</li>
+        <li>GRU y belief exacto quedan a menos de medio paso, dentro de la dispersión entre semillas: en una rejilla de 6 × 6 la memoria necesaria es pequeña. En 10 × 10 la diferencia debería crecer (laboratorio).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Arquitecturas">
+  <p class="num">Parte 2</p>
+  <h2>Qué memoria elegir</h2>
+  <p>GRU, LSTM, transformers y modelos de espacio de estados, con la evidencia que hay y sus límites.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitecturas · POPGym</p>
+  <h2>En el banco de pruebas más amplio, gana la GRU</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">POPGym: 15 entornos parcialmente observables, 13 modelos de memoria, todos con PPO, más de 1700 ejecuciones <a class="cite" data-ref="morad2023"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Memoria</th><th>Recompensa media normalizada</th></tr></thead>
+          <tbody>
+            <tr><td>GRU</td><td class="n">0,349</td></tr>
+            <tr><td>IndRNN</td><td class="n">0,259</td></tr>
+            <tr><td>LSTM</td><td class="n">0,255</td></tr>
+            <tr><td>Elman</td><td class="n">0,249</td></tr>
+            <tr><td>Pila de observaciones</td><td class="n">0,190</td></tr>
+            <tr><td>Atención lineal (FART, FWP)</td><td class="n">0,138 · 0,112</td></tr>
+            <tr><td>MLP sin memoria</td><td class="n">0,067</td></tr>
+            <tr><td>S4D (espacio de estados)</td><td class="n">−0,180</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Media de la máxima recompensa media por episodio, en todos los entornos (figura 3 de Morad et al.).</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>«Las RNN clásicas superaron a los métodos de memoria modernos»; «usa GRU para rendimiento y redes de Elman para eficiencia» <a class="cite" data-ref="morad2023"></a>.</li>
+        <li>S4D fue inestable y a menudo divergió.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Lee bien la tabla</span>Los «transformers» de POPGym son de atención <em>lineal</em>; no hay transformer estándar ni GTrXL. Y todo es con PPO: en algunos entornos los 13 modelos llegan a lo mismo, quizá por el algoritmo <a class="cite" data-ref="morad2023"></a>. No es un veredicto general contra los transformers.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitecturas · transformers</p>
+  <h2>Los transformers recuerdan mucho, pero no asignan mejor el crédito</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Ni et al. separan dos cosas que se mezclan al hablar de «memoria» <a class="cite" data-ref="ni2023"></a>:</p>
+      <ul class="small">
+        <li><strong>Memoria:</strong> recordar una observación lejana para usarla después. Los transformers llegan a dependencias de 1500 pasos (T-Maze pasivo).</li>
+        <li><strong>Asignación de crédito:</strong> saber qué acción lejana causó una recompensa. Ahí los transformers «no mejoran».</li>
+        <li>En tareas de PyBullet con oclusión, cambiar la LSTM del RL recurrente de Ni 2022 por un transformer dio, en la mayoría de tareas, peor eficiencia en muestras.</li>
+      </ul>
+      <p class="small">GTrXL (un Transformer-XL con compuertas) hizo entrenables los transformers en RL: superó a las LSTM en entornos de memoria difíciles y logró el mejor resultado en DMLab-30 <a class="cite" data-ref="parisotto2020"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Regla práctica</span>Empieza con una GRU separada en actor y crítico. Prueba un transformer si la tarea exige recordar algo de hace cientos de pasos y tienes datos de sobra.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>En una búsqueda, la memoria necesaria es «dónde he mirado ya»: crece con el área, no con el tiempo. Un belief explícito (un mapa) la representa sin pedirle a la red que la reconstruya; es la comparación de la parte 3.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Belief aprendido">
+  <p class="num">Parte 3</p>
+  <h2>Beliefs aprendidos</h2>
+  <p>Implícito en un estado oculto, explícito con estructura de filtro, o moldeado con pérdidas de predicción. Y cómo comprobar qué hay dentro.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · tres familias</p>
+  <h2>Implícito, estructurado o moldeado</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">IMPLÍCITO</span><h3>El estado de una RNN</h3><p>Entrenado solo con la pérdida de RL. A medida que la red aprende la función Q, sus estados ocultos se correlacionan cada vez más (información mutua) con el belief de las variables relevantes para el control, y menos con las irrelevantes <a class="cite" data-ref="lambrechts2022"></a>. En la mano robótica de OpenAI, el estado de la LSTM tras 5 s predice si el bloque es mayor o menor que la media en el 80 % de los casos <a class="cite" data-ref="openai2020"></a>.</p></div>
+    <div class="card"><span class="meta">ESTRUCTURADO</span><h3>Un filtro dentro de la red</h3><p>DVRL mantiene un conjunto de partículas ponderadas en un espacio latente, con un modelo generativo entrenado junto a la política. En Pong con parpadeo, 18,17 frente a 6,33 de una RNN; gana en 5 de 10 juegos y pierde por poco en uno <a class="cite" data-ref="igl2018"></a>. QMDP-net y PF-net meten un planificador o un filtro de partículas diferenciables en la arquitectura <a class="cite" data-ref="karkus2017,karkus2018"></a>.</p></div>
+    <div class="card"><span class="meta">MOLDEADO</span><h3>Pérdidas de predicción</h3><p>Entrenar el estado para predecir el futuro. Gregor et al. leen la posición, la orientación y el mapa desde el estado con decodificadores que no tocan el entrenamiento: predecir varios pasos hacia delante con un modelo generativo expresivo es «crítico» para que aparezcan representaciones estables <a class="cite" data-ref="gregor2019"></a>.</p></div>
+  </div>
+  <div class="callout tesis"><span class="tag">El hilo con A7a</span>La tercera familia es la que sugiere el estado de información aproximado: un resumen que predice la recompensa y su propio futuro. Los world models de A8a llevan esta idea al extremo.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · sondeo</p>
+  <h2>¿Hay un belief en la GRU? Sí, pero ya estaba antes de entrenar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Sondeo lineal (mínimos cuadrados con regularización) del belief exacto a partir del estado de 128 unidades, ajustado con el 70 % de 400 episodios de la GRU entrenada y evaluado en el resto:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Qué se sondea</th><th>Variación total al belief</th><th>R²</th></tr></thead>
+          <tbody>
+            <tr><td>Estado de la GRU entrenada</td><td class="n">0,064</td><td class="n">0,74</td></tr>
+            <tr><td>Estado de una GRU sin entrenar, mismas observaciones</td><td class="n">0,073</td><td class="n">0,70</td></tr>
+            <tr><td>Solo la casilla actual</td><td class="n">0,151</td><td class="n">0,26</td></tr>
+            <tr><td>El prior fijo</td><td class="n">0,250</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">4644 estados de prueba. <code>figuras_a7b.py</code>, sección 2.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 200" role="img" aria-label="Belief exacto y belief leído del estado de la GRU en un paso de un episodio de prueba">
+        <text x="108" y="20" text-anchor="middle" class="t-muted" font-size="13">belief exacto</text>
+        <rect x="30" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.105"/>
+        <rect x="30" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.203"/>
+        <rect x="30" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.222"/>
+        <rect x="30" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.231"/>
+        <rect x="30" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.222"/>
+        <rect x="30" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.203"/>
+        <rect x="56" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.116"/>
+        <rect x="56" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="56" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="56" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="56" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="56" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="82" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.138"/>
+        <rect x="82" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.187"/>
+        <rect x="82" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="82" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="82" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="82" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.391"/>
+        <rect x="108" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="108" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.243"/>
+        <rect x="108" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.336"/>
+        <rect x="108" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="108" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.766"/>
+        <rect x="108" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="134" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="134" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="134" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.379"/>
+        <rect x="134" y="108" width="25" height="25" class="fill-accent" fill-opacity="1.000"/>
+        <rect x="134" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="134" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="160" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="160" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="160" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.336"/>
+        <rect x="160" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="160" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.766"/>
+        <rect x="160" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <text x="292" y="20" text-anchor="middle" class="t-muted" font-size="13">leído del estado de la GRU</text>
+        <rect x="214" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.105"/>
+        <rect x="214" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.202"/>
+        <rect x="214" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.221"/>
+        <rect x="214" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.232"/>
+        <rect x="214" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.224"/>
+        <rect x="214" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.203"/>
+        <rect x="240" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.118"/>
+        <rect x="240" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="240" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.328"/>
+        <rect x="240" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.361"/>
+        <rect x="240" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.332"/>
+        <rect x="240" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="266" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.136"/>
+        <rect x="266" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.190"/>
+        <rect x="266" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.526"/>
+        <rect x="266" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.593"/>
+        <rect x="266" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.529"/>
+        <rect x="266" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.388"/>
+        <rect x="292" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="292" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.247"/>
+        <rect x="292" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.337"/>
+        <rect x="292" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.874"/>
+        <rect x="292" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.771"/>
+        <rect x="292" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.530"/>
+        <rect x="318" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="318" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.600"/>
+        <rect x="318" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.380"/>
+        <rect x="318" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.999"/>
+        <rect x="318" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.875"/>
+        <rect x="318" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.595"/>
+        <rect x="344" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.329"/>
+        <rect x="344" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="344" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.340"/>
+        <rect x="344" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.867"/>
+        <rect x="344" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="344" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.530"/>
+        </svg>
+        <figcaption>Belief exacto y el leído del estado de la GRU entrenada en un episodio de prueba (paso 7; variación total 0,003). Misma escala de color en los dos mapas.</figcaption>
+      </figure>
+      <div class="callout error"><span class="tag">La trampa del sondeo</span>Una red recurrente <em>sin entrenar</em> ya guarda la historia de forma que un sondeo lineal la lee casi igual de bien: el belief es una función de las casillas visitadas, y un estado recurrente aleatorio las mezcla sin olvidarlas. El sondeo dice que la información está; no que la red la haya aprendido ni que la política la use.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Percepción activa">
+  <p class="num">Parte 4</p>
+  <h2>Aprender a mirar</h2>
+  <p>Cuando la política decide qué va a observar, buscar información deja de ser un módulo aparte y se aprende con la tarea.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · ejemplos</p>
+  <h2>La búsqueda de información aparece sola, si la tarea la premia</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Persecución con un cuadrúpedo:</strong> una política con estado completo supervisa a otra con cámara RGB-D, y el robot «aprende a reunir información cuando no está seguro, a predecir la intención a partir de medidas ruidosas y a anticiparse para interceptar» <a class="cite" data-ref="bajcsy2024"></a>.</li>
+        <li><strong>Carreras de drones desde píxeles con un world model:</strong> aparece un comportamiento que orienta la cámara hacia las zonas con textura de las puertas, sin términos de recompensa hechos a mano; hasta 9 m/s en hardware-in-the-loop con imágenes renderizadas (preprint) <a class="cite" data-ref="romero2025"></a>.</li>
+        <li><strong>Búsqueda de malas hierbas con un UAV:</strong> la política recibe un mapa local de detecciones y las posiciones probables según el conocimiento previo. Con imágenes reales y sin reentrenar, un camino un 66 % más corto que el recorrido por filas, a cambio de encontrar un 10 % menos de malas hierbas <a class="cite" data-ref="vanessen2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Dar el mapa o dejar que lo aprenda</span>Cuando el belief tiene una forma conocida (un mapa de probabilidad del objetivo), dárselo a la política convierte el problema en un MDP sobre beliefs, como en A7a. Si no hay modelo para calcularlo, la memoria tiene que construirlo.</div>
+      <div class="callout error"><span class="tag">Lo que no encontramos</span>Un trabajo de búsqueda de objetivos con RL y mapa de belief como entrada validado en vuelo real en bucle cerrado. Los ejemplos de búsqueda con UAV son en simulación o sobre imágenes reales sin vuelo <a class="cite" data-ref="vanessen2025,ewers2024"></a>. Es un hueco que tu tesis puede ocupar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · drones</p>
+  <h2>Memoria a bordo de un dron: lo que ya se ha demostrado</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0;">Volar sin odometría (2025)</h3>
+      <ul class="small">
+        <li>Una red convolucional recurrente (GRU) sobre profundidad invertida y reducida a 16 × 12, que da aceleración y una estimación de la velocidad actual <a class="cite" data-ref="zhang2025"></a>.</li>
+        <li>«Mantiene una estimación interna del estado» y vuela «sin odometría explícita»: el belief sobre la velocidad está en la memoria.</li>
+        <li>90 % de éxito frente al 60 % del estado del arte previo; hasta 20 m/s en bosque real; ordenador de 21 dólares, según sus autores. Entrenada con física diferenciable (B6).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">La memoria como adaptación</h3>
+      <ul class="small">
+        <li>En la mano de OpenAI, en el robot real: LSTM en política y valor, 18,8 rotaciones seguidas de media (mediana 13); política sin memoria, 4,7 y 4,6 (medianas 3,5 y 3) <a class="cite" data-ref="openai2020"></a>.</li>
+        <li>Sin aleatorización de dominio, política con y sin memoria rinden igual: la memoria hace falta para <em>identificar</em> la física de cada episodio, no por la tarea.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Dos usos de la memoria</span>Estimar el estado (velocidad, posición) e identificar el entorno (masa, viento, dónde está el objetivo). El segundo es el que liga este tema con la adaptación de A9a.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · criterio</p>
+  <h2>¿Dar el belief a la política o dejar que lo aprenda?</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Situación</th><th>Recomendación</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr><td>Modelo de observación conocido y estado oculto pequeño (objetivo en una rejilla)</td><td>belief exacto como entrada, con una MLP</td><td>es un estado suficiente (A7a); referencia para todo lo demás</td></tr>
+        <tr><td>Estado continuo con modelo aproximado (posición, velocidad)</td><td>filtro (A4a) y su media y covarianza como entrada; memoria encima si hace falta</td><td>el filtro ya resuelve lo que se sabe modelar</td></tr>
+        <tr><td>Observaciones ricas sin modelo (imágenes, profundidad)</td><td>memoria aprendida (GRU) con pérdidas de predicción, o un world model (A8a)</td><td>no hay \(O(z\mid s)\) con el que filtrar</td></tr>
+        <tr><td>Física desconocida en cada episodio (masa, viento)</td><td>memoria o módulo de adaptación (A9a)</td><td>la memoria hace de identificación <a class="cite" data-ref="openai2020"></a></td></tr>
+        <tr><td>Dependencias de cientos de pasos con eventos raros</td><td>transformer o un mapa explícito</td><td>la GRU olvida; el transformer recuerda pero no asigna mejor el crédito <a class="cite" data-ref="ni2023"></a></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout tesis"><span class="tag">Tu tesis</span>Probablemente, una mezcla: un mapa de belief del objetivo calculado con un modelo de detector (lo que sabes modelar) y una memoria aprendida para lo demás (oclusiones, dinámica, viento). Comparar contra el belief exacto en simulación es lo que hará creíble cualquier belief aprendido.</div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Memoria pequeña, belief con estructura y world models</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>La GRU como punto de partida</h3><p>Con PPO o con TD3/SAC, una GRU separada en actor y crítico es una referencia difícil de batir en POMDP de control y de memoria corta <a class="cite" data-ref="ni2022,morad2023"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Beliefs que predicen</h3><p>Moldear el estado con pérdidas de predicción del futuro (la idea del estado de información aproximado de A7a) y planificar en él: es el paso a los world models de A8a, ya usados para volar desde píxeles con percepción activa emergente <a class="cite" data-ref="romero2025"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Búsqueda real</h3><p>Políticas aprendidas que busquen objetivos con un belief explícito o aprendido, validadas en vuelo real en bucle cerrado. No encontramos ninguna en la literatura revisada: es terreno para tu tesis.</p></div>
+  </div>
+  <div class="callout error"><span class="tag">Lo que sigue abierto</span>Que un estado oculto «contenga» el belief se mide con sondeos que pueden engañar: un sondeo lineal pobre no prueba que la información no esté, y uno bueno no prueba que la política la use.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Del belief exacto al aprendido, en tu propia tarea</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Referencia:</strong> en la búsqueda de A7a puedes calcular el belief exacto. Úsalo para medir cuánto pierde una política con memoria aprendida frente a una con el belief, y para sondear su estado oculto.</li>
+        <li><strong>Arquitectura:</strong> GRU separada para actor y crítico; crítico asimétrico (A6b) con el estado verdadero o, si lo oculto solo se descubre buscando, con el belief además del estado.</li>
+        <li><strong>Pérdidas auxiliares:</strong> predecir la recompensa y la siguiente observación (o el siguiente belief) para moldear el estado, como sugiere el AIS.</li>
+        <li><strong>Latencia y cómputo:</strong> una GRU de 128 unidades cuesta poco a bordo; el coste está en la percepción que la alimenta.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>Con observaciones de cámara en lugar de la casilla, ¿se mantiene la ventaja de dar el belief como entrada, o una memoria entrenada con pérdidas de predicción la iguala? ¿Y cuál transfiere mejor de la simulación al vuelo?</div>
+      <div class="callout clave"><span class="tag">Para el hito H3</span>Tu entorno de búsqueda (A7a), tu PPO recurrente (este tema) y el crítico asimétrico (A6b) forman el núcleo del hito. A8a añadirá el world model; A15a, varios drones.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A7b</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Sin modelo no hay filtro de Bayes: la memoria de la política hace de filtro.</li>
+    <li>PPO recurrente: reinicios al terminar el episodio, minilotes de secuencias completas, estado guardado al inicio del tramo.</li>
+    <li>GRU separada en actor y crítico como primera opción; transformers si hay que recordar cientos de pasos.</li>
+    <li>Entrada: observación, acción anterior y recompensa anterior.</li>
+    <li>Belief implícito, estructurado o moldeado por predicción; se comprueba con sondeos, con cautela.</li>
+    <li>Si puedes calcular el belief, dárselo a la política es la referencia contra la que medir la memoria.</li>
+    <li>La memoria sirve para estimar el estado y para identificar el entorno.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Memoria</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Entrenas PPO con una GRU y barajas los pasos individuales en los minilotes, como en A6a. ¿Qué pasa?</p>
+      <ol class="opts">
+        <li><button type="button">Nada: PPO no depende del orden</button></li>
+        <li><button type="button">Va más lento pero aprende igual</button></li>
+        <li><button type="button">La GRU recibe historias que no existieron y el gradiente no corresponde a la política que actuó</button></li>
+        <li><button type="button">Solo afecta al crítico</button></li>
+      </ol>
+      <p class="explain">Hay que recorrer secuencias completas desde el estado guardado, con reinicios donde terminó cada episodio.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">2. Según Ni et al. 2022, ¿qué decisión de diseño es más consistente entre dominios?</p>
+      <ol class="opts">
+        <li><button type="button">RNN separadas para actor y crítico</button></li>
+        <li><button type="button">LSTM en lugar de GRU</button></li>
+        <li><button type="button">Una longitud de contexto de 2048</button></li>
+        <li><button type="button">Compartir el codificador para ahorrar parámetros</button></li>
+      </ol>
+      <p class="explain">Con un codificador compartido, el gradiente del crítico domina; la longitud de contexto depende de la tarea y el tipo de RNN importa poco.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Beliefs aprendidos</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Un sondeo lineal lee mal el belief desde el estado de tu GRU. ¿Qué puedes concluir?</p>
+      <ol class="opts">
+        <li><button type="button">Que la GRU no tiene información sobre el belief</button></li>
+        <li><button type="button">Que la política no usa memoria</button></li>
+        <li><button type="button">Que hay que usar una LSTM</button></li>
+        <li><button type="button">Poco: la información puede estar codificada de forma no lineal, o solo la parte del belief que importa para actuar</button></li>
+      </ol>
+      <p class="explain">Un sondeo mide lo que se puede leer con ese decodificador. Lambrechts et al. encuentran que el estado se correlaciona sobre todo con lo relevante para el control.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. En la mano de OpenAI, ¿por qué la política necesitaba memoria?</p>
+      <ol class="opts">
+        <li><button type="button">Porque la tarea era larga</button></li>
+        <li><button type="button">Para identificar la física de cada episodio con aleatorización de dominio: sin ella, con y sin memoria rendían igual</button></li>
+        <li><button type="button">Porque las cámaras tenían retardo</button></li>
+        <li><button type="button">Porque PPO lo exige</button></li>
+      </ol>
+      <p class="explain">El estado de la LSTM predecía el tamaño del bloque en el 80 % de los casos: la memoria hace de adaptación.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Percepción activa</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Puedes calcular el belief exacto del objetivo en tu búsqueda. ¿Qué entrada le das a la política para la referencia más fuerte?</p>
+      <ol class="opts">
+        <li><button type="button">Solo la observación actual</button></li>
+        <li><button type="button">El belief y la posición: convierte el problema en un MDP sobre beliefs</button></li>
+        <li><button type="button">Las 8 últimas observaciones</button></li>
+        <li><button type="button">La posición verdadera del objetivo</button></li>
+      </ol>
+      <p class="explain">El belief es un estado suficiente (A7a). La posición verdadera no estará en vuelo: solo vale para el crítico.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña el experimento para saber si tu GRU ha aprendido «dónde ha mirado ya».</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Registrar estados ocultos y, para cada casilla, si ya se miró (y el belief exacto) en trayectorias de prueba. Entrenar sondeos (lineal y una MLP pequeña) con episodios separados para ajuste y prueba. Comparar con tres referencias: una GRU sin entrenar recorriendo las mismas observaciones, solo la observación actual y el prior. Después, intervenir: perturbar la dirección del estado que el sondeo asocia a «casilla mirada» y ver si la política cambia de rumbo. Correlación no es uso: la intervención es la que dice si la política se apoya en esa información.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ICML</span>
+      <h3>El RL recurrente como referencia <a class="cite" data-ref="ni2022"></a></h3>
+      <p><strong>Lee:</strong> §4 (decisiones de diseño) y §5.2 (ablaciones).</p>
+      <p><strong>Responde:</strong> ¿por qué falla el codificador compartido?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · ICLR</span>
+      <h3>POPGym <a class="cite" data-ref="morad2023"></a></h3>
+      <p><strong>Lee:</strong> §5–7 y la figura 3.</p>
+      <p><strong>Responde:</strong> ¿qué no dice su resultado sobre los transformers?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · NMI</span>
+      <h3>Volar sin odometría con memoria <a class="cite" data-ref="zhang2025"></a></h3>
+      <p><strong>Lee:</strong> la arquitectura y los experimentos reales.</p>
+      <p><strong>Responde:</strong> ¿qué estima la GRU y cómo lo comprueban?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> transformers y crédito <a class="cite" data-ref="ni2023"></a>; DVRL <a class="cite" data-ref="igl2018"></a>; beliefs moldeados <a class="cite" data-ref="gregor2019"></a>; estados ocultos y beliefs <a class="cite" data-ref="lambrechts2022"></a>; la mano de OpenAI <a class="cite" data-ref="openai2020"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Recurrente, belief explícito y belief aprendido en tu búsqueda</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>PPO recurrente</strong> con tests de reinicios y de minilotes por secuencias.</li>
+        <li><strong>Cuatro entradas</strong> en la búsqueda de A7a, con tres semillas, evaluadas como en A7a.</li>
+        <li><strong>Sondeo</strong> del belief y de «casillas miradas» en el estado de la GRU, con referencias.</li>
+        <li><strong>Pérdidas auxiliares</strong> de predicción y su efecto en el sondeo y en el rendimiento.</li>
+        <li><strong>Crítico asimétrico</strong> con la posición del objetivo y con el belief.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>La ordenación de las cuatro entradas y su comparación con las heurísticas y POMCP de A7a; y si el estado de la GRU contiene más información sobre el belief que una GRU sin entrenar con las mismas observaciones.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo (unos minutos para todo el script); en CPU, con menos entornos y más tiempo.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a7b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-ni2022">Ni, T., Eysenbach, B., Salakhutdinov, R. (2022). Recurrent model-free RL can be a strong baseline for many POMDPs. <span class="venue">ICML 2022</span>, PMLR 162, 16691–16723. <a href="https://arxiv.org/abs/2110.05038">arXiv:2110.05038</a></li>
+    <li id="ref-zhang2025">Zhang, Y., Hu, Y., Song, Y., Zou, D., Lin, W. (2025). Learning vision-based agile flight via differentiable physics. <span class="venue">Nature Machine Intelligence</span>, 7, 954–966. <a href="https://doi.org/10.1038/s42256-025-01048-0">doi:10.1038/s42256-025-01048-0</a>. <a href="https://arxiv.org/abs/2407.10648">arXiv:2407.10648</a> (versión de arXiv: «Back to Newton's laws: Learning vision-based agile flight via differentiable physics»)</li>
+    <li id="ref-hausknecht2015">Hausknecht, M., Stone, P. (2015). Deep recurrent Q-learning for partially observable MDPs. <a href="https://arxiv.org/abs/1507.06527">arXiv:1507.06527</a> (simposio de otoño de la AAAI, 2015)</li>
+    <li id="ref-heess2015">Heess, N., Hunt, J. J., Lillicrap, T. P., Silver, D. (2015). Memory-based control with recurrent neural networks. <a href="https://arxiv.org/abs/1512.04455">arXiv:1512.04455</a> (taller de deep RL de NIPS 2015)</li>
+    <li id="ref-karkus2017">Karkus, P., Hsu, D., Lee, W. S. (2017). QMDP-Net: Deep learning for planning under partial observability. <span class="venue">NeurIPS 2017</span>. <a href="https://arxiv.org/abs/1703.06692">arXiv:1703.06692</a></li>
+    <li id="ref-karkus2018">Karkus, P., Hsu, D., Lee, W. S. (2018). Particle filter networks with application to visual localization. <span class="venue">CoRL 2018</span>, PMLR 87, 169–178. <a href="https://arxiv.org/abs/1805.08975">arXiv:1805.08975</a></li>
+    <li id="ref-igl2018">Igl, M., Zintgraf, L., Le, T. A., Wood, F., Whiteson, S. (2018). Deep variational reinforcement learning for POMDPs. <span class="venue">ICML 2018</span>, PMLR 80, 2117–2126. <a href="https://arxiv.org/abs/1806.02426">arXiv:1806.02426</a></li>
+    <li id="ref-openai2020">OpenAI: Andrychowicz, M., Baker, B., Chociej, M., Józefowicz, R., McGrew, B., Pachocki, J., Petron, A., Plappert, M., Powell, G., Ray, A., Schneider, J., Sidor, S., Tobin, J., Welinder, P., Weng, L., Zaremba, W. (2020). Learning dexterous in-hand manipulation. <span class="venue">The International Journal of Robotics Research</span>, 39(1), 3–20. <a href="https://doi.org/10.1177/0278364919887447">doi:10.1177/0278364919887447</a>. <a href="https://arxiv.org/abs/1808.00177">arXiv:1808.00177</a></li>
+    <li id="ref-gregor2019">Gregor, K., Rezende, D. J., Besse, F., Wu, Y., Merzic, H., van den Oord, A. (2019). Shaping belief states with generative environment models for RL. <span class="venue">NeurIPS 2019</span>. <a href="https://arxiv.org/abs/1906.09237">arXiv:1906.09237</a></li>
+    <li id="ref-parisotto2020">Parisotto, E., Song, H. F., Rae, J. W., Pascanu, R., Gulcehre, C., Jayakumar, S. M., Jaderberg, M., Lopez Kaufman, R., Clark, A., Noury, S., Botvinick, M. M., Heess, N., Hadsell, R. (2020). Stabilizing transformers for reinforcement learning. <span class="venue">ICML 2020</span>, PMLR 119, 7487–7498. <a href="https://arxiv.org/abs/1910.06764">arXiv:1910.06764</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="11">
+    <li id="ref-lambrechts2022">Lambrechts, G., Bolland, A., Ernst, D. (2022). Recurrent networks, hidden states and beliefs in partially observable environments. <span class="venue">Transactions on Machine Learning Research</span>. <a href="https://arxiv.org/abs/2208.03520">arXiv:2208.03520</a></li>
+    <li id="ref-morad2023">Morad, S., Kortvelesy, R., Bettini, M., Liwicki, S., Prorok, A. (2023). POPGym: Benchmarking partially observable reinforcement learning. <span class="venue">ICLR 2023</span>. <a href="https://arxiv.org/abs/2303.01859">arXiv:2303.01859</a></li>
+    <li id="ref-ni2023">Ni, T., Ma, M., Eysenbach, B., Bacon, P.-L. (2023). When do transformers shine in RL? Decoupling memory from credit assignment. <span class="venue">NeurIPS 2023</span>. <a href="https://arxiv.org/abs/2307.03864">arXiv:2307.03864</a></li>
+    <li id="ref-romero2025">Romero, A., Shenai, A., Geles, I., Aljalbout, E., Scaramuzza, D. (2025). Dream to fly: Model-based reinforcement learning for vision-based drone flight. <a href="https://arxiv.org/abs/2501.14377">arXiv:2501.14377</a> (preprint; aceptado en ICRA 2026 según arXiv)</li>
+    <li id="ref-vanessen2025">van Essen, R., van Henten, E., Kootstra, G. (2025). UAV-based path planning for efficient localization of non-uniformly distributed weeds using prior knowledge: A reinforcement-learning approach. <span class="venue">Computers and Electronics in Agriculture</span>, 237, 110651. <a href="https://doi.org/10.1016/j.compag.2025.110651">doi:10.1016/j.compag.2025.110651</a>. <a href="https://arxiv.org/abs/2412.11717">arXiv:2412.11717</a></li>
+    <li id="ref-bajcsy2024">Bajcsy, A., Loquercio, A., Kumar, A., Malik, J. (2023). Learning vision-based pursuit-evasion robot policies. <a href="https://arxiv.org/abs/2308.16185">arXiv:2308.16185</a> (preprint)</li>
+    <li id="ref-ewers2024">Ewers, J.-H., Anderson, D., Thomson, D. (2025). Deep reinforcement learning for time-critical wilderness search and rescue using drones. <span class="venue">Frontiers in Robotics and AI</span>, 11. <a href="https://doi.org/10.3389/frobt.2024.1527095">doi:10.3389/frobt.2024.1527095</a>. <a href="https://arxiv.org/abs/2405.12800">arXiv:2405.12800</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>

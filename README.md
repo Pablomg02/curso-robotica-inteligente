@@ -22,7 +22,7 @@ Dentro de una presentación: flechas o espacio para avanzar, `L` para el modo le
 
 ## Estado
 
-Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo), **M1** (herramientas matemáticas), **A1** (dinámica y modelado), **A2** (control clásico y jerarquía de lazos), **A3a** (control óptimo), **A3b** (MPC por muestreo y aprendizaje), **A4a** (filtrado bayesiano), **A4b** (percepción para estimación), **A5** (planificación y navegación), el hito **H1** con el examen de la fase 1 **B1** (panorama de simuladores), **B2** (física fiel), **B3a** (modelos de sensores), **B3b** (render y real2sim), **B4** (tiempo, asincronía y latencia) y **B6** (simulación masiva y diferenciable): la fase 2 completa. De la fase 3: **A6a** (deep RL para control), **A6b** (RL en robots reales) y **A7a** (teoría de POMDPs).
+Ver [`00_plan/ESTADO.md`](00_plan/ESTADO.md). Hechos: **M0** (mapa del campo), **M1** (herramientas matemáticas), **A1** (dinámica y modelado), **A2** (control clásico y jerarquía de lazos), **A3a** (control óptimo), **A3b** (MPC por muestreo y aprendizaje), **A4a** (filtrado bayesiano), **A4b** (percepción para estimación), **A5** (planificación y navegación), el hito **H1** con el examen de la fase 1 **B1** (panorama de simuladores), **B2** (física fiel), **B3a** (modelos de sensores), **B3b** (render y real2sim), **B4** (tiempo, asincronía y latencia) y **B6** (simulación masiva y diferenciable): la fase 2 completa. De la fase 3: **A6a** (deep RL para control), **A6b** (RL en robots reales), **A7a** (teoría de POMDPs) y **A7b** (deep RL bajo observabilidad parcial).
 
 ## Estructura
 
