@@ -10,14 +10,16 @@ Añadir al proyecto hilo un módulo `planificacion/` con búsqueda, generación 
 | Resultado de la presentación | Valor | Paso |
 |---|---|---|
 | A* en rejilla 8-conexa de 0,1 m y camino recortado por visibilidad | 21,65 m (6000 nodos expandidos); 21,07 m | 1 |
+| Nodos expandidos por Dijkstra y por A* con la heurística inflada por 1,5 (mismo mapa y rejilla) | 14 919 (21,65 m); 304 (22,99 m) | 1 |
 | Mejor camino de RRT y RRT* (semilla 0; 500 / 1000 / 3000 iteraciones) | 26,94 / 26,94 / 26,94 m; 24,40 / 23,98 / 23,98 m | 1 |
+| Minimum snap de dos tramos, waypoints (0, 1, 0), \(T\) = (1, 1) s | \(a_1^\star = -8{,}4\) m/s², \(J^\star\) = 32 256 (KKT, Richter y MINCO coinciden) | 2 |
 | Coste de snap con 2 s por tramo, \(T\) = 6, 8 y 12 s | 8483; 1132; 66,3 (cociente 128) | 2 |
 | Reparto de tiempos optimizado con \(T\) = 8 s | (2,87; 1,13; 1,13; 2,87) s, coste 3,1 veces menor, \(a_\max\) de 5,96 a 4,34 m/s² | 2 |
 | Optimización local sobre el campo de distancias | la recta entra 1,58 m en un obstáculo; la optimizada queda a 0,55 m y mide 21,6 m | 3 |
 | Distancia de parada con 0,1 s de latencia y \(a = g\tan30°\) | 2,7 m a 5 m/s; 9,8 m a 10 m/s | 4 |
 | Caminos de Dubins con \(R\) = 110 m, de (0, 0, 0°) a (400, 150, 180°) | RSL 753 m; LSR 911 m; LRL 1217 m | 5 |
 
-El script de las figuras, en numpy, está en `../figuras/figuras_a5.py`. Úsalo como referencia: tu versión debe dar las mismas cifras, salvo las de RRT y RRT*, que dependen de la semilla y de los detalles del muestreo.
+El script de las figuras, en numpy, está en `../figuras/figuras_a5.py`; los ejemplos numéricos de las hojas (A* a mano, RRT*, minimum snap de dos tramos, gradientes de MINCO, Dubins paso a paso), en `../figuras/ejemplos_a5.py`, con su salida en `../figuras/salida_ejemplos.txt`. Úsalo como referencia: tu versión debe dar las mismas cifras, salvo las de RRT y RRT*, que dependen de la semilla y de los detalles del muestreo.
 
 ## 1. A*, RRT y RRT* (45 min)
 
