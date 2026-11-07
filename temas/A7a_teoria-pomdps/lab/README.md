@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Construir y resolver POMDP pequeños de forma exacta, comprobar cuándo fallan las aproximaciones y dejar listo el entorno de búsqueda con un dron que usarán A7b, A8a y A15a. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a7a.py`, salida en `figuras/salida.txt`):
+Construir y resolver POMDP pequeños de forma exacta, comprobar cuándo fallan las aproximaciones y dejar listo el entorno de búsqueda con un dron que usarán A7b, A8a y A15a. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a7a.py`, salida en `figuras/salida.txt`; los ejemplos hechos a mano de las hojas, como la actualización del belief paso a paso, el backup de vectores α o las cuentas de QMDP, están en `figuras/ejemplos_a7a.py`, salida en `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación | Valor | Paso |
 |---|---|---|

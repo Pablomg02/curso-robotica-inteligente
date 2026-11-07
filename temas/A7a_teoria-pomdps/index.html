@@ -48,7 +48,7 @@
   <h2>El dron de tu tesis nunca sabe dónde está el objetivo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>«Sensores con ruido, control imperfecto y cambios en el entorno son características que definen muchas tareas robóticas reales», y los POMDP se han aplicado con éxito a localización y navegación, búsqueda y seguimiento, conducción autónoma, sistemas multirrobot, manipulación e interacción con personas <a class="cite" data-ref="lauri2023"></a>.</li>
         <li>En A6b el actor no veía la velocidad y la deducía de la historia. En una búsqueda, lo oculto (dónde está el objetivo) solo se descubre <em>actuando</em>: hay que decidir dónde mirar.</li>
         <li>Un POMDP es el marco que dice qué es actuar bien en esas condiciones: optimizar sobre lo que se sabe, incluido lo que se puede llegar a saber.</li>
@@ -81,17 +81,84 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:36%">Ejemplo</th></tr>
+      <tr><td>\(s\in\mathcal S\)</td><td><strong>Estado</strong>: lo que haría falta saber para predecir y puntuar. El agente <em>no</em> lo ve</td><td>Tigre: detrás de la puerta izquierda (TI) o la derecha (TD). Dron: casilla del objetivo</td></tr>
+      <tr><td>\(a\in\mathcal A\)</td><td><strong>Acción</strong> que elige el agente</td><td>Escuchar, abrir izquierda, abrir derecha</td></tr>
+      <tr><td>\(z\in\mathcal Z\)</td><td><strong>Observación</strong>: lo único que le llega del mundo</td><td>«Oye a la izquierda» (OI) u «oye a la derecha» (OD)</td></tr>
+      <tr><td>\(s'\), \(b'\)</td><td>La prima marca el valor en el paso siguiente</td><td>\(s\) antes de actuar, \(s'\) después</td></tr>
+      <tr><td>\(T(s,a,s')\)</td><td>Transición \(P(s'\mid s,a)\): cómo se mueve el mundo</td><td>Escuchar no mueve al tigre</td></tr>
+      <tr><td>\(O(s',a,z)\)</td><td>Observación \(P(z\mid s',a)\): qué ve el sensor desde el estado al que se llega</td><td>Oír el lado correcto: 0,85</td></tr>
+      <tr><td>\(R(s,a)\), \(\gamma\)</td><td>Recompensa y factor de descuento</td><td>Escuchar −1; \(\gamma = 0{,}95\)</td></tr>
+      <tr><td>\(h_t\)</td><td><strong>Historia</strong>: acciones y observaciones hasta \(t\)</td><td>(escuchar, OI, escuchar, OD)</td></tr>
+      <tr><td>\(b(s)\), \(b_0\)</td><td><strong>Belief</strong> \(P(s\mid h)\): una distribución sobre \(\mathcal S\); \(b_0\), la inicial</td><td>Tigre: \(p = b(\text{TI})\), un número. Dron: un mapa que suma 1</td></tr>
+      <tr><td>\(\bar b(s')\), \(b'\) o \(b^{a,z}\)</td><td>Belief <strong>predicho</strong> (tras actuar, antes de observar) y belief <strong>nuevo</strong> tras \(a\) y \(z\)</td><td>Las hojas del belief los calculan</td></tr>
+      <tr><td>\(P(z\mid a,b)\)</td><td>Probabilidad de ver \(z\) con lo que sabes</td><td>Desde \(p = 0{,}5\), oír OI: 0,5</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Avisos: en la hoja de estados de información, \(z_t\) es un resumen de la historia, no una observación; en la parte 2, \(\alpha\) pasa de ser una cota a ser un vector.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · esquema</p>
+  <h2>Qué pasa en cada paso: el estado no se ve, solo llega \(z\)</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 330" role="img" aria-label="Un paso de un POMDP: el estado oculto pasa de s_t a s_t+1 con la acción; el sensor devuelve z_t+1 y el agente actualiza su belief">
+        <defs>
+          <marker id="a7lz" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a7lza" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a7lzt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+        </defs>
+        <rect x="10" y="10" width="620" height="130" rx="6" class="box-soft"/>
+        <text x="24" y="34" class="t-muted t-mono" font-size="13">MUNDO (oculto)</text>
+        <text x="24" y="318" class="t-muted t-mono" font-size="13">AGENTE (lo que ve)</text>
+        <line x1="10" y1="160" x2="630" y2="160" class="ln-dash"/>
+        <rect x="80" y="60" width="110" height="52" rx="6" class="box"/>
+        <text x="135" y="92" text-anchor="middle" class="t-mono" font-size="17">s_t</text>
+        <rect x="430" y="60" width="110" height="52" rx="6" class="box"/>
+        <text x="485" y="92" text-anchor="middle" class="t-mono" font-size="17">s_t+1</text>
+        <path d="M190 86 H426" class="ln" marker-end="url(#a7lz)"/>
+        <text x="308" y="76" text-anchor="middle" class="t-mono t-muted" font-size="13">T(s, a, s′)</text>
+        <rect x="80" y="210" width="110" height="52" rx="6" class="box-accent"/>
+        <text x="135" y="242" text-anchor="middle" class="t-mono" font-size="17">b_t</text>
+        <rect x="480" y="210" width="130" height="52" rx="6" class="box-accent"/>
+        <text x="545" y="242" text-anchor="middle" class="t-mono" font-size="17">b_t+1</text>
+        <path d="M135 210 V180 H300 V92" class="ln-accent" marker-end="url(#a7lza)"/>
+        <text x="200" y="196" class="t-accent t-mono" font-size="14">elige a_t</text>
+        <path d="M485 112 V200" class="ln-time" marker-end="url(#a7lzt)"/>
+        <text x="495" y="150" class="t-time t-mono" font-size="13">O(s′, a, z)</text>
+        <text x="495" y="188" class="t-time t-mono" font-size="14">z_t+1</text>
+        <path d="M190 236 H476" class="ln-accent ln-dash" marker-end="url(#a7lza)"/>
+        <text x="330" y="256" text-anchor="middle" class="t-accent" font-size="14">Bayes con a_t y z_t+1</text>
+        <text x="330" y="288" text-anchor="middle" class="t-muted" font-size="13">el agente nunca recibe s: solo lo que hizo y lo que ve</text>
+      </svg>
+      <figcaption>Un paso. Arriba, lo que ocurre de verdad; abajo, lo que el agente sabe. La acción cruza la línea hacia arriba; la observación, hacia abajo.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Entra</strong> en el agente: la observación \(z_{t+1}\) y lo que él mismo hizo, \(a_t\). <strong>Sale</strong>: la siguiente acción. El estado \(s_t\) no entra nunca.</p>
+      <p><strong>El problema</strong>: elegir cada acción a partir de la historia, \(a_t = \pi(h_t)\), para maximizar</p>
+      \[ \mathbb E\Big[\textstyle\sum_{t\ge 0}\gamma^t R(s_t,a_t)\Big]. \]
+      <p><strong>El tigre</strong>: un tigre detrás de una de dos puertas. Escuchar cuesta 1 y acierta el lado el 85 % de las veces; abrir la puerta buena da +10 y la del tigre, −100.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Modelo · definición</p>
   <h2>Un MDP en el que el estado llega a través de un sensor</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Un POMDP es \((\mathcal S, \mathcal A, \mathcal Z, T, O, R, \gamma, b_0)\):</p>
-      <ul class="small">
+      <p>Un POMDP es \((\mathcal S, \mathcal A, \mathcal Z, T, O, R, \gamma, b_0)\):</p>
+      <ul>
         <li>transición \(T(s,a,s') = P(s'\mid s,a)\) y recompensa \(R(s,a)\), como en un MDP;</li>
         <li>observación \(O(s',a,z) = P(z\mid s',a)\): lo único que ve el agente;</li>
         <li>belief inicial \(b_0\), una distribución sobre \(\mathcal S\).</li>
       </ul>
-      <p class="small">El agente conoce la historia \(h_t = (a_0, z_1, a_1, \dots, z_t)\), no \(s_t\). Una política es una función de la historia, y el número de historias crece como \((|\mathcal A||\mathcal Z|)^t\).</p>
+      <p>El agente conoce la historia \(h_t = (a_0, z_1, a_1, \dots, z_t)\), no \(s_t\). Una política es una función de la historia, y el número de historias crece como \((|\mathcal A||\mathcal Z|)^t\).</p>
       <div class="callout clave"><span class="tag">En robótica</span>\(T\) es tu simulador de dinámica (B2), \(O\) tu modelo de sensores (B3a), \(R\) la tarea. Lo nuevo es que la política no recibe \(s\).</div>
     </div>
     <div class="stack">
@@ -114,19 +181,175 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Modelo · belief</p>
-  <h2>El belief se actualiza con Bayes, como en A4a</h2>
+  <p class="kicker">Modelo · el tigre en números</p>
+  <h2>El tigre escrito como matrices: lo que usan todas las cuentas</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Tras hacer \(a\) y observar \(z\) <a class="cite" data-ref="kaelbling1998"></a>:</p>
-      \[ b'(s') = \frac{O(s',a,z)\sum_{s}T(s,a,s')\,b(s)}{P(z\mid a,b)}. \]
-      <details class="deriv"><summary>Derivación: predicción y corrección</summary>
-        <p class="small">Predicción: \(\bar b(s') = P(s'\mid h, a) = \sum_s T(s,a,s')\,b(s)\). Corrección con Bayes, porque \(z\) solo depende de \(s'\) y \(a\): \(b'(s') = P(s'\mid h,a,z) \propto O(s',a,z)\,\bar b(s')\). El denominador \(P(z\mid a,b) = \sum_{s'}O(s',a,z)\,\bar b(s')\) normaliza y es, además, la probabilidad de cada rama del árbol de decisión.</p>
-      </details>
-      <p class="small">En el tigre, oír «izquierda» \(n\) veces más que «derecha» da \(b = 0{,}85^n/(0{,}85^n + 0{,}15^n)\): 0,85, 0,970, 0,9945…</p>
+      <p>Estados en el orden (TI, TD); observaciones en el orden (OI, OD). En \(T\), fila \(s\) y columna \(s'\); en \(O\), fila \(s'\) y columna \(z\).</p>
+      \[ T(\cdot,\text{esc.},\cdot) = \begin{bmatrix}1 & 0\\ 0 & 1\end{bmatrix},\qquad O(\cdot,\text{esc.},\cdot) = \begin{bmatrix}0{,}85 & 0{,}15\\ 0{,}15 & 0{,}85\end{bmatrix} \]
+      \[ T(\cdot,\text{abrir},\cdot) = O(\cdot,\text{abrir},\cdot) = \begin{bmatrix}\tfrac12 & \tfrac12\\ \tfrac12 & \tfrac12\end{bmatrix} \]
+      <p>Cada fila suma 1: es una distribución sobre lo que viene después.</p>
     </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(R(s,a)\)</th><th>escuchar</th><th>abrir izq.</th><th>abrir der.</th></tr>
+          <tr><td>TI (tigre a la izq.)</td><td class="n">−1</td><td class="n">−100</td><td class="n">+10</td></tr>
+          <tr><td>TD (tigre a la der.)</td><td class="n">−1</td><td class="n">+10</td><td class="n">−100</td></tr>
+        </table>
+      </div>
+      <p><strong>Escuchar</strong> no mueve al tigre (identidad) e informa (0,85 frente a 0,15). <strong>Abrir</strong> reinicia el juego (tigre al azar) y no informa (observación al azar).</p>
+      <div class="callout clave"><span class="tag">Lo que lo hace difícil</span>La única acción que informa no da premio, y las que dan premio no informan. Decidir cuándo dejar de escuchar es todo el problema.</div>
+      <p class="xsmall muted"><code>figuras/ejemplos_a7a.py</code>, ejemplo 1; modelo de Kaelbling et al., §5.1 <a class="cite" data-ref="kaelbling1998"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 1 · el esquema</p>
+  <h2>Actualizar el belief: predecir con \(T\), corregir con \(O\), normalizar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 296" style="max-height:290px" role="img" aria-label="Cuatro cajas con dos barras cada una: belief 0,5 y 0,5; predicción igual; corrección 0,425 y 0,075; belief normalizado 0,85 y 0,15">
+      <defs><marker id="a7ps" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="10" y="20" width="230" height="210" rx="6" class="box"/>
+        <text x="125" y="46" text-anchor="middle" class="t-bold" font-size="16">b: lo que sabías</text>
+        <rect x="60" y="130.0" width="50" height="60.0" class="fill-accent" fill-opacity="0.85"/>
+        <text x="85" y="124.0" text-anchor="middle" class="t-mono" font-size="14">0,5</text>
+        <text x="85" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TI</text>
+        <rect x="140" y="130.0" width="50" height="60.0" class="fill-accent" fill-opacity="0.45"/>
+        <text x="165" y="124.0" text-anchor="middle" class="t-mono" font-size="14">0,5</text>
+        <text x="165" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TD</text>
+        <text x="125" y="256" text-anchor="middle" class="t-mono t-muted" font-size="13">b(s)</text>
+        <rect x="320" y="20" width="230" height="210" rx="6" class="box"/>
+        <text x="435" y="46" text-anchor="middle" class="t-bold" font-size="16"><tspan text-decoration="overline">b</tspan>: predicción</text>
+        <rect x="370" y="130.0" width="50" height="60.0" class="fill-accent" fill-opacity="0.85"/>
+        <text x="395" y="124.0" text-anchor="middle" class="t-mono" font-size="14">0,5</text>
+        <text x="395" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TI</text>
+        <rect x="450" y="130.0" width="50" height="60.0" class="fill-accent" fill-opacity="0.45"/>
+        <text x="475" y="124.0" text-anchor="middle" class="t-mono" font-size="14">0,5</text>
+        <text x="475" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TD</text>
+        <text x="435" y="256" text-anchor="middle" class="t-mono t-muted" font-size="13">Σₛ T(s,a,s′) b(s)</text>
+        <rect x="630" y="20" width="230" height="210" rx="6" class="box-time"/>
+        <text x="745" y="46" text-anchor="middle" class="t-bold" font-size="16">O·<tspan text-decoration="overline">b</tspan>: corrección</text>
+        <rect x="680" y="139.0" width="50" height="51.0" class="fill-accent" fill-opacity="0.85"/>
+        <text x="705" y="133.0" text-anchor="middle" class="t-mono" font-size="14">0,425</text>
+        <text x="705" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TI</text>
+        <rect x="760" y="181.0" width="50" height="9.0" class="fill-accent" fill-opacity="0.45"/>
+        <text x="785" y="175.0" text-anchor="middle" class="t-mono" font-size="14">0,075</text>
+        <text x="785" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TD</text>
+        <text x="745" y="256" text-anchor="middle" class="t-mono t-muted" font-size="13">O(s′,a,z) · <tspan text-decoration="overline">b</tspan>(s′)</text>
+        <rect x="940" y="20" width="230" height="210" rx="6" class="box-accent"/>
+        <text x="1055" y="46" text-anchor="middle" class="t-bold" font-size="16">b′: normalizado</text>
+        <rect x="990" y="88.0" width="50" height="102.0" class="fill-accent" fill-opacity="0.85"/>
+        <text x="1015" y="82.0" text-anchor="middle" class="t-mono" font-size="14">0,85</text>
+        <text x="1015" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TI</text>
+        <rect x="1070" y="172.0" width="50" height="18.0" class="fill-accent" fill-opacity="0.45"/>
+        <text x="1095" y="166.0" text-anchor="middle" class="t-mono" font-size="14">0,15</text>
+        <text x="1095" y="208" text-anchor="middle" class="t-mono t-muted" font-size="13">TD</text>
+        <text x="1055" y="256" text-anchor="middle" class="t-mono t-muted" font-size="13">O·<tspan text-decoration="overline">b</tspan> / P(z | a,b)</text>
+        <path d="M240 125 H316" class="ln" marker-end="url(#a7ps)"/>
+        <text x="278" y="112" text-anchor="middle" class="t-mono" font-size="13">a</text>
+        <path d="M550 125 H626" class="ln" marker-end="url(#a7ps)"/>
+        <text x="588" y="112" text-anchor="middle" class="t-mono" font-size="13">z</text>
+        <path d="M860 125 H936" class="ln" marker-end="url(#a7ps)"/>
+        <text x="898" y="112" text-anchor="middle" class="t-mono" font-size="13">÷ 0,5</text>
+        <text x="745" y="282" text-anchor="middle" class="t-time" font-size="14">suma 0,5, no 1: es P(z | a,b)</text>
+    </svg>
+    <figcaption>El tigre desde \(p = 0{,}5\): \(a\) = escuchar, \(z\) = OI. Barras: probabilidad de TI (oscura) y de TD (clara). <code>ejemplos_a7a.py</code>, ejemplo 2.</figcaption>
+  </figure>
+  <div class="cols c3">
+    <p><strong>Predicción.</strong> El mundo se mueve según \(T\) antes de que mires. En el tigre, escuchar no mueve nada: \(\bar b = b\).</p>
+    <p><strong>Corrección.</strong> Cada estado se pesa por lo probable que hacía lo que has visto: TI explica OI con 0,85; TD, con 0,15.</p>
+    <p><strong>Normalización.</strong> Lo que queda suma \(P(z\mid a,b) = 0{,}5\), no 1. Se divide y sale \(b' = (0{,}85;\ 0{,}15)\).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 2 · la fórmula</p>
+  <h2>El belief se actualiza con Bayes, como en A4a: término a término</h2>
+  <p>Tras hacer \(a\) y observar \(z\) <a class="cite" data-ref="kaelbling1998"></a>, para cada estado de llegada \(s'\):</p>
+  \[ b'(s') = \frac{O(s',a,z)\,\sum_{s}T(s,a,s')\,b(s)}{P(z\mid a,b)} \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:30%">Término</th><th>Qué es</th><th style="width:27%">Tigre: escuchar, OI, desde 0,5</th></tr>
+      <tr><td>\(b(s)\)</td><td>Lo que sabías de cada estado de partida \(s\)</td><td class="n">0,5 · 0,5</td></tr>
+      <tr><td>\(T(s,a,s')\)</td><td>Probabilidad de pasar de \(s\) a \(s'\) haciendo \(a\)</td><td class="n">identidad</td></tr>
+      <tr><td>\(\bar b(s') = \sum_s T(s,a,s')\,b(s)\)</td><td><strong>Predicción</strong>: dónde estarás, antes de mirar. La suma recorre el estado de partida</td><td class="n">0,5 · 0,5</td></tr>
+      <tr><td>\(O(s',a,z)\)</td><td>Lo probable que era ver \(z\) si has llegado a \(s'\): la verosimilitud</td><td class="n">0,85 · 0,15</td></tr>
+      <tr><td>\(O(s',a,z)\,\bar b(s')\)</td><td><strong>Numerador</strong>: la predicción pesada por la observación</td><td class="n">0,425 · 0,075</td></tr>
+      <tr><td>\(P(z\mid a,b) = \sum_{s'}O(s',a,z)\,\bar b(s')\)</td><td><strong>Denominador</strong>: probabilidad de ver \(z\); hace que \(b'\) sume 1</td><td class="n">0,5</td></tr>
+      <tr><td>\(b'(s')\)</td><td>Belief nuevo</td><td class="n">0,85 · 0,15</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 3 · de dónde sale</p>
+  <h2>Derivación: Bayes más las dos hipótesis de Markov del modelo</h2>
+  <p>El belief nuevo es la probabilidad del estado siguiente dada la historia nueva \((h, a, z)\). Bayes da la vuelta a \(z\), y el modelo aporta dos hipótesis: el sensor solo mira el estado al que llegas, y la dinámica solo depende del estado y la acción.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(b'(s') = P(s'\mid h,a,z)\)</td><td>Definición de belief, con la historia ampliada por \(a\) y \(z\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(= P(z\mid s',h,a)\,P(s'\mid h,a)\,/\,P(z\mid h,a)\)</td><td>Regla de Bayes sobre \(z\), con \(h\) y \(a\) fijos</td></tr>
+      <tr><td><strong>3</strong></td><td>\(P(z\mid s',h,a) = O(s',a,z)\)</td><td>El sensor depende solo de \(s'\) y \(a\): conocido \(s'\), el pasado no añade nada</td></tr>
+      <tr><td><strong>4</strong></td><td>\(P(s'\mid h,a) = \sum_s P(s'\mid s,h,a)\,P(s\mid h,a)\)</td><td>Probabilidad total sobre el estado de partida \(s\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(= \sum_s T(s,a,s')\,b(s) = \bar b(s')\)</td><td>Markov: \(s'\) depende solo de \(s\) y \(a\). Y \(P(s\mid h,a) = b(s)\): la acción se elige mirando \(h\), así que no dice nada nuevo de \(s\)</td></tr>
+      <tr><td><strong>6</strong></td><td>\(P(z\mid h,a) = \sum_{s'}O(s',a,z)\,\bar b(s')\)</td><td>Probabilidad total sobre \(s'\) con 3 y 5: es la suma de los numeradores</td></tr>
+      <tr><td><strong>7</strong></td><td>\(b'(s') = O(s',a,z)\,\bar b(s')\,/\,P(z\mid a,b)\)</td><td>Juntar 2, 3, 5 y 6. El denominador depende de la historia solo a través de \(b\)</td></tr>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">Ya lo conoces</span>Es la recursión del filtro de Bayes de A4a, con la acción como entrada de la predicción. Kalman es este mismo paso cuando \(T\) y \(O\) son lineales y gaussianos.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 4 · el tigre a mano</p>
+  <h2>Dos «izquierda» seguidas: de 0,5 a 0,85 y de 0,85 a 0,970</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0;">Primera: escuchar y oír OI desde \(b = (0{,}5;\ 0{,}5)\)</h3>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Paso</th><th>TI</th><th>TD</th></tr>
+          <tr><td>\(\bar b = b\,T\) (escuchar: \(T = I\))</td><td class="n">0,5</td><td class="n">0,5</td></tr>
+          <tr><td>\(O(s',\text{esc.},\text{OI})\)</td><td class="n">0,85</td><td class="n">0,15</td></tr>
+          <tr><td>\(O\cdot\bar b\)</td><td class="n">0,425</td><td class="n">0,075</td></tr>
+          <tr><td>\(P(\text{OI}\mid a,b)\) = suma</td><td class="n" colspan="2">0,425 + 0,075 = 0,5</td></tr>
+          <tr><td>\(b' = O\cdot\bar b\,/\,0{,}5\)</td><td class="n"><strong>0,85</strong></td><td class="n">0,15</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">Segunda: otra vez OI, ahora desde \((0{,}85;\ 0{,}15)\)</h3>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Paso</th><th>TI</th><th>TD</th></tr>
+          <tr><td>\(\bar b = b\)</td><td class="n">0,85</td><td class="n">0,15</td></tr>
+          <tr><td>\(O\cdot\bar b\)</td><td class="n">0,85 · 0,85 = 0,7225</td><td class="n">0,15 · 0,15 = 0,0225</td></tr>
+          <tr><td>\(P(\text{OI}\mid a,b)\)</td><td class="n" colspan="2">0,745</td></tr>
+          <tr><td>\(b'\)</td><td class="n"><strong>0,9698</strong></td><td class="n">0,0302</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <ul>
+    <li>El denominador cambia: tras una OI, esperas oír otra con probabilidad 0,745, no 0,5. El belief también <strong>predice lo que vas a ver</strong>.</li>
+    <li>Con 0,970 se supera el umbral de 0,960 de la política óptima (parte 2): toca abrir la puerta derecha. <span class="small muted"><code>ejemplos_a7a.py</code>, ejemplo 2.</span></li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 5 · una observación contraria</p>
+  <h2>Una «derecha» deshace una «izquierda», y abrir lo borra todo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Desde 0,85, oír OD.</strong> \(O\cdot\bar b = (0{,}15\cdot0{,}85;\ 0{,}85\cdot0{,}15) = (0{,}1275;\ 0{,}1275)\), suma 0,255: \(b' = (0{,}5;\ 0{,}5)\). Vuelta al principio.</p>
+      <p><strong>Desde 0,970, oír OD.</strong> \(O\cdot\bar b = (0{,}1455;\ 0{,}0257)\), suma 0,171: \(b' = 0{,}85\). Se baja un escalón.</p>
+      <p><strong>Abrir desde 0,970.</strong> Aquí trabaja la predicción: \(\bar b = b\,T = (0{,}5;\ 0{,}5)\), y \(O = \tfrac12\) no corrige nada. \(b' = (0{,}5;\ 0{,}5)\).</p>
+    </div>
+    <div class="stack">
     <figure class="fig">
-      <svg viewBox="0 0 560 290" role="img" aria-label="Evolución del belief en el tigre con la secuencia izquierda, derecha, izquierda, izquierda">
+      <svg viewBox="0 0 560 290" style="max-height:200px" role="img" aria-label="Evolución del belief en el tigre con la secuencia izquierda, derecha, izquierda, izquierda">
         <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
         <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
         <text x="52" y="217" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
@@ -147,8 +370,60 @@
         <text x="60" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">inicio</text>
         <text x="506" y="72" text-anchor="end" class="t-time" font-size="12">0,970: abre la derecha</text>
       </svg>
-      <figcaption>\(b(\text{tigre a la izquierda})\) tras cada observación al escuchar. Por encima del umbral, la política óptima abre la puerta derecha. <code>figuras_a7a.py</code>, secciones 1 y 2.</figcaption>
+      <figcaption>\(b(\text{TI})\) con la secuencia OI, OD, OI, OI. Por encima del umbral, la política óptima abre la puerta derecha. <code>figuras_a7a.py</code>, secciones 1 y 2; <code>ejemplos_a7a.py</code>, ejemplos 2 y 3.</figcaption>
     </figure>
+      <div class="aparte"><span class="rotulo">Forma cerrada</span>
+        <p>Al dividir los dos numeradores, el denominador se cancela: el cociente \(b/(1-b)\) se multiplica por \(0{,}85/0{,}15 = 17/3\) con cada OI y se divide con cada OD. Con \(n\) = número de OI menos número de OD:</p>
+        \[ \frac{b_n}{1-b_n} = \Big(\frac{17}{3}\Big)^{n}\ \Longrightarrow\ b_n = \frac{0{,}85^n}{0{,}85^n + 0{,}15^n} \]
+        <p>Con \(n = 0, 1, 2, 3\): 0,5; 0,85; 0,970; 0,9945.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · 6 · el denominador</p>
+  <h2>\(P(z\mid a,b)\) es la probabilidad de cada rama del árbol</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 380" role="img" aria-label="Árbol de dos niveles de observaciones al escuchar desde b igual a 0,5, con la probabilidad de cada rama y el belief de cada nodo">
+        <rect x="10" y="166" width="96" height="48" rx="6" class="box-accent"/>
+        <text x="58" y="195" text-anchor="middle" class="t-mono" font-size="15">0,5</text>
+        <rect x="236" y="76" width="96" height="48" rx="6" class="box-accent"/>
+        <text x="284" y="105" text-anchor="middle" class="t-mono" font-size="15">0,85</text>
+        <rect x="236" y="256" width="96" height="48" rx="6" class="box-accent"/>
+        <text x="284" y="285" text-anchor="middle" class="t-mono" font-size="15">0,15</text>
+        <path d="M106 182 L236 100" class="ln"/>
+        <path d="M106 198 L236 280" class="ln"/>
+        <text x="150" y="122" class="t-mono t-time" font-size="14">OI · 0,5</text>
+        <text x="150" y="272" class="t-mono t-time" font-size="14">OD · 0,5</text>
+        <g font-size="15" class="t-mono">
+          <rect x="452" y="18" width="84" height="40" rx="6" class="box"/><text x="494" y="43" text-anchor="middle">0,970</text>
+          <rect x="452" y="118" width="84" height="40" rx="6" class="box"/><text x="494" y="143" text-anchor="middle">0,5</text>
+          <rect x="452" y="222" width="84" height="40" rx="6" class="box"/><text x="494" y="247" text-anchor="middle">0,5</text>
+          <rect x="452" y="322" width="84" height="40" rx="6" class="box"/><text x="494" y="347" text-anchor="middle">0,030</text>
+        </g>
+        <path d="M332 92 L452 38" class="ln"/><path d="M332 108 L452 138" class="ln"/>
+        <path d="M332 272 L452 242" class="ln"/><path d="M332 288 L452 342" class="ln"/>
+        <g class="t-mono t-time" font-size="13">
+          <text x="350" y="50">OI · 0,745</text><text x="356" y="140">OD · 0,255</text>
+          <text x="356" y="246">OI · 0,255</text><text x="350" y="336">OD · 0,745</text>
+        </g>
+        <g class="t-mono t-tesis" font-size="14">
+          <text x="548" y="43">0,3725</text><text x="548" y="143">0,1275</text>
+          <text x="548" y="247">0,1275</text><text x="548" y="347">0,3725</text>
+        </g>
+        <text x="58" y="240" text-anchor="middle" class="t-muted" font-size="13">b(TI) hoy</text>
+        <text x="594" y="20" text-anchor="middle" class="t-tesis" font-size="12">camino</text>
+      </svg>
+      <figcaption>Escuchar dos veces desde \(p = 0{,}5\). Cajas: \(b(\text{TI})\) en cada nodo. Naranja: \(z\) y su \(P(z\mid a,b)\). Morado: probabilidad del camino entero; las cuatro suman 1. <code>ejemplos_a7a.py</code>, ejemplo 4.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>El numerador es la predicción pesada por el sensor; el denominador, \(P(z\mid a,b) = \sum_{s'}O(s',a,z)\,\bar b(s')\), es <strong>lo que esperas ver</strong>: la probabilidad de la rama \(z\).</p>
+      <p>Un camino tiene la probabilidad del producto de sus ramas: \(0{,}5\cdot0{,}745 = 0{,}3725\).</p>
+      <p>Promediar los hijos con esas probabilidades devuelve al padre: \(0{,}745\cdot0{,}970 + 0{,}255\cdot0{,}5 = 0{,}85\). Lo que sabes hoy es la media de lo que sabrás mañana (se usa en la parte 2).</p>
+      <div class="callout clave"><span class="tag">Para qué sirve</span>Planificar es recorrer este árbol pesando cada rama con \(P(z\mid a,b)\): lo hacen el belief MDP, la iteración de valor y POMCP.</div>
+    </div>
   </div>
 </section>
 
@@ -157,19 +432,61 @@
   <h2>El belief resume toda la historia: un MDP sobre distribuciones</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">«Como el belief es un estadístico suficiente, la política óptima es la solución de un "belief MDP" de espacio continuo» <a class="cite" data-ref="kaelbling1998"></a>:</p>
-      <ul class="small">
-        <li>estados: el símplex \(\Delta(\mathcal S)\), de dimensión \(|\mathcal S|-1\);</li>
-        <li>recompensa: \(\rho(b,a) = \sum_s b(s)R(s,a)\);</li>
-        <li>transición: de \(b\) a \(b^{a,z}\) con probabilidad \(P(z\mid a,b)\), una por observación.</li>
+      <p>«Como el belief es un estadístico suficiente, la política óptima es la solución de un "belief MDP" de espacio continuo» <a class="cite" data-ref="kaelbling1998"></a>:</p>
+      <ul>
+        <li>estados: el símplex \(\Delta(\mathcal S)\), las distribuciones sobre \(\mathcal S\), de dimensión \(|\mathcal S|-1\);</li>
+        <li>recompensa: \(\rho(b,a) = \sum_s b(s)R(s,a)\), la media de \(R\) con el belief;</li>
+        <li>transición: de \(b\) a \(b^{a,z}\) con probabilidad \(P(z\mid a,b)\), una rama por observación.</li>
       </ul>
-      <p class="small">Una política óptima del belief MDP, con el estimador correcto, es óptima para el POMDP (horizonte infinito con descuento) <a class="cite" data-ref="kaelbling1998"></a>, resultado que se remonta a Åström y Sondik <a class="cite" data-ref="astrom1965,sondik1978"></a>.</p>
+      <p>Una política óptima del belief MDP, con el estimador correcto, es óptima para el POMDP (horizonte infinito con descuento) <a class="cite" data-ref="kaelbling1998"></a>, resultado que se remonta a Åström y Sondik <a class="cite" data-ref="astrom1965,sondik1978"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: por qué basta \(b_t\)</summary>
-        <p class="small">La recompensa esperada en \(t\) depende de la historia solo a través de \(P(s_t\mid h_t) = b_t\): \(\mathbb E[R\mid h_t, a_t] = \rho(b_t, a_t)\). La siguiente observación tiene probabilidad \(P(z\mid h_t,a_t) = P(z\mid a_t, b_t)\), y el belief siguiente es \(b_{t+1} = \mathrm{SE}(b_t, a_t, z)\), función solo de \(b_t\), \(a_t\) y \(z\). Así que \((b_t)\) es un proceso de Markov controlado con recompensa propia: un MDP. Todo lo demás de la historia es irrelevante para el futuro.</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 520 210" style="max-height:200px" role="img" aria-label="Tres historias distintas del tigre llevan al mismo belief 0,85; otra lleva a 0,970">
+          <defs><marker id="a7sf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <g class="t-mono" font-size="13">
+            <rect x="8" y="10" width="230" height="34" rx="5" class="box"/><text x="20" y="32">OI</text>
+            <rect x="8" y="54" width="230" height="34" rx="5" class="box"/><text x="20" y="76">OI, OD, OI</text>
+            <rect x="8" y="98" width="230" height="34" rx="5" class="box"/><text x="20" y="120">abrir, OD, OI, OI</text>
+            <rect x="8" y="156" width="230" height="34" rx="5" class="box"/><text x="20" y="178">OI, OI</text>
+          </g>
+          <rect x="380" y="50" width="120" height="44" rx="6" class="box-accent"/>
+          <text x="440" y="78" text-anchor="middle" class="t-mono" font-size="16">b = 0,85</text>
+          <rect x="380" y="150" width="120" height="44" rx="6" class="box-accent"/>
+          <text x="440" y="178" text-anchor="middle" class="t-mono" font-size="16">b = 0,970</text>
+          <path d="M238 27 L376 66" class="ln" marker-end="url(#a7sf)"/>
+          <path d="M238 71 L376 72" class="ln" marker-end="url(#a7sf)"/>
+          <path d="M238 115 L376 80" class="ln" marker-end="url(#a7sf)"/>
+          <path d="M238 173 L376 172" class="ln" marker-end="url(#a7sf)"/>
+        </svg>
+        <figcaption>Historias distintas (las «escuchar» se omiten) con el mismo belief tienen el mismo futuro: para decidir, basta el belief.</figcaption>
+      </figure>
       <div class="callout error"><span class="tag">El precio</span>El belief MDP es continuo aunque el POMDP sea finito: un problema con 870 estados (Tag) tiene beliefs en un espacio de 869 dimensiones <a class="cite" data-ref="pineau2003"></a>. Es la maldición de la dimensión.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · por qué basta el belief</p>
+  <h2>Derivación: el belief cumple lo que un MDP pide a su estado</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un MDP necesita que la recompensa esperada dependa solo del estado y la acción, y que el siguiente estado se prediga solo con ellos. Se comprueba para \(b_t\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbb E[R\mid h_t,a_t] = \sum_s b_t(s)R(s,a_t) = \rho(b_t,a_t)\)</td><td>\(R\) depende de \(s_t\), y lo que \(h_t\) dice de \(s_t\) es \(b_t\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(P(z\mid h_t,a_t) = P(z\mid a_t,b_t)\)</td><td>Paso 6 de la derivación de Bayes: solo entra \(b_t\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(b_{t+1} = \mathrm{SE}(b_t,a_t,z)\)</td><td>La fórmula de Bayes; SE, <em>state estimator</em></td></tr>
+          <tr><td><strong>4</strong></td><td>\(b_{t+1}\) depende de \(h_t\) solo vía \(b_t\)</td><td>2 y 3</td></tr>
+          <tr><td><strong>5</strong></td><td>\((b_t)\) es un MDP con recompensa \(\rho\)</td><td>1 y 4: el resto de la historia sobra</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p>Su ecuación de Bellman es la de un MDP, con la suma sobre estados siguientes cambiada por la suma sobre las ramas del árbol:</p>
+      \[ V(b) = \max_a\Big[\rho(b,a) + \gamma\sum_z P(z\mid a,b)\,V(b^{a,z})\Big] \]
+      <p><strong>En el tigre</strong>, con \(b = 0{,}5\): \(\rho(b,\text{escuchar}) = -1\) y \(\rho(b,\text{abrir}) = \tfrac12(-100) + \tfrac12\,10 = -45\). Con \(b = 0{,}85\), abrir la derecha da \(0{,}85\cdot10 + 0{,}15\cdot(-100) = -6{,}5\). <span class="small muted">Ejemplo 5.</span></p>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Cualquier belief aprendido (el estado oculto de una red recurrente, el latente de un world model) es un intento de comprimir la historia sin perder lo que el belief exacto conserva. La siguiente hoja dice qué hay que conservar.</div>
     </div>
   </div>
@@ -180,25 +497,59 @@
   <h2>Qué debe cumplir un resumen de la historia para poder planificar</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Subramanian et al. definen un <strong>estado de información</strong> \(z_t = \sigma_t(h_t)\) por dos propiedades <a class="cite" data-ref="subramanian2022"></a>:</p>
-      <ul class="small">
+      <p>Subramanian et al. definen un <strong>estado de información</strong> \(z_t = \sigma_t(h_t)\) por dos propiedades <a class="cite" data-ref="subramanian2022"></a>. Aquí \(z_t\) es el resumen y \(\sigma_t\) la función que lo calcula:</p>
+      <ul>
         <li><strong>(P1) suficiente para evaluar:</strong> \(\mathbb E[R_t\mid h_t, a_t] = \mathbb E[R_t\mid z_t, a_t]\);</li>
         <li><strong>(P2) suficiente para predecirse:</strong> \(P(z_{t+1}\mid h_t, a_t) = P(z_{t+1}\mid z_t, a_t)\).</li>
       </ul>
-      <p class="small">Todo estado de información da una descomposición de programación dinámica. El belief es uno; no el único.</p>
-      <p class="small"><strong>Aproximado (AIS):</strong> si la recompensa se predice con error \(\varepsilon_t\) y la distribución del siguiente resumen con error \(\delta_t\) (en una métrica de probabilidades), el valor calculado sobre el resumen se equivoca como mucho en</p>
-      \[ \alpha_t = \varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}, \]
-      <p class="small">y la política voraz pierde como mucho \(2\alpha_t\) <a class="cite" data-ref="subramanian2022"></a>.</p>
+      <p>Todo estado de información da una descomposición de programación dinámica. El belief es uno; no el único.</p>
+      <p><strong>En el tigre</strong>, \(n\) = OI menos OD desde la última apertura también lo es: da \(b_n\) (hoja 14), luego la recompensa esperada, y pasa a \(n\pm1\) con las probabilidades de las ramas.</p>
     </div>
     <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 170" style="max-height:165px" role="img" aria-label="La historia entra en sigma y sale el resumen z_t, que con la acción debe predecir la recompensa y el siguiente resumen">
+          <defs><marker id="a7is" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <rect x="6" y="62" width="120" height="44" rx="6" class="box"/><text x="66" y="90" text-anchor="middle" class="t-mono" font-size="15">h_t</text>
+          <rect x="160" y="62" width="160" height="44" rx="6" class="box-accent"/><text x="240" y="90" text-anchor="middle" class="t-mono" font-size="15">z_t = σ_t(h_t)</text>
+          <path d="M126 84 H156" class="ln" marker-end="url(#a7is)"/>
+          <rect x="370" y="12" width="146" height="44" rx="6" class="box-time"/><text x="443" y="39" text-anchor="middle" font-size="14">(P1) predice R_t</text>
+          <rect x="370" y="112" width="146" height="44" rx="6" class="box-tesis"/><text x="443" y="139" text-anchor="middle" font-size="14">(P2) predice z_t+1</text>
+          <path d="M320 76 L366 40" class="ln" marker-end="url(#a7is)"/>
+          <path d="M320 92 L366 128" class="ln" marker-end="url(#a7is)"/>
+          <text x="330" y="90" class="t-mono t-muted" font-size="13">+ a_t</text>
+        </svg>
+      </figure>
       <div class="callout clave"><span class="tag">Lectura</span>Un resumen aprendido es bueno si predice la recompensa y su propio futuro. No necesita reconstruir la imagen ni el estado: necesita lo que importa para decidir.</div>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>Es la justificación teórica de entrenar el estado de una red recurrente o de un world model con pérdidas de predicción de recompensa y del siguiente latente (A7b, A8a). La cota te dice qué errores acumulan: los de cada paso, sumados a lo largo del horizonte.</div>
-      <p class="xsmall muted">Numeración de definiciones y teoremas de la versión de arXiv (v2); puede diferir en la de JMLR.</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es la justificación teórica de entrenar el estado de una red recurrente o de un world model con pérdidas de predicción de recompensa y del siguiente latente (A7b, A8a). La cota de la hoja siguiente te dice qué errores acumulan: los de cada paso, sumados a lo largo del horizonte.</div>
     </div>
   </div>
 </section>
 
 <!-- ============ PARTE 2 ============ -->
+<section class="slide">
+  <p class="kicker">Modelo · estado de información aproximado</p>
+  <h2>Si el resumen se equivoca un poco: de dónde sale la cota</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Aproximado (AIS):</strong> el resumen predice la recompensa con error \(\varepsilon_t\) y la distribución del siguiente resumen con error \(\delta_t\), medido con una distancia \(d\) entre distribuciones. El valor calculado sobre el resumen se equivoca como mucho en</p>
+      \[ \alpha_t = \varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}, \]
+      <p>y la política voraz sobre el resumen pierde como mucho \(2\alpha_t\) <a class="cite" data-ref="subramanian2022"></a>.</p>
+      <ul>
+        <li>\(\alpha_t\): la cota en el paso \(t\) (aquí no es un vector α); tras el último paso vale 0, y se calcula hacia atrás.</li>
+        <li>\(\hat V_{t+1}\): valor calculado sobre el resumen.</li>
+        <li>\(\rho(\hat V)\): convierte distancia en error de valor, \(|\mathbb E_\mu\hat V - \mathbb E_\nu\hat V| \le \rho(\hat V)\,d(\mu,\nu)\). Con variación total, \(\tfrac12\) del rango de \(\hat V\); con Kantorovich, su constante de Lipschitz.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">De dónde salen los tres términos (esquema)</span>
+        <p>\(Q_t = \mathbb E[R] + \mathbb E[V_{t+1}]\) con la historia; \(\hat Q_t = \hat r + \mathbb E_{\hat P}[\hat V_{t+1}]\) con el resumen. Se suma y resta \(\mathbb E[\hat V_{t+1}]\) bajo la distribución verdadera del siguiente resumen, y la desigualdad triangular deja: error de recompensa (\(\le\varepsilon_t\)) + error de distribución (\(\le\rho\,\delta_t\)) + error que ya había en \(t+1\) (\(\le\alpha_{t+1}\)).</p>
+      </div>
+      <div class="callout realidad"><span class="tag">Con números inventados</span>\(\varepsilon = 0{,}1\), \(\delta = 0{,}05\), \(\rho = 20\), 10 pasos: cada paso suma \(0{,}1 + 1 = 1{,}1\), así que \(\alpha_1 = 11\) y la pérdida es como mucho 22. Con \(\delta = 0{,}01\), \(\alpha_1 = 3\). Aquí manda el término del modelo. <span class="small">Ejemplo 6.</span></div>
+      <p class="xsmall muted">Teorema 9 de la versión de arXiv (v2); la numeración puede diferir en la de JMLR.</p>
+    </div>
+  </div>
+</section>
+
 <section class="slide divider" data-section="Valor y complejidad">
   <p class="num">Parte 2</p>
   <h2>La forma del valor y el precio de calcularlo</h2>
@@ -206,24 +557,159 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Valor, planes condicionales y vectores α</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:21%">Símbolo</th><th>Qué es</th><th style="width:34%">En el tigre</th></tr>
+      <tr><td>\(V_t(b)\)</td><td>Valor óptimo desde el belief \(b\) con \(t\) pasos por delante (horizonte \(t\)); \(V_0 = 0\)</td><td>\(V_1(0{,}5) = -1\): escuchar y se acabó</td></tr>
+      <tr><td>plan condicional</td><td>Qué hacer ahora y, ante cada observación, qué plan seguir después (un árbol de política)</td><td>«Escucha; si OI abre la derecha; si OD, la izquierda»</td></tr>
+      <tr><td>\(\alpha\), \(\alpha(s)\)</td><td><strong>Vector α</strong>: valor de un plan si el estado fuera \(s\). Un número por estado</td><td>«Abrir la derecha»: \(\alpha = (10, -100)\)</td></tr>
+      <tr><td>\(\alpha\cdot b = \sum_s\alpha(s)\,b(s)\)</td><td>Valor del plan con el belief \(b\): la media de \(\alpha\) con los pesos \(b\). Lineal en \(b\)</td><td>\(10p - 100(1-p)\): una recta en \(p\)</td></tr>
+      <tr><td>\(\Gamma_t\)</td><td>Conjunto de vectores α del horizonte \(t\)</td><td>\(|\Gamma_1| = 3\), uno por acción</td></tr>
+      <tr><td>\(\rho(b,a)\), \(b^{a,z}\), \(P(z\mid a,b)\)</td><td>Recompensa media, belief tras \(a\) y \(z\), probabilidad de la rama (parte 1)</td><td>\(\rho(0{,}5,\text{abrir}) = -45\)</td></tr>
+      <tr><td>\(g^{a,z}_\alpha(s)\)</td><td>Valor de seguir el plan α tras ver \(z\), ya pesado por la probabilidad de \(z\). Se define en la derivación</td><td>\(g^{\text{esc},\text{OI}}_{\text{abrir der.}} = (8{,}5;\ {-}15)\)</td></tr>
+      <tr><td>PWLC</td><td><em>Piecewise linear and convex</em>: lineal a trozos y convexa</td><td>El máximo de varias rectas</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: en la hoja del AIS, \(\alpha_t\) era una cota de error; desde aquí \(\alpha\) es un vector.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · un plan es una recta</p>
+  <h2>Con un paso por delante: tres planes, tres rectas y su máximo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Valores de escuchar, abrir izquierda y abrir derecha en función de p, y su envolvente superior V1">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="52" y="34">10</text><text x="52" y="54">0</text><text x="52" y="154">−50</text><text x="52" y="254">−100</text>
+        </g>
+        <path d="M60.0,52.0 L520.0,52.0" class="ln" stroke-width="1.4"/>
+        <path d="M60.0,30.0 L520.0,250.0" class="ln-time" stroke-width="1.4"/>
+        <path d="M60.0,250.0 L520.0,30.0" class="ln-tesis" stroke-width="1.4"/>
+        <path d="M60.0,30.0 L106.0,52.0 L474.0,52.0 L520.0,30.0" class="ln-accent" stroke-width="4" fill="none" opacity="0.8"/>
+        <line x1="106" y1="30" x2="106" y2="250" class="ln-dash"/>
+        <line x1="474" y1="30" x2="474" y2="250" class="ln-dash"/>
+        <text x="290" y="72" text-anchor="middle" class="t-muted" font-size="13">escuchar: α = (−1, −1)</text>
+        <text x="380" y="214" class="t-time" font-size="13">abrir izq.: (−100, 10)</text>
+        <text x="96" y="214" class="t-tesis" font-size="13">abrir der.: (10, −100)</text>
+        <text x="290" y="44" text-anchor="middle" class="t-accent t-bold" font-size="13">V₁ = máximo</text>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="268">0</text><text x="106" y="268">0,1</text><text x="290" y="268">0,5</text><text x="474" y="268">0,9</text><text x="520" y="268">1</text>
+        </g>
+        <text x="290" y="290" text-anchor="middle" class="t-muted" font-size="13">p = b(TI)</text>
+      </svg>
+      <figcaption>Vectores \(\alpha = (\alpha(\text{TI}), \alpha(\text{TD}))\) de los tres planes de un paso y su máximo, \(V_1\). <code>ejemplos_a7a.py</code>, ejemplo 7.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Un plan de un paso es una acción. «Abrir la derecha» da +10 si el tigre está a la izquierda y −100 si está a la derecha: su vector es \(\alpha = (10, -100)\).</p>
+      <p>Con belief \(p\), su valor esperado es la media \(\alpha\cdot b = 10\,p - 100\,(1-p)\): <strong>una recta en \(p\)</strong>.</p>
+      <p>\(V_1(p)\) es el máximo de las tres rectas. Escuchar empata con abrir la derecha cuando \(-1 = -100 + 110\,p\), es decir, en \(p = 0{,}9\).</p>
+      <div class="callout clave"><span class="tag">Ya es PWLC</span>Un máximo de rectas es lineal a trozos y convexo. La parte 2 demuestra que con más pasos sigue siéndolo: solo hay más rectas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Valor · PWLC</p>
   <h2>El valor es el máximo de funciones lineales del belief</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con horizonte finito, el valor óptimo es lineal a trozos y convexo en el belief <a class="cite" data-ref="smallwood1973"></a>:</p>
+      <p>Con horizonte finito, el valor óptimo es lineal a trozos y convexo en el belief <a class="cite" data-ref="smallwood1973"></a>:</p>
       \[ V_t(b) = \max_{\alpha\in\Gamma_t}\ \sum_s \alpha(s)\,b(s). \]
-      <p class="small">Cada vector \(\alpha\) es el valor de un plan condicional (un árbol de política: qué hacer ante cada observación) empezando en cada estado; \(V_t\) es su envolvente superior <a class="cite" data-ref="kaelbling1998"></a>. En horizonte infinito sigue siendo convexo, pero puede tener infinitas caras <a class="cite" data-ref="kaelbling1998"></a>.</p>
-      <div class="callout clave"><span class="tag">Iteración de valor exacta</span>De \(\Gamma_{t-1}\) a \(\Gamma_t\): para cada acción, elegir un vector de \(\Gamma_{t-1}\) por observación. Son \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\) candidatos, y después hay que podar los que no están en la envolvente.</div>
+      <p>Cada vector \(\alpha\) es el valor de un plan condicional (un árbol de política: qué hacer ante cada observación) empezando en cada estado; \(V_t\) es su envolvente superior <a class="cite" data-ref="kaelbling1998"></a>. En horizonte infinito sigue siendo convexo, pero puede tener infinitas caras <a class="cite" data-ref="kaelbling1998"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: por inducción</summary>
-        <p class="small">\(V_0 = 0\) es lineal. Si \(V_{t-1}(b) = \max_\alpha \alpha\cdot b\), entonces</p>
-        \[ V_t(b) = \max_a\Big[\rho(b,a) + \gamma\sum_z P(z\mid a,b)\,V_{t-1}(b^{a,z})\Big]. \]
-        <p class="small">El factor \(P(z\mid a,b)\) cancela el denominador de Bayes:</p>
-        \[ P(z\mid a,b)\,\alpha\cdot b^{a,z} = \sum_{s}b(s)\underbrace{\textstyle\sum_{s'}T(s,a,s')\,O(s',a,z)\,\alpha(s')}_{g^{a,z}_\alpha(s)}, \]
-        <p class="small">lineal en \(b\). Un máximo de sumas de máximos de funciones lineales es un máximo de funciones lineales: \(\alpha_{\text{nuevo}} = R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\).</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 520 190" style="max-height:180px" role="img" aria-label="Plan condicional de dos pasos: escuchar; si OI abrir la derecha; si OD abrir la izquierda">
+          <rect x="190" y="10" width="140" height="40" rx="6" class="box-accent"/>
+          <text x="260" y="36" text-anchor="middle" font-size="15">escuchar</text>
+          <rect x="40" y="120" width="160" height="40" rx="6" class="box"/>
+          <text x="120" y="146" text-anchor="middle" font-size="15">abrir der.</text>
+          <rect x="320" y="120" width="160" height="40" rx="6" class="box"/>
+          <text x="400" y="146" text-anchor="middle" font-size="15">abrir izq.</text>
+          <path d="M240 50 L130 120" class="ln"/><path d="M280 50 L390 120" class="ln"/>
+          <text x="150" y="88" class="t-mono t-time" font-size="13">si OI</text>
+          <text x="340" y="88" class="t-mono t-time" font-size="13">si OD</text>
+          <text x="260" y="184" text-anchor="middle" class="t-mono t-muted" font-size="13">α = (−7,175; −7,175)</text>
+        </svg>
+        <figcaption>Un plan de horizonte 2 y su vector α (se calcula dos hojas más adelante).</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Iteración de valor exacta</span>De \(\Gamma_{t-1}\) a \(\Gamma_t\): para cada acción, elegir un vector de \(\Gamma_{t-1}\) por observación. Son \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\) candidatos, y después hay que podar los que no están en la envolvente.</div>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · derivación · 1</p>
+  <h2>La clave: \(P(z\mid a,b)\) cancela el denominador de Bayes</h2>
+  <p>Por inducción: si \(V_{t-1}\) es un máximo de rectas, la ecuación de Bellman del belief MDP (parte 1) lo convierte en otro máximo de rectas.</p>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(V_0(b) = 0\)</td><td>Sin pasos por delante no hay recompensa: lineal</td></tr>
+        <tr><td><strong>2</strong></td><td>\(V_{t-1}(b) = \max_{\alpha\in\Gamma_{t-1}}\alpha\cdot b\)</td><td>Hipótesis de inducción</td></tr>
+        <tr><td><strong>3</strong></td><td>\(V_t(b) = \max_a\big[\rho(b,a) + \gamma\sum_z P(z\mid a,b)\,V_{t-1}(b^{a,z})\big]\)</td><td>Bellman del belief MDP</td></tr>
+        <tr><td><strong>4</strong></td><td>\(P(z\mid a,b)\,\alpha\cdot b^{a,z} = \sum_{s'}\alpha(s')\,O(s',a,z)\sum_s T(s,a,s')\,b(s)\)</td><td>Sustituir \(b^{a,z}\) por la fórmula de Bayes: \(P(z\mid a,b)\) se va con su denominador</td></tr>
+        <tr><td><strong>5</strong></td><td>\(= \sum_s b(s)\,g^{a,z}_\alpha(s) = g^{a,z}_\alpha\cdot b\)</td><td>Cambiar el orden de las sumas: queda lineal en \(b\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>con el vector</p>
+      \[ g^{a,z}_\alpha(s) = \sum_{s'}T(s,a,s')\,O(s',a,z)\,\alpha(s'): \]
+      <p>desde \(s\), lo que vale seguir el plan α tras ver \(z\), multiplicado por la probabilidad de ver \(z\).</p>
+      <div class="callout realidad"><span class="tag">En el tigre</span>Escuchar (\(T = I\)), oír OI y luego abrir la derecha: \(g(s) = O(s,\text{OI})\,\alpha(s)\), es decir \((0{,}85\cdot10;\ 0{,}15\cdot(-100)) = (8{,}5;\ {-}15)\). Ejemplo 8.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · derivación · 2</p>
+  <h2>Una suma de máximos es un máximo: de ahí salen los candidatos</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>6</strong></td><td>\(P(z\mid a,b)\,V_{t-1}(b^{a,z}) = \max_{\alpha\in\Gamma_{t-1}} g^{a,z}_\alpha\cdot b\)</td><td>Pasos 2 y 5; \(P(z\mid a,b)\ge0\) entra en el máximo</td></tr>
+          <tr><td><strong>7</strong></td><td>\(\sum_z\max_{\alpha}g^{a,z}_\alpha\cdot b = \max_{(\alpha_z)_z}\big(\sum_z g^{a,z}_{\alpha_z}\big)\cdot b\)</td><td>Los máximos son independientes: se elige un \(\alpha_z\) por observación</td></tr>
+          <tr><td><strong>8</strong></td><td>\(V_t(b) = \max_a\max_{(\alpha_z)}\big(R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\big)\cdot b\)</td><td>\(\rho(b,a) = R(\cdot,a)\cdot b\) también es lineal</td></tr>
+        </table>
+      </div>
+      <p>Queda un máximo de rectas, con un vector por acción y por elección \((\alpha_z)_z\):</p>
+      \[ \alpha_{\text{nuevo}} = R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z},\qquad |\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\ \text{candidatos.} \]
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">El plan de la hoja PWLC, a mano</span>
+        <p>Escuchar; tras OI, \(g = (8{,}5;\ {-}15)\) (abrir der.); tras OD, \(g = (-15;\ 8{,}5)\) (abrir izq.). Suma: \((-6{,}5;\ {-}6{,}5)\).</p>
+        <p>Con \(R(\cdot,\text{esc.}) = (-1,-1)\) y \(\gamma = 0{,}95\):</p>
+        \[ \alpha = (-1,-1) + 0{,}95\,(-6{,}5;\ {-}6{,}5) \]
+        \[ = (-7{,}175;\ {-}7{,}175). \]
+        <p>Desde \(\Gamma_1\) (3 vectores) salen \(3\cdot3^2 = 27\) candidatos. Ejemplo 8.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · podar</p>
+  <h2>De 27 candidatos a 5: los planes que alguna vez son los mejores</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th>Plan de horizonte 2</th><th>\(\alpha = (\alpha(\text{TI}), \alpha(\text{TD}))\)</th><th>Es el máximo para \(p\) en</th></tr>
+      <tr><td>abrir izq. (luego escuchar)</td><td class="n">(−100,95; 9,05)</td><td class="n">[0; 0,024]</td></tr>
+      <tr><td>escuchar; si OI escuchar, si OD abrir izq.</td><td class="n">(−16,06; 6,93)</td><td class="n">[0,024; 0,386]</td></tr>
+      <tr><td>escuchar; escuchar pase lo que pase</td><td class="n">(−1,95; −1,95)</td><td class="n">[0,386; 0,614]</td></tr>
+      <tr><td>escuchar; si OI abrir der., si OD escuchar</td><td class="n">(6,93; −16,06)</td><td class="n">[0,614; 0,976]</td></tr>
+      <tr><td>abrir der. (luego escuchar)</td><td class="n">(9,05; −100,95)</td><td class="n">[0,976; 1]</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <p>El plan de la hoja anterior, \((-7{,}175;\ {-}7{,}175)\), no sobrevive: en \(p = 0{,}5\) vale −7,175 y escuchar dos veces vale −1,95. Tras una sola OI, \(b = 0{,}85\), y abrir ahí aún da −6,5 de media: con un solo paso de información no compensa.</p>
+    <p><strong>Podar</strong> es quedarse con los vectores que son el máximo en algún \(p\). Los otros 22 nunca lo son. \(V_2(0{,}5) = -1{,}95\), como en la figura de la hoja siguiente. <span class="small muted"><code>ejemplos_a7a.py</code>, ejemplo 8.</span></p>
   </div>
 </section>
 
@@ -280,7 +766,7 @@
           </tbody>
         </table>
       </div>
-      <ul class="small">
+      <ul>
         <li>Sin poda, los candidatos crecen como \(3\,|\Gamma_{t-1}|^2\); la poda es la que lo hace tratable.</li>
         <li>Durante la convergencia aparecen muchas caras casi iguales; en el límite quedan 9.</li>
         <li>\(V_1\): escuchar vale −1 en \(p = 0{,}5\) y abrir a ciegas, \((-100+10)/2 = -45\) <a class="cite" data-ref="kaelbling1998"></a>.</li>
@@ -294,20 +780,66 @@
   <h2>La convexidad es el valor de la información</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">En \(p = 0{,}5\), escuchar vale 19,37 y abrir, −26,60, aunque escuchar cuesta −1 y no acerca a ninguna puerta. Escuchar paga porque <em>mueve el belief</em> hacia zonas donde el valor es alto.</p>
-      <ul class="small">
+      <p>En \(p = 0{,}5\), escuchar vale 19,37 y abrir, −26,60, aunque escuchar cuesta −1 y no acerca a ninguna puerta. Escuchar paga porque <em>mueve el belief</em> hacia zonas donde el valor es alto.</p>
+      <ul>
         <li>La política óptima escucha hasta que \(b\) pasa de 0,960 (o baja de 0,040). Con 0,85 de acierto eso es oír un lado <strong>dos veces más</strong> que el otro: la regla «sigue escuchando hasta oír al tigre dos veces más en un lado que en el otro» de Kaelbling et al. <a class="cite" data-ref="kaelbling1998"></a>.</li>
         <li>Con \(\gamma = 0{,}95\), jugar indefinidamente desde la ignorancia total vale 19,37. Saber dónde está el tigre en esta ronda vale 28,40: 10 por abrir bien más 0,95 × 19,37 de seguir jugando.</li>
       </ul>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: la información no empeora en esperanza</summary>
-        <p class="small">Si una acción no cambia el estado, como escuchar, el belief es una martingala: \(\sum_z P(z\mid a,b)\,b^{a,z} = b\). Como \(V\) es convexa, por Jensen:</p>
-        \[ \sum_z P(z\mid a,b)\,V(b^{a,z}) \ \ge\ V\Big(\sum_z P(z\mid a,b)\,b^{a,z}\Big) = V(b). \]
-        <p class="small">Observar antes de decidir nunca vale menos en esperanza; la diferencia es el valor de la información, que hay que comparar con lo que cuesta obtenerla (aquí, −1 y un paso de descuento).</p>
-      </details>
+      <div class="callout realidad"><span class="tag">Las cuentas, en p = 0,5</span>
+        <p>Escuchar lleva a 0,85 o a 0,15 con probabilidad ½, y \(V(0{,}85) = V(0{,}15) = 21{,}44\):</p>
+        <p>escuchar: \(-1 + 0{,}95\cdot21{,}44 = 19{,}37\);</p>
+        <p>abrir: \(-45 + 0{,}95\cdot19{,}37 = -26{,}60\) (tras abrir, se vuelve a 0,5).</p>
+        <p class="small">Ejemplo 9. La hoja siguiente explica por qué la media tras escuchar, 21,44, no puede quedar por debajo de \(V(0{,}5)\).</p>
+      </div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>«Dónde mirar» es exactamente esta cuenta: el valor esperado tras la observación menos el actual, frente al coste de ir a mirar. Un POMDP lo hace solo; una heurística de entropía (parte 4) lo aproxima.</div>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · la información no empeora</p>
+  <h2>Derivación: martingala más Jensen</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\sum_z P(z\mid a,b)\,b^{a,z}(s') = \sum_z O(s',a,z)\,\bar b(s') = \bar b(s')\)</td><td>\(P(z\mid a,b)\,b^{a,z}\) es el numerador de Bayes, y \(\sum_z O(s',a,z) = 1\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= b(s')\) si \(a\) no cambia el estado</td><td>Escuchar: \(T = I\), \(\bar b = b\). El belief es una <strong>martingala</strong></td></tr>
+          <tr><td><strong>3</strong></td><td>\(\sum_z P(z\mid a,b)\,V(b^{a,z}) \ge V\big(\sum_z P(z\mid a,b)\,b^{a,z}\big)\)</td><td>Jensen: \(V\) es convexa y los pesos suman 1</td></tr>
+          <tr><td><strong>4</strong></td><td>\(= V(b)\)</td><td>Paso 2</td></tr>
+        </table>
+      </div>
+      <p>Observar antes de decidir nunca vale menos en esperanza; la diferencia es el valor de la información, que hay que comparar con lo que cuesta obtenerla (aquí, −1 y un paso de descuento).</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Valor óptimo del tigre, la cuerda entre p 0,15 y 0,85 y el salto de 2,07 sobre V(0,5)">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="52" y="254">15</text><text x="52" y="180.7">20</text><text x="52" y="107.3">25</text><text x="52" y="34">30</text>
+        </g>
+        <path d="M60.0,53.4 L62.3,61.5 L64.6,69.6 L66.9,77.6 L69.2,85.7 L71.5,93.8 L73.8,101.8 L76.1,109.9 L78.4,117.5 L80.7,119.3 L83.0,121.1 L85.3,122.9 L87.6,124.7 L89.9,126.4 L92.2,128.2 L94.5,130.0 L96.8,131.8 L99.1,133.6 L101.4,135.4 L103.7,137.1 L106.0,138.9 L108.3,140.7 L110.6,142.5 L112.9,144.3 L115.2,146.0 L117.5,147.5 L119.8,149.1 L122.1,150.7 L124.4,152.3 L126.7,153.9 L129.0,155.5 L131.3,157.1 L133.6,158.7 L135.9,160.3 L138.2,161.9 L140.5,163.4 L142.8,165.0 L145.1,166.6 L147.4,168.1 L149.7,168.5 L152.0,168.9 L154.3,169.2 L156.6,169.6 L158.9,170.0 L161.2,170.3 L163.5,170.7 L165.8,171.1 L168.1,171.5 L170.4,171.8 L172.7,172.2 L175.0,172.6 L177.3,172.9 L179.6,173.3 L181.9,173.7 L184.2,174.0 L186.5,174.4 L188.8,174.8 L191.1,175.2 L193.4,175.5 L195.7,175.9 L198.0,176.3 L200.3,176.6 L202.6,177.0 L204.9,177.4 L207.2,177.7 L209.5,178.1 L211.8,178.5 L214.1,178.9 L216.4,179.2 L218.7,179.6 L221.0,180.0 L223.3,180.3 L225.6,180.7 L227.9,181.1 L230.2,181.4 L232.5,181.8 L234.8,182.2 L237.1,182.6 L239.4,182.9 L241.7,183.3 L244.0,183.7 L246.3,184.0 L248.6,184.4 L250.9,184.8 L253.2,185.2 L255.5,185.5 L257.8,185.9 L260.1,185.9 L262.4,185.9 L264.7,185.9 L267.0,185.9 L269.3,185.9 L271.6,185.9 L273.9,185.9 L276.2,185.9 L278.5,185.9 L280.8,185.9 L283.1,185.9 L285.4,185.9 L287.7,185.9 L290.0,185.9 L292.3,185.9 L294.6,185.9 L296.9,185.9 L299.2,185.9 L301.5,185.9 L303.8,185.9 L306.1,185.9 L308.4,185.9 L310.7,185.9 L313.0,185.9 L315.3,185.9 L317.6,185.9 L319.9,185.9 L322.2,185.9 L324.5,185.5 L326.8,185.2 L329.1,184.8 L331.4,184.4 L333.7,184.0 L336.0,183.7 L338.3,183.3 L340.6,182.9 L342.9,182.6 L345.2,182.2 L347.5,181.8 L349.8,181.4 L352.1,181.1 L354.4,180.7 L356.7,180.3 L359.0,180.0 L361.3,179.6 L363.6,179.2 L365.9,178.9 L368.2,178.5 L370.5,178.1 L372.8,177.7 L375.1,177.4 L377.4,177.0 L379.7,176.6 L382.0,176.3 L384.3,175.9 L386.6,175.5 L388.9,175.2 L391.2,174.8 L393.5,174.4 L395.8,174.0 L398.1,173.7 L400.4,173.3 L402.7,172.9 L405.0,172.6 L407.3,172.2 L409.6,171.8 L411.9,171.5 L414.2,171.1 L416.5,170.7 L418.8,170.3 L421.1,170.0 L423.4,169.6 L425.7,169.2 L428.0,168.9 L430.3,168.5 L432.6,168.1 L434.9,166.6 L437.2,165.0 L439.5,163.4 L441.8,161.9 L444.1,160.3 L446.4,158.7 L448.7,157.1 L451.0,155.5 L453.3,153.9 L455.6,152.3 L457.9,150.7 L460.2,149.1 L462.5,147.5 L464.8,146.0 L467.1,144.3 L469.4,142.5 L471.7,140.7 L474.0,138.9 L476.3,137.1 L478.6,135.4 L480.9,133.6 L483.2,131.8 L485.5,130.0 L487.8,128.2 L490.1,126.4 L492.4,124.7 L494.7,122.9 L497.0,121.1 L499.3,119.3 L501.6,117.5 L503.9,109.9 L506.2,101.8 L508.5,93.8 L510.8,85.7 L513.1,77.6 L515.4,69.6 L517.7,61.5 L520.0,53.4" class="ln-accent" stroke-width="2.6" fill="none"/>
+        <line x1="129" y1="155.5" x2="451" y2="155.5" class="ln-time ln-dash"/>
+        <circle cx="129" cy="155.5" r="5" class="fill-time"/>
+        <circle cx="451" cy="155.5" r="5" class="fill-time"/>
+        <circle cx="290" cy="155.5" r="5" class="fill-time"/>
+        <circle cx="290" cy="185.9" r="5" class="fill-accent"/>
+        <line x1="290" y1="160" x2="290" y2="181" class="ln-tesis" stroke-width="2.4"/>
+        <text x="300" y="176" class="t-tesis t-bold" font-size="13">+2,07</text>
+        <text x="290" y="144" text-anchor="middle" class="t-time" font-size="12">media tras escuchar: 21,44</text>
+        <text x="290" y="208" text-anchor="middle" class="t-accent" font-size="12">V(0,5) = 19,37</text>
+        <text x="129" y="140" text-anchor="middle" class="t-mono t-time" font-size="12">V(0,15)</text>
+        <text x="451" y="140" text-anchor="middle" class="t-mono t-time" font-size="12">V(0,85)</text>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="268">0</text><text x="129" y="268">0,15</text><text x="290" y="268">0,5</text><text x="451" y="268">0,85</text><text x="520" y="268">1</text>
+        </g>
+        <text x="290" y="290" text-anchor="middle" class="t-muted" font-size="13">p = b(TI)</text>
+      </svg>
+      <figcaption>\(V_\infty\) del tigre (9 vectores α). Escuchar desde 0,5 lleva a 0,85 o a 0,15 con probabilidad ½: la media de sus valores queda 2,07 por encima de \(V(0{,}5)\). <code>ejemplos_a7a.py</code>, ejemplo 9.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -316,7 +848,7 @@
   <h2>Por qué no se puede resolver en general</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Complejidad:</strong> los MDP son P-completos; «la versión con estados parcialmente observados es PSPACE-completa», y «lo más probable es que no se pueda implementar en línea de forma eficiente una política óptima, aunque se permita una cantidad arbitraria de precomputación» <a class="cite" data-ref="papadimitriou1987"></a>. (El resultado se suele citar para horizonte finito; el resumen no lo dice explícitamente.)</li>
         <li><strong>Indecidibilidad:</strong> decidir si existe una política que supere un umbral en un POMDP de horizonte infinito (con descuento, total, medio o evitando estados) es indecidible, también en sus versiones aproximadas <a class="cite" data-ref="madani1999"></a>.</li>
       </ul>
@@ -338,6 +870,48 @@
 </section>
 
 <!-- ============ PARTE 3 ============ -->
+<section class="slide">
+  <p class="kicker">Valor · las dos maldiciones, con números</p>
+  <h2>Dónde vive el belief y cuánto crece todo con el horizonte</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" style="max-height:215px" role="img" aria-label="Símplex de dos estados, un segmento, y de tres estados, un triángulo, con un belief marcado en cada uno">
+          <line x1="20" y1="170" x2="200" y2="170" class="ln-accent" stroke-width="3"/>
+          <circle cx="20" cy="170" r="4" class="fill-ink3"/><circle cx="200" cy="170" r="4" class="fill-ink3"/>
+          <circle cx="173" cy="170" r="6" class="fill-time"/>
+          <text x="20" y="194" text-anchor="middle" class="t-mono t-muted" font-size="13">TD</text>
+          <text x="200" y="194" text-anchor="middle" class="t-mono t-muted" font-size="13">TI</text>
+          <text x="173" y="158" text-anchor="middle" class="t-mono t-time" font-size="12">p = 0,85</text>
+          <text x="110" y="222" text-anchor="middle" class="t-muted" font-size="13">2 estados: un segmento (1 dim.)</text>
+          <path d="M300 180 L480 180 L390 24 Z" class="box-accent"/>
+          <circle cx="372" cy="149" r="6" class="fill-time"/>
+          <text x="390" y="16" text-anchor="middle" class="t-mono t-muted" font-size="13">s₃</text>
+          <text x="294" y="196" text-anchor="middle" class="t-mono t-muted" font-size="13">s₁</text>
+          <text x="486" y="196" text-anchor="middle" class="t-mono t-muted" font-size="13">s₂</text>
+          <text x="372" y="171" text-anchor="middle" class="t-mono t-time" font-size="12">(0,5; 0,3; 0,2)</text>
+          <text x="390" y="222" text-anchor="middle" class="t-muted" font-size="13">3 estados: un triángulo (2 dim.)</text>
+        </svg>
+        <figcaption>El símplex \(\Delta(\mathcal S)\): cada punto es un belief; los vértices, la certeza. Con \(|\mathcal S|\) estados tiene \(|\mathcal S|-1\) dimensiones: 35 en la rejilla de 6 × 6 de la parte 5, 869 en Tag.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>Historias \((|\mathcal A||\mathcal Z|)^t\)</th><th>Vectores si nunca se poda</th><th>Con poda</th></tr>
+          <tr><td>1</td><td class="n">6</td><td class="n">3</td><td class="n">3</td></tr>
+          <tr><td>2</td><td class="n">36</td><td class="n">27</td><td class="n">5</td></tr>
+          <tr><td>3</td><td class="n">216</td><td class="n">2187</td><td class="n">9</td></tr>
+          <tr><td>4</td><td class="n">1296</td><td class="n">1,4 · 10⁷</td><td class="n">7</td></tr>
+          <tr><td>5</td><td class="n">7776</td><td class="n">6,2 · 10¹⁴</td><td class="n">13</td></tr>
+        </table>
+      </div>
+      <p>Tigre: \(|\mathcal A| = 3\), \(|\mathcal Z| = 2\). Las historias se multiplican por 6 en cada paso. Sin podar, \(|\Gamma_t| = 3\,|\Gamma_{t-1}|^2\) <strong>se eleva al cuadrado</strong> en cada paso: crece doblemente exponencial.</p>
+      <p class="xsmall muted"><code>ejemplos_a7a.py</code>, ejemplo 10; la columna con poda, de <code>figuras_a7a.py</code>, sección 1.</p>
+    </div>
+  </div>
+</section>
+
 <section class="slide divider" data-section="Planificación offline">
   <p class="num">Parte 3</p>
   <h2>Aproximar el valor: de QMDP a los métodos por puntos</h2>
@@ -345,13 +919,32 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Lo que aparece en QMDP y en los métodos por puntos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Símbolo</th><th>Qué es</th><th style="width:33%">Ejemplo</th></tr>
+      <tr><td>\(V_{\text{MDP}}(s)\), \(Q_{\text{MDP}}(s,a)\)</td><td>Valor y valor-acción del MDP en el que el estado <strong>sí</strong> se ve</td><td>Pasillo, en la bifurcación sabiendo el lado: \(V_{\text{MDP}} = 10\)</td></tr>
+      <tr><td>\(\sum_s b(s)\,Q_{\text{MDP}}(s,a)\)</td><td>Valor que QMDP da a la acción \(a\) con el belief \(b\)</td><td>Quedarse en la bifurcación con \(b = \tfrac12\): 9,40</td></tr>
+      <tr><td>\(V^*\)</td><td>Valor óptimo del POMDP en horizonte infinito</td><td>Tigre: \(V^*(0{,}5) = 19{,}37\)</td></tr>
+      <tr><td>\(B\)</td><td>Conjunto finito de beliefs en los que se calcula el valor; uno o más vectores α por punto</td><td>\(p\in\{0;\ 0{,}25;\ 0{,}5;\ 0{,}75;\ 1\}\)</td></tr>
+      <tr><td>\(V^B\)</td><td>Valor que calcula un método por puntos con el conjunto \(B\)</td><td></td></tr>
+      <tr><td>\(\alpha_{a,z}\)</td><td>En un punto \(b\), el mejor vector de \(\Gamma\) para la acción \(a\) y la observación \(z\)</td><td>Tras OI, en \(b = 0{,}5\): escuchar</td></tr>
+      <tr><td>\(\varepsilon_B\)</td><td>Densidad de \(B\): la mayor distancia (norma 1) de un belief al punto de \(B\) más cercano</td><td>Con los 5 puntos de arriba: 0,25</td></tr>
+      <tr><td>\(R_{\max}\), \(R_{\min}\)</td><td>Mayor y menor recompensa de un paso</td><td>Tigre: 10 y −100</td></tr>
+      <tr><td>\(\|\cdot\|_\infty\)</td><td>La mayor diferencia, sobre todos los beliefs</td><td></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Offline · QMDP</p>
   <h2>QMDP supone que mañana lo sabrá todo, así que nunca va a mirar</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">QMDP resuelve el MDP con estado visible y actúa con \(\arg\max_a\sum_s b(s)\,Q_{\text{MDP}}(s,a)\). Es barato y a menudo razonable, pero da valor cero a la información: supone que tras un paso la incertidumbre desaparece.</p>
+      <p>QMDP resuelve el MDP con estado visible y actúa con \(\arg\max_a\sum_s b(s)\,Q_{\text{MDP}}(s,a)\). Es barato y a menudo razonable, pero da valor cero a la información: supone que tras un paso la incertidumbre desaparece.</p>
       <figure class="fig">
-        <svg viewBox="0 0 560 200" role="img" aria-label="Pasillo con un cartel: trayectorias de la política exacta y de QMDP">
+        <svg viewBox="0 0 560 200" style="max-height:150px" role="img" aria-label="Pasillo con un cartel: trayectorias de la política exacta y de QMDP">
           <rect x="40" y="80" width="480" height="44" rx="4" class="box box-soft"/>
           <line x1="100" y1="80" x2="100" y2="124" class="ln-rule"/>
           <line x1="160" y1="80" x2="160" y2="124" class="ln-rule"/>
@@ -373,6 +966,7 @@
         </svg>
         <figcaption>Pasillo de 8 casillas, premio de +10 a un lado de la bifurcación y −20 al otro, −0,1 por paso, \(\gamma = 0{,}95\). El cartel dice el lado. <code>figuras_a7a.py</code>, sección 3.</figcaption>
       </figure>
+      <div class="callout error"><span class="tag">Cuándo falla QMDP</span>Cuando hay que hacer algo solo para informarse (mirar, ir a un punto de vista, esperar a medir). En robótica: localizarse antes de entrar en un pasillo estrecho, o subir para ver mejor antes de buscar.</div>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -386,11 +980,41 @@
           </tbody>
         </table>
       </div>
-      <ul class="small">
+      <ul>
         <li>En la bifurcación con \(b = \tfrac12\), QMDP valora quedarse en 9,40 y elegir en −5: cree que en el siguiente paso sabrá el lado. Nunca lo sabe, y repite.</li>
         <li>La política exacta da tres pasos en dirección contraria al premio. Solo un planificador que razona sobre el belief hace eso.</li>
       </ul>
-      <div class="callout error"><span class="tag">Cuándo falla QMDP</span>Cuando hay que hacer algo solo para informarse (mirar, ir a un punto de vista, esperar a medir). En robótica: localizarse antes de entrar en un pasillo estrecho, o subir para ver mejor antes de buscar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Offline · QMDP a mano</p>
+  <h2>Las cuentas del pasillo: por qué QMDP espera para siempre</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>QMDP usa</p>
+      \[ Q_{\text{MDP}}(s,a) = R(s,a) + \gamma\sum_{s'}T(s,a,s')\,V_{\text{MDP}}(s'): \]
+      <p>desde el paso siguiente, el agente imaginado <strong>ya conoce el estado</strong>. Luego promedia con el belief.</p>
+      <p><strong>En la bifurcación, con \(b = \tfrac12\):</strong></p>
+      <ul>
+        <li>elegir un lado: \(\tfrac12\cdot10 + \tfrac12\cdot(-20) = -5\);</li>
+        <li>moverse a la derecha (choca y se queda): \(-0{,}1 + 0{,}95\cdot10 = 9{,}40\), porque en cada estado imaginado ya sabe el lado y \(V_{\text{MDP}}(\text{bifurcación}) = 10\).</li>
+      </ul>
+      <p>\(9{,}40 > -5\): espera. Al paso siguiente nada ha cambiado (en la bifurcación no hay cartel), el belief sigue en \(\tfrac12\) y la cuenta se repite.</p>
+    </div>
+    <div class="stack">
+      <p>Coste de \(n\) pasos a −0,1: \(-0{,}1\sum_{k=0}^{n-1}0{,}95^k = -0{,}1\,\dfrac{1-0{,}95^n}{0{,}05}\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Desde la salida</th><th>Cuenta</th><th>Valor</th></tr>
+          <tr><td>Conociendo el lado</td><td>4 pasos y +10: \(-0{,}371 + 0{,}8145\cdot10\)</td><td class="n">7,77</td></tr>
+          <tr><td>Exacta: cartel primero</td><td>3 + 7 pasos y +10: \(-0{,}803 + 0{,}5987\cdot10\)</td><td class="n">5,19</td></tr>
+          <tr><td>Ir directo y adivinar</td><td>4 pasos y −5: \(-0{,}371 + 0{,}8145\cdot(-5)\)</td><td class="n">−4,44</td></tr>
+          <tr><td>QMDP</td><td>60 pasos sin elegir: \(-0{,}1\,(1-0{,}95^{60})/0{,}05\)</td><td class="n">−1,91</td></tr>
+        </table>
+      </div>
+      <p>Sin límite de pasos, QMDP tendería a \(-0{,}1/0{,}05 = -2\). Es optimista: valora cada acción como si después le regalaran el estado, así que pagar por informarse nunca le compensa. <span class="small muted">Ejemplo 11.</span></p>
     </div>
   </div>
 </section>
@@ -414,10 +1038,6 @@
       <p class="xsmall muted">Cifras de cada artículo, en sus máquinas de entonces.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: la actualización en un punto y su cota</summary>
-        <p class="small">En un belief \(b\), en lugar de enumerar \(|\mathcal A||\Gamma|^{|\mathcal Z|}\) combinaciones, se elige para cada \(a\) y \(z\) el vector que maximiza en \(b\): \(\alpha_{a,z} = \arg\max_{\alpha\in\Gamma}\ g^{a,z}_\alpha\cdot b\), y se queda el mejor \(R(\cdot,a) + \gamma\sum_z\alpha_{a,z}\). Coste lineal en \(|\Gamma|\) por punto. Si los puntos cubren el símplex con densidad \(\varepsilon_B\), el error es como mucho <a class="cite" data-ref="pineau2003"></a></p>
-        \[ \|V^B - V^*\|_\infty \le \frac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2}. \]
-      </details>
       <div class="callout clave"><span class="tag">La idea de SARSOP</span>El conjunto de beliefs alcanzables desde \(b_0\) es mucho menor que el símplex, y el alcanzable con acciones óptimas, menor aún <a class="cite" data-ref="kurniawati2008"></a>. Una rejilla de 10 × 10 da un belief de 100 dimensiones, pero un robot que empieza en un sitio conocido solo visita una parte pequeña.</div>
       <div class="callout realidad"><span class="tag">Hoy</span>Siguen siendo la referencia para POMDP discretos de tamaño medio (miles de estados); el ecosistema de POMDPs.jl reúne varios resolvedores del estado del arte <a class="cite" data-ref="egorov2017"></a>.</div>
     </div>
@@ -425,6 +1045,64 @@
 </section>
 
 <!-- ============ PARTE 4 ============ -->
+<section class="slide">
+  <p class="kicker">Offline · el backup en un punto</p>
+  <h2>PBVI: en cada belief de \(B\), el mejor vector por observación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En lugar de todas las combinaciones (\(|\mathcal A||\Gamma|^{|\mathcal Z|}\)), en un punto \(b\in B\) y para cada \(a\) y \(z\) se elige el vector que más vale allí:</p>
+      \[ \alpha_{a,z} = \arg\max_{\alpha\in\Gamma}\ g^{a,z}_\alpha\cdot b,\qquad \alpha_a = R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_{a,z}}, \]
+      <p>y en \(b\) se queda el \(\alpha_a\) de mayor \(\alpha_a\cdot b\). Coste: \(|\mathcal A||\mathcal Z||\Gamma|\) productos por punto, lineal en \(|\Gamma|\) <a class="cite" data-ref="pineau2003"></a>.</p>
+      <p>Es la derivación de la parte 2 sin el paso 7: no se forman todas las elecciones \((\alpha_z)_z\), solo la mejor para este \(b\).</p>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">El tigre en \(b = 0{,}5\), desde \(\Gamma_1\)</h3>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(g^{\text{esc},z}_\alpha\cdot b\)</th><th>α = escuchar</th><th>abrir izq.</th><th>abrir der.</th></tr>
+          <tr><td>\(z\) = OI</td><td class="n"><strong>−0,50</strong></td><td class="n">−41,75</td><td class="n">−3,25</td></tr>
+          <tr><td>\(z\) = OD</td><td class="n"><strong>−0,50</strong></td><td class="n">−3,25</td><td class="n">−41,75</td></tr>
+        </table>
+      </div>
+      <p>Tras cualquier observación conviene seguir escuchando: \(\alpha_{\text{esc}} = (-1,-1) + 0{,}95\,(-1,-1) = (-1{,}95;\ {-}1{,}95)\). Para abrir sale \((-100{,}95;\ 9{,}05)\), que vale −45,95 en 0,5.</p>
+      <div class="callout realidad"><span class="tag">Comprobación</span>Gana escuchar con −1,95, el valor exacto \(V_2(0{,}5)\), con 18 productos en lugar de 27 candidatos. Ejemplo 12.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Offline · la cota de PBVI</p>
+  <h2>Cuánto se pierde por calcular solo en unos puntos</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ \|V^B - V^*\|_\infty \le \frac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2} \]
+      \[ \varepsilon_B = \max_{b'\in\Delta}\ \min_{b\in B}\ \|b-b'\|_1 \]
+      <p class="small muted">Pineau et al. <a class="cite" data-ref="pineau2003"></a>: \(\varepsilon_B\) es «la mayor distancia de cualquier belief legal a \(B\)».</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:34%">Factor</th><th>De dónde sale</th></tr>
+          <tr><td>\(\varepsilon_B\)</td><td>Un belief lejos de todos los puntos usa un vector α calculado en otro sitio</td></tr>
+          <tr><td>\((R_{\max}-R_{\min})/(1-\gamma)\)</td><td>Lo que puede cambiar el valor: el error que introduce un backup por esa distancia es como mucho este factor por \(\varepsilon_B\) (lema 1)</td></tr>
+          <tr><td>otro \(1/(1-\gamma)\)</td><td>El error de cada backup se arrastra a los siguientes: \(\sum_t\gamma^t = 1/(1-\gamma)\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 110" style="max-height:110px" role="img" aria-label="Cinco puntos de belief equiespaciados en p y el belief más alejado, a 0,125">
+          <line x1="20" y1="50" x2="500" y2="50" class="ln" stroke-width="2"/>
+          <g class="fill-accent"><circle cx="20" cy="50" r="7"/><circle cx="140" cy="50" r="7"/><circle cx="260" cy="50" r="7"/><circle cx="380" cy="50" r="7"/><circle cx="500" cy="50" r="7"/></g>
+          <path d="M80 34 L80 66" class="ln-time" stroke-width="2.4"/>
+          <text x="80" y="24" text-anchor="middle" class="t-time t-mono" font-size="12">p = 0,125</text>
+          <g class="t-mono t-faint" font-size="12" text-anchor="middle"><text x="20" y="88">0</text><text x="140" y="88">0,25</text><text x="260" y="88">0,5</text><text x="380" y="88">0,75</text><text x="500" y="88">1</text></g>
+        </svg>
+        <figcaption>\(B\) con 5 puntos en el tigre. El belief más lejano está a 0,125 en \(p\); en norma 1 sobre \((p, 1-p)\) la distancia se duplica: \(\varepsilon_B = 0{,}25\). Ejemplo 20.</figcaption>
+      </figure>
+      <div class="callout error"><span class="tag">Muy holgada</span>En el tigre, \(110/0{,}05^2 = 44\,000\): con \(\varepsilon_B = 0{,}25\), la cota es 11&nbsp;000, y con 0,01, 440, cuando todo \(V^*\) está entre 19,37 y 28,40. Sirve para saber que el error baja con \(\varepsilon_B\), no para estimarlo. Ejemplos 12 y 20.</div>
+    </div>
+  </div>
+</section>
+
 <section class="slide divider" data-section="Planificación en línea">
   <p class="num">Parte 4</p>
   <h2>Planificar en línea desde el belief actual</h2>
@@ -432,14 +1110,123 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Lo que aparece en los árboles de búsqueda</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:34%">En el tigre</th></tr>
+      <tr><td>\(h\), \(ha\), \(haz\)</td><td>Nodos del árbol: una historia; la historia más una acción; y al añadir la observación, otra historia</td><td>\(h\) = (), \(ha\) = (escuchar), \(haz\) = (escuchar, OI)</td></tr>
+      <tr><td>\(N(h)\), \(N(ha)\)</td><td>Veces que una simulación ha pasado por el nodo</td><td>Tras 50 simulaciones, \(N(\text{escuchar}) = 32\)</td></tr>
+      <tr><td>\(Q(ha)\)</td><td>Media de los retornos simulados tras hacer \(a\) en \(h\)</td><td></td></tr>
+      <tr><td>\(c\)</td><td>Constante de exploración de UCB (en la parte 5, \(c\) será una casilla)</td><td>110 en nuestro script, el rango de \(R\)</td></tr>
+      <tr><td>\(B(h)\)</td><td>Partículas del nodo: estados muestreados que forman su belief</td><td>1000 partículas, la mitad TI</td></tr>
+      <tr><td>\((s',z,r)\sim G(s,a)\)</td><td>Simulador de caja negra: devuelve estado siguiente, observación y recompensa</td><td>Escuchar: \(s' = s\), \(z\) correcta con 0,85</td></tr>
+      <tr><td>despliegue</td><td>Política barata que sigue desde una hoja nueva para estimar su valor (<em>rollout</em>)</td><td>Al azar, o escuchar siempre</td></tr>
+      <tr><td>\(N\), \(K\), \(D\)</td><td>Simulaciones por paso (POMCP); escenarios y profundidad (DESPOT)</td><td>\(N = 4\) a 1024</td></tr>
+      <tr><td>\(O(z\mid s,a,s')\)</td><td>Verosimilitud de la observación en POMCPOW: el \(O(s',a,z)\) de la parte 1 escrito con la transición entera</td><td></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · el esquema de POMCP</p>
+  <h2>Un árbol de historias: qué hace cada simulación</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 400" role="img" aria-label="Árbol de búsqueda de POMCP con nodos de historia, nodos de acción, ramas de observación y una simulación resaltada que termina en un despliegue">
+        <defs><marker id="a7ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <circle cx="320" cy="40" r="24" class="box-accent"/>
+        <text x="320" y="46" text-anchor="middle" class="t-mono t-bold" font-size="15">h</text>
+        <text x="290" y="38" text-anchor="end" class="t-muted" font-size="12">belief actual:</text>
+        <text x="288" y="52" text-anchor="end" class="t-muted" font-size="12">partículas B(h)</text>
+        <rect x="80" y="110" width="110" height="36" rx="4" class="box"/><text x="135" y="133" text-anchor="middle" font-size="13">escuchar</text>
+        <rect x="265" y="110" width="110" height="36" rx="4" class="box"/><text x="320" y="133" text-anchor="middle" font-size="13">abrir izq.</text>
+        <rect x="450" y="110" width="110" height="36" rx="4" class="box"/><text x="505" y="133" text-anchor="middle" font-size="13">abrir der.</text>
+        <path d="M300 56 L150 110" class="ln-accent" stroke-width="3"/>
+        <path d="M320 64 L320 110" class="ln"/><path d="M340 56 L490 110" class="ln"/>
+        <text x="76" y="133" text-anchor="end" class="t-mono t-muted" font-size="11">N(ha), Q(ha)</text>
+        <circle cx="70" cy="220" r="20" class="box-accent"/><text x="70" y="225" text-anchor="middle" class="t-mono" font-size="12">haz</text>
+        <circle cx="200" cy="220" r="20" class="box"/><text x="200" y="225" text-anchor="middle" class="t-mono" font-size="12">haz</text>
+        <path d="M120 146 L80 201" class="ln-accent" stroke-width="3"/><path d="M150 146 L190 201" class="ln"/>
+        <text x="74" y="180" text-anchor="end" class="t-mono t-time" font-size="13">OI</text>
+        <text x="184" y="180" class="t-mono t-time" font-size="13">OD</text>
+        <rect x="10" y="270" width="80" height="32" rx="4" class="box"/><text x="50" y="291" text-anchor="middle" font-size="12">escuchar</text>
+        <rect x="104" y="270" width="80" height="32" rx="4" class="box"/><text x="144" y="291" text-anchor="middle" font-size="12">abrir der.</text>
+        <path d="M62 240 L50 270" class="ln"/><path d="M80 240 L140 270" class="ln-accent" stroke-width="3"/>
+        <circle cx="144" cy="352" r="16" fill="none" class="ln-accent ln-dash" stroke-width="2"/>
+        <path d="M144 302 L144 336" class="ln-accent ln-dash" stroke-width="2"/>
+        <path d="M160 352 q12 -14 24 0 t24 0 t24 0 t24 0 t24 0" class="ln-time" stroke-width="2" marker-end="url(#a7ar)"/>
+        <text x="300" y="356" class="t-time" font-size="13">despliegue → retorno</text>
+        <path d="M600 352 C 640 280, 640 60, 372 34" class="ln-tesis ln-dash" stroke-width="1.6" fill="none"/>
+        <text x="604" y="230" text-anchor="end" class="t-tesis" font-size="12">sube el retorno</text>
+        <g font-size="12" class="t-mono t-bold">
+          <circle cx="352" cy="22" r="10" class="fill-time"/><text x="352" y="26" text-anchor="middle" style="fill:var(--sheet)">1</text>
+          <circle cx="210" cy="84" r="10" class="fill-time"/><text x="210" y="88" text-anchor="middle" style="fill:var(--sheet)">2</text>
+          <circle cx="118" cy="352" r="10" class="fill-time"/><text x="118" y="356" text-anchor="middle" style="fill:var(--sheet)">3</text>
+          <circle cx="618" cy="300" r="10" class="fill-time"/><text x="618" y="304" text-anchor="middle" style="fill:var(--sheet)">4</text>
+        </g>
+      </svg>
+      <figcaption>Círculos: nodos de historia, con sus partículas. Cajas: nodos de acción. En azul, una simulación; el círculo discontinuo es el nodo que crea.</figcaption>
+    </figure>
+    <div class="stack">
+      <ol>
+        <li><strong>Muestrear</strong> un estado \(s\) de las partículas de la raíz: un mundo posible.</li>
+        <li><strong>Bajar</strong>: en cada historia, elegir la acción con UCB; el simulador da \((s',z,r)\), y \(z\) dice por qué rama seguir.</li>
+        <li><strong>Expandir</strong>: al llegar a una historia nueva, crear su nodo y estimar su valor con un despliegue.</li>
+        <li><strong>Propagar</strong>: subir el retorno descontado, sumar 1 a cada \(N\) y actualizar cada media \(Q(ha)\).</li>
+      </ol>
+      <p>Tras \(N\) simulaciones se ejecuta la acción de la raíz con mayor \(Q\). En el tigre, tras 50 desde \(b = \tfrac12\): escuchar 32 visitas, abrir izq. 6, abrir der. 11. <span class="small muted">Ejemplo 15.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · UCB y partículas</p>
+  <h2>Cómo elige la acción al bajar y cómo actualiza el belief</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ a = \arg\max_a\Big[\,Q(ha) + c\,\sqrt{\frac{\ln N(h)}{N(ha)}}\,\Big] \]
+      <p>\(Q(ha)\) explota lo que ya parece bueno; el bono explora: crece si la acción se ha probado poco frente al total. \(c\) debe estar en la escala de las recompensas.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(N(h) = 20\)</th><th>\(N(ha)\)</th><th>\(Q\)</th><th>Bono, \(c = 110\)</th><th>UCB</th></tr>
+          <tr><td>escuchar</td><td class="n">12</td><td class="n">5,0</td><td class="n">55,0</td><td class="n">60,0</td></tr>
+          <tr><td>abrir izq.</td><td class="n">4</td><td class="n">−30,0</td><td class="n">95,2</td><td class="n"><strong>65,2</strong></td></tr>
+          <tr><td>abrir der.</td><td class="n">4</td><td class="n">−35,0</td><td class="n">95,2</td><td class="n">60,2</td></tr>
+        </table>
+      </div>
+      <p>Con \(c = 110\) vuelve a probar abrir la izquierda; con \(c = 1\) escucharía siempre (5,5 frente a −29,1), y un mal comienzo de una acción no se corregiría nunca. <span class="small muted">Ejemplo 13.</span></p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 220" style="max-height:210px" role="img" aria-label="Partículas del tigre: 1000, luego 499 y luego 365 tras dos observaciones a la izquierda">
+          <g font-size="13">
+            <rect x="110" y="20" width="199.2" height="34" class="fill-accent" fill-opacity="0.85"/><rect x="309.2" y="20" width="200.8" height="34" class="fill-accent" fill-opacity="0.3"/>
+            <text x="6" y="42" class="t-mono">1000</text><text x="210" y="42" text-anchor="middle" style="fill:var(--sheet)">TI 498</text><text x="410" y="42" text-anchor="middle">TD 502</text>
+            <rect x="110" y="90" width="168.4" height="34" class="fill-accent" fill-opacity="0.85"/><rect x="278.4" y="90" width="31.2" height="34" class="fill-accent" fill-opacity="0.3"/>
+            <text x="6" y="112" class="t-mono">499</text><text x="194" y="112" text-anchor="middle" style="fill:var(--sheet)">TI 421</text><text x="316" y="112">78</text>
+            <rect x="110" y="160" width="140.8" height="34" class="fill-accent" fill-opacity="0.85"/><rect x="250.8" y="160" width="5.2" height="34" class="fill-accent" fill-opacity="0.3"/>
+            <text x="6" y="182" class="t-mono">365</text><text x="180" y="182" text-anchor="middle" style="fill:var(--sheet)">TI 352</text><text x="262" y="182">13</text>
+          </g>
+          <text x="330" y="80" class="t-time" font-size="12">OI: quedan las que la predicen</text>
+          <text x="330" y="150" class="t-time" font-size="12">otra OI</text>
+          <text x="350" y="112" class="t-mono t-muted" font-size="12">84,4 % TI (exacto 85)</text>
+          <text x="350" y="182" class="t-mono t-muted" font-size="12">96,4 % TI (exacto 97,0)</text>
+        </svg>
+        <figcaption>Belief por rechazo: cada partícula simula su observación y solo siguen las que coinciden con la real. Ejemplos 14 y 21.</figcaption>
+      </figure>
+      <p>El belief de POMCP es un filtro de partículas sin pesos (A4a) actualizado por rechazo. Cada observación descarta partículas: en un problema largo se agotan y se «reinvigoran» añadiendo nuevas <a class="cite" data-ref="silver2010"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">En línea · POMCP</p>
   <h2>POMCP: árbol de Monte Carlo sobre historias y belief de partículas</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li>Combina «una actualización de Monte Carlo del belief con una búsqueda en árbol de Monte Carlo desde el belief actual»; solo necesita un simulador de caja negra <a class="cite" data-ref="silver2010"></a>.</li>
-        <li>Cada simulación muestrea un estado de las partículas, baja por el árbol de historias eligiendo acciones con UCB y termina con una política de despliegue.</li>
-        <li>El belief es un filtro de partículas sin pesos actualizado por rechazo; con el tiempo pueden agotarse, y se «reinvigoran».</li>
+      <ul>
+        <li>Combina «una actualización de Monte Carlo del belief con una búsqueda en árbol de Monte Carlo desde el belief actual»; solo necesita un simulador de caja negra <a class="cite" data-ref="silver2010"></a>. El mecanismo, en las dos hojas anteriores.</li>
         <li>Converge en probabilidad al valor óptimo, con sesgo \(O(\log N/N)\) en \(N\) simulaciones <a class="cite" data-ref="silver2010"></a>.</li>
         <li>Battleship (~10¹⁸ estados) y PocMan (~10⁵⁶). En RockSample(11, 11), con 4 s en línea igualó a SARSOP con 1000 s de cálculo previo <a class="cite" data-ref="silver2010"></a>.</li>
       </ul>
@@ -491,37 +1278,89 @@
         </table>
       </div>
       <p class="xsmall muted">Retorno descontado en 10 pasos, media ± error típico (300 episodios; 150 con 1024 simulaciones). Política exacta: 40 000 episodios. <code>figuras_a7a.py</code>, sección 4.</p>
+      <div class="callout clave"><span class="tag">Por qué el despliegue importa</span>Con despliegues aleatorios, abrir una puerta al azar cuesta −45 de media: las hojas nuevas del árbol se valoran muy mal y la búsqueda necesita muchas simulaciones para descubrir que escuchar compensa. Una política de despliegue con conocimiento del problema (o una red aprendida, como en BetaZero <a class="cite" data-ref="moss2024"></a>) lo acelera.</div>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Despliegue aleatorio:</strong> cada hoja nueva se valora con una partida al azar en la que se abren puertas sin saber (−45 de media por puerta). Valores muy negativos y muy ruidosos: con 1024 simulaciones, −40,4, lejos del 6,16 de la política exacta.</li>
         <li><strong>Despliegue que solo escucha:</strong> con 64 simulaciones el retorno ya ronda −0,3, y con 1024 llega a 2,32: mejor, pero todavía por debajo.</li>
         <li><strong>Nuestra explicación:</strong> ese despliegue valora seguir jugando tras abrir como escuchar para siempre (unos −20), cuando su valor real es de unos +19. Abrir parece peor de lo que es y la búsqueda tiende a esperar una observación más; con más simulaciones el árbol se hace más profundo y lo corrige.</li>
       </ul>
-      <div class="callout clave"><span class="tag">Por qué el despliegue importa</span>Con despliegues aleatorios, abrir una puerta al azar cuesta −45 de media: las hojas nuevas del árbol se valoran muy mal y la búsqueda necesita muchas simulaciones para descubrir que escuchar compensa. Una política de despliegue con conocimiento del problema (o una red aprendida, como en BetaZero <a class="cite" data-ref="moss2024"></a>) lo acelera.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">En línea · DESPOT y POMCPOW</p>
-  <h2>Escenarios para no sobreajustar, y pesos para observaciones continuas</h2>
+  <p class="kicker">En línea · DESPOT</p>
+  <h2>Escenarios fijos para no sobreajustar y para podar el árbol</h2>
   <div class="cols">
     <div class="stack">
-      <h3 style="margin:0;">DESPOT</h3>
-      <ul class="small">
+      <ul>
         <li>Fija \(K\) escenarios (secuencias de números aleatorios que determinan el simulador) y evalúa todas las políticas sobre los mismos: el árbol pasa de \(O(|\mathcal A|^D|\mathcal Z|^D)\) a \(O(|\mathcal A|^D K)\) nodos <a class="cite" data-ref="ye2017"></a>.</li>
         <li>Regulariza por el tamaño de la política para no sobreajustar a los escenarios; cota de arrepentimiento que depende del tamaño de la política óptima. A menudo bastan \(K = 500\).</li>
         <li>Control en tiempo real de un carrito de golf autónomo entre peatones <a class="cite" data-ref="ye2017"></a>.</li>
       </ul>
+      <div class="callout realidad"><span class="tag">Tamaños</span>Con \(|\mathcal A| = 4\), \(|\mathcal Z| = 10\), \(D = 5\), \(K = 500\): \(1{,}0\cdot10^8\) nodos frente a \(5{,}1\cdot10^5\), 200 veces menos. En el tigre (\(|\mathcal Z| = 2\), \(D = 10\)): \(6{,}0\cdot10^7\) frente a \(3{,}0\cdot10^7\). Gana cuando hay muchas observaciones. Ejemplo 16.</div>
     </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Árbol de DESPOT con tres escenarios: cada nodo de acción tiene como mucho tres hijos de observación">
+        <circle cx="260" cy="36" r="22" class="box-accent"/><text x="260" y="41" text-anchor="middle" class="t-mono" font-size="14">b</text>
+        <rect x="90" y="100" width="90" height="34" rx="4" class="box"/><text x="135" y="122" text-anchor="middle" class="t-mono" font-size="13">a₁</text>
+        <rect x="340" y="100" width="90" height="34" rx="4" class="box"/><text x="385" y="122" text-anchor="middle" class="t-mono" font-size="13">a₂</text>
+        <path d="M244 52 L150 100" class="ln"/><path d="M276 52 L370 100" class="ln"/>
+        <circle cx="80" cy="210" r="22" class="box"/><text x="80" y="215" text-anchor="middle" class="t-mono" font-size="12">z₁</text>
+        <circle cx="190" cy="210" r="22" class="box"/><text x="190" y="215" text-anchor="middle" class="t-mono" font-size="12">z₇</text>
+        <circle cx="330" cy="210" r="22" class="box"/><text x="330" y="215" text-anchor="middle" class="t-mono" font-size="12">z₄</text>
+        <circle cx="440" cy="210" r="22" class="box"/><text x="440" y="215" text-anchor="middle" class="t-mono" font-size="12">z₂</text>
+        <path d="M120 134 L88 189" class="ln"/><path d="M150 134 L182 189" class="ln"/>
+        <path d="M370 134 L338 189" class="ln"/><path d="M400 134 L432 189" class="ln"/>
+        <g><circle cx="68" cy="250" r="6" class="fill-accent"/><circle cx="92" cy="250" r="6" class="fill-time"/>
+           <circle cx="190" cy="250" r="6" class="fill-tesis"/>
+           <circle cx="330" cy="250" r="6" class="fill-accent"/>
+           <circle cx="428" cy="250" r="6" class="fill-time"/><circle cx="452" cy="250" r="6" class="fill-tesis"/></g>
+        <text x="260" y="286" text-anchor="middle" class="t-muted" font-size="13">puntos: los escenarios φ₁, φ₂, φ₃ que llegan a cada nodo</text>
+      </svg>
+      <figcaption>Con \(K = 3\) escenarios, cada acción tiene a lo sumo 3 hijos, por grande que sea \(\mathcal Z\): el simulador, con el escenario fijado, da siempre la misma observación.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · POMCPOW</p>
+  <h2>Con observaciones continuas, el árbol no crece en profundidad</h2>
+  <div class="cols">
     <div class="stack">
-      <h3 style="margin:0;">POMCPOW</h3>
-      <ul class="small">
+      <ul>
         <li>Con observaciones continuas, cada simulación crea un nodo de observación nuevo: el árbol no profundiza y los beliefs de los nodos «colapsan a una sola partícula» <a class="cite" data-ref="sunberg2018"></a>.</li>
         <li>Resultado: el planificador converge a la política de QMDP, sea cual sea el tiempo de cálculo (teorema de la versión larga en arXiv).</li>
         <li>Solución: ensanchamiento progresivo en acciones y observaciones, y beliefs de partículas <em>con pesos</em> \(O(z\mid s,a,s')\) en cada nodo.</li>
       </ul>
+      <div class="aparte"><span class="rotulo">Ensanchamiento progresivo, con números</span>
+        <p>Solo se añade un hijo nuevo si hay pocos frente a las visitas; si no, se vuelve a uno existente. Con la regla «hijos ≤ \(N^{1/2}\)», 1000 visitas dan 32 hijos de unas 31 visitas, en lugar de 1000 hijos de una. Ejemplo 17 (regla elegida por nosotros).</p>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 210" style="max-height:200px" role="img" aria-label="Izquierda: un nodo de acción con ocho hijos de una partícula. Derecha: con ensanchamiento, tres hijos con varias partículas de distinto peso">
+          <rect x="85" y="12" width="80" height="30" rx="4" class="box"/><text x="125" y="32" text-anchor="middle" class="t-mono" font-size="13">ha</text>
+          <g class="ln">
+            <path d="M125 42 L20 130"/><path d="M125 42 L50 130"/><path d="M125 42 L80 130"/><path d="M125 42 L110 130"/>
+            <path d="M125 42 L140 130"/><path d="M125 42 L170 130"/><path d="M125 42 L200 130"/><path d="M125 42 L230 130"/>
+          </g>
+          <g class="fill-time"><circle cx="20" cy="136" r="5"/><circle cx="50" cy="136" r="5"/><circle cx="80" cy="136" r="5"/><circle cx="110" cy="136" r="5"/><circle cx="140" cy="136" r="5"/><circle cx="170" cy="136" r="5"/><circle cx="200" cy="136" r="5"/><circle cx="230" cy="136" r="5"/></g>
+          <text x="125" y="176" text-anchor="middle" class="t-muted" font-size="13">POMCP: un hijo por simulación,</text>
+          <text x="125" y="194" text-anchor="middle" class="t-muted" font-size="13">una partícula cada uno</text>
+          <rect x="355" y="12" width="80" height="30" rx="4" class="box"/><text x="395" y="32" text-anchor="middle" class="t-mono" font-size="13">ha</text>
+          <path d="M395 42 L310 110" class="ln"/><path d="M395 42 L395 110" class="ln"/><path d="M395 42 L480 110" class="ln"/>
+          <circle cx="310" cy="132" r="22" class="box-accent"/><circle cx="395" cy="132" r="22" class="box-accent"/><circle cx="480" cy="132" r="22" class="box-accent"/>
+          <g class="fill-accent"><circle cx="300" cy="126" r="5"/><circle cx="318" cy="128" r="3"/><circle cx="308" cy="142" r="7"/>
+            <circle cx="386" cy="126" r="3"/><circle cx="402" cy="124" r="6"/><circle cx="392" cy="142" r="4"/><circle cx="406" cy="140" r="2.5"/>
+            <circle cx="474" cy="128" r="6"/><circle cx="490" cy="138" r="4"/></g>
+          <text x="395" y="176" text-anchor="middle" class="t-muted" font-size="13">POMCPOW: pocos hijos, varias</text>
+          <text x="395" y="194" text-anchor="middle" class="t-muted" font-size="13">partículas con pesos (tamaño)</text>
+        </svg>
+        <figcaption>Debajo de un nodo de acción \(ha\): los hijos de observación con y sin ensanchamiento progresivo.</figcaption>
+      </figure>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Las observaciones de un dron (detecciones con posición, imágenes) son continuas. POMCP tal cual degenera en QMDP: justo el planificador que no va a mirar.</div>
     </div>
   </div>
@@ -532,25 +1371,54 @@
   <h2>Cuando el objetivo es saber: ρ-POMDP</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Hay tareas cuya recompensa es reducir la incertidumbre (cartografiar, vigilar, localizar), que no se escriben con \(R(s,a)\). Un ρ-POMDP usa una recompensa \(\rho(b,a)\) del belief <a class="cite" data-ref="araya2010"></a>:</p>
+      <p>Hay tareas cuya recompensa es reducir la incertidumbre (cartografiar, vigilar, localizar), que no se escriben con \(R(s,a)\). Un ρ-POMDP usa una recompensa \(\rho(b,a)\) del belief <a class="cite" data-ref="araya2010"></a>. La más común:</p>
       \[ \rho_{\text{ent}}(b) = \log_2|\mathcal S| + \sum_s b(s)\log_2 b(s), \]
-      <p class="small">la entropía negativa, desplazada para que valga 0 con el belief uniforme.</p>
-      <ul class="small">
+      <p>la entropía negativa (\(-H(b)\), en bits), desplazada con \(\log_2|\mathcal S|\) para que valga 0 con el belief uniforme. Con dos estados, la certeza vale 1.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Tigre, \(p\)</th><th>0,5</th><th>0,85</th><th>0,97</th><th>1</th></tr>
+          <tr><td>\(H(b)\) (bits)</td><td class="n">1</td><td class="n">0,610</td><td class="n">0,194</td><td class="n">0</td></tr>
+          <tr><td>\(\rho_{\text{ent}} = 1 - H\)</td><td class="n">0</td><td class="n">0,390</td><td class="n">0,806</td><td class="n">1</td></tr>
+        </table>
+      </div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 280" role="img" aria-label="Entropía negativa desplazada del tigre en función de p: convexa, cero en 0,5 y uno en los extremos, con pendiente infinita en los bordes">
+        <line x1="60" y1="230" x2="520" y2="230" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="230" class="ln-rule"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end"><text x="52" y="234">0</text><text x="52" y="134">0,5</text><text x="52" y="34">1</text></g>
+        <path d="M60.0,30.0 L60.2,31.2 L62.5,39.8 L64.8,46.8 L67.1,53.1 L69.4,58.8 L71.7,64.2 L74.0,69.3 L76.3,74.2 L78.6,78.9 L80.9,83.4 L83.2,87.7 L85.5,91.8 L87.8,95.8 L90.1,99.7 L92.4,103.5 L94.7,107.2 L97.0,110.7 L99.3,114.2 L101.6,117.6 L103.9,120.9 L106.2,124.1 L108.5,127.2 L110.8,130.2 L113.1,133.2 L115.4,136.1 L117.7,138.9 L120.0,141.7 L122.3,144.4 L124.6,147.0 L126.9,149.6 L129.2,152.1 L131.5,154.6 L133.8,157.0 L136.1,159.4 L138.4,161.7 L140.6,163.9 L142.9,166.2 L145.2,168.3 L147.5,170.4 L149.8,172.5 L152.1,174.5 L154.4,176.5 L156.7,178.4 L159.0,180.3 L161.3,182.1 L163.6,183.9 L165.9,185.7 L168.2,187.4 L170.5,189.1 L172.8,190.7 L175.1,192.3 L177.4,193.9 L179.7,195.4 L182.0,196.9 L184.3,198.4 L186.6,199.8 L188.9,201.2 L191.2,202.5 L193.5,203.8 L195.8,205.1 L198.1,206.3 L200.4,207.5 L202.7,208.7 L205.0,209.8 L207.3,210.9 L209.6,212.0 L211.9,213.0 L214.2,214.0 L216.5,215.0 L218.8,215.9 L221.1,216.8 L223.4,217.7 L225.7,218.6 L228.0,219.4 L230.3,220.2 L232.6,220.9 L234.9,221.6 L237.2,222.3 L239.5,223.0 L241.7,223.6 L244.0,224.2 L246.3,224.8 L248.6,225.3 L250.9,225.8 L253.2,226.3 L255.5,226.7 L257.8,227.2 L260.1,227.6 L262.4,227.9 L264.7,228.3 L267.0,228.6 L269.3,228.8 L271.6,229.1 L273.9,229.3 L276.2,229.5 L278.5,229.6 L280.8,229.8 L283.1,229.9 L285.4,229.9 L287.7,230.0 L290.0,230.0 L292.3,230.0 L294.6,229.9 L296.9,229.9 L299.2,229.8 L301.5,229.6 L303.8,229.5 L306.1,229.3 L308.4,229.1 L310.7,228.8 L313.0,228.6 L315.3,228.3 L317.6,227.9 L319.9,227.6 L322.2,227.2 L324.5,226.7 L326.8,226.3 L329.1,225.8 L331.4,225.3 L333.7,224.8 L336.0,224.2 L338.3,223.6 L340.5,223.0 L342.8,222.3 L345.1,221.6 L347.4,220.9 L349.7,220.2 L352.0,219.4 L354.3,218.6 L356.6,217.7 L358.9,216.8 L361.2,215.9 L363.5,215.0 L365.8,214.0 L368.1,213.0 L370.4,212.0 L372.7,210.9 L375.0,209.8 L377.3,208.7 L379.6,207.5 L381.9,206.3 L384.2,205.1 L386.5,203.8 L388.8,202.5 L391.1,201.2 L393.4,199.8 L395.7,198.4 L398.0,196.9 L400.3,195.4 L402.6,193.9 L404.9,192.3 L407.2,190.7 L409.5,189.1 L411.8,187.4 L414.1,185.7 L416.4,183.9 L418.7,182.1 L421.0,180.3 L423.3,178.4 L425.6,176.5 L427.9,174.5 L430.2,172.5 L432.5,170.4 L434.8,168.3 L437.1,166.2 L439.4,163.9 L441.6,161.7 L443.9,159.4 L446.2,157.0 L448.5,154.6 L450.8,152.1 L453.1,149.6 L455.4,147.0 L457.7,144.4 L460.0,141.7 L462.3,138.9 L464.6,136.1 L466.9,133.2 L469.2,130.2 L471.5,127.2 L473.8,124.1 L476.1,120.9 L478.4,117.6 L480.7,114.2 L483.0,110.7 L485.3,107.2 L487.6,103.5 L489.9,99.7 L492.2,95.8 L494.5,91.8 L496.8,87.7 L499.1,83.4 L501.4,78.9 L503.7,74.2 L506.0,69.3 L508.3,64.2 L510.6,58.8 L512.9,53.1 L515.2,46.8 L517.5,39.8 L519.8,31.2 L520.0,30.0" class="ln-accent" stroke-width="2.6" fill="none"/>
+        <circle cx="451" cy="152" r="5" class="fill-time"/><text x="440" y="146" text-anchor="end" class="t-mono t-time" font-size="12">0,85 → 0,390</text>
+        <circle cx="506.2" cy="68.9" r="5" class="fill-time"/><text x="496" y="66" text-anchor="end" class="t-mono t-time" font-size="12">0,97 → 0,806</text>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle"><text x="60" y="248">0</text><text x="290" y="248">0,5</text><text x="520" y="248">1</text></g>
+        <text x="290" y="270" text-anchor="middle" class="t-muted" font-size="13">p = b(TI)</text>
+      </svg>
+      <figcaption>\(\rho_{\text{ent}}\) en el tigre: convexa, como el valor de la parte 2, y vertical en los bordes. Ejemplos 18 y 22.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide">
+  <p class="kicker">En línea · ρ-POMDP · qué se conserva</p>
+  <h2>La convexidad se conserva; las cotas de error necesitan cuidado</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
         <li><strong>Teorema 3.1:</strong> si \(\rho\) y \(V_0\) son convexas en el símplex, \(V_n\) es convexa para todo \(n\). Se aproxima \(\rho\) con funciones lineales a trozos y se reutilizan los algoritmos de vectores α.</li>
-        <li>La entropía negativa no es Lipschitz (pendiente infinita cuando \(b(s)\to0\)): las cotas de error necesitan un tratamiento aparte <a class="cite" data-ref="araya2010"></a>.</li>
+        <li>La entropía negativa no es Lipschitz (pendiente infinita cuando \(b(s)\to0\)): las cotas de error necesitan un tratamiento aparte <a class="cite" data-ref="araya2010"></a>. En el tigre, \(d\rho/dp = \log_2\frac{p}{1-p}\) vale 6,6 en \(p = 0{,}99\) y 13,3 en 0,9999.</li>
       </ul>
+      <div class="aparte"><span class="rotulo">Por qué la entropía negativa es convexa</span>
+        <p>\(f(x) = x\log x\) tiene \(f''(x) = 1/x &gt; 0\) en \((0,1]\): es convexa, y una suma de funciones convexas de cada coordenada también lo es. Así que \(\rho_{\text{ent}}\) cumple la hipótesis del teorema 3.1 y el valor sigue siendo convexo: la estructura de la parte 2 se conserva.</p>
+      </div>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: la entropía negativa es convexa</summary>
-        <p class="small">\(f(x) = x\log x\) tiene \(f''(x) = 1/x &gt; 0\) en \((0,1]\): es convexa, y una suma de funciones convexas de cada coordenada también lo es. Así que \(\rho_{\text{ent}}\) cumple la hipótesis del teorema 3.1 y el valor sigue siendo convexo: la estructura de la parte 2 se conserva.</p>
-      </details>
       <div class="callout error"><span class="tag">Matiz</span>Premiar la información por sí misma puede desviar de la tarea: un dron que busca un objetivo quiere <em>encontrarlo</em>, no conocer cada casilla. La recompensa de la tarea ya contiene el valor de la información (parte 2); la entropía es útil cuando saber <em>es</em> la tarea.</div>
       <div class="callout tesis"><span class="tag">Percepción activa</span>Elegir dónde mirar para reducir la incertidumbre es la percepción activa de A7b. Este es su planteamiento formal.</div>
     </div>
   </div>
 </section>
 
-<!-- ============ PARTE 5 ============ -->
 <section class="slide divider" data-section="Buscar con un dron">
   <p class="num">Parte 5</p>
   <h2>Un dron que busca un objetivo</h2>
@@ -558,14 +1426,46 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Búsqueda · de dónde sale la fórmula</p>
+  <h2>La regla de Bayes de la parte 1, con un objetivo quieto y un detector</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Estado: la casilla \(c\) del objetivo. El dron se mueve y mira la casilla a la que llega, \(c_{\text{dron}}\) (su posición sí la conoce). Observación: detecta o no detecta. \(P_D\): probabilidad de detectarlo si está en la casilla mirada.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\bar b(c) = b(c)\)</td><td>El objetivo no se mueve: \(T = I\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(O(c,\text{no detecta}) = 1 - P_D\,[c = c_{\text{dron}}]\)</td><td>\([\cdot]\) vale 1 si es verdad y 0 si no: solo puede fallar en la casilla mirada</td></tr>
+          <tr><td><strong>3</strong></td><td>\(P(\text{no detecta}\mid b) = 1 - P_D\,b(c_{\text{dron}})\)</td><td>Suma de numeradores: todo pesa 1 salvo la casilla mirada</td></tr>
+          <tr><td><strong>4</strong></td><td>\(b'(c) = \dfrac{b(c)\,(1-P_D[c = c_{\text{dron}}])}{1-P_D\,b(c_{\text{dron}})}\)</td><td>Numerador entre denominador</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">Tres casillas, \(P_D = 0{,}6\), mirando siempre la 1</h3>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Mirada</th><th>casilla 1</th><th>casilla 2</th><th>casilla 3</th><th>\(P(\text{no})\)</th></tr>
+          <tr><td>antes</td><td class="n">0,5</td><td class="n">0,3</td><td class="n">0,2</td><td></td></tr>
+          <tr><td>1.ª</td><td class="n">0,286</td><td class="n">0,429</td><td class="n">0,286</td><td class="n">0,70</td></tr>
+          <tr><td>2.ª</td><td class="n">0,138</td><td class="n">0,517</td><td class="n">0,345</td><td class="n">0,83</td></tr>
+          <tr><td>3.ª</td><td class="n">0,060</td><td class="n">0,564</td><td class="n">0,376</td><td class="n">0,92</td></tr>
+        </table>
+      </div>
+      <p>En la 1.ª mirada: numeradores \((0{,}5\cdot0{,}4;\ 0{,}3;\ 0{,}2) = (0{,}2;\ 0{,}3;\ 0{,}2)\), suma 0,7. La casilla mirada baja y nunca llega a 0; cada fallo se vuelve más probable, porque ya casi no se espera encontrarlo allí. <span class="small muted">Ejemplo 19.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Búsqueda · el belief</p>
   <h2>No ver el objetivo también es información</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Rejilla de 6 × 6, objetivo quieto en una casilla con un prior que favorece una zona; el dron sale de una esquina y mira la casilla en la que está. Si el objetivo está allí, lo detecta con probabilidad \(P_D = 0{,}6\); no hay falsas alarmas.</p>
+      <p>Rejilla de 6 × 6, objetivo quieto en una casilla con un prior que favorece una zona; el dron sale de una esquina y mira la casilla en la que está. Si el objetivo está allí, lo detecta con probabilidad \(P_D = 0{,}6\); no hay falsas alarmas.</p>
       \[ b'(c) = \frac{b(c)\,(1 - P_D\,[c = c_{\text{dron}}])}{1 - P_D\,b(c_{\text{dron}})}. \]
-      <ul class="small">
-        <li>Mirar y no detectar baja la casilla mirada a un 40 % de lo que era y sube todas las demás.</li>
+      <ul>
+        <li>Mirar y no detectar multiplica la casilla mirada por 0,4 antes de normalizar (por \(0{,}4/(1-0{,}6\,b)\) después) y sube todas las demás.</li>
         <li>El belief no llega nunca a cero en una casilla: con \(P_D &lt; 1\) puede que estuviera y no lo viera. Volver a mirar puede compensar.</li>
         <li>Con varios objetivos, el estado es el producto de las rejillas: crece exponencialmente con su número <a class="cite" data-ref="lauri2023"></a>.</li>
       </ul>
@@ -718,18 +1618,36 @@
       <p class="xsmall muted">Mismos objetivos, muestreados del prior; media ± error típico. Heurísticas con 600 episodios; POMCP con 200 (despliegue aleatorio) o 150 (despliegue con la heurística de ganancia), partículas muestreadas del belief exacto y profundidad 30. <code>figuras_a7a.py</code>, sección 5.</p>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Usar el belief compensa:</strong> ir al máximo del belief (34,0) o a la mejor ganancia por distancia (32,4) gana al barrido fijo (37,9 pasos).</li>
-        <li><strong>POMCP con despliegue aleatorio:</strong> con 500 simulaciones iguala a las heurísticas (34,4); con 100, 41,0.</li>
-        <li><strong>Con la heurística como despliegue, empeora</strong> con pocas simulaciones: 47,8 con 100 y 39,6 con 300.</li>
-        <li><strong>Diagnóstico:</strong> desde la salida, con ese despliegue las dos mejores primeras acciones difieren en 0,6 pasos y un despliegue tiene una desviación de 7,3. Con 100 simulaciones, ninguna acción pasa del 32 % de las elecciones (ni del 32 % con despliegue aleatorio): POMCP elige casi al azar en cada paso y el dron no se compromete con un rumbo. <code>figuras_a7a.py</code>, sección 6.</li>
+      <p>Las políticas, en cada paso desde la casilla \(c\) del dron:</p>
+      <ul>
+        <li><strong>Barrido en serpentina:</strong> recorre la rejilla en zigzag, sin mirar el belief.</li>
+        <li><strong>Máximo del belief:</strong> va hacia la casilla \(d\) de mayor \(b(d)\).</li>
+        <li><strong>Ganancia por distancia:</strong> va hacia la \(d\) que maximiza \(b(d)\,P_D/(1+\mathrm{dist}(c,d))\), con distancia Manhattan: probabilidad de detectar por paso de viaje.</li>
+        <li><strong>POMCP:</strong> partículas = casilla del objetivo; −1 por paso, \(\gamma = 0{,}98\), profundidad 30.</li>
       </ul>
-      <div class="callout clave"><span class="tag">Lección</span>Con poco presupuesto, una buena heurística sobre el belief es difícil de batir. Más simulaciones, reutilizar el árbol entre pasos o evaluar todas las acciones con los mismos escenarios (la idea de DESPOT <a class="cite" data-ref="ye2017"></a>) son las respuestas.</div>
     </div>
   </div>
 </section>
 
 <!-- ============ CIERRE ============ -->
+<section class="slide">
+  <p class="kicker">Búsqueda · qué dicen las cifras</p>
+  <h2>Por qué POMCP no gana a una buena heurística con poco presupuesto</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Usar el belief compensa:</strong> ir al máximo del belief (34,0) o a la mejor ganancia por distancia (32,4) gana al barrido fijo (37,9 pasos).</li>
+        <li><strong>POMCP con despliegue aleatorio:</strong> con 500 simulaciones iguala a las heurísticas (34,4); con 100, 41,0.</li>
+        <li><strong>Con la heurística como despliegue, empeora</strong> con pocas simulaciones: 47,8 con 100 y 39,6 con 300.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p><strong>Diagnóstico:</strong> desde la salida, con ese despliegue las dos mejores primeras acciones difieren en 0,6 pasos y un despliegue tiene una desviación de 7,3. Con 100 simulaciones, ninguna acción pasa del 32 % de las elecciones (ni del 32 % con despliegue aleatorio): POMCP elige casi al azar en cada paso y el dron no se compromete con un rumbo. <span class="small muted"><code>figuras_a7a.py</code>, sección 6.</span></p>
+      <div class="callout clave"><span class="tag">Lección</span>Con poco presupuesto, una buena heurística sobre el belief es difícil de batir. Más simulaciones, reutilizar el árbol entre pasos o evaluar todas las acciones con los mismos escenarios (la idea de DESPOT <a class="cite" data-ref="ye2017"></a>) son las respuestas.</div>
+    </div>
+  </div>
+</section>
+
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
   <h2>Redes que guían la búsqueda, y teoría de cuándo aprender es posible</h2>
@@ -746,7 +1664,7 @@
   <h2>Lo que este tema le da a tu tesis</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Definición:</strong> el belief es el estado del problema; una política sobre beliefs puede ser óptima, una sobre la última observación en general no.</li>
         <li><strong>Criterio:</strong> un belief aprendido es bueno si es (aproximadamente) un estado de información: predice la recompensa y su propio futuro. La cota del AIS dice cuánto cuesta equivocarse.</li>
         <li><strong>Estructura:</strong> la convexidad del valor es el valor de la información; es lo que hace que buscar, mirar o subir para ver mejor compense.</li>
@@ -896,7 +1814,7 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>Que la solución exacta escucha hasta oír dos veces más un lado; que QMDP no va al cartel; que POMCP se acerca a la exacta con más simulaciones; y que planificar con el belief encuentra antes el objetivo que un barrido fijo.</div>
       <div class="callout realidad"><span class="tag">Hardware</span>Solo CPU y numpy. El script completo tarda decenas de minutos en Python puro; si lo vectorizas en JAX (B6), mucho menos.</div>
-      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a7a.py</code>.</p>
+      <p class="xsmall muted">Las cifras de los experimentos salen de <code>figuras/figuras_a7a.py</code>; los ejemplos hechos a mano (belief, vectores α, QMDP, PBVI, UCB…), de <code>figuras/ejemplos_a7a.py</code>.</p>
     </div>
   </div>
 </section>
@@ -941,125 +1859,143 @@
 <h3>Notación general</h3>
 <p>Letras caligráficas (\(\mathcal S\), \(\mathcal A\), \(\mathcal Z\)): conjuntos. Prima (\(s'\), \(b'\)): el valor en el paso siguiente. Sombrero: estimación o aproximación.</p>
 <dl>
-<dt>\(\mid\)</dt><dd data-hojas="6">«Dado que», en probabilidades condicionales: \(P(s'\mid s,a)\) es la probabilidad de \(s'\) sabiendo \(s\) y \(a\).</dd>
-<dt>\(\propto\)</dt><dd data-hojas="7">«Proporcional a»: igual salvo una constante de normalización, que aquí es el denominador de Bayes.</dd>
-<dt>\(\mathbb E\)</dt><dd data-hojas="8">Esperanza matemática, p. ej. \(\mathbb E[R\mid h_t,a_t]\) es la recompensa esperada dada la historia y la acción.</dd>
-<dt>\(\arg\max\)</dt><dd data-hojas="16">Valor del argumento que maximiza la expresión que sigue (aquí, la acción).</dd>
-<dt>\(\|\cdot\|_\infty\)</dt><dd data-hojas="17">Norma del máximo: la mayor diferencia en valor absoluto entre dos funciones sobre todos los beliefs.</dd>
-<dt>\(|\mathcal S|\), \(|\mathcal A|\), \(|\mathcal Z|\), \(|\Gamma|\)</dt><dd data-hojas="6,11">Número de elementos (cardinal) de un conjunto: de estados, acciones, observaciones o vectores \(\alpha\).</dd>
-<dt>\([c = c_{\text{dron}}]\)</dt><dd data-hojas="24">Corchete de Iverson: vale 1 si la casilla \(c\) es la que mira el dron y 0 en caso contrario.</dd>
-<dt>\(\log_2\)</dt><dd data-hojas="22">Logaritmo en base 2, usado en la entropía del belief (en bits).</dd>
+<dt>\(\mid\)</dt><dd data-hojas="8">«Dado que», en probabilidades condicionales: \(P(s'\mid s,a)\) es la probabilidad de \(s'\) sabiendo \(s\) y \(a\).</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="7,17">Esperanza matemática, p. ej. \(\mathbb E[R\mid h_t,a_t]\) es la recompensa esperada dada la historia y la acción.</dd>
+<dt>\(\arg\max\)</dt><dd data-hojas="34,37">Valor del argumento que maximiza la expresión que sigue (aquí, la acción).</dd>
+<dt>\(\|\cdot\|_\infty\)</dt><dd data-hojas="33,38">Norma del máximo: la mayor diferencia en valor absoluto entre dos funciones sobre todos los beliefs.</dd>
+<dt>\(|\mathcal S|\), \(|\mathcal A|\), \(|\mathcal Z|\), \(|\Gamma|\)</dt><dd data-hojas="16,31">Número de elementos (cardinal) de un conjunto: de estados, acciones, observaciones o vectores \(\alpha\).</dd>
+<dt>\([c = c_{\text{dron}}]\)</dt><dd data-hojas="50,51">Corchete de Iverson: vale 1 si la casilla \(c\) es la que mira el dron y 0 en caso contrario.</dd>
+<dt>\(\log_2\)</dt><dd data-hojas="47">Logaritmo en base 2, usado en la entropía del belief (en bits).</dd>
 </dl>
 <h3>El modelo POMDP</h3>
 <dl>
-<dt>\(\mathcal S\)</dt><dd data-hojas="6">Conjunto de estados (ocultos) del problema. En el tigre son dos: tigre tras la puerta izquierda o la derecha.</dd>
-<dt>\(\mathcal A\)</dt><dd data-hojas="6">Conjunto de acciones. En el tigre: escuchar, abrir izquierda, abrir derecha.</dd>
-<dt>\(\mathcal Z\)</dt><dd data-hojas="6">Conjunto de observaciones: lo único que ve el agente.</dd>
-<dt>\(s\), \(s'\), \(s_t\)</dt><dd data-hojas="6">Estado actual, siguiente y en el instante \(t\). El agente no lo conoce.</dd>
-<dt>\(a\), \(a_t\)</dt><dd data-hojas="6">Acción elegida por el agente (en el instante \(t\)).</dd>
-<dt>\(z\), \(z_t\)</dt><dd data-hojas="6">Observación recibida tras actuar (en el instante \(t\)). Ojo: en este tema \(z\) es siempre observación; en el tema de world models latentes la misma letra es un latente.</dd>
-<dt>\(T(s,a,s')\)</dt><dd data-hojas="6">Modelo de transición \(P(s'\mid s,a)\): probabilidad de pasar a \(s'\) al hacer \(a\) en \(s\). En robótica, tu simulador de dinámica.</dd>
-<dt>\(O(s',a,z)\)</dt><dd data-hojas="6">Modelo de observación \(P(z\mid s',a)\): probabilidad de observar \(z\) tras llegar a \(s'\) con la acción \(a\). En robótica, tu modelo de sensores.</dd>
-<dt>\(R(s,a)\)</dt><dd data-hojas="6">Recompensa por hacer \(a\) en el estado \(s\), como en un MDP.</dd>
-<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento de las recompensas futuras. En los cálculos de este tema, \(\gamma = 0{,}95\) (elección del curso).</dd>
-<dt>\(b_0\)</dt><dd data-hojas="6">Belief inicial: distribución sobre \(\mathcal S\) antes de actuar.</dd>
-<dt>\(h_t\)</dt><dd data-hojas="6">Historia hasta \(t\): \((a_0, z_1, a_1, \dots, z_t)\). Es lo que conoce el agente; las políticas son funciones de ella.</dd>
-<dt>número de historias</dt><dd data-hojas="6,14">Número de historias de longitud \(t\), \((|\mathcal A||\mathcal Z|)^t\); crece exponencialmente (maldición de la historia).</dd>
-<dt>\(p = b(\text{izquierda})\)</dt><dd data-hojas="6,12">En el tigre, probabilidad de que el tigre esté tras la puerta izquierda: el belief entero es este único número.</dd>
-<dt>\(b(\text{tigre a la izquierda})\)</dt><dd data-hojas="7">Lo mismo que \(p\): belief de que el tigre está a la izquierda, usado en las figuras y la autoevaluación.</dd>
+<dt>\(\mathcal S\)</dt><dd data-hojas="6,8">Conjunto de estados (ocultos) del problema. En el tigre son dos: tigre tras la puerta izquierda o la derecha.</dd>
+<dt>\(\mathcal A\)</dt><dd data-hojas="6,8">Conjunto de acciones. En el tigre: escuchar, abrir izquierda, abrir derecha.</dd>
+<dt>\(\mathcal Z\)</dt><dd data-hojas="6,8">Conjunto de observaciones: lo único que ve el agente.</dd>
+<dt>\(s\), \(s'\), \(s_t\)</dt><dd data-hojas="6,7">Estado actual, siguiente y en el instante \(t\). El agente no lo conoce.</dd>
+<dt>\(a\), \(a_t\)</dt><dd data-hojas="6,7">Acción elegida por el agente (en el instante \(t\)).</dd>
+<dt>\(z\), \(z_t\)</dt><dd data-hojas="6,7">Observación recibida tras actuar (en el instante \(t\)). Ojo: en este tema \(z\) es siempre observación; en el tema de world models latentes la misma letra es un latente.</dd>
+<dt>\(T(s,a,s')\)</dt><dd data-hojas="6,9">Modelo de transición \(P(s'\mid s,a)\): probabilidad de pasar a \(s'\) al hacer \(a\) en \(s\). En robótica, tu simulador de dinámica.</dd>
+<dt>\(O(s',a,z)\)</dt><dd data-hojas="6,9">Modelo de observación \(P(z\mid s',a)\): probabilidad de observar \(z\) tras llegar a \(s'\) con la acción \(a\). En robótica, tu modelo de sensores.</dd>
+<dt>\(R(s,a)\)</dt><dd data-hojas="6,9">Recompensa por hacer \(a\) en el estado \(s\), como en un MDP.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6,8">Factor de descuento de las recompensas futuras. En los cálculos de este tema, \(\gamma = 0{,}95\) (elección del curso).</dd>
+<dt>\(b_0\)</dt><dd data-hojas="6,8">Belief inicial: distribución sobre \(\mathcal S\) antes de actuar.</dd>
+<dt>\(h_t\)</dt><dd data-hojas="6,8">Historia hasta \(t\): \((a_0, z_1, a_1, \dots, z_t)\). Es lo que conoce el agente; las políticas son funciones de ella.</dd>
+<dt>\(\pi\), \(a_t = \pi(h_t)\)</dt><dd data-hojas="7">Política: regla que elige la acción a partir de la historia. El problema es la política que maximiza \(\mathbb E[\sum_t\gamma^t R(s_t,a_t)]\).</dd>
+<dt>TI, TD</dt><dd data-hojas="6,9">Estados del tigre: tigre detrás de la puerta izquierda (TI) o de la derecha (TD). Es el orden de filas y columnas de las matrices.</dd>
+<dt>OI, OD</dt><dd data-hojas="6,9">Observaciones del tigre al escuchar: «oye a la izquierda» (OI) u «oye a la derecha» (OD).</dd>
+<dt>número de historias</dt><dd data-hojas="8,31">Número de historias de longitud \(t\), \((|\mathcal A||\mathcal Z|)^t\); crece exponencialmente (maldición de la historia).</dd>
+<dt>\(p = b(\text{izquierda})\)</dt><dd data-hojas="8,22">En el tigre, probabilidad de que el tigre esté tras la puerta izquierda: el belief entero es este único número.</dd>
+<dt>\(b(\text{tigre a la izquierda})\)</dt><dd data-hojas="57">Lo mismo que \(p\): belief de que el tigre está a la izquierda, usado en las figuras y la autoevaluación.</dd>
+<dt>\(b_n\), \(n\)</dt><dd data-hojas="14,18">En el tigre, \(n\) = número de OI menos número de OD desde la última apertura, y \(b_n = 0{,}85^n/(0{,}85^n+0{,}15^n)\) el belief que le corresponde. El propio \(n\) es un estado de información.</dd>
 </dl>
 <h3>Belief y estado suficiente</h3>
 <dl>
-<dt>\(b\), \(b(s)\)</dt><dd data-hojas="6,7">Belief: distribución de probabilidad sobre \(\mathcal S\); \(b(s)\) es la probabilidad de estar en \(s\) dada la historia. Vector del símplex.</dd>
-<dt>\(b'(s')\)</dt><dd data-hojas="7">Belief actualizado tras hacer \(a\) y observar \(z\) (regla de Bayes de la hoja).</dd>
-<dt>\(\bar b(s')\)</dt><dd data-hojas="7">Belief predicho, antes de corregir con la observación: \(\sum_s T(s,a,s')\,b(s)\).</dd>
-<dt>\(P(z\mid a,b)\)</dt><dd data-hojas="7">Probabilidad de observar \(z\) tras hacer \(a\) con belief \(b\). Es el denominador de Bayes y la probabilidad de cada rama del árbol de decisión.</dd>
-<dt>\(P(s'\mid h,a)\)</dt><dd data-hojas="7">Probabilidad del estado siguiente dada la historia y la acción; coincide con \(\bar b(s')\).</dd>
-<dt>\(b^{a,z}\)</dt><dd data-hojas="8,11">Belief resultante de hacer \(a\) y observar \(z\) desde \(b\); mismo objeto que \(b'\), con la acción y la observación explícitas.</dd>
-<dt>\(\mathrm{SE}(b_t, a_t, z)\)</dt><dd data-hojas="8">Estimador de estado (state estimator): función que actualiza el belief; \(b_{t+1}=\mathrm{SE}(b_t,a_t,z)\).</dd>
-<dt>\(\Delta(\mathcal S)\)</dt><dd data-hojas="8">Símplex de distribuciones sobre \(\mathcal S\), de dimensión \(|\mathcal S|-1\). Es el espacio de estados del belief MDP.</dd>
-<dt>\(\rho(b,a)\)</dt><dd data-hojas="8">Recompensa esperada sobre el belief: \(\sum_s b(s)R(s,a)\). En la hoja de ρ-POMDP se generaliza a una recompensa cualquiera del belief.</dd>
-<dt>\(P(s_t\mid h_t)\)</dt><dd data-hojas="8">Probabilidad del estado actual dada la historia; es el belief \(b_t\).</dd>
+<dt>\(b\), \(b(s)\)</dt><dd data-hojas="6,11">Belief: distribución de probabilidad sobre \(\mathcal S\); \(b(s)\) es la probabilidad de estar en \(s\) dada la historia. Vector del símplex.</dd>
+<dt>\(b'(s')\)</dt><dd data-hojas="11,12">Belief actualizado tras hacer \(a\) y observar \(z\) (regla de Bayes de la hoja).</dd>
+<dt>\(\bar b(s')\)</dt><dd data-hojas="11,12">Belief predicho, antes de corregir con la observación: \(\sum_s T(s,a,s')\,b(s)\).</dd>
+<dt>\(P(z\mid a,b)\)</dt><dd data-hojas="11,15">Probabilidad de observar \(z\) tras hacer \(a\) con belief \(b\). Es el denominador de Bayes y la probabilidad de cada rama del árbol de decisión.</dd>
+<dt>\(P(s'\mid h,a)\)</dt><dd data-hojas="12">Probabilidad del estado siguiente dada la historia y la acción; coincide con \(\bar b(s')\).</dd>
+<dt>\(b^{a,z}\)</dt><dd data-hojas="16,23">Belief resultante de hacer \(a\) y observar \(z\) desde \(b\); mismo objeto que \(b'\), con la acción y la observación explícitas.</dd>
+<dt>\(\mathrm{SE}(b_t, a_t, z)\)</dt><dd data-hojas="17">Estimador de estado (state estimator): función que actualiza el belief; \(b_{t+1}=\mathrm{SE}(b_t,a_t,z)\).</dd>
+<dt>\(\Delta(\mathcal S)\)</dt><dd data-hojas="16,31">Símplex de distribuciones sobre \(\mathcal S\), de dimensión \(|\mathcal S|-1\). Es el espacio de estados del belief MDP.</dd>
+<dt>\(\rho(b,a)\)</dt><dd data-hojas="16,17">Recompensa esperada sobre el belief: \(\sum_s b(s)R(s,a)\). En la hoja de ρ-POMDP se generaliza a una recompensa cualquiera del belief.</dd>
 </dl>
 <h3>Estados de información</h3>
 <dl>
-<dt>\(z_t = \sigma_t(h_t)\)</dt><dd data-hojas="9">Estado de información: resumen de la historia producido por una función \(\sigma_t\). En esta hoja \(z_t\) es el resumen, no una observación.</dd>
-<dt>(P1), (P2)</dt><dd data-hojas="9">Las dos propiedades de un estado de información: suficiente para evaluar la recompensa esperada (P1) y para predecir su propio siguiente valor (P2).</dd>
-<dt>\(\varepsilon_t\)</dt><dd data-hojas="9">Error de predicción de la recompensa de un resumen aproximado en el instante \(t\).</dd>
-<dt>\(\delta_t\)</dt><dd data-hojas="9">Error al predecir la distribución del siguiente resumen, medido en una métrica de probabilidades.</dd>
-<dt>\(\alpha_t\)</dt><dd data-hojas="9">Cota del error de valor al calcular sobre el resumen: \(\varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}\). En el resto del tema, \(\alpha\) es un vector (ver más abajo).</dd>
-<dt>\(\rho(\hat V_{t+1})\)</dt><dd data-hojas="9">Factor que depende del valor aproximado \(\hat V_{t+1}\) y multiplica a \(\delta_t\) en la cota. No confundir con \(\rho(b,a)\).</dd>
-<dt>\(\hat V_{t+1}\)</dt><dd data-hojas="9">Función de valor calculada sobre el resumen aproximado en el paso \(t+1\).</dd>
-<dt>\(2\alpha_t\)</dt><dd data-hojas="9">Pérdida máxima de la política voraz respecto a la óptima.</dd>
+<dt>\(z_t = \sigma_t(h_t)\)</dt><dd data-hojas="18">Estado de información: resumen de la historia producido por una función \(\sigma_t\). En esta hoja \(z_t\) es el resumen, no una observación.</dd>
+<dt>(P1), (P2)</dt><dd data-hojas="18">Las dos propiedades de un estado de información: suficiente para evaluar la recompensa esperada (P1) y para predecir su propio siguiente valor (P2).</dd>
+<dt>\(\varepsilon_t\)</dt><dd data-hojas="19">Error de predicción de la recompensa de un resumen aproximado en el instante \(t\).</dd>
+<dt>\(\sigma_t\)</dt><dd data-hojas="18">Función que comprime la historia \(h_t\) en el resumen \(z_t\).</dd>
+<dt>\(\delta_t\)</dt><dd data-hojas="19">Error al predecir la distribución del siguiente resumen, medido en una métrica de probabilidades.</dd>
+<dt>\(\alpha_t\)</dt><dd data-hojas="19">Cota del error de valor al calcular sobre el resumen: \(\varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}\). En el resto del tema, \(\alpha\) es un vector (ver más abajo).</dd>
+<dt>\(\rho(\hat V_{t+1})\)</dt><dd data-hojas="19">Factor que convierte distancia entre distribuciones en error de valor: \(|\mathbb E_\mu\hat V-\mathbb E_\nu\hat V|\le\rho(\hat V)\,d(\mu,\nu)\). Con variación total es la mitad del rango de \(\hat V\); con Kantorovich, su constante de Lipschitz. No confundir con \(\rho(b,a)\).</dd>
+<dt>\(\hat V_{t+1}\)</dt><dd data-hojas="19">Función de valor calculada sobre el resumen aproximado en el paso \(t+1\).</dd>
+<dt>\(d(\mu,\nu)\)</dt><dd data-hojas="19">Distancia entre dos distribuciones \(\mu\) y \(\nu\) (del siguiente resumen, la verdadera y la predicha) con la que se mide \(\delta_t\): variación total, Kantorovich…</dd>
+<dt>\(Q_t\), \(\hat Q_t\), \(\hat r\)</dt><dd data-hojas="19">Valor-acción verdadero (sobre la historia) y el calculado sobre el resumen, y la recompensa predicha por el resumen; su diferencia es la que acota \(\alpha_t\).</dd>
+<dt>\(2\alpha_t\)</dt><dd data-hojas="19">Pérdida máxima de la política voraz respecto a la óptima.</dd>
 </dl>
 <h3>Valor lineal a trozos y convexo</h3>
 <dl>
-<dt>\(V_t(b)\)</dt><dd data-hojas="11">Valor óptimo con horizonte \(t\) desde el belief \(b\): máximo de funciones lineales de \(b\). \(V_0=0\).</dd>
-<dt>\(V_{t-1}\)</dt><dd data-hojas="11">Valor con un paso menos de horizonte, usado en la inducción.</dd>
-<dt>\(V^*\), \(V_\infty\)</dt><dd data-hojas="17,12">Valor óptimo en horizonte infinito (el límite de las iteraciones; en el tigre, 400 iteraciones). \(V_\infty\) es la etiqueta de la figura.</dd>
-<dt>\(V^B\)</dt><dd data-hojas="17">Valor calculado solo en el conjunto de puntos de belief \(B\) (método por puntos).</dd>
-<dt>\(\Gamma_t\)</dt><dd data-hojas="11">Conjunto de vectores \(\alpha\) cuya envolvente superior es \(V_t\).</dd>
-<dt>\(\alpha\), \(\alpha(s)\)</dt><dd data-hojas="11">Vector \(\alpha\): función lineal del belief, \(\alpha\cdot b=\sum_s\alpha(s)b(s)\). Es el valor de un plan condicional (árbol de política) empezando en cada estado.</dd>
-<dt>\(\alpha_{\text{nuevo}}\)</dt><dd data-hojas="11">Vector construido en la iteración exacta: \(R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\).</dd>
-<dt>\(g^{a,z}_\alpha(s)\)</dt><dd data-hojas="11">Vector auxiliar: \(\sum_{s'}T(s,a,s')O(s',a,z)\alpha(s')\). Hace lineal en \(b\) el término \(P(z\mid a,b)\,\alpha\cdot b^{a,z}\).</dd>
-<dt>\(\alpha_z\)</dt><dd data-hojas="11">Vector de \(\Gamma_{t-1}\) elegido para la observación \(z\) al construir \(\alpha_{\text{nuevo}}\).</dd>
-<dt>candidatos por iteración</dt><dd data-hojas="11,30">Candidatos de una iteración exacta antes de podar, \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\): un vector de \(\Gamma_{t-1}\) por observación y por acción. En el tigre, \(3\,|\Gamma_{t-1}|^2\).</dd>
-<dt>\(\alpha\cdot b\)</dt><dd data-hojas="11">Producto escalar entre el vector \(\alpha\) y el belief \(b\).</dd>
-<dt>\(\gamma = 0{,}95\)</dt><dd data-hojas="12">Descuento de los valores del tigre (figuras y tabla de vectores).</dd>
-<dt>0,040 y 0,960</dt><dd data-hojas="12,13">Umbrales en \(p\) del tigre: fuera de \((0{,}040;\,0{,}960)\) la política óptima deja de escuchar y abre una puerta.</dd>
-<dt>\(\sum_z P(z\mid a,b)\,b^{a,z} = b\)</dt><dd data-hojas="13">Propiedad de martingala del belief cuando la acción no cambia el estado (escuchar): la media de los beliefs posteriores es el belief previo.</dd>
+<dt>\(V_t(b)\)</dt><dd data-hojas="21,23">Valor óptimo con horizonte \(t\) desde el belief \(b\): máximo de funciones lineales de \(b\). \(V_0=0\).</dd>
+<dt>\(V_{t-1}\)</dt><dd data-hojas="24">Valor con un paso menos de horizonte, usado en la inducción.</dd>
+<dt>\(V^*\), \(V_\infty\)</dt><dd data-hojas="38,27">Valor óptimo en horizonte infinito (el límite de las iteraciones; en el tigre, 400 iteraciones). \(V_\infty\) es la etiqueta de la figura.</dd>
+<dt>\(V^B\)</dt><dd data-hojas="38">Valor calculado solo en el conjunto de puntos de belief \(B\) (método por puntos).</dd>
+<dt>\(\Gamma_t\)</dt><dd data-hojas="21,23">Conjunto de vectores \(\alpha\) cuya envolvente superior es \(V_t\).</dd>
+<dt>\(\alpha\), \(\alpha(s)\)</dt><dd data-hojas="21,22">Vector \(\alpha\): función lineal del belief, \(\alpha\cdot b=\sum_s\alpha(s)b(s)\). Es el valor de un plan condicional (árbol de política) empezando en cada estado.</dd>
+<dt>\(\alpha_{\text{nuevo}}\)</dt><dd data-hojas="25">Vector construido en la iteración exacta: \(R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\).</dd>
+<dt>\(g^{a,z}_\alpha(s)\)</dt><dd data-hojas="24">Vector auxiliar: \(\sum_{s'}T(s,a,s')O(s',a,z)\alpha(s')\). Hace lineal en \(b\) el término \(P(z\mid a,b)\,\alpha\cdot b^{a,z}\).</dd>
+<dt>\(\alpha_z\)</dt><dd data-hojas="25">Vector de \(\Gamma_{t-1}\) elegido para la observación \(z\) al construir \(\alpha_{\text{nuevo}}\).</dd>
+<dt>candidatos por iteración</dt><dd data-hojas="23,58">Candidatos de una iteración exacta antes de podar, \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\): un vector de \(\Gamma_{t-1}\) por observación y por acción. En el tigre, \(3\,|\Gamma_{t-1}|^2\).</dd>
+<dt>\(\alpha\cdot b\)</dt><dd data-hojas="21">Producto escalar entre el vector \(\alpha\) y el belief \(b\).</dd>
+<dt>plan condicional</dt><dd data-hojas="21,23">Árbol de política: una acción ahora y, para cada observación, el plan que se sigue después. Su valor por estado es un vector \(\alpha\).</dd>
+<dt>\(V_1\), \(V_2\)</dt><dd data-hojas="22,26">Valor óptimo del tigre con uno y dos pasos por delante: máximo de 3 y de 5 rectas.</dd>
+<dt>\(\gamma = 0{,}95\)</dt><dd data-hojas="27">Descuento de los valores del tigre (figuras y tabla de vectores).</dd>
+<dt>0,040 y 0,960</dt><dd data-hojas="27,28">Umbrales en \(p\) del tigre: fuera de \((0{,}040;\,0{,}960)\) la política óptima deja de escuchar y abre una puerta.</dd>
+<dt>\(\sum_z P(z\mid a,b)\,b^{a,z} = b\)</dt><dd data-hojas="29">Propiedad de martingala del belief cuando la acción no cambia el estado (escuchar): la media de los beliefs posteriores es el belief previo.</dd>
 </dl>
 <h3>Complejidad</h3>
 <dl>
-<dt>\(R_{\max}\), \(R_{\min}\)</dt><dd data-hojas="17">Mayor y menor recompensa posibles; su diferencia entra en la cota de error de PBVI.</dd>
+<dt>\(R_{\max}\), \(R_{\min}\)</dt><dd data-hojas="33,38">Mayor y menor recompensa posibles; su diferencia entra en la cota de error de PBVI.</dd>
+<dt>\(|\Gamma_t|\) sin podar</dt><dd data-hojas="31">Número de vectores del tigre si nunca se poda, \(3\,|\Gamma_{t-1}|^2\): se eleva al cuadrado en cada paso (3, 27, 2187…).</dd>
 </dl>
 <h3>QMDP y métodos por puntos</h3>
 <dl>
-<dt>\(Q_{\text{MDP}}(s,a)\)</dt><dd data-hojas="16">Valor-acción del MDP con estado visible. QMDP actúa con \(\arg\max_a\sum_s b(s)Q_{\text{MDP}}(s,a)\), y por eso da valor cero a la información.</dd>
-<dt>\(b = \tfrac12\)</dt><dd data-hojas="16">Belief uniforme entre los dos lados de la bifurcación del pasillo: punto de partida de la tabla de valores.</dd>
-<dt>\(B\)</dt><dd data-hojas="17">Conjunto de beliefs representativos que usan los métodos por puntos; cada uno tiene su vector \(\alpha\).</dd>
-<dt>\(\varepsilon_B\)</dt><dd data-hojas="17">Densidad con la que los puntos de \(B\) cubren el símplex; el error de PBVI es proporcional a ella.</dd>
-<dt>\(\alpha_{a,z}\)</dt><dd data-hojas="17">Vector de \(\Gamma\) que maximiza \(g^{a,z}_\alpha\cdot b\) en el punto \(b\), para cada acción y observación.</dd>
-<dt>\(\dfrac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2}\)</dt><dd data-hojas="17">Cota del error de PBVI: \(\|V^B-V^*\|_\infty\) crece con la separación de los puntos y con el horizonte efectivo \(1/(1-\gamma)\).</dd>
+<dt>\(Q_{\text{MDP}}(s,a)\)</dt><dd data-hojas="33,35">Valor-acción del MDP con estado visible. QMDP actúa con \(\arg\max_a\sum_s b(s)Q_{\text{MDP}}(s,a)\), y por eso da valor cero a la información.</dd>
+<dt>\(V_{\text{MDP}}(s)\)</dt><dd data-hojas="33,35">Valor óptimo del MDP con el estado visible; QMDP lo usa a partir del paso siguiente.</dd>
+<dt>\(b = \tfrac12\)</dt><dd data-hojas="34">Belief uniforme entre los dos lados de la bifurcación del pasillo: punto de partida de la tabla de valores.</dd>
+<dt>\(B\)</dt><dd data-hojas="33,38">Conjunto de beliefs representativos que usan los métodos por puntos; cada uno tiene su vector \(\alpha\).</dd>
+<dt>\(\varepsilon_B\)</dt><dd data-hojas="33,38">Densidad de \(B\): la mayor distancia, en norma 1, de un belief al punto de \(B\) más cercano. En el tigre con 5 puntos equiespaciados, 0,25. El error de PBVI es proporcional a ella.</dd>
+<dt>\(\alpha_{a,z}\)</dt><dd data-hojas="37">Vector de \(\Gamma\) que maximiza \(g^{a,z}_\alpha\cdot b\) en el punto \(b\), para cada acción y observación.</dd>
+<dt>\(\alpha_a\)</dt><dd data-hojas="37">Vector que construye PBVI en un punto para la acción \(a\): \(R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_{a,z}}\). Se queda el de mayor valor en el punto.</dd>
+<dt>\(\dfrac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2}\)</dt><dd data-hojas="38">Cota del error de PBVI: \(\|V^B-V^*\|_\infty\) crece con la separación de los puntos y con el horizonte efectivo \(1/(1-\gamma)\).</dd>
 </dl>
 <h3>Planificación en línea</h3>
 <dl>
-<dt>\(N\)</dt><dd data-hojas="19">Número de simulaciones de POMCP; el sesgo del valor estimado es \(O(\log N/N)\).</dd>
-<dt>\(K\)</dt><dd data-hojas="21">Número de escenarios de DESPOT (secuencias de números aleatorios que fijan el simulador). A menudo bastan \(K=500\).</dd>
-<dt>\(D\)</dt><dd data-hojas="21">Profundidad del árbol de búsqueda de DESPOT.</dd>
-<dt>tamaño del árbol (DESPOT)</dt><dd data-hojas="21">Tamaño del árbol completo, \(O(|\mathcal A|^D|\mathcal Z|^D)\), frente al de DESPOT, \(O(|\mathcal A|^D K)\).</dd>
-<dt>\(O(z\mid s,a,s')\)</dt><dd data-hojas="21,31">Verosimilitud de la observación; POMCPOW la usa para dar pesos a las partículas de cada nodo. Es el mismo modelo \(O\) del POMDP.</dd>
-<dt>\(\rho_{\text{ent}}(b)\)</dt><dd data-hojas="22">Recompensa por entropía negativa: \(\log_2|\mathcal S| + \sum_s b(s)\log_2 b(s)\). Vale 0 con el belief uniforme y es convexa.</dd>
-<dt>\(f(x) = x\log x\)</dt><dd data-hojas="22">Función por coordenada de la entropía negativa; su segunda derivada es \(1/x \gt 0\), luego es convexa.</dd>
-<dt>\(V_n\), \(V_0\) (hoja ρ-POMDP)</dt><dd data-hojas="22">Valor con horizonte \(n\) y valor inicial; el teorema 3.1 asegura que \(V_n\) es convexo si \(\rho\) y \(V_0\) lo son.</dd>
+<dt>\(N\)</dt><dd data-hojas="40,43">Número de simulaciones de POMCP; el sesgo del valor estimado es \(O(\log N/N)\).</dd>
+<dt>\(h\), \(ha\), \(haz\)</dt><dd data-hojas="40,41">Nodos del árbol de búsqueda: una historia, la historia más una acción (nodo de acción) y, al añadir la observación, la historia siguiente.</dd>
+<dt>\(N(h)\), \(N(ha)\)</dt><dd data-hojas="40,42">Número de visitas de un nodo de historia y de un nodo de acción durante la búsqueda.</dd>
+<dt>\(Q(ha)\)</dt><dd data-hojas="40,42">Media de los retornos simulados tras hacer \(a\) en la historia \(h\); la raíz ejecuta la acción de mayor \(Q\).</dd>
+<dt>\(c\) (UCB)</dt><dd data-hojas="40,42">Constante de exploración de UCB, en la escala de las recompensas (110 en nuestro tigre). No confundir con la casilla \(c\) de la parte 5.</dd>
+<dt>\(B(h)\)</dt><dd data-hojas="40,42">Partículas del nodo \(h\): estados muestreados que forman su belief, sin pesos en POMCP.</dd>
+<dt>\(G(s,a)\)</dt><dd data-hojas="40">Simulador de caja negra: \((s',z,r)\sim G(s,a)\). Es todo lo que POMCP necesita del modelo.</dd>
+<dt>\(K\)</dt><dd data-hojas="45">Número de escenarios de DESPOT (secuencias de números aleatorios que fijan el simulador). A menudo bastan \(K=500\).</dd>
+<dt>\(D\)</dt><dd data-hojas="45">Profundidad del árbol de búsqueda de DESPOT.</dd>
+<dt>tamaño del árbol (DESPOT)</dt><dd data-hojas="45">Tamaño del árbol completo, \(O(|\mathcal A|^D|\mathcal Z|^D)\), frente al de DESPOT, \(O(|\mathcal A|^D K)\).</dd>
+<dt>\(O(z\mid s,a,s')\)</dt><dd data-hojas="40,46">Verosimilitud de la observación; POMCPOW la usa para dar pesos a las partículas de cada nodo. Es el mismo modelo \(O\) del POMDP.</dd>
+<dt>\(\rho_{\text{ent}}(b)\)</dt><dd data-hojas="47">Recompensa por entropía negativa: \(\log_2|\mathcal S| + \sum_s b(s)\log_2 b(s)\). Vale 0 con el belief uniforme y es convexa.</dd>
+<dt>\(H(b)\)</dt><dd data-hojas="47">Entropía del belief en bits, \(-\sum_s b(s)\log_2 b(s)\); \(\rho_{\text{ent}} = \log_2|\mathcal S| - H\).</dd>
+<dt>\(f(x) = x\log x\)</dt><dd data-hojas="48">Función por coordenada de la entropía negativa; su segunda derivada es \(1/x \gt 0\), luego es convexa.</dd>
+<dt>\(V_n\), \(V_0\) (hoja ρ-POMDP)</dt><dd data-hojas="48">Valor con horizonte \(n\) y valor inicial; el teorema 3.1 asegura que \(V_n\) es convexo si \(\rho\) y \(V_0\) lo son.</dd>
 </dl>
 <h3>Búsqueda con el dron</h3>
 <dl>
-<dt>\(c\)</dt><dd data-hojas="24">Casilla de la rejilla de 6 × 6; \(b(c)\) es la probabilidad de que el objetivo esté en ella.</dd>
-<dt>\(c_{\text{dron}}\)</dt><dd data-hojas="24">Casilla que mira el dron en este paso.</dd>
-<dt>\(P_D\)</dt><dd data-hojas="24">Probabilidad de detección del objetivo si está en la casilla mirada: \(P_D = 0{,}6\); no hay falsas alarmas.</dd>
-<dt>\(b'(c)\)</dt><dd data-hojas="24">Belief de cada casilla tras mirar y no detectar: la casilla mirada baja a un 40 % y las demás suben.</dd>
+<dt>\(c\)</dt><dd data-hojas="50,51">Casilla de la rejilla de 6 × 6; \(b(c)\) es la probabilidad de que el objetivo esté en ella. En la parte 4, la misma letra es la constante de UCB.</dd>
+<dt>\(c_{\text{dron}}\)</dt><dd data-hojas="50,51">Casilla que mira el dron en este paso.</dd>
+<dt>\(P_D\)</dt><dd data-hojas="50,51">Probabilidad de detección del objetivo si está en la casilla mirada: \(P_D = 0{,}6\); no hay falsas alarmas.</dd>
+<dt>\(b'(c)\)</dt><dd data-hojas="50,51">Belief de cada casilla tras mirar y no detectar: la casilla mirada baja a un 40 % y las demás suben.</dd>
+<dt>\(d\), \(\mathrm{dist}(c,d)\)</dt><dd data-hojas="52">Casilla candidata hacia la que ir y su distancia Manhattan desde el dron; la política de ganancia maximiza \(b(d)\,P_D/(1+\mathrm{dist}(c,d))\).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>POMDP</dt><dd data-hojas="6">Partially observable Markov decision process: un MDP en el que el agente solo recibe observaciones del estado.</dd>
-<dt>MDP</dt><dd data-hojas="6">Markov decision process: problema de decisión con estado visible.</dd>
-<dt>PWLC</dt><dd data-hojas="11">Piecewise linear and convex: lineal a trozos y convexa, la forma del valor en el belief.</dd>
-<dt>AIS</dt><dd data-hojas="9">Approximate information state: estado de información aproximado, con errores \(\varepsilon_t\) y \(\delta_t\).</dd>
-<dt>PSPACE</dt><dd data-hojas="14">Clase de problemas resolubles con memoria polinómica; la versión parcialmente observada del MDP es PSPACE-completa.</dd>
-<dt>QMDP</dt><dd data-hojas="16">Aproximación que resuelve el MDP con estado visible y actúa con el belief; supone que mañana lo sabrá todo, así que nunca va a mirar.</dd>
-<dt>PBVI</dt><dd data-hojas="17">Point-based value iteration: un conjunto de beliefs representativos y un vector \(\alpha\) por punto.</dd>
-<dt>Perseus</dt><dd data-hojas="17">Variante aleatoria de PBVI que actualiza solo un subconjunto de puntos que mejore todos.</dd>
-<dt>HSVI</dt><dd data-hojas="17">Heuristic search value iteration: cotas inferior y superior del valor y búsqueda heurística desde \(b_0\).</dd>
-<dt>SARSOP</dt><dd data-hojas="17">Muestrea cerca de los beliefs alcanzables con acciones óptimas.</dd>
-<dt>POMCP</dt><dd data-hojas="19">Partially observable Monte-Carlo planning: árbol de Monte Carlo sobre historias con belief de partículas.</dd>
-<dt>UCB</dt><dd data-hojas="19">Upper confidence bound: regla que POMCP usa para elegir acciones al bajar por el árbol.</dd>
-<dt>DESPOT</dt><dd data-hojas="21">Determinized sparse partially observable tree: planificación en línea con \(K\) escenarios fijos.</dd>
-<dt>POMCPOW</dt><dd data-hojas="21">POMCP con ensanchamiento progresivo y partículas ponderadas, para observaciones continuas.</dd>
-<dt>PFT-DPW</dt><dd data-hojas="31">Planificador con ensanchamiento progresivo en acciones y observaciones y belief de partículas; alternativa a POMCPOW citada en la respuesta de la autoevaluación.</dd>
-<dt>\(\rho\)-POMDP</dt><dd data-hojas="22">POMDP cuya recompensa \(\rho(b,a)\) depende del belief, útil cuando la tarea es reducir la incertidumbre.</dd>
-<dt>BetaZero</dt><dd data-hojas="26">Planificación en belief guiada por redes de valor y política entrenadas fuera de línea.</dd>
-<dt>RL</dt><dd data-hojas="26">Reinforcement learning, aprendizaje por refuerzo.</dd>
+<dt>POMDP</dt><dd data-hojas="8">Partially observable Markov decision process: un MDP en el que el agente solo recibe observaciones del estado.</dd>
+<dt>MDP</dt><dd data-hojas="8">Markov decision process: problema de decisión con estado visible.</dd>
+<dt>PWLC</dt><dd data-hojas="21,23">Piecewise linear and convex: lineal a trozos y convexa, la forma del valor en el belief.</dd>
+<dt>AIS</dt><dd data-hojas="19">Approximate information state: estado de información aproximado, con errores \(\varepsilon_t\) y \(\delta_t\).</dd>
+<dt>PSPACE</dt><dd data-hojas="30">Clase de problemas resolubles con memoria polinómica; la versión parcialmente observada del MDP es PSPACE-completa.</dd>
+<dt>QMDP</dt><dd data-hojas="34">Aproximación que resuelve el MDP con estado visible y actúa con el belief; supone que mañana lo sabrá todo, así que nunca va a mirar.</dd>
+<dt>PBVI</dt><dd data-hojas="36">Point-based value iteration: un conjunto de beliefs representativos y un vector \(\alpha\) por punto.</dd>
+<dt>Perseus</dt><dd data-hojas="36">Variante aleatoria de PBVI que actualiza solo un subconjunto de puntos que mejore todos.</dd>
+<dt>HSVI</dt><dd data-hojas="36">Heuristic search value iteration: cotas inferior y superior del valor y búsqueda heurística desde \(b_0\).</dd>
+<dt>SARSOP</dt><dd data-hojas="36">Muestrea cerca de los beliefs alcanzables con acciones óptimas.</dd>
+<dt>POMCP</dt><dd data-hojas="41,43">Partially observable Monte-Carlo planning: árbol de Monte Carlo sobre historias con belief de partículas.</dd>
+<dt>UCB</dt><dd data-hojas="42">Upper confidence bound: regla que POMCP usa para elegir acciones al bajar por el árbol.</dd>
+<dt>DESPOT</dt><dd data-hojas="45">Determinized sparse partially observable tree: planificación en línea con \(K\) escenarios fijos.</dd>
+<dt>POMCPOW</dt><dd data-hojas="46">POMCP con ensanchamiento progresivo y partículas ponderadas, para observaciones continuas.</dd>
+<dt>PFT-DPW</dt><dd data-hojas="59">Planificador con ensanchamiento progresivo en acciones y observaciones y belief de partículas; alternativa a POMCPOW citada en la respuesta de la autoevaluación.</dd>
+<dt>\(\rho\)-POMDP</dt><dd data-hojas="47">POMDP cuya recompensa \(\rho(b,a)\) depende del belief, útil cuando la tarea es reducir la incertidumbre.</dd>
+<dt>BetaZero</dt><dd data-hojas="54">Planificación en belief guiada por redes de valor y política entrenadas fuera de línea.</dd>
+<dt>RL</dt><dd data-hojas="54">Reinforcement learning, aprendizaje por refuerzo.</dd>
 </dl>
 </aside>
 
