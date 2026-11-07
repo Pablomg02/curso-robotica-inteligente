@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<link rel="stylesheet" href="../../assets/curso.css?v=11">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -62,70 +62,156 @@
 
 <section class="slide">
   <p class="kicker">Arquitectura</p>
-  <h2>El sistema del hito, con sus frecuencias</h2>
-  <div class="cols w60">
-    <figure class="fig">
-      <svg viewBox="0 0 640 300" role="img" aria-label="Diagrama de bloques del sistema del hito 1 con las frecuencias de cada lazo">
-        <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
-        <g font-size="13">
-          <rect class="box" x="20" y="12" width="300" height="38" rx="6"/><text x="170" y="36" text-anchor="middle">Planificador global (A*, RRT*) · 1 Hz</text>
-          <rect class="box-accent" x="20" y="68" width="300" height="38" rx="6"/><text x="170" y="92" text-anchor="middle">Local + minimum snap · 10 Hz</text>
-          <rect class="box" x="20" y="124" width="300" height="38" rx="6"/><text x="170" y="148" text-anchor="middle">Posición, NMPC o MPPI · 50–100 Hz</text>
-          <rect class="box" x="20" y="180" width="300" height="38" rx="6"/><text x="170" y="204" text-anchor="middle">Actitud 200 Hz → rate 800 Hz → asignación</text>
-          <rect class="box-time" x="20" y="236" width="300" height="50" rx="6"/><text x="170" y="257" text-anchor="middle">Motores (τ 12,5 / 25 ms)</text><text x="170" y="276" text-anchor="middle">física con RK4 a 2 kHz</text>
-          <rect class="box-time" x="380" y="236" width="245" height="50" rx="6"/><text x="502" y="257" text-anchor="middle">IMU 250 Hz · posición 20 Hz</text><text x="502" y="276" text-anchor="middle">(+30 ms) · profundidad 20 Hz</text>
-          <rect class="box-tesis" x="380" y="150" width="245" height="50" rx="6"/><text x="502" y="171" text-anchor="middle">ESKF: predicción con la IMU</text><text x="502" y="190" text-anchor="middle">actualización retrasada</text>
-          <rect class="box" x="380" y="62" width="245" height="50" rx="6"/><text x="502" y="83" text-anchor="middle">Mapa log-odds local</text><text x="502" y="102" text-anchor="middle">10–20 Hz</text>
-        </g>
-        <g class="ln" marker-end="url(#fl)">
-          <path d="M170,50 L170,66"/><path d="M170,106 L170,122"/><path d="M170,162 L170,178"/><path d="M170,218 L170,234"/>
-          <path d="M320,261 L378,261"/>
-          <path d="M502,236 L502,202"/>
-          <path d="M600,236 L600,114"/>
-          <path d="M380,175 L322,148"/>
-          <path d="M380,87 L322,87"/>
-        </g>
-      </svg>
-      <figcaption>Frecuencias de PX4 en multirrotor (A2) y del x500 de Gazebo (A1). Las del planificador y el mapa son elección de diseño.</figcaption>
-    </figure>
+  <h2>El sistema del hito, con sus frecuencias y sus interfaces</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 410" style="max-height:440px" role="img" aria-label="Diagrama de bloques del sistema del hito 1: planificador global y local, seguimiento, actitud y rate, física; sensores, ESKF y mapa, con las frecuencias y el nombre de cada interfaz">
+      <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="15">
+        <rect class="box" x="40" y="15" width="430" height="55" rx="6"/>
+        <text x="56" y="38" class="t-bold">Planificador global</text><text x="56" y="59" class="t-muted" font-size="13">A*, RRT* sobre lo conocido (A5)</text>
+        <text x="455" y="38" text-anchor="end" class="t-mono t-time" font-size="14">1 Hz</text>
+        <rect class="box-accent" x="40" y="92" width="430" height="55" rx="6"/>
+        <text x="56" y="115" class="t-bold">Local + minimum snap</text><text x="56" y="136" class="t-muted" font-size="13">trayectoria de frenado dentro de lo visto (A5)</text>
+        <text x="455" y="115" text-anchor="end" class="t-mono t-time" font-size="14">10 Hz</text>
+        <rect class="box" x="40" y="169" width="430" height="55" rx="6"/>
+        <text x="56" y="192" class="t-bold">Seguimiento</text><text x="56" y="213" class="t-muted" font-size="13">cascada de posición (A2), NMPC (A3a) o MPPI (A3b)</text>
+        <text x="455" y="192" text-anchor="end" class="t-mono t-time" font-size="14">100 Hz</text>
+        <rect class="box" x="40" y="246" width="430" height="55" rx="6"/>
+        <text x="56" y="269" class="t-bold">Actitud → rate → asignación</text><text x="56" y="290" class="t-muted" font-size="13">como PX4 en multirrotor (A2)</text>
+        <text x="455" y="269" text-anchor="end" class="t-mono t-time" font-size="14">200 → 800 Hz</text>
+        <rect class="box-time" x="40" y="335" width="430" height="60" rx="6"/>
+        <text x="56" y="359" class="t-bold">Física: motores y cuerpo rígido</text><text x="56" y="381" class="t-muted" font-size="13">motores de 1.er orden, 12,5 ms al subir y 25 al bajar (A1)</text>
+        <text x="455" y="359" text-anchor="end" class="t-mono t-time" font-size="14">RK4 a 4 kHz</text>
+
+        <rect class="box" x="700" y="85" width="410" height="60" rx="6"/>
+        <text x="716" y="109" class="t-bold">Mapa log-odds local</text><text x="716" y="131" class="t-muted" font-size="13">con la profundidad y la pose estimada (A5)</text>
+        <text x="1095" y="109" text-anchor="end" class="t-mono t-time" font-size="14">10–20 Hz</text>
+        <rect class="box-tesis" x="700" y="200" width="410" height="60" rx="6"/>
+        <text x="716" y="224" class="t-bold">ESKF de 15 estados</text><text x="716" y="246" class="t-muted" font-size="13">predicción con la IMU, actualización retrasada (A4a)</text>
+        <rect class="box-time" x="700" y="320" width="410" height="75" rx="6"/>
+        <text x="716" y="343" class="t-bold">Sensores simulados</text>
+        <text x="716" y="364" class="t-muted" font-size="13">IMU 250 Hz · giróscopo al rate 800 Hz</text>
+        <text x="716" y="383" class="t-muted" font-size="13">posición 20 Hz (+30 ms) · profundidad 20 Hz</text>
+      </g>
+      <g class="ln" marker-end="url(#fl)" fill="none">
+        <path d="M255 70 V90"/><path d="M255 147 V167"/><path d="M255 224 V244"/><path d="M255 301 V333"/>
+        <path d="M470 372 H698"/>
+        <path d="M905 320 V262"/>
+        <path d="M1080 320 V147"/>
+        <path d="M800 200 V147"/>
+        <path d="M720 85 V42 H472"/>
+        <path d="M700 112 H472"/>
+        <path d="M700 340 H650 V292 H472"/>
+      </g>
+      <g class="ln-tesis" marker-end="url(#fl)" fill="none" stroke-width="1.8">
+        <path d="M700 230 H600 V132 H472"/>
+        <path d="M600 197 H472"/>
+        <path d="M600 230 V270 H472"/>
+      </g>
+      <g class="t-mono" font-size="13">
+        <text x="265" y="163" class="t-accent">Trayectoria</text>
+        <text x="265" y="240" class="t-accent">consigna</text>
+        <text x="265" y="322" class="t-accent">mandos de motor</text>
+        <text x="490" y="364" class="t-accent">estado real</text>
+        <text x="915" y="296" class="t-accent">IMU, posición</text>
+        <text x="1072" y="182" text-anchor="end" class="t-accent">profundidad</text>
+        <text x="810" y="180" class="t-accent">pose estimada</text>
+        <text x="610" y="105" class="t-accent">mapa</text>
+        <text x="610" y="36" class="t-accent">mapa</text>
+        <text x="608" y="222" class="t-tesis">belief</text>
+        <text x="490" y="286" class="t-accent">giróscopo</text>
+      </g>
+    </svg>
+    <figcaption>En violeta, el <code>belief</code> (media y covarianza del ESKF): lo único que control y planificación saben del estado; el estado real solo llega a los sensores. Frecuencias de PX4 en multirrotor (A2) y motores del x500 (A1); IMU a 250 Hz como la del x500 en el SITL de Gazebo (lo verás en B1). Planificador, mapa y sensores visuales: elección de diseño del hito.</figcaption>
+  </figure>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitectura · cómo se ejecuta</p>
+  <h2>Un solo reloj, retenedores y colas de retardo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 250" style="max-height:215px" role="img" aria-label="Izquierda: diez milisegundos con el reloj a 4 kHz, el rate ejecutándose cada 5 pasos y la actitud cada 20, con el mando retenido entre ejecuciones. Derecha: la posición visual capturada cada 50 ms llega 30 ms después con su marca de captura">
+      <text x="40" y="18" class="t-mono t-faint" font-size="14">0 A 10 ms · RELOJ A 4 kHz</text>
+      <g class="ln-rule">
+        <path d="M100 40 V52 M112.5 40 V52 M125 40 V52 M137.5 40 V52 M150 40 V52 M162.5 40 V52 M175 40 V52 M187.5 40 V52 M200 40 V52 M212.5 40 V52 M225 40 V52 M237.5 40 V52 M250 40 V52 M262.5 40 V52 M275 40 V52 M287.5 40 V52 M300 40 V52 M312.5 40 V52 M325 40 V52 M337.5 40 V52 M350 40 V52 M362.5 40 V52 M375 40 V52 M387.5 40 V52 M400 40 V52 M412.5 40 V52 M425 40 V52 M437.5 40 V52 M450 40 V52 M462.5 40 V52 M475 40 V52 M487.5 40 V52 M500 40 V52 M512.5 40 V52 M525 40 V52 M537.5 40 V52 M550 40 V52 M562.5 40 V52 M575 40 V52 M587.5 40 V52 M600 40 V52"/>
+      </g>
+      <text x="40" y="51" class="t-muted" font-size="15">reloj</text>
+      <text x="40" y="104" class="t-muted" font-size="15">rate</text>
+      <path class="ln-accent" fill="none" stroke-width="2" d="M100 110 H162.5 V92 H225 V104 H287.5 V86 H350 V98 H412.5 V90 H475 V108 H537.5 V96 H600"/>
+      <g class="fill-time"><circle cx="100" cy="110" r="4"/><circle cx="162.5" cy="92" r="4"/><circle cx="225" cy="104" r="4"/><circle cx="287.5" cy="86" r="4"/><circle cx="350" cy="98" r="4"/><circle cx="412.5" cy="90" r="4"/><circle cx="475" cy="108" r="4"/><circle cx="537.5" cy="96" r="4"/></g>
+      <text x="40" y="164" class="t-muted" font-size="15">actitud</text>
+      <path class="ln-accent" fill="none" stroke-width="2" d="M100 170 H350 V150 H600"/>
+      <g class="fill-time"><circle cx="100" cy="170" r="4"/><circle cx="350" cy="150" r="4"/></g>
+      <path class="ln" d="M100 205 H600"/>
+      <g class="t-mono t-faint" font-size="14" text-anchor="middle"><text x="100" y="222">0</text><text x="162.5" y="222">1,25</text><text x="350" y="222">5</text><text x="600" y="222">10 ms</text></g>
+      <text x="350" y="244" text-anchor="middle" class="t-mono t-time" font-size="14">rate cada 5 pasos (800 Hz) · actitud cada 20 (200 Hz)</text>
+
+      <text x="700" y="18" class="t-mono t-faint" font-size="14">0 A 120 ms · POSICIÓN VISUAL</text>
+      <text x="700" y="80" class="t-muted" font-size="15">captura</text>
+      <text x="700" y="150" class="t-muted" font-size="15">llega</text>
+      <path class="ln" d="M780 205 H1120"/>
+      <g class="t-mono t-faint" font-size="14" text-anchor="middle"><text x="780" y="222">0</text><text x="921.7" y="222">50</text><text x="1063.3" y="222">100 ms</text></g>
+      <g class="fill-tesis"><circle cx="780" cy="76" r="5"/><circle cx="921.7" cy="76" r="5"/><circle cx="1063.3" cy="76" r="5"/></g>
+      <g class="ln-time" fill="none" marker-end="url(#fl)"><path d="M780 82 L862 140"/><path d="M921.7 82 L1003.7 140"/></g>
+      <g class="fill-time"><circle cx="865" cy="146" r="5"/><circle cx="1006.7" cy="146" r="5"/></g>
+      <text x="836" y="104" class="t-mono t-time" font-size="14">+30 ms</text>
+      <text x="780" y="178" class="t-mono t-tesis" font-size="14">cada lectura lleva su instante de captura</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p><strong>Retenedor de orden cero</strong>: entre dos ejecuciones, un bloque mantiene su última salida (los escalones). <strong>Cola de retardo</strong>: la salida sale \(D\) pasos después, como en el simulador de A2. El ESKF aplica cada medida en su instante de captura (horizonte retrasado, A4a parte 5).</p>
+    <p><strong>¿Por qué 4 kHz?</strong> Con el paso de 0,5 ms del laboratorio de A2, 800 Hz serían 2,5 pasos y <code>toca(k % N == 0)</code> no puede programarlo. 0,25 ms es el mayor paso que divide los periodos de todos los bloques (<code>figuras/ejemplos_h1.py</code>, ejemplo 1).</p>
+  </div>
+  <div class="callout tesis"><span class="tag">Por qué así</span>Es la arquitectura en la que entrenarás políticas en H3: el planificador (o la política) recibe un belief y un mapa, no el estado verdadero.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enunciado · 1 de 2</p>
+  <h2>Cruzar un bosque con lo que el dron ve y estima</h2>
+  <div class="cols w40">
     <div class="stack">
-      <ul class="small">
-        <li>El ESKF alimenta a todos los lazos por encima del de <em>rate</em>; el de <em>rate</em> usa el giróscopo filtrado directamente, como en PX4.</li>
-        <li>El planificador ve el mundo solo a través del mapa, que se construye con el sensor de profundidad y la pose <em>estimada</em>.</li>
-        <li>Un único reloj de simulación a 2 kHz; cada bloque se ejecuta cuando le toca, con retenedor de orden cero, y sus salidas pasan por una cola de retardo.</li>
-      </ul>
-      <div class="callout tesis"><span class="tag">Por qué así</span>Es la arquitectura en la que entrenarás políticas en H3: el planificador (o la política) recibe un belief y un mapa, no el estado verdadero.</div>
+      <p><strong>Escenario.</strong> Un bosque aleatorio de columnas de 40 m × 20 m, con la densidad y los radios del laboratorio de A5 (1 árbol cada 20 m², radios de 0,2 a 0,5 m). Despegue en un extremo y meta en el otro, a 2 m de altura.</p>
+      <p><strong>Regla de oro.</strong> Nada usa el estado verdadero salvo la física, los sensores y la evaluación.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Sensores simulados</strong>, cada uno con su frecuencia y su retardo:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:24%">Sensor</th><th style="width:13%">Frecuencia</th><th>Ruido o alcance</th><th style="width:12%">Retardo</th><th style="width:20%">De dónde sale</th></tr>
+          <tr><td>IMU (acelerómetro y giróscopo) para el ESKF</td><td class="n">250 Hz</td><td>Densidades de ruido y paseo aleatorio de la IMU de EuRoC</td><td class="n">—</td><td>A4a (laboratorio)</td></tr>
+          <tr><td>Giróscopo filtrado para el <em>rate</em></td><td class="n">800 Hz</td><td>El mismo giróscopo, filtrado como en A2</td><td class="n">—</td><td>A2, PX4</td></tr>
+          <tr><td>«Posición visual»</td><td class="n">20 Hz</td><td>2 cm de desviación típica</td><td class="n">30 ms</td><td>Diseño del hito</td></tr>
+          <tr><td>Profundidad en abanico</td><td class="n">20 Hz</td><td>90° de abertura, 10 m de alcance</td><td class="n">—</td><td>Laboratorio de A5 (\(r_s\) = 10 m)</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">La posición visual sustituye a un VIO: una posición ruidosa y retrasada, sin simular la cámara (eso llega en B3).</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Enunciado</p>
-  <h2>Cruzar un bosque con lo que el dron ve y estima</h2>
+  <p class="kicker">Enunciado · 2 de 2</p>
+  <h2>Estimar, planificar y seguir con los módulos de los laboratorios</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
-        <li><strong>Escenario.</strong> Un bosque de columnas de 40 m × 20 m (densidad y radios del laboratorio A5), despegue en un extremo y meta en el otro, a 2 m de altura.</li>
-        <li><strong>Sensores simulados.</strong> IMU a 250 Hz con las densidades de ruido y paseo aleatorio de EuRoC; una «posición visual» a 20 Hz con 2 cm de ruido y 30 ms de retardo; un sensor de profundidad en abanico de 90° y alcance de 10 m a 20 Hz.</li>
-        <li><strong>Estimación.</strong> El ESKF de A4a con horizonte retrasado. Nada usa el estado verdadero salvo la física, los sensores y la evaluación.</li>
-        <li><strong>Planificación.</strong> Global hacia la meta sobre lo conocido, local a 10 Hz con trayectoria de frenado dentro del espacio visto, y minimum snap con tiempos factibles.</li>
-        <li><strong>Seguimiento.</strong> Tres variantes intercambiables con la misma interfaz: cascada de A2 con <em>feedforward</em> de planitud, NMPC de A3a y MPPI de A3b.</li>
-      </ol>
+      <p><strong>Estimación.</strong> El ESKF de A4a (15 estados: posición, velocidad, actitud y sesgos de acelerómetro y giróscopo) con horizonte retrasado para la posición visual.</p>
+      <p><strong>Planificación.</strong> Global hacia la meta sobre lo conocido; local a 10 Hz con trayectoria de frenado dentro del espacio visto; minimum snap con tiempos factibles (A5).</p>
+      <p><strong>Seguimiento.</strong> Tres variantes intercambiables con la misma interfaz: cascada de A2 con <em>feedforward</em> de planitud, NMPC de A3a y MPPI de A3b.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué se entrega</span>El código en el proyecto hilo, los tests, un comando que reproduce todas las figuras y tablas, y un informe de dos páginas.</div>
-      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. Con <code>jax.jit</code> y <code>lax.scan</code>, un vuelo de 30 s a 2 kHz son 60 000 pasos: deberían correr en segundos. La GPU solo hace falta si lanzas los 20 bosques en paralelo con <code>vmap</code>.</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. Con <code>jax.jit</code> y <code>lax.scan</code>, un vuelo de 30 s a 4 kHz son 120 000 pasos: deberían correr en segundos. La GPU solo hace falta si lanzas los 20 bosques en paralelo con <code>vmap</code>.</div>
       <div class="callout error"><span class="tag">La trampa más común</span>Usar sin querer el estado verdadero en el controlador o en el mapa. Pon un test que falle si cualquier módulo de control o planificación recibe el estado de la física.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Interfaces</p>
+  <p class="kicker">Interfaces · 1 de 2</p>
   <h2>Tres firmas que no deberían cambiar hasta la tesis</h2>
   <div class="cols">
     <div class="stack">
-<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere;"><code># estimacion/
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:15px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere;"><code># estimacion/
 paso_prediccion(belief, imu, dt) -&gt; belief
 paso_actualizacion(belief, medida, t_medida) -&gt; belief
 
@@ -140,14 +226,76 @@ mando(belief, ref: Trayectoria, t, memoria)
 paso(estado_real, mandos, clave, dt) -&gt; (estado_real, lecturas)</code></pre>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong><code>belief</code></strong> es media y covarianza del ESKF. En H3 será también un estado latente aprendido: si el resto del código solo ve <code>belief</code>, el cambio es local.</li>
-        <li><strong><code>memoria</code></strong> lleva lo que cada controlador necesita entre pasos (integradores, arranque en caliente del NMPC, secuencia nominal del MPPI). Todo como <em>pytrees</em> para que <code>jit</code> y <code>scan</code> funcionen.</li>
-        <li><strong>Funciones puras</strong> con la clave aleatoria como argumento: la misma semilla da el mismo vuelo.</li>
-      </ul>
+      <p><strong><code>belief</code></strong> es media y covarianza del ESKF. En H3 será también un estado latente aprendido: si el resto del código solo ve <code>belief</code>, el cambio es local.</p>
+      <p><strong>Funciones puras</strong> con la clave aleatoria como argumento: la misma semilla da el mismo vuelo.</p>
       <div class="callout clave"><span class="tag">Idea clave</span>Planificador y política aprendida tienen la misma firma: del belief y el mapa a una referencia. Así podrás comparar el planificador clásico con lo que entrenes en la fase 3 sin tocar nada más.</div>
     </div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Interfaces · 2 de 2</p>
+  <h2>Qué es cada argumento</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Argumento</th><th>Qué es</th><th style="width:16%">Tema</th></tr>
+      <tr><td><code>belief</code></td><td>Estado nominal (posición, velocidad, cuaternión, sesgos) y covarianza 15×15 del error</td><td>A4a, parte 4</td></tr>
+      <tr><td><code>imu</code>, <code>dt</code></td><td>Aceleración específica y velocidad angular medidas; tiempo desde la muestra anterior</td><td>A4a</td></tr>
+      <tr><td><code>medida</code>, <code>t_medida</code></td><td>Posición visual (o lectura de profundidad) y su instante de <strong>captura</strong>, no el de llegada</td><td>A4a, parte 5</td></tr>
+      <tr><td><code>mapa</code>, <code>meta</code></td><td>Rejilla log-odds local (log del cociente entre ocupado y libre en cada celda) y punto de llegada</td><td>A5, parte 3</td></tr>
+      <tr><td><code>Trayectoria</code></td><td>Polinomios por tramo y duración de cada tramo; se evalúa en cualquier <code>t</code></td><td>A5, parte 2</td></tr>
+      <tr><td><code>memoria</code></td><td>Lo que cada controlador guarda entre pasos: integradores, arranque en caliente del NMPC, secuencia nominal del MPPI. Como <em>pytrees</em>, para que <code>jit</code> y <code>scan</code> funcionen</td><td>A2, A3a, A3b</td></tr>
+      <tr><td><code>consigna</code></td><td>CTBR (empuje colectivo y velocidades angulares) para el lazo de <em>rate</em>, o par para la asignación</td><td>A2</td></tr>
+      <tr><td><code>estado_real</code>, <code>mandos</code>, <code>clave</code>, <code>lecturas</code></td><td>Estado verdadero de la física; velocidades de motor pedidas; clave aleatoria de JAX; lecturas de sensores con su marca de captura</td><td>A1, M0</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Antes de los criterios</p>
+  <h2>Qué mide cada criterio, en una línea</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Magnitud</th><th>Qué es y cómo se calcula</th><th style="width:15%">Tema</th></tr>
+      <tr><td>Deriva en hover</td><td>Distancia entre la posición final y la inicial tras 60 s quieto con el estado verdadero: mide errores de integración y de reloj, no de control</td><td>M0, A2</td></tr>
+      <tr><td>Cruce y margen de fase</td><td>Cruce \(f_c\): frecuencia en la que la ganancia de lazo vale 1. Margen \(\mathrm{PM}=180^\circ+\angle L(j\omega_c)\). Se miden con un barrido senoidal; las referencias, 6,3 Hz y 71°, son las del x500 con las ganancias por defecto de PX4</td><td>M0, A2 (parte 1)</td></tr>
+      <tr><td>NEES</td><td>\(\epsilon_k=\mathbf e_k^\top P_k^{-1}\mathbf e_k\), con \(\mathbf e_k\) el error de posición (estimada menos verdadera) y \(P_k\) su covarianza 3×3 según el ESKF. Si el filtro es consistente, su media vale 3, la dimensión</td><td>A4a (parte 2)</td></tr>
+      <tr><td>Error RMS</td><td>\(\sqrt{\tfrac1K\sum_k\|\hat{\mathbf p}_k-\mathbf p_k\|^2}\): raíz del error cuadrático medio de posición a lo largo del vuelo</td><td>A4a</td></tr>
+      <tr><td>Tasa de éxito</td><td>Fracción de bosques en que el dron llega a la meta sin chocar. Distancia de parada de A5, \(d=v\,t_\ell+v^2/2a\): 1,1 m a 3 m/s y 3,8 m a 6 m/s con \(t_\ell\) = 0,1 s y \(a=g\tan30^\circ\), dentro de los 10 m del sensor</td><td>A5 (parte 3)</td></tr>
+    </table>
+  </div>
+  <p class="xsmall muted">\(\hat{\mathbf p}_k\), \(\mathbf p_k\): posición estimada y verdadera en la muestra \(k\) de \(K\). \(t_\ell\): latencia de percepción y planificación; \(a\): deceleración máxima. Distancias en <code>figuras/ejemplos_h1.py</code>, ejemplo 3.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Antes de los criterios · el NEES</p>
+  <h2>De dónde sale la banda 2,36–3,72 del criterio 4</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>Filtro consistente: \(\mathbf e_k\sim\mathcal N(\mathbf 0, P_k)\)</td><td>Es lo que significa que la covarianza «no mienta»</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\epsilon_k=\mathbf e_k^\top P_k^{-1}\mathbf e_k\sim\chi^2_3\)</td><td>Blanqueado, \(\mathbf e_k\) son 3 normales estándar; la suma de sus cuadrados es una ji-cuadrado con 3 grados de libertad</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\sum_{i=1}^{50}\epsilon_k^{(i)}\sim\chi^2_{150}\)</td><td>50 vuelos independientes: las ji-cuadrado independientes suman sus grados de libertad</td></tr>
+        <tr><td><strong>4</strong></td><td>\(P(117{,}98\le\chi^2_{150}\le185{,}80)=0{,}95\)</td><td>Cuantiles del 2,5 % y del 97,5 %</td></tr>
+        <tr><td><strong>5</strong></td><td>\(\bar\epsilon_k\in[2{,}36;\ 3{,}72]\)</td><td>La media es la suma dividida por 50</td></tr>
+      </table>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 600 250" role="img" aria-label="Densidad del NEES medio de 50 vuelos de un filtro consistente, centrada en 3, con la banda del 95 por ciento entre 2,36 y 3,72">
+        <rect class="fill-tesis" x="157.6" y="20" width="260.9" height="180" opacity="0.12"/>
+        <path class="ln" d="M50 200 H550"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M50.0 199.9 L59.6 199.9 L69.2 199.7 L78.8 199.4 L88.5 198.9 L98.1 198.1 L107.7 196.8 L117.3 194.7 L126.9 191.7 L136.5 187.4 L146.2 181.7 L155.8 174.2 L165.4 164.9 L175.0 153.8 L184.6 140.9 L194.2 126.7 L203.8 111.7 L213.5 96.4 L223.1 81.6 L232.7 68.1 L242.3 56.7 L251.9 47.8 L261.5 42.1 L271.2 39.7 L280.8 40.7 L290.4 44.9 L300.0 52.0 L309.6 61.5 L319.2 72.7 L328.8 85.1 L338.5 98.1 L348.1 111.2 L357.7 123.8 L367.3 135.7 L376.9 146.6 L386.5 156.3 L396.2 164.7 L405.8 172.0 L415.4 178.0 L425.0 183.0 L434.6 187.0 L444.2 190.2 L453.8 192.7 L463.5 194.6 L473.1 196.1 L482.7 197.2 L492.3 198.0 L501.9 198.6 L511.5 199.0 L521.2 199.3 L530.8 199.5 L540.4 199.7 L550.0 199.8"/>
+        <path class="ln-tesis ln-dash" d="M157.6 20 V200 M418.5 20 V200"/>
+        <path class="ln-dash ln" d="M280.8 20 V200"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle"><text x="50" y="218">1,8</text><text x="157.6" y="218">2,36</text><text x="280.8" y="218">3</text><text x="418.5" y="218">3,72</text><text x="550" y="218">4,4</text></g>
+        <text x="300" y="242" text-anchor="middle" class="t-muted" font-size="13">NEES medio de 50 vuelos</text>
+        <text x="288" y="34" class="t-mono t-tesis" font-size="13">95 %</text>
+      </svg>
+      <figcaption>Densidad de \(\chi^2_{150}/50\). En 20 000 repeticiones simuladas de 50 vuelos consistentes, el 95,3 % cae dentro; un filtro que cree tener la mitad de covarianza da 6,0. <code>figuras/ejemplos_h1.py</code>, ejemplo 2.</figcaption>
+    </figure>
+  </div>
+  <div class="callout clave"><span class="tag">Cómo se lee</span>Por encima de 3,72, el filtro es <strong>optimista</strong> (cree saber más de lo que sabe); por debajo de 2,36, <strong>prudente</strong>. \(\bar\epsilon_k\) es la media sobre vuelos en cada instante \(k\); el superíndice \((i)\) numera el vuelo.</div>
 </section>
 
 <section class="slide">
@@ -156,11 +304,11 @@ paso(estado_real, mandos, clave, dt) -&gt; (estado_real, lecturas)</code></pre>
   <div class="table-wrap">
     <table class="t">
       <tr><th style="width:5%">#</th><th style="width:28%">Criterio</th><th>Cómo se mide</th><th style="width:26%">Umbral</th></tr>
-      <tr><td>1</td><td>Física y reloj</td><td>Hover de 60 s con la cascada y estado verdadero; misma semilla, mismo vuelo; tiempo de cálculo de un vuelo de 30 s</td><td>Deriva &lt; 1 cm; bit a bit igual; más rápido que el tiempo real en CPU</td></tr>
-      <tr><td>2</td><td>Lazo de <em>rate</em></td><td>Barrido senoidal como en el laboratorio de A2</td><td>Cruce y margen de fase a menos de un 10 % de 6,3 Hz y 71°</td></tr>
+      <tr><td>1</td><td>Física y reloj</td><td>Hover de 60 s con la cascada y estado verdadero; misma semilla, mismo vuelo; tiempo de cálculo de un vuelo de 30 s (120 000 pasos a 4 kHz)</td><td>Deriva &lt; 1 cm; bit a bit igual; más rápido que el tiempo real en CPU</td></tr>
+      <tr><td>2</td><td>Lazo de <em>rate</em></td><td>Barrido senoidal como en el laboratorio de A2</td><td>Cruce y margen de fase a menos de un 10 % de 6,3 Hz y 71°, los del x500 en A2</td></tr>
       <tr><td>3</td><td>Multifrecuencia</td><td>Cada bloque a su frecuencia, con retenedor y cola de retardo; test que cuente las ejecuciones de cada bloque en 1 s</td><td>800, 200, 100, 10 y 1 ejecuciones exactas</td></tr>
-      <tr><td>4</td><td>Consistencia del ESKF</td><td>NEES medio de posición en 50 vuelos estacionarios de 30 s con el ESKF en el lazo</td><td>Entre 2,36 y 3,72 (χ² al 95 % con 150 grados de libertad, dividido por 50)</td></tr>
-      <tr><td>5</td><td>Retardo de la medida</td><td>Mismos vuelos ignorando los 30 ms y con horizonte retrasado</td><td>Error RMS de posición menor con horizonte retrasado; diferencia medida</td></tr>
+      <tr><td>4</td><td>Consistencia del ESKF</td><td>NEES medio de posición en 50 vuelos estacionarios de 30 s con el ESKF en el lazo</td><td>Entre 2,36 y 3,72 (χ² al 95 % con 150 grados de libertad, dividido por 50; ver la hoja anterior)</td></tr>
+      <tr><td>5</td><td>Retardo de la medida</td><td>Mismos vuelos tratando la posición visual como si fuera del instante de llegada (ignorar los 30 ms) y con horizonte retrasado</td><td>Error RMS de posición menor con horizonte retrasado; diferencia medida</td></tr>
     </table>
   </div>
   <p class="xsmall muted">Los umbrales son del curso: orientativos y pensados para que un sistema bien integrado los pase con margen. Si uno no se cumple, el informe dice por qué.</p>
@@ -193,7 +341,7 @@ paso(estado_real, mandos, clave, dt) -&gt; (estado_real, lecturas)</code></pre>
     </div>
     <div class="stack">
       <div class="callout error"><span class="tag">JAX</span>Ramas de Python dentro de <code>jit</code> (usa <code>lax.cond</code>), formas que cambian y provocan recompilaciones, y claves aleatorias reutilizadas, que dan ruido correlacionado entre sensores.</div>
-      <div class="callout error"><span class="tag">Covarianzas que mienten</span>Ajustar \(Q\) y \(R\) mirando el error contra el estado verdadero hasta que «va bien»: el NEES dirá si el filtro es consistente o solo tiene suerte.</div>
+      <div class="callout error"><span class="tag">Covarianzas que mienten</span>Ajustar \(Q\) y \(R\) (covarianzas del ruido de proceso y de medida, A4a) mirando el error contra el estado verdadero hasta que «va bien»: el NEES dirá si el filtro es consistente o solo tiene suerte.</div>
       <div class="callout clave"><span class="tag">Método</span>Integra de abajo arriba: física y <em>rate</em>, después actitud y posición con estado verdadero, después el ESKF, después la trayectoria y por último el planificador. En cada paso, un test y una figura.</div>
     </div>
   </div>
@@ -228,7 +376,7 @@ paso(estado_real, mandos, clave, dt) -&gt; (estado_real, lecturas)</code></pre>
   <h2>Cómo hacer el examen</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>90 minutos</strong>, sin apuntes ni presentaciones. Calculadora y papel sí.</li>
         <li>Opción múltiple (8): al pulsar se corrige y aparece la explicación. Decide antes de pulsar.</li>
         <li>Cuentas (4): escribe el resultado con unidades y después despliega la respuesta.</li>
@@ -428,65 +576,83 @@ paso(estado_real, mandos, clave, dt) -&gt; (estado_real, lecturas)</code></pre>
 </main>
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
-<h3>Símbolos del hito</h3>
+<h3>Enunciado y criterios</h3>
+<p>Símbolos de las hojas del enunciado, la arquitectura y los criterios de aceptación.</p>
+<dl>
+<dt>\(D\)</dt><dd data-hojas="5">Retardo de una cola, en pasos del reloj base (0,25 ms a 4 kHz): la salida de un bloque sale \(D\) pasos después de calcularse.</dd>
+<dt>\(r_s\)</dt><dd data-hojas="6">Alcance del sensor de profundidad en abanico, en m (10 m en el hito, como en el laboratorio de A5).</dd>
+<dt>\(f_c\), \(\omega_c\)</dt><dd data-hojas="10">Frecuencia de cruce del lazo de <em>rate</em> en Hz (y en rad/s, \(\omega_c=2\pi f_c\)): donde la ganancia de lazo vale 1. Referencia del x500: 6,3 Hz.</dd>
+<dt>\(\mathrm{PM}\), \(\angle L(j\omega_c)\)</dt><dd data-hojas="10">Margen de fase, \(\mathrm{PM}=180^\circ+\angle L(j\omega_c)\), con \(\angle L\) la fase de la ganancia de lazo en el cruce. Referencia del x500: 71° (en A2, \(\varphi_m\)).</dd>
+<dt>\(\epsilon_k\)</dt><dd data-hojas="10,11">NEES en la muestra \(k\): \(\mathbf e_k^\top P_k^{-1}\mathbf e_k\), adimensional. Con un filtro consistente sigue una \(\chi^2_3\) y su media vale 3.</dd>
+<dt>\(\mathbf e_k\)</dt><dd data-hojas="10,11">Error de posición del ESKF en la muestra \(k\): estimada menos verdadera, vector de \(\mathbb R^3\) en m.</dd>
+<dt>\(P_k\)</dt><dd data-hojas="10,11">Covarianza 3×3 del error de posición según el ESKF, en m².</dd>
+<dt>\(\mathcal N(\mathbf 0, P_k)\)</dt><dd data-hojas="11">Distribución normal de media cero y covarianza \(P_k\).</dd>
+<dt>\(\epsilon_k^{(i)}\), \(\bar\epsilon_k\)</dt><dd data-hojas="11">NEES del vuelo \(i\) en la muestra \(k\) y su media sobre los 50 vuelos; la banda del 95 % es \([2{,}36;\ 3{,}72]\).</dd>
+<dt>\(\hat{\mathbf p}_k\), \(\mathbf p_k\)</dt><dd data-hojas="10">Posición estimada y verdadera en la muestra \(k\), en m; su diferencia da el error RMS.</dd>
+<dt>\(K\) (muestras)</dt><dd data-hojas="10">Número de muestras del vuelo en el error RMS. No es la \(K\) de ganancias de la pregunta 8.</dd>
+<dt>\(d\), \(v\), \(t_\ell\), \(a\) (parada)</dt><dd data-hojas="10">Distancia de parada \(d=v\,t_\ell+v^2/2a\) (A5): velocidad, latencia de percepción y planificación (0,1 s) y deceleración máxima (\(g\tan30^\circ\)). Esta \(a\) no es la de la pregunta 2.</dd>
+</dl>
+<h3>Símbolos del examen</h3>
 <p>Las preguntas del examen reutilizan letras de A1 a A5 con otro sentido según el tema; cada entrada dice de qué pregunta es.</p>
 <dl>
-<dt>\(Q\), \(R\)</dt><dd data-hojas="9">Covarianzas de ruido de proceso y de medida del ESKF. Ajustarlas mirando el error contra el estado verdadero hasta que «va bien» da covarianzas que mienten.</dd>
-<dt>\(P_\text{ideal}\)</dt><dd data-hojas="13">Potencia ideal de un rotor en vuelo estacionario, \(T^{3/2}/\sqrt{2\rho A}\), en W (pregunta 1).</dd>
-<dt>\(T\) (empuje)</dt><dd data-hojas="13">Empuje total del multirrotor, en N; en vuelo estacionario \(T=mg\). En la pregunta 12, \(T\) es en cambio la duración de la trayectoria de minimum snap, en s.</dd>
-<dt>\(\rho\), \(A\)</dt><dd data-hojas="13">Densidad del aire y área del disco del rotor (pregunta 1).</dd>
-<dt>\(m\), \(g\)</dt><dd data-hojas="13">Masa del vehículo y aceleración de la gravedad (\(9{,}81\) m/s²).</dd>
-<dt>\(\mathbf T\)</dt><dd data-hojas="13">Vector empuje, \(\mathbf T=m(\ddot{\mathbf p}+g\mathbf e_3)\), de módulo \(T\) y dirección \(\mathbf z_B\) (pregunta 2).</dd>
-<dt>\(\ddot{\mathbf p}\)</dt><dd data-hojas="13">Aceleración de la posición del dron, vector de \(\mathbb R^3\) en m/s².</dd>
-<dt>\(\mathbf e_3\)</dt><dd data-hojas="13">Vector unitario vertical hacia arriba.</dd>
-<dt>\(\mathbf z_B\)</dt><dd data-hojas="13">Eje z del cuerpo; el empuje va siempre según él.</dd>
-<dt>\(\theta\)</dt><dd data-hojas="13">Inclinación del dron para acelerar en horizontal, \(\theta=\arctan(a/g)\).</dd>
-<dt>\(a\)</dt><dd data-hojas="13">Aceleración horizontal pedida (3 m/s² en la pregunta 2), en m/s².</dd>
-<dt>\(\omega_c\), \(\tau\) (retardo)</dt><dd data-hojas="14">\(\omega_c\) es la frecuencia de cruce del lazo en rad/s y \(\tau\) un retardo puro en s; el retardo resta \(\omega_c\tau\) de fase en el cruce (pregunta 3).</dd>
-<dt>\(\omega_i\)</dt><dd data-hojas="14">Ancho de banda del lazo interno de velocidad, en rad/s, aproximado por un primer orden (pregunta 4).</dd>
-<dt>\(k\) (lazo de posición)</dt><dd data-hojas="14">Ganancia proporcional del lazo de posición, en s\(^{-1}\) (pregunta 4).</dd>
-<dt>\(x\), \(x_d\)</dt><dd data-hojas="14">Posición y posición deseada del lazo de posición de la pregunta 4.</dd>
-<dt>\(\omega_n\), \(\zeta\)</dt><dd data-hojas="14">Frecuencia natural (rad/s) y amortiguamiento de la cascada: \(\omega_n=\sqrt{\omega_ik}\), \(\zeta=\tfrac12\sqrt{\omega_i/k}\).</dd>
-<dt>\(\lambda\) (temperatura)</dt><dd data-hojas="15">Temperatura de MPPI: los pesos van como \(e^{-S_k/\lambda}\) (pregunta 6). Con \(\lambda\) pequeño casi todo el peso va a la mejor muestra.</dd>
-<dt>\(S_k\)</dt><dd data-hojas="15">Coste de la trayectoria muestreada \(k\) en MPPI.</dd>
-<dt>\(N\)</dt><dd data-hojas="16">Horizonte de predicción del MPC lineal, en pasos (pregunta 7).</dd>
-<dt>\(n\), \(m\) (dimensiones)</dt><dd data-hojas="16">Dimensiones del estado y de la entrada en el coste de Riccati \(O(N(n+m)^3)\); \(Nm\) es el número de variables del QP condensado.</dd>
-<dt>\(O(\cdot)\)</dt><dd data-hojas="16">Orden de crecimiento del coste de cálculo, p. ej. \(O(N^3m^3)\) para el QP condensado.</dd>
-<dt>\(q\), \(r\) (Kalman)</dt><dd data-hojas="16">Ruido de proceso (m²/s³) y de medida de posición (m²·s) del Kalman estacionario de un eje (pregunta 8).</dd>
-<dt>\(\omega_0\) (Kalman)</dt><dd data-hojas="16">Frecuencia del filtro, \(\omega_0=(q/r)^{1/4}\), en rad/s.</dd>
-<dt>\(K\)</dt><dd data-hojas="16">Ganancias del filtro, \(K=(\sqrt2\,\omega_0,\ \omega_0^2)\).</dd>
-<dt>\(\chi^2\)</dt><dd data-hojas="7">Distribución ji-cuadrado; da el intervalo de aceptación del NEES (95 % con 150 grados de libertad, dividido por 50).</dd>
-<dt>\(f\), \(\omega\), \(t_d\)</dt><dd data-hojas="17">En la pregunta 10, focal en píxeles, velocidad angular del dron y desfase cámara-IMU; el error en la imagen es \(f\omega t_d\).</dd>
-<dt>\(\alpha\) (escala de tiempo)</dt><dd data-hojas="18">Factor de escala temporal de la trayectoria de minimum snap (\(\alpha=0{,}8\)): el coste de snap crece como \(\alpha^{-7}\) y la aceleración como \(\alpha^{-2}\).</dd>
+<dt>\(Q\), \(R\)</dt><dd data-hojas="14">Covarianzas de ruido de proceso y de medida del ESKF. Ajustarlas mirando el error contra el estado verdadero hasta que «va bien» da covarianzas que mienten.</dd>
+<dt>\(P_\text{ideal}\)</dt><dd data-hojas="18">Potencia ideal de un rotor en vuelo estacionario, \(T^{3/2}/\sqrt{2\rho A}\), en W (pregunta 1).</dd>
+<dt>\(T\) (empuje)</dt><dd data-hojas="18">Empuje total del multirrotor, en N; en vuelo estacionario \(T=mg\). En la pregunta 12, \(T\) es en cambio la duración de la trayectoria de minimum snap, en s.</dd>
+<dt>\(\rho\), \(A\)</dt><dd data-hojas="18">Densidad del aire y área del disco del rotor (pregunta 1).</dd>
+<dt>\(m\), \(g\)</dt><dd data-hojas="18">Masa del vehículo y aceleración de la gravedad (\(9{,}81\) m/s²).</dd>
+<dt>\(\mathbf T\)</dt><dd data-hojas="18">Vector empuje, \(\mathbf T=m(\ddot{\mathbf p}+g\mathbf e_3)\), de módulo \(T\) y dirección \(\mathbf z_B\) (pregunta 2).</dd>
+<dt>\(\ddot{\mathbf p}\)</dt><dd data-hojas="18">Aceleración de la posición del dron, vector de \(\mathbb R^3\) en m/s².</dd>
+<dt>\(\mathbf e_3\)</dt><dd data-hojas="18">Vector unitario vertical hacia arriba.</dd>
+<dt>\(\mathbf z_B\)</dt><dd data-hojas="18">Eje z del cuerpo; el empuje va siempre según él.</dd>
+<dt>\(\theta\)</dt><dd data-hojas="18">Inclinación del dron para acelerar en horizontal, \(\theta=\arctan(a/g)\).</dd>
+<dt>\(a\)</dt><dd data-hojas="18">Aceleración horizontal pedida (3 m/s² en la pregunta 2), en m/s².</dd>
+<dt>\(\omega_c\), \(\tau\) (retardo)</dt><dd data-hojas="19">\(\omega_c\) es la frecuencia de cruce del lazo en rad/s y \(\tau\) un retardo puro en s; el retardo resta \(\omega_c\tau\) de fase en el cruce (pregunta 3).</dd>
+<dt>\(\omega_i\)</dt><dd data-hojas="19">Ancho de banda del lazo interno de velocidad, en rad/s, aproximado por un primer orden (pregunta 4).</dd>
+<dt>\(k\) (lazo de posición)</dt><dd data-hojas="19">Ganancia proporcional del lazo de posición, en s\(^{-1}\) (pregunta 4).</dd>
+<dt>\(x\), \(x_d\)</dt><dd data-hojas="19">Posición y posición deseada del lazo de posición de la pregunta 4.</dd>
+<dt>\(\omega_n\), \(\zeta\)</dt><dd data-hojas="19">Frecuencia natural (rad/s) y amortiguamiento de la cascada: \(\omega_n=\sqrt{\omega_ik}\), \(\zeta=\tfrac12\sqrt{\omega_i/k}\).</dd>
+<dt>\(\lambda\) (temperatura)</dt><dd data-hojas="20">Temperatura de MPPI: los pesos van como \(e^{-S_k/\lambda}\) (pregunta 6). Con \(\lambda\) pequeño casi todo el peso va a la mejor muestra.</dd>
+<dt>\(S_k\)</dt><dd data-hojas="20">Coste de la trayectoria muestreada \(k\) en MPPI.</dd>
+<dt>\(N\)</dt><dd data-hojas="21">Horizonte de predicción del MPC lineal, en pasos (pregunta 7).</dd>
+<dt>\(n\), \(m\) (dimensiones)</dt><dd data-hojas="21">Dimensiones del estado y de la entrada en el coste de Riccati \(O(N(n+m)^3)\); \(Nm\) es el número de variables del QP condensado.</dd>
+<dt>\(O(\cdot)\)</dt><dd data-hojas="21">Orden de crecimiento del coste de cálculo, p. ej. \(O(N^3m^3)\) para el QP condensado.</dd>
+<dt>\(q\), \(r\) (Kalman)</dt><dd data-hojas="21">Ruido de proceso (m²/s³) y de medida de posición (m²·s) del Kalman estacionario de un eje (pregunta 8).</dd>
+<dt>\(\omega_0\) (Kalman)</dt><dd data-hojas="21">Frecuencia del filtro, \(\omega_0=(q/r)^{1/4}\), en rad/s.</dd>
+<dt>\(K\)</dt><dd data-hojas="21">Ganancias del filtro, \(K=(\sqrt2\,\omega_0,\ \omega_0^2)\).</dd>
+<dt>\(\chi^2\)</dt><dd data-hojas="11,12">Distribución ji-cuadrado; \(\chi^2_3\) con 3 grados de libertad (el NEES de un vuelo) y \(\chi^2_{150}\) para la suma de 50 vuelos, que da el intervalo de aceptación del NEES (95 %, dividido por 50).</dd>
+<dt>\(f\), \(\omega\), \(t_d\)</dt><dd data-hojas="22">En la pregunta 10, focal en píxeles, velocidad angular del dron y desfase cámara-IMU; el error en la imagen es \(f\omega t_d\).</dd>
+<dt>\(\alpha\) (escala de tiempo)</dt><dd data-hojas="23">Factor de escala temporal de la trayectoria de minimum snap (\(\alpha=0{,}8\)): el coste de snap crece como \(\alpha^{-7}\) y la aceleración como \(\alpha^{-2}\).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>ESKF</dt><dd data-hojas="1">Error-state Kalman filter: filtro de Kalman sobre el error del estado, de 15 estados en el hito; aquí con horizonte retrasado.</dd>
+<dt>ESKF</dt><dd data-hojas="4,8">Error-state Kalman filter: filtro de Kalman sobre el error del estado, de 15 estados en el hito; aquí con horizonte retrasado.</dd>
 <dt>LQR</dt><dd data-hojas="3">Linear quadratic regulator: control óptimo de un sistema lineal con coste cuadrático; se entrega junto al NMPC con RTI y al MPPI vectorizado.</dd>
-<dt>RPM</dt><dd data-hojas="9">Revoluciones por minuto: unidad posible de la velocidad de motor, junto a rad/s; el módulo de parámetros fija las unidades.</dd>
-<dt>EKF, EKF2</dt><dd data-hojas="18,19">Extended Kalman filter; EKF2 es el estimador de PX4 con horizonte retrasado.</dd>
-<dt>NEES</dt><dd data-hojas="7">Normalized estimation error squared: error cuadrático normalizado por la covarianza; mide la consistencia del filtro (cerca de la dimensión si es consistente).</dd>
+<dt>RPM</dt><dd data-hojas="14">Revoluciones por minuto: unidad posible de la velocidad de motor, junto a rad/s; el módulo de parámetros fija las unidades.</dd>
+<dt>EKF, EKF2</dt><dd data-hojas="23,24">Extended Kalman filter; EKF2 es el estimador de PX4 con horizonte retrasado.</dd>
+<dt>NEES</dt><dd data-hojas="10,11">Normalized estimation error squared: error cuadrático normalizado por la covarianza; mide la consistencia del filtro (cerca de la dimensión si es consistente).</dd>
 <dt>NMPC</dt><dd data-hojas="2">Nonlinear model predictive control: control predictivo no lineal.</dd>
-<dt>MPC</dt><dd data-hojas="15">Model predictive control.</dd>
+<dt>MPC</dt><dd data-hojas="20">Model predictive control.</dd>
 <dt>MPPI</dt><dd data-hojas="2">Model predictive path integral: control por muestreo de trayectorias con pesos exponenciales del coste.</dd>
 <dt>RTI</dt><dd data-hojas="3">Real-time iteration: una sola iteración del NMPC por muestra con arranque en caliente.</dd>
-<dt>QP</dt><dd data-hojas="16">Quadratic program: problema de optimización cuadrática con restricciones.</dd>
+<dt>QP</dt><dd data-hojas="21">Quadratic program: problema de optimización cuadrática con restricciones.</dd>
 <dt>RRT*</dt><dd data-hojas="3">Rapidly-exploring random tree asintóticamente óptimo: planificador global de A5.</dd>
 <dt>A*</dt><dd data-hojas="3">Algoritmo de búsqueda de camino en grafo: planificador global de A5.</dd>
-<dt>CTBR</dt><dd data-hojas="19">Collective thrust and body rates: consigna de empuje colectivo y velocidades angulares.</dd>
-<dt>VIO</dt><dd data-hojas="19">Visual-inertial odometry: odometría visual-inercial, a 20–30 Hz de cámara.</dd>
-<dt>ESDF</dt><dd data-hojas="19">Euclidean signed distance field: campo de distancias local para planificar.</dd>
-<dt>IMU</dt><dd data-hojas="5">Inertial measurement unit.</dd>
-<dt>EuRoC</dt><dd data-hojas="5">Dataset público de vuelo cuyas densidades de ruido de IMU usa el hito.</dd>
-<dt>JAX</dt><dd data-hojas="5">Biblioteca de cálculo diferenciable y vectorizado del proyecto; en el hito, con jit, lax.scan, lax.cond y vmap.</dd>
-<dt>GPU</dt><dd data-hojas="5">Graphics processing unit; solo hace falta si se lanzan los 20 bosques en paralelo.</dd>
-<dt>CPU</dt><dd data-hojas="5">Central processing unit: el hito se ejecuta entero en ella.</dd>
+<dt>CTBR</dt><dd data-hojas="9,24">Collective thrust and body rates: consigna de empuje colectivo y velocidades angulares.</dd>
+<dt>VIO</dt><dd data-hojas="6,24">Visual-inertial odometry: odometría visual-inercial, a 20–30 Hz de cámara.</dd>
+<dt>ESDF</dt><dd data-hojas="24">Euclidean signed distance field: campo de distancias local para planificar.</dd>
+<dt>IMU</dt><dd data-hojas="6">Inertial measurement unit.</dd>
+<dt>EuRoC</dt><dd data-hojas="6">Dataset público de vuelo cuyas densidades de ruido de IMU usa el hito.</dd>
+<dt>JAX</dt><dd data-hojas="2,7">Biblioteca de cálculo diferenciable y vectorizado del proyecto; en el hito, con jit, lax.scan, lax.cond y vmap.</dd>
+<dt>GPU</dt><dd data-hojas="7">Graphics processing unit; solo hace falta si se lanzan los 20 bosques en paralelo.</dd>
+<dt>CPU</dt><dd data-hojas="7">Central processing unit: el hito se ejecuta entero en ella.</dd>
 <dt>PX4</dt><dd data-hojas="4">Autopiloto de código abierto cuyas frecuencias sigue el hito.</dd>
-<dt>NED, ENU</dt><dd data-hojas="9">Marcos mundo North-East-Down y East-North-Up; el proyecto usa ENU con cuaterniones de Hamilton.</dd>
-<dt>JPL</dt><dd data-hojas="9">Convenio de cuaterniones alternativo al de Hamilton que no se usa en el proyecto.</dd>
+<dt>NED, ENU</dt><dd data-hojas="14">Marcos mundo North-East-Down y East-North-Up; el proyecto usa ENU con cuaterniones de Hamilton.</dd>
+<dt>JPL</dt><dd data-hojas="14">Convenio de cuaterniones alternativo al de Hamilton que no se usa en el proyecto.</dd>
+<dt>SITL</dt><dd data-hojas="4">Software in the loop: el firmware real del autopiloto corriendo contra un simulador, como PX4 con Gazebo (B1).</dd>
+<dt>log-odds</dt><dd data-hojas="9">Logaritmo del cociente entre la probabilidad de ocupado y la de libre de cada celda del mapa: las medidas se suman en lugar de multiplicarse (A5).</dd>
 <dt>RK4</dt><dd data-hojas="3">Runge-Kutta de cuarto orden, integrador del módulo de simulación.</dd>
-<dt>RMS</dt><dd data-hojas="7">Root mean square: valor cuadrático medio del error.</dd>
-<dt>ESTADO.md</dt><dd data-hojas="12">Fichero del curso donde se anota la nota del examen y los temas que se repasan.</dd>
+<dt>RMS</dt><dd data-hojas="10,12">Root mean square: valor cuadrático medio del error.</dd>
+<dt>ESTADO.md</dt><dd data-hojas="17">Fichero del curso donde se anota la nota del examen y los temas que se repasan.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>
