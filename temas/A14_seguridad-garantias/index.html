@@ -111,6 +111,51 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">El filtro · un paso, con números</p>
+  <h2>Vigilar es preguntar: si dejo pasar esta acción, ¿todavía puedo frenar?</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 250" role="img" aria-label="Dos casos de un dron que avanza hacia un poste. En el primero, tras aplicar la acción pedida durante un paso, la distancia de frenada cabe antes del borde y el filtro deja pasar la acción. En el segundo no cabe y el filtro manda frenar.">
+        <defs><marker id="f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        <marker id="f1t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+        <rect x="440" y="18" width="70" height="214" class="box-time"/>
+        <text x="475" y="130" text-anchor="middle" font-size="13">poste</text>
+        <line x1="440" y1="18" x2="440" y2="232" class="ln-tesis ln-dash"/>
+        <text x="434" y="242" text-anchor="end" font-size="12" class="t-tesis">borde</text>
+        <g font-size="13">
+          <text x="10" y="34" class="t-bold">A · a 3 m del borde, a 4 m/s</text>
+          <circle cx="80" cy="70" r="7" class="fill-accent"/>
+          <line x1="80" y1="70" x2="127" y2="70" class="ln-accent" marker-end="url(#f1a)"/>
+          <text x="104" y="60" text-anchor="middle" font-size="11" class="t-muted">0,1 s</text>
+          <circle cx="129" cy="70" r="5" fill="none" class="ln-accent"/>
+          <line x1="129" y1="92" x2="305.6" y2="92" class="ln-accent" stroke-width="5"/>
+          <text x="217" y="112" text-anchor="middle" font-size="12" class="t-accent">frenada: 1,47 m (cabe)</text>
+          <text x="10" y="144" class="t-bold">B · a 1,6 m del borde, a 4 m/s</text>
+          <circle cx="248" cy="180" r="7" class="fill-accent"/>
+          <line x1="248" y1="180" x2="295" y2="180" class="ln-accent" marker-end="url(#f1a)"/>
+          <text x="272" y="170" text-anchor="middle" font-size="11" class="t-muted">0,1 s</text>
+          <circle cx="297" cy="180" r="5" fill="none" class="ln-accent"/>
+          <line x1="297" y1="202" x2="440" y2="202" class="ln-accent" stroke-width="5"/>
+          <line x1="440" y1="202" x2="473.6" y2="202" class="ln-time" stroke-width="5"/>
+          <text x="430" y="224" font-size="12" class="t-time" text-anchor="end">frenada: 1,47 m (no cabe en 1,19)</text>
+        </g>
+      </svg>
+      <figcaption>Escala: 120 px por metro. Punto lleno: dónde está el dron; hueco: dónde estará si se deja pasar la acción pedida. Barra: lo que recorre frenando a tope desde ahí. <code>ejemplos_a14.py</code>, ejemplo 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Dron en línea recta hacia un poste. \(s\): distancia al borde; \(v\): velocidad; la política pide \(u_{\text{nom}} = 2\) m/s² hacia el poste; el respaldo es frenar a tope, \(a_{\max} = 6\) m/s²; un paso del filtro dura \(\Delta t = 0{,}1\) s (grande para verlo).</p>
+      <ol>
+        <li><strong>Predecir</strong> un paso con \(u_{\text{nom}}\): \(v' = v + u_{\text{nom}}\Delta t\), \(s' = s - v\Delta t - \tfrac12 u_{\text{nom}}\Delta t^2\).</li>
+        <li><strong>Vigilar</strong>: ¿cabe la frenada \(v'^2/(2a_{\max})\) en \(s'\)?</li>
+        <li><strong>Intervenir</strong> si no cabe: mandar el respaldo.</li>
+      </ol>
+      <p>A: \(v' = 4{,}2\), \(s' = 2{,}59\) m, frenada 1,47 m: pasa. B: \(s' = 1{,}19\) m &lt; 1,47 m: frena.</p>
+    </div>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué basta mirar un paso</span><p>Es el filtro «predictivo» de la tabla siguiente. Si en cada paso se comprueba que, tras la acción pedida, el respaldo sigue llevando a un estado seguro, nunca se pierde esa posibilidad: el respaldo de ahora ya se verificó en el paso anterior. Hsu et al. lo llaman una garantía recursiva <a class="cite" data-ref="hsu2024"></a>.</p></div>
+</section>
+
+<section class="slide">
   <p class="kicker">El filtro · tipos de intervención</p>
   <h2>Conmutar al respaldo o corregir la acción lo mínimo</h2>
   <div class="table-wrap">
@@ -134,6 +179,89 @@
   <p class="num">Parte 2</p>
   <h2>Funciones de barrera de control</h2>
   <p>Una condición sobre la derivada que mantiene el robot dentro del conjunto seguro.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <p>En esta parte el dron se manda en <strong>velocidad</strong>: si la controladora acepta consignas de velocidad (A13), a efectos del filtro se puede modelar como \(\dot p = u\). En la parte 3 se manda en aceleración.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:16%">Símbolo</th><th>Qué es</th><th style="width:30%">En el dron de esta parte</th></tr>
+      <tr><td>\(x\)</td><td>Estado del sistema</td><td>La posición, \(x = p = (p_x, p_y)\), en m</td></tr>
+      <tr><td>\(u\), \(U\)</td><td>Entrada y conjunto de entradas posibles (límites de los actuadores)</td><td>La velocidad mandada, en m/s</td></tr>
+      <tr><td>\(f, g\)</td><td>Sistema afín en la entrada, \(\dot x = f(x) + g(x)\,u\): \(f\), lo que hace el sistema solo; \(g\), cómo entra la entrada</td><td>\(f = 0\), \(g = I\): \(\dot p = u\)</td></tr>
+      <tr><td>\(c\), \(r\)</td><td>Centro del obstáculo y radio de seguridad (obstáculo más dron)</td><td>Un poste en \((2, 1)\) con \(r = 1\) m</td></tr>
+      <tr><td>\(h\), \(\mathcal C\), \(\partial\mathcal C\)</td><td>Función de barrera, conjunto seguro \(\{x: h \ge 0\}\) y su borde \(\{h = 0\}\)</td><td>\(h = |p - c|^2 - r^2\), en m²</td></tr>
+      <tr><td>\(\nabla h\); \(L_f h\), \(L_g h\)</td><td>Gradiente de \(h\) (vector fila) y derivadas de Lie: \(\nabla h\, f\) y \(\nabla h\, g\)</td><td>\(\nabla h = 2(p - c)^\top\); \(L_f h = 0\), \(L_g h = \nabla h\)</td></tr>
+      <tr><td>\(\alpha\)</td><td>Ganancia de la CBF: cuánto se deja bajar \(h\) según el margen que queda. En general, una función creciente con \(\alpha(0) = 0\); aquí, lineal: \(\alpha(h) = \alpha h\), con \(\alpha\) en s⁻¹</td><td>\(\alpha = 1\) s⁻¹</td></tr>
+      <tr><td>\(u_{\text{nom}}\), \(u^\star\)</td><td>Acción que pide la política de la tarea y acción que deja pasar el filtro</td><td>\((3, 0) \to (1{,}4,\ -0{,}8)\) m/s</td></tr>
+      <tr><td>\(a\), \(b\), \(\lambda\)</td><td>Escalar y vector fila que resumen la condición en el estado actual (\(a + b\,u \ge 0\)); multiplicador de Lagrange</td><td>\(a = 2\), \(b = (-2, -1)\), \(\lambda = 0{,}8\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · el conjunto seguro y la función h</p>
+  <h2>Una función que vale cero en el borde y crece al alejarse</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 300" style="max-height:330px" role="img" aria-label="Un obstáculo circular de radio 1 visto desde arriba, con las curvas de nivel de h: cero en el borde, 1,25, 3 y 8 a 1,5, 2 y 3 metros del centro. El gradiente de h apunta hacia fuera.">
+        <defs><marker id="f2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <circle cx="180" cy="150" r="120" class="ln ln-dash"/>
+        <circle cx="180" cy="150" r="80" class="ln ln-dash"/>
+        <circle cx="180" cy="150" r="60" class="ln ln-dash"/>
+        <circle cx="180" cy="150" r="40" class="box-time"/>
+        <circle cx="180" cy="150" r="40" fill="none" class="ln-tesis" stroke-width="2.6"/>
+        <text x="180" y="146" text-anchor="middle" font-size="12">h &lt; 0</text>
+        <text x="180" y="162" text-anchor="middle" font-size="11" class="t-muted">prohibido</text>
+        <g font-size="12" class="t-mono">
+          <text x="180" y="104" text-anchor="middle" class="t-tesis">h = 0</text>
+          <text x="180" y="86" text-anchor="middle" class="t-muted">1,25</text>
+          <text x="180" y="66" text-anchor="middle" class="t-muted">3</text>
+          <text x="180" y="26" text-anchor="middle" class="t-muted">h = 8</text>
+        </g>
+        <line x1="220" y1="150" x2="262" y2="150" class="ln-accent" stroke-width="2.4" marker-end="url(#f2g)"/>
+        <text x="266" y="146" font-size="13" class="t-accent">∇h</text>
+        <line x1="151.7" y1="178.3" x2="122" y2="208" class="ln-accent" stroke-width="2.4" marker-end="url(#f2g)"/>
+        <text x="30" y="290" font-size="12" class="t-muted">Radios 1; 1,5; 2 y 3 m (40 px por metro)</text>
+      </svg>
+      <figcaption>Curvas de nivel de \(h = |p - c|^2 - r^2\) con \(r = 1\) m. \(\mathcal C\) es todo lo de fuera del círculo grueso. <code>ejemplos_a14.py</code>, ejemplo 2.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Para un obstáculo circular de centro \(c\) y radio de seguridad \(r\), \(h(p) = |p - c|^2 - r^2\): el cuadrado de la distancia al centro menos el del radio.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(|p - c|\) (m)</th><td class="n">0</td><td class="n">0,5</td><td class="n">1</td><td class="n">1,5</td><td class="n">2</td><td class="n">3</td></tr>
+          <tr><th>\(h\) (m²)</th><td class="n">−1</td><td class="n">−0,75</td><td class="n">0</td><td class="n">1,25</td><td class="n">3</td><td class="n">8</td></tr>
+          <tr><th>\(|\nabla h|\) (m)</th><td class="n">0</td><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">4</td><td class="n">6</td></tr>
+        </table>
+      </div>
+      <ul>
+        <li><strong>No es una distancia:</strong> está en m² y crece con el cuadrado. Solo importa su signo y cómo cambia; con el cuadrado, \(h\) y sus derivadas son polinomios y las cuentas salen limpias.</li>
+        <li><strong>Su gradiente</strong>, \(\nabla h = 2(p - c)^\top\), apunta hacia fuera del obstáculo y en el borde mide \(2r \ne 0\): es la condición que pide el teorema de dos hojas más adelante.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · de dónde sale \(\dot h\)</p>
+  <h2>La regla de la cadena separa lo que hace el sistema de lo que hace la entrada</h2>
+  <p>El filtro no puede mover \(h\) directamente: mueve \(u\), que mueve el estado, que mueve \(h\). Cuánto cambia \(h\) por segundo sale de la regla de la cadena:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:42%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\dot h = \nabla h(x)\,\dot x\)</td><td>\(h\) cambia según cuánto se mueve el estado en la dirección de su gradiente</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\dot h = \nabla h\, f(x) + \nabla h\, g(x)\,u\)</td><td>Sustituir el modelo \(\dot x = f(x) + g(x)\,u\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\dot h = L_f h(x) + L_g h(x)\,u\)</td><td>Nombres: \(L_f h\), lo que cambia \(h\) si no se hace nada; \(L_g h\), cuánto cambia por unidad de entrada</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\dot h\) es <strong>lineal en \(u\)</strong></td><td>Por eso la condición de seguridad será una restricción lineal y el filtro, un programa cuadrático</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Mandado en velocidad</span>\(x = p\), \(f = 0\), \(g = I\): \(L_f h = 0\) y \(L_g h = 2(p - c)^\top\). En \(p = (0, 0)\), frente al poste en \((2, 1)\): \(L_g h = (-4, -2)\), así que \(\dot h = -4u_x - 2u_y\). Avanzar hacia el poste hace bajar \(h\).</div>
+    <div class="callout clave"><span class="tag">Mandado en aceleración</span>\(x = (p, v)\), \(f = (v, 0)\), \(g = (0, I)\): \(\nabla h = (2(p - c)^\top, 0)\), así que \(L_f h = 2(p - c)\cdot v\) y \(L_g h = 0\). La entrada no aparece en \(\dot h\): es el problema de la parte 3. <code>ejemplos_a14.py</code>, ejemplo 3.</div>
+  </div>
 </section>
 
 <section class="slide">
@@ -168,19 +296,104 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">CBF · la velocidad de acercamiento, con números</p>
+  <h2>La condición limita la rapidez con que el dron se acerca, según lo que le queda</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Dron mandado en velocidad que va de frente hacia el centro del obstáculo con rapidez \(s\) (m/s); \(d = p - c\) y \(|d|\) es su distancia al centro.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(u = -s\,d/|d|\), \(\ \dot h = 2d\cdot u = -2|d|\,s\)</td><td>De frente, \(u\) es antiparalelo a \(d\); hoja anterior</td></tr>
+          <tr><td><strong>2</strong></td><td>\(-2|d|\,s \ge -\alpha\,(|d|^2 - r^2)\)</td><td>La condición \(\dot h \ge -\alpha h\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(s \le s_{\max} = \dfrac{\alpha\,(|d|^2 - r^2)}{2|d|}\)</td><td>Despejar \(s\)</td></tr>
+          <tr><td><strong>4</strong></td><td>con \(|d| = r + \delta\) y \(\delta\) pequeño, \(s_{\max} \approx \alpha\,\delta\)</td><td>\(|d|^2 - r^2 = 2r\delta + \delta^2 \approx 2r\delta\) y \(2|d| \approx 2r\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+    <figure class="fig">
+      <svg viewBox="0 0 460 260" style="max-height:250px" role="img" aria-label="Velocidad máxima de acercamiento en función de la distancia al centro, para alfa 0,5, 1 y 2: es cero en el borde, a 1 metro, y crece al alejarse; con alfa mayor, crece más deprisa.">
+        <line x1="60" y1="220" x2="410" y2="220" class="ln"/><line x1="60" y1="220" x2="60" y2="25" class="ln"/>
+        <g font-size="11" class="t-mono t-muted" text-anchor="middle">
+          <text x="60" y="236">1</text><text x="173.3" y="236">2</text><text x="286.7" y="236">3</text><text x="400" y="236">4</text>
+          <text x="235" y="254">distancia al centro |d| (m); borde en 1 m</text>
+        </g>
+        <g font-size="11" class="t-mono t-muted" text-anchor="end">
+          <text x="54" y="224">0</text><text x="54" y="129">2</text><text x="54" y="34">4</text>
+        </g>
+        <text x="66" y="22" font-size="11" class="t-muted">s_max (m/s)</text>
+        <line x1="60" y1="125" x2="410" y2="125" class="ln-rule"/>
+        <path d="M60.0,220.0 L71.3,217.7 L82.7,215.6 L94.0,213.7 L105.3,211.9 L116.7,210.1 L128.0,208.4 L139.3,206.8 L150.7,205.2 L162.0,203.7 L173.3,202.2 L184.7,200.7 L196.0,199.3 L207.3,197.9 L218.7,196.4 L230.0,195.1 L241.3,193.7 L252.7,192.3 L264.0,191.0 L275.3,189.7 L286.7,188.3 L298.0,187.0 L309.3,185.7 L320.7,184.4 L332.0,183.1 L343.3,181.8 L354.7,180.5 L366.0,179.3 L377.3,178.0 L388.7,176.7 L400.0,175.5" class="ln" stroke-width="2"/>
+        <path d="M60.0,220.0 L71.3,215.5 L82.7,211.3 L94.0,207.4 L105.3,203.7 L116.7,200.2 L128.0,196.8 L139.3,193.6 L150.7,190.4 L162.0,187.4 L173.3,184.4 L184.7,181.4 L196.0,178.5 L207.3,175.7 L218.7,172.9 L230.0,170.1 L241.3,167.4 L252.7,164.7 L264.0,162.0 L275.3,159.3 L286.7,156.7 L298.0,154.0 L309.3,151.4 L320.7,148.8 L332.0,146.2 L343.3,143.7 L354.7,141.1 L366.0,138.5 L377.3,136.0 L388.7,133.5 L400.0,130.9" class="ln-tesis" stroke-width="2.2"/>
+        <path d="M60.0,220.0 L71.3,210.9 L82.7,202.6 L94.0,194.8 L105.3,187.4 L116.7,180.4 L128.0,173.7 L139.3,167.2 L150.7,160.9 L162.0,154.8 L173.3,148.8 L184.7,142.9 L196.0,137.1 L207.3,131.4 L218.7,125.8 L230.0,120.2 L241.3,114.8 L252.7,109.3 L264.0,104.0 L275.3,98.6 L286.7,93.3 L298.0,88.1 L309.3,82.8 L320.7,77.6 L332.0,72.5 L343.3,67.3 L354.7,62.2 L366.0,57.1 L377.3,52.0 L388.7,46.9 L400.0,41.9" class="ln-accent" stroke-width="2.4"/>
+        <text x="340" y="52" font-size="12" class="t-accent" text-anchor="end">α = 2</text>
+        <text x="404" y="124" font-size="12" class="t-tesis" text-anchor="end">α = 1</text>
+        <text x="404" y="170" font-size="12" class="t-muted" text-anchor="end">α = 0,5</text>
+      </svg>
+      <figcaption>\(s_{\max}\) con \(r = 1\) m. Con \(\alpha = 1\): 0,10 m/s a 1,1 m del centro, 0,75 a 2 m y 1,33 a 3 m. <code>ejemplos_a14.py</code>, ejemplo 4.</figcaption>
+    </figure>
+      <div class="callout clave"><span class="tag">Qué es α</span>Cerca del borde, la rapidez permitida es \(\alpha\) por la distancia que queda: el dron se acerca como mucho como \(e^{-\alpha t}\). \(1/\alpha\) es una constante de tiempo: con \(\alpha = 1\) s⁻¹, a 10 cm del borde se puede ir a 10 cm/s.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">CBF · la definición</p>
   <h2>Una CBF garantiza que siempre hay una acción que no saca del conjunto seguro</h2>
   \[ \mathcal C = \{x : h(x) \ge 0\}, \qquad \sup_{u \in U}\big[L_f h(x) + L_g h(x)\,u\big] \ge -\alpha\big(h(x)\big) \]
-  <p><strong>Notación:</strong> \(x\), estado; \(u\), entrada, en el conjunto \(U\) de entradas posibles; sistema \(\dot x = f(x) + g(x)u\); \(h\), función de barrera; \(\mathcal C\), conjunto seguro; \(L_f h = \nabla h \cdot f\) y \(L_g h = \nabla h \cdot g\), derivadas de Lie, así que \(\dot h = L_f h + L_g h\,u\); \(\alpha\), función creciente con \(\alpha(0) = 0\) (aquí, \(\alpha(h) = \alpha h\)).</p>
+  <p>La definición es una propiedad de \(h\), no de un controlador. Pieza a pieza:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:34%">Pieza</th><th>Qué dice</th></tr>
+      <tr><td>\(\mathcal C = \{x : h(x) \ge 0\}\)</td><td>Lo que llamamos seguro: fuera de todos los obstáculos</td></tr>
+      <tr><td>\(L_f h(x) + L_g h(x)\,u\)</td><td>Es \(\dot h\) si se aplica \(u\) en el estado \(x\) (hoja «de dónde sale \(\dot h\)»)</td></tr>
+      <tr><td>\(\sup_{u \in U}[\ \cdot\ ]\)</td><td>La mejor entrada disponible: la que hace bajar \(h\) lo menos posible (o subir lo más)</td></tr>
+      <tr><td>\(\ge -\alpha(h(x))\), en todo \(x\)</td><td>Con esa mejor entrada, \(h\) no baja más deprisa que \(\alpha h\). Si eso pasa en todos los estados, \(h\) es una <strong>CBF</strong></td></tr>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">En el dron mandado en velocidad</span>\(L_g h = 2(p - c)^\top \ne 0\) fuera del centro, y con \(U\) sin límites se puede hacer \(\dot h\) tan grande como se quiera: \(h = |p - c|^2 - r^2\) es una CBF. Con límites de velocidad también lo es (alejarse siempre hace subir \(h\)). Con límites de aceleración la cosa cambia: parte 4.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF · el teorema</p>
+  <h2>En el borde, la condición prohíbe las velocidades que entran en el obstáculo</h2>
   <div class="cols">
-    <div class="callout clave"><span class="tag">Teorema (Ames et al.)</span>Si \(h\) es una CBF y \(\nabla h \ne 0\) en el borde, cualquier controlador lipschitziano que cumpla la condición en cada estado hace \(\mathcal C\) invariante hacia delante: si se empieza dentro, se sigue dentro <a class="cite" data-ref="ames2019"></a>.</div>
-    <div class="aparte"><span class="rotulo">Invariante hacia delante</span><p>Para todo estado inicial en \(\mathcal C\), la trayectoria sigue en \(\mathcal C\) mientras exista. Además, \(\mathcal C\) es asintóticamente estable: si se empieza fuera, el sistema vuelve.</p></div>
+    <figure class="fig">
+      <svg viewBox="0 0 420 270" role="img" aria-label="Un punto en el borde de un obstáculo, con el gradiente de h hacia fuera, la recta tangente y el semiplano de velocidades permitidas, las que no entran en el obstáculo.">
+        <defs><marker id="f2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        <marker id="f2c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+        <rect x="10" y="10" width="400" height="125" class="box-soft"/>
+        <path d="M10,250 Q210,110 410,250 Z" class="box-time"/>
+        <path d="M10,250 Q210,110 410,250" class="ln-tesis" stroke-width="2.6" fill="none"/>
+        <text x="210" y="225" text-anchor="middle" font-size="13">obstáculo (h &lt; 0)</text>
+        <line x1="20" y1="180" x2="400" y2="180" class="ln ln-dash"/>
+        <circle cx="210" cy="180" r="6" class="fill-tesis"/>
+        <text x="24" y="190" font-size="12" class="t-tesis">borde: h = 0</text>
+        <line x1="210" y1="180" x2="210" y2="108" class="ln-accent" stroke-width="2.4" marker-end="url(#f2b)"/>
+        <text x="218" y="110" font-size="13" class="t-accent">∇h</text>
+        <line x1="210" y1="180" x2="290" y2="140" class="ln-accent" stroke-width="2" marker-end="url(#f2b)"/>
+        <line x1="210" y1="180" x2="120" y2="180" class="ln-accent" stroke-width="2" marker-end="url(#f2b)"/>
+        <line x1="210" y1="180" x2="270" y2="232" class="ln-time" stroke-width="2" marker-end="url(#f2c)"/>
+        <text x="30" y="32" font-size="13" class="t-accent">permitidas: ∇h · u ≥ 0</text>
+        <text x="30" y="52" font-size="12" class="t-muted">(salir, o deslizarse por el borde)</text>
+        <text x="280" y="250" font-size="12" class="t-time">prohibida</text>
+        <text x="300" y="175" font-size="12" class="t-muted">tangente</text>
+      </svg>
+      <figcaption>Dron mandado en velocidad en un punto del borde (de cerca, el borde parece una curva suave). Con \(h = 0\), la condición es \(\dot h = \nabla h\, u \ge 0\).</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Teorema (Ames et al.)</span>Si \(h\) es una CBF y \(\nabla h \ne 0\) en el borde, cualquier controlador lipschitziano que cumpla la condición en cada estado hace \(\mathcal C\) invariante hacia delante: si se empieza dentro, se sigue dentro <a class="cite" data-ref="ames2019"></a>.</div>
+      <p><strong>Por qué hace falta cada hipótesis:</strong> con \(\nabla h = 0\) en el borde no habría dirección «hacia fuera» y la condición no diría nada; lipschitziano, para que la trayectoria del sistema controlado exista y sea única.</p>
+      <div class="aparte"><span class="rotulo">Invariante hacia delante</span><p>Para todo estado inicial en \(\mathcal C\), la trayectoria sigue en \(\mathcal C\) mientras exista. Además, \(\mathcal C\) es asintóticamente estable: si se empieza fuera, el sistema vuelve.</p></div>
+    </div>
   </div>
 </section>
 
 <section class="slide">
   <p class="kicker">CBF · por qué funciona</p>
   <h2>Por qué \(\dot h \ge -\alpha h\) nunca deja que \(h\) llegue a cero</h2>
+  <p><strong>La idea:</strong> el peor caso que permite la condición es \(\dot h = -\alpha h\) exactamente, una ecuación lineal cuya solución es \(h(0)\,e^{-\alpha t}\), que nunca vale cero. Cualquier \(h\) que cumpla la desigualdad baja como mucho así de deprisa, así que queda por encima de esa curva (es el «lema de comparación»). El truco para probarlo es multiplicar por \(e^{\alpha t}\):</p>
   <div class="table-wrap">
     <table class="t">
       <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
@@ -190,24 +403,193 @@
       <tr><td><strong>4</strong></td><td>\(h(t) \ge h(0)\,e^{-\alpha t} &gt; 0\)</td><td>Dividir por \(e^{\alpha t} &gt; 0\): \(h\) puede tender a cero, pero no alcanzarlo</td></tr>
     </table>
   </div>
-  <div class="aparte"><span class="rotulo">Ejemplo del script (derivaciones_a14.py)</span><p>Con \(h(0) = 1\): para \(\alpha = 0{,}5\), \(h \ge 0{,}607\) al cabo de 1 s y \(\ge 0{,}223\) a los 3 s; para \(\alpha = 2\), \(\ge 0{,}135\) y \(\ge 0{,}0025\). Un \(\alpha\) mayor deja acercarse antes al borde; uno menor es más conservador.</p></div>
+  <div class="callout clave"><span class="tag">Lo que dice y lo que no</span>Dice que \(h\) no llega a cero en tiempo finito. No dice que el dron se quede lejos: con \(\alpha\) grande, \(h\) puede bajar muy cerca de cero muy pronto. Lo que se ve en la hoja siguiente.</div>
 </section>
 
 <section class="slide">
-  <p class="kicker">CBF · el programa cuadrático</p>
+  <p class="kicker">CBF · la cota, con números</p>
+  <h2>Una trayectoria filtrada nunca baja de su curva \(h(0)\,e^{-\alpha t}\)</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 480 245" role="img" aria-label="h en función del tiempo: las curvas de la cota para alfa 0,5, 1 y 2, que empiezan en 8 y bajan; y una trayectoria filtrada con alfa 1 que va por encima de su curva.">
+        <line x1="60" y1="210" x2="465" y2="210" class="ln"/><line x1="60" y1="210" x2="60" y2="25" class="ln"/>
+        <g font-size="11" class="t-mono t-muted" text-anchor="middle">
+          <text x="60" y="226">0</text><text x="160" y="226">1</text><text x="260" y="226">2</text><text x="360" y="226">3</text><text x="460" y="226">4</text>
+          <text x="260" y="242">t (s)</text>
+        </g>
+        <g font-size="11" class="t-mono t-muted" text-anchor="end"><text x="54" y="214">0</text><text x="54" y="124">4</text><text x="54" y="34">8</text></g>
+        <text x="66" y="22" font-size="11" class="t-muted">h (m²)</text>
+        <path d="M60.0,30.0 L70.0,38.8 L80.0,47.1 L90.0,55.1 L100.0,62.6 L110.0,69.8 L120.0,76.7 L130.0,83.2 L140.0,89.3 L150.0,95.2 L160.0,100.8 L170.0,106.1 L180.0,111.2 L190.0,116.0 L200.0,120.6 L210.0,125.0 L220.0,129.1 L230.0,133.1 L240.0,136.8 L250.0,140.4 L260.0,143.8 L270.0,147.0 L280.0,150.1 L290.0,153.0 L300.0,155.8 L310.0,158.4 L320.0,160.9 L330.0,163.3 L340.0,165.6 L350.0,167.8 L360.0,169.8 L370.0,171.8 L380.0,173.7 L390.0,175.4 L400.0,177.1 L410.0,178.7 L420.0,180.2 L430.0,181.7 L440.0,183.1 L450.0,184.4 L460.0,185.6" class="ln ln-dash" stroke-width="1.6"/>
+        <path d="M60.0,30.0 L70.0,47.1 L80.0,62.6 L90.0,76.7 L100.0,89.3 L110.0,100.8 L120.0,111.2 L130.0,120.6 L140.0,129.1 L150.0,136.8 L160.0,143.8 L170.0,150.1 L180.0,155.8 L190.0,160.9 L200.0,165.6 L210.0,169.8 L220.0,173.7 L230.0,177.1 L240.0,180.2 L250.0,183.1 L260.0,185.6 L270.0,188.0 L280.0,190.1 L290.0,192.0 L300.0,193.7 L310.0,195.2 L320.0,196.6 L330.0,197.9 L340.0,199.1 L350.0,200.1 L360.0,201.0 L370.0,201.9 L380.0,202.7 L390.0,203.4 L400.0,204.0 L410.0,204.6 L420.0,205.1 L430.0,205.5 L440.0,206.0 L450.0,206.4 L460.0,206.7" class="ln-tesis ln-dash" stroke-width="1.8"/>
+        <path d="M60.0,30.0 L70.0,62.6 L80.0,89.3 L90.0,111.2 L100.0,129.1 L110.0,143.8 L120.0,155.8 L130.0,165.6 L140.0,173.7 L150.0,180.2 L160.0,185.6 L170.0,190.1 L180.0,193.7 L190.0,196.6 L200.0,199.1 L210.0,201.0 L220.0,202.7 L230.0,204.0 L240.0,205.1 L250.0,206.0 L260.0,206.7 L270.0,207.3 L280.0,207.8 L290.0,208.2 L300.0,208.5 L310.0,208.8 L320.0,209.0 L330.0,209.2 L340.0,209.3 L350.0,209.5 L360.0,209.6 L370.0,209.6 L380.0,209.7 L390.0,209.8 L400.0,209.8 L410.0,209.8 L420.0,209.9 L430.0,209.9 L440.0,209.9 L450.0,209.9 L460.0,209.9" class="ln-time ln-dash" stroke-width="1.6"/>
+        <path d="M60.0,30.0 L70.0,43.3 L80.0,56.1 L90.0,68.5 L100.0,80.4 L110.0,91.9 L120.0,102.9 L130.0,113.1 L140.0,122.3 L150.0,130.7 L160.0,138.2 L170.0,145.0 L180.0,151.2 L190.0,156.8 L200.0,161.9 L210.0,166.5 L220.0,170.6 L230.0,174.4 L240.0,177.8 L250.0,180.8 L260.0,183.6 L270.0,186.1 L280.0,188.4 L290.0,190.4 L300.0,192.3 L310.0,194.0 L320.0,195.5 L330.0,196.9 L340.0,198.1 L350.0,199.3 L360.0,200.3 L370.0,201.2 L380.0,202.1 L390.0,202.8 L400.0,203.5 L410.0,204.1 L420.0,204.7 L430.0,205.2 L440.0,205.6 L450.0,206.1 L460.0,206.4" class="ln-accent" stroke-width="2.6"/>
+        <line x1="118.6" y1="210" x2="118.6" y2="100" class="ln-rule"/>
+        <text x="123" y="205" font-size="11" class="t-muted">0,59 s</text>
+        <g font-size="12">
+          <line x1="300" y1="36" x2="330" y2="36" class="ln-accent" stroke-width="2.6"/><text x="336" y="40" class="t-accent">filtrada (α = 1)</text>
+          <line x1="300" y1="54" x2="330" y2="54" class="ln-tesis ln-dash" stroke-width="1.8"/><text x="336" y="58" class="t-tesis">cota α = 1</text>
+          <line x1="300" y1="72" x2="330" y2="72" class="ln ln-dash" stroke-width="1.6"/><text x="336" y="76" class="t-muted">cota α = 0,5</text>
+          <line x1="300" y1="90" x2="330" y2="90" class="ln-time ln-dash" stroke-width="1.6"/><text x="336" y="94" class="t-time">cota α = 2</text>
+        </g>
+      </svg>
+      <figcaption>Dron mandado en velocidad, de frente hacia un obstáculo de \(r = 1\) m desde 3 m del centro (\(h(0) = 8\)), pidiendo 1 m/s; filtro con \(\alpha = 1\). Discontinuas: \(8\,e^{-\alpha t}\). <code>ejemplos_a14.py</code>, ejemplo 5.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Antes de 0,59 s</strong> el filtro no toca nada: a 1 m/s, \(\dot h = -2|d| \ge -\alpha h\) mientras \(|d| \ge 1 + \sqrt 2 = 2{,}41\) m.</p>
+      <p><strong>Después</strong>, la condición está activa: \(\dot h = -\alpha h\) exactamente, y la curva azul baja paralela a su cota (un 8,4 % por encima): 3,19 frente a 2,94 en \(t = 1\) s, 0,159 frente a 0,147 en \(t = 4\) s.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\alpha\) (s⁻¹)</th><th>Cota en 1 s</th><th>En 3 s</th><th>Al 1 % en</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0,5</td><td class="n">0,607</td><td class="n">0,223</td><td class="n">9,2 s</td></tr>
+            <tr><td class="n">2</td><td class="n">0,135</td><td class="n">0,0025</td><td class="n">2,3 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">Con \(h(0) = 1\); «al 1 %» es \(\ln 100/\alpha\), lo más pronto que \(h\) puede bajar al 1 % de su valor inicial.</p>
+    </div>
+  </div>
+  <div class="aparte"><span class="rotulo">Elegir α</span><p>Un \(\alpha\) mayor deja acercarse antes al borde (más rendimiento, menos margen); uno menor es más conservador. En la parte 6 se ve el precio de cada extremo: con \(\alpha = 0{,}5\) el dron no llega nunca; con \(\alpha = 4\), roza los obstáculos.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF-QP · qué hace, en dibujo</p>
+  <h2>En el plano de las entradas, la condición es un semiplano y el filtro proyecta sobre él</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 340" style="max-height:340px" role="img" aria-label="Plano de las velocidades mandadas. Una recta separa las velocidades seguras de las inseguras. La velocidad pedida está en el lado inseguro; la filtrada es el punto de la recta más cercano, al pie de la perpendicular.">
+        <defs><marker id="f2q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <polygon points="40,20 85,20 235,320 40,320" class="box-accent" opacity="0.55"/>
+        <line x1="85" y1="20" x2="235" y2="320" class="ln-tesis" stroke-width="2.4"/>
+        <line x1="40" y1="170" x2="345" y2="170" class="ln-rule"/><line x1="100" y1="20" x2="100" y2="320" class="ln-rule"/>
+        <text x="340" y="164" font-size="11" class="t-mono t-muted" text-anchor="end">u_x</text>
+        <text x="106" y="32" font-size="11" class="t-mono t-muted">u_y</text>
+        <circle cx="100" cy="170" r="3" class="fill-ink3"/>
+        <line x1="280" y1="170" x2="186" y2="217" class="ln-accent ln-dash" stroke-width="1.8" marker-end="url(#f2q)"/>
+        <circle cx="280" cy="170" r="6" class="fill-time"/>
+        <text x="288" y="190" font-size="13" class="t-time">u_nom = (3, 0)</text>
+        <circle cx="184" cy="218" r="6" class="fill-accent"/>
+        <text x="208" y="246" font-size="13" class="t-accent">u* = (1,4; −0,8)</text>
+        <text x="48" y="292" font-size="13" class="t-accent">seguras</text>
+        <text x="48" y="308" font-size="11" class="t-mono t-accent">2u_x + u_y ≤ 2</text>
+        <text x="250" y="60" font-size="13" class="t-muted">inseguras</text>
+        <text x="122" y="58" font-size="12" class="t-tesis" transform="rotate(63.4 122 58)">frontera</text>
+      </svg>
+      <figcaption>Misma escala en los dos ejes (60 px por m/s), así que el ángulo recto se ve recto. <code>ejemplos_a14.py</code>, ejemplo 6.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué entra:</strong> el estado (que fija \(a\) y \(b\)) y la acción pedida \(u_{\text{nom}}\). <strong>Qué sale:</strong> la acción \(u^\star\) que se manda.</p>
+      <p>Con el estado fijo, la condición \(a + b\,u \ge 0\) es lineal en \(u\): en el plano \((u_x, u_y)\) es un <strong>semiplano</strong>, limitado por la recta \(a + b\,u = 0\), y \(b^\top\) es perpendicular a esa recta y apunta hacia el lado seguro.</p>
+      <p>«La acción más parecida a la pedida» es el punto del semiplano más cercano a \(u_{\text{nom}}\):</p>
+      <ul>
+        <li>si \(u_{\text{nom}}\) ya está dentro, es ella misma;</li>
+        <li>si está fuera, es el pie de la perpendicular desde \(u_{\text{nom}}\) a la recta: se mueve en la dirección de \(b^\top\) lo justo para llegar a la frontera.</li>
+      </ul>
+      <p>Eso es una <strong>proyección</strong>; la hoja siguiente lo escribe con multiplicadores de Lagrange y sale la misma fórmula.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF-QP · la solución cerrada</p>
   <h2>La acción más parecida a la pedida que cumple la condición</h2>
   \[ u^\star = \arg\min_{u}\ \tfrac12\,\|u - u_{\text{nom}}\|^2 \quad \text{sujeto a}\quad \underbrace{L_f h + \alpha h}_{a} + \underbrace{L_g h}_{b}\,u \ge 0 \]
-  <p><strong>Notación:</strong> \(u_{\text{nom}}\), acción que pide la política de la tarea; \(a\) y \(b\), escalar y vector fila que resumen la condición en el estado actual; \(\lambda\), multiplicador de Lagrange.</p>
-  <div class="table-wrap">
+  <div class="table-wrap" style="padding-bottom:6px">
     <table class="t">
-      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
-      <tr><td><strong>1</strong></td><td>si \(a + b\,u_{\text{nom}} \ge 0\), entonces \(u^\star = u_{\text{nom}}\)</td><td>La acción pedida ya es segura: el filtro no toca nada</td></tr>
-      <tr><td><strong>2</strong></td><td>si no, la restricción está activa: \(u^\star = u_{\text{nom}} + \lambda\, b^\top\)</td><td>Condición de KKT: el gradiente del coste es paralelo al de la restricción</td></tr>
-      <tr><td><strong>3</strong></td><td>\(a + b(u_{\text{nom}} + \lambda b^\top) = 0 \Rightarrow \lambda = \dfrac{-(a + b\,u_{\text{nom}})}{\|b\|^2}\)</td><td>Imponer la restricción con igualdad y despejar</td></tr>
-      <tr><td><strong>4</strong></td><td>\(u^\star = u_{\text{nom}} + \dfrac{\max(0,\,-(a + b\,u_{\text{nom}}))}{\|b\|^2}\, b^\top\)</td><td>Los dos casos juntos: la solución cerrada de mínima norma</td></tr>
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>si \(a + b\,u_{\text{nom}} \ge 0\), entonces \(u^\star = u_{\text{nom}}\)</td><td>Ya es segura y su coste es 0, el mínimo: el filtro no toca nada</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathcal L = \tfrac12\|u - u_{\text{nom}}\|^2 - \lambda\,(a + b\,u)\)</td><td>Si no, la restricción queda activa; \(\lambda \ge 0\) es su multiplicador de Lagrange</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\nabla_u \mathcal L = u - u_{\text{nom}} - \lambda\, b^\top = 0 \Rightarrow u^\star = u_{\text{nom}} + \lambda\, b^\top\)</td><td>KKT: el gradiente del coste, paralelo al de la restricción (la perpendicular de la hoja anterior)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(a + b(u_{\text{nom}} + \lambda b^\top) = 0 \Rightarrow \lambda = \dfrac{-(a + b\,u_{\text{nom}})}{\|b\|^2}\)</td><td>Imponer la igualdad y despejar (\(b\,b^\top = \|b\|^2\)); sale \(\lambda > 0\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(u^\star = u_{\text{nom}} + \dfrac{\max(0,\,-(a + b\,u_{\text{nom}}))}{\|b\|^2}\, b^\top\)</td><td>Los dos casos juntos: la solución cerrada de mínima norma</td></tr>
     </table>
   </div>
-  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>\(u_{\text{nom}} = (3, 0)\), \(a = 2\), \(b = (-2, -1)\): \(a + b\,u_{\text{nom}} = -4\), inseguro. \(\lambda = 4/5 = 0{,}8\) y \(u^\star = (1{,}4,\ -0{,}8)\), que cumple la restricción justo con igualdad. Con varias restricciones o límites de la entrada no hay solución cerrada y se resuelve un QP pequeño.</p></div>
+  <div class="aparte"><span class="rotulo">Qué mide cada pieza</span><p>\(-(a + b\,u_{\text{nom}})\) es cuánto incumple la acción pedida; dividir por \(\|b\|\) lo pasa a distancia en el plano de las entradas, y \(b^\top/\|b\|\) es la dirección en la que se corrige. Con varias restricciones no hay solución cerrada (dos hojas más adelante).</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF-QP · el ejemplo, en la escena</p>
+  <h2>Pedía 3 m/s hacia el poste; el filtro deja 1,4 hacia delante y 0,8 hacia fuera</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 330 280" role="img" aria-label="Vista desde arriba: el dron en el origen, un poste arriba a la derecha, la velocidad pedida hacia la derecha rozando el poste y la filtrada, más corta e inclinada hacia abajo, lejos del poste.">
+        <defs><marker id="f2e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        <marker id="f2f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+        <marker id="f2h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="5" y="5" width="320" height="270" class="box-soft"/>
+        <circle cx="220" cy="120" r="70" class="box-time"/>
+        <text x="220" y="116" text-anchor="middle" font-size="13">poste</text>
+        <text x="220" y="132" text-anchor="middle" font-size="11" class="t-mono t-muted">c = (2, 1), r = 1</text>
+        <line x1="80" y1="190" x2="228" y2="190" class="ln-time" stroke-width="2.4" marker-end="url(#f2f)"/>
+        <text x="236" y="208" font-size="12" class="t-time">u_nom</text>
+        <line x1="80" y1="190" x2="148.3" y2="229" class="ln-accent" stroke-width="2.6" marker-end="url(#f2e)"/>
+        <text x="152" y="250" font-size="12" class="t-accent">u*</text>
+        <line x1="80" y1="190" x2="45.8" y2="207" class="ln" stroke-width="1.6" marker-end="url(#f2h)"/>
+        <text x="14" y="232" font-size="11" class="t-muted">∇h</text>
+        <circle cx="80" cy="190" r="7" class="fill-accent"/>
+        <text x="66" y="176" font-size="12" text-anchor="end">dron (0, 0)</text>
+      </svg>
+      <figcaption>70 px por metro; velocidades, 50 px por m/s. \(\nabla h\) apunta lejos del poste. <code>ejemplos_a14.py</code>, ejemplo 6.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Cuenta</th><th>Qué es</th></tr>
+          <tr><td><strong>1</strong></td><td>\(d = (-2, -1)\), \(\ h = 5 - 1 = 4\)</td><td>El dron está fuera, con margen</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\nabla h = 2d = (-4, -2)\)</td><td>Es \(b\) antes de simplificar</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dot h = (-4)(3) = -12 \lt -\alpha h = -4\)</td><td>Con \(\alpha = 1\), la acción pedida baja \(h\) el triple de lo permitido</td></tr>
+          <tr><td><strong>4</strong></td><td>\(4 - 4u_x - 2u_y \ge 0\); entre 2: \(a = 2\), \(b = (-2, -1)\)</td><td>Dividir la restricción por un número positivo no cambia el semiplano</td></tr>
+          <tr><td><strong>5</strong></td><td>\(a + b\,u_{\text{nom}} = -4\), \(\ \lambda = 4/5 = 0{,}8\)</td><td>Paso 4 de la hoja anterior, con \(\|b\|^2 = 5\)</td></tr>
+          <tr><td><strong>6</strong></td><td>\(u^\star = (3, 0) + 0{,}8\,(-2, -1) = (1{,}4,\ -0{,}8)\)</td><td>Paso 5</td></tr>
+          <tr><td><strong>7</strong></td><td>\(\nabla h\, u^\star = -5{,}6 + 1{,}6 = -4 = -\alpha h\)</td><td>Justo en el límite: la restricción, activa</td></tr>
+        </table>
+      </div>
+      <p>El cambio es \(u_{\text{nom}} - u^\star = (1{,}6,\ 0{,}8)\), de módulo 1,79 m/s y paralelo a \((2, 1)\), la dirección hacia el poste: el filtro quita velocidad <em>solo</em> en la dirección que acerca al obstáculo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF-QP · varias restricciones</p>
+  <h2>El método de Hildreth: proyectar sobre cada restricción por turnos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con varios obstáculos y límites de la entrada hay varias restricciones a la vez, y proyectar sobre una puede violar otra. El experimento las escribe como \(G_j\,u \le g_j\) (\(G_j = -b_j\), \(g_j = a_j\)) y resuelve el QP así:</p>
+      <ol>
+        <li>Empezar en \(u = u_{\text{nom}}\), con todos los \(\lambda_j = 0\).</li>
+        <li>Para cada restricción \(j\): violación \(r_j = G_j u - g_j\); nuevo \(\lambda_j' = \max\!\big(0,\ \lambda_j + r_j/\|G_j\|^2\big)\); \(u \leftarrow u - (\lambda_j' - \lambda_j)\,G_j^\top\).</li>
+        <li>Repetir el barrido (60 veces en el experimento).</li>
+      </ol>
+      <p>Cada paso es la proyección de la hoja anterior sobre una sola restricción, pero llevando la cuenta de su \(\lambda_j\): si una corrección anterior sobra, \(\lambda_j\) baja (sin pasar de 0) y se deshace. Es un ascenso por coordenadas en el problema dual. Con una sola restricción, el primer paso ya da la solución cerrada.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="55 92 345 188" style="max-height:250px; overflow:hidden" role="img" aria-label="Plano de entradas con dos restricciones: la recta del poste y un límite inferior de la velocidad lateral. Las iteraciones de Hildreth saltan de la pedida a la proyección sobre la primera recta, luego a la segunda, y convergen en la esquina.">
+          <polygon points="55,20 80,20 155,170 55,170" class="box-accent" opacity="0.55"/>
+          <line x1="80" y1="20" x2="205" y2="270" class="ln-tesis" stroke-width="2"/>
+          <line x1="30" y1="170" x2="390" y2="170" class="ln-tesis" stroke-width="2"/>
+          <text x="384" y="162" font-size="11" class="t-mono t-tesis" text-anchor="end">u_y = −0,5</text>
+          <text x="210" y="266" font-size="11" class="t-mono t-tesis">2u_x + u_y = 2</text>
+          <path d="M330,120 L170,200 L170,170 L158,176 L158,170 L155.6,171.2 L155.6,170" class="ln-accent" stroke-width="1.6" fill="none"/>
+          <circle cx="330" cy="120" r="6" class="fill-time"/><text x="320" y="108" font-size="12" class="t-time">u_nom</text>
+          <circle cx="170" cy="200" r="4" class="fill-accent"/><text x="178" y="214" font-size="11" class="t-accent">1.ª: (1,4; −0,8)</text>
+          <circle cx="170" cy="170" r="4" class="fill-accent"/>
+          <circle cx="155.1" cy="170" r="6" class="fill-accent"/><text x="62" y="202" font-size="12" class="t-accent">u* = (1,25; −0,5)</text>
+        </svg>
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Barrido</th><th>Tras la restricción 1</th><th>Tras la 2</th></tr></thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="n">(1,4; −0,8)</td><td class="n">(1,4; −0,5)</td></tr>
+            <tr><td class="n">2</td><td class="n">(1,28; −0,56)</td><td class="n">(1,28; −0,5)</td></tr>
+            <tr><td class="n">4</td><td class="n">(1,2512; −0,5024)</td><td class="n">(1,2512; −0,5)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">Restricciones \(2u_x + u_y \le 2\) (el poste) y \(u_y \ge -0{,}5\). Converge a \((1{,}25;\ -0{,}5)\) con \(\lambda = (0{,}875;\ 0{,}375)\); 100 px por m/s. Ejemplo 7.</p>
+    </div>
+  </div>
 </section>
 
 <!-- ============ PARTE 3 ============ -->
@@ -218,6 +600,25 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Qué es cada letra: ahora el dron manda aceleraciones</h2>
+  <div class="callout error"><span class="tag">Cambia de significado</span>\(u\) era la velocidad mandada (m/s); desde aquí es la <strong>aceleración</strong> mandada (m/s²). \(v\) es la velocidad del dron, no una entrada.</div>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo de esta parte</th></tr>
+      <tr><td>\(p\), \(v\), \(u\)</td><td>Posición (m), velocidad (m/s) y aceleración mandada (m/s²): doble integrador \(\dot p = v\), \(\dot v = u\)</td><td>\(p = (4, 0)\), \(v = (3, 0)\)</td></tr>
+      <tr><td>\(x = (p, v)\)</td><td>Estado: cuatro números en el plano</td><td>\((4, 0, 3, 0)\)</td></tr>
+      <tr><td>\(c\), \(r\), \(d\)</td><td>Centro del obstáculo, radio de seguridad y \(d = p - c\), del centro al dron</td><td>Poste en \((10, 0)\), \(r = 1{,}3\) m, \(d = (-6, 0)\)</td></tr>
+      <tr><td>\(h\), \(\dot h\), \(\ddot h\)</td><td>La barrera de la parte 2 y sus dos primeras derivadas en el tiempo</td><td>\(h = 34{,}31\) m², \(\dot h = -36\) m²/s</td></tr>
+      <tr><td>\(\psi_0, \psi_1, \psi_2\)</td><td>Cadena de la CBF de orden alto: \(\psi_0 = h\), \(\psi_1 = \dot\psi_0 + \alpha_1\psi_0\), \(\psi_2 = \dot\psi_1 + \alpha_2\psi_1\)</td><td>\(\psi_1 = -36 + 2 \cdot 34{,}31 = 32{,}62\) con \(\alpha_1 = 2\)</td></tr>
+      <tr><td>\(\alpha_1\), \(\alpha_2\)</td><td>Ganancia de cada eslabón (s⁻¹); aquí iguales, \(\alpha_1 = \alpha_2 = \alpha\)</td><td>1 o 2 s⁻¹</td></tr>
+      <tr><td>\(s\), \(v\) (escalares)</td><td>En las hojas de la pared: distancia al borde (m) y velocidad de acercamiento (m/s)</td><td>Empieza en \(s = 10\), \(v = 0\)</td></tr>
+      <tr><td>\(a_{\max}\)</td><td>Aceleración máxima por eje</td><td>6 m/s² (2 en la parte 4)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Grado relativo · el problema</p>
   <h2>Si la entrada es la aceleración, \(\dot h\) no depende de ella</h2>
   <div class="cols">
@@ -225,8 +626,52 @@
       <ul>
         <li>Para un dron modelado como doble integrador, \(\dot p = v\), \(\dot v = u\), y un obstáculo con \(h = |p - c|^2 - r^2\): \(\dot h = 2(p - c)\cdot v\). La aceleración \(u\) no aparece.</li>
         <li>Es decir, \(L_g h = 0\): la condición de la CBF o se cumple sola o no se puede cumplir con ninguna entrada. Ames et al. lo señalan: con grado relativo mayor que 1, el conjunto de entradas válidas es todo o nada <a class="cite" data-ref="ames2017"></a>.</li>
-        <li>La entrada aparece en \(\ddot h\): hay que imponer la condición un orden más arriba.</li>
+        <li>La entrada aparece en \(\ddot h\): hay que imponer la condición un orden más arriba. El <strong>grado relativo</strong> es eso: cuántas veces hay que derivar \(h\) para que aparezca \(u\).</li>
       </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 470 230" role="img" aria-label="Cadena de dos integradores: la aceleración u se integra en la velocidad v, que se integra en la posición p, que fija h. La derivada de h solo ve v; la segunda derivada ve u.">
+        <defs><marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="14">
+          <rect x="10" y="60" width="60" height="44" rx="5" class="box-accent"/><text x="40" y="87" text-anchor="middle">u</text>
+          <rect x="100" y="60" width="50" height="44" rx="5" class="box"/><text x="125" y="88" text-anchor="middle">∫</text>
+          <rect x="180" y="60" width="60" height="44" rx="5" class="box-soft"/><text x="210" y="87" text-anchor="middle">v</text>
+          <rect x="270" y="60" width="50" height="44" rx="5" class="box"/><text x="295" y="88" text-anchor="middle">∫</text>
+          <rect x="350" y="60" width="50" height="44" rx="5" class="box-soft"/><text x="375" y="87" text-anchor="middle">p</text>
+          <rect x="420" y="60" width="44" height="44" rx="5" class="box-tesis"/><text x="442" y="87" text-anchor="middle">h</text>
+        </g>
+        <g class="ln" marker-end="url(#f3a)"><path d="M70,82 L98,82"/><path d="M150,82 L178,82"/><path d="M240,82 L268,82"/><path d="M320,82 L348,82"/><path d="M400,82 L418,82"/></g>
+        <text x="40" y="44" text-anchor="middle" font-size="11" class="t-muted">aceleración</text>
+        <text x="210" y="44" text-anchor="middle" font-size="11" class="t-muted">velocidad</text>
+        <text x="375" y="44" text-anchor="middle" font-size="11" class="t-muted">posición</text>
+        <path d="M210,104 C210,150 300,150 300,150" class="ln-tesis ln-dash" fill="none"/>
+        <text x="306" y="155" font-size="13" class="t-tesis t-mono">ḣ = 2d·v</text>
+        <text x="306" y="173" font-size="11" class="t-muted">ve v, no u</text>
+        <path d="M40,104 C40,200 160,200 160,200" class="ln-accent ln-dash" fill="none"/>
+        <text x="166" y="205" font-size="13" class="t-accent t-mono">ḧ = 2|v|² + 2d·u</text>
+        <text x="166" y="223" font-size="11" class="t-muted">aquí aparece u: grado relativo 2</text>
+      </svg>
+      <figcaption>Entre \(u\) y \(h\) hay dos integradores. Lo que se mande ahora cambia la velocidad ya, pero la posición (y \(h\)) solo después.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Grado relativo · todo o nada, con números</p>
+  <h2>La condición de orden 1 solo constata; no puede decir «frena»</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Dron en \(p = (4, 0)\) a \(v = (3, 0)\) m/s hacia un poste en \((10, 0)\) con \(r = 1{,}3\) m: \(d = (-6, 0)\), \(h = 36 - 1{,}69 = 34{,}31\) y \(\dot h = 2\,d\cdot v = -36\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\alpha\)</th><th>\(\dot h\)</th><th>\(-\alpha h\)</th><th>¿\(\dot h \ge -\alpha h\)?</th></tr></thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="n">−36</td><td class="n">−34,31</td><td>No, y ninguna \(u\) lo arregla en este instante</td></tr>
+            <tr><td class="n">2</td><td class="n">−36</td><td class="n">−68,62</td><td>Sí, haga lo que haga el dron</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>El QP de la parte 2 tendría la restricción \(a + 0\cdot u \ge 0\): imposible (\(\alpha = 1\)) o vacía (\(\alpha = 2\)). En ninguno de los dos casos le dice al dron que empiece a frenar antes de que sea tarde. <code>ejemplos_a14.py</code>, ejemplo 8.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">La idea</span>Antes de poder frenar la posición hay que frenar la velocidad: la condición tiene que mirar dos derivadas. Las CBF exponenciales <a class="cite" data-ref="nguyen2016"></a> y las de orden alto <a class="cite" data-ref="xiao2019"></a> lo hacen encadenando condiciones.</div>
@@ -236,20 +681,116 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Grado relativo · paso a paso</p>
+  <p class="kicker">CBF de orden alto · la cadena</p>
+  <h2>Aplicar la regla de la parte 2 dos veces: a \(h\) y a su velocidad de bajada</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 440 290" role="img" aria-label="Tres cajas encadenadas: el QP impone psi 2 mayor o igual que cero, lo que mantiene psi 1 mayor o igual que cero, lo que mantiene h mayor o igual que cero.">
+        <defs><marker id="f3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="20" y="15" width="400" height="66" rx="6" class="box-accent"/>
+        <text x="220" y="42" text-anchor="middle" font-size="15" class="t-mono">ψ₂ = dψ₁/dt + α₂ψ₁ ≥ 0</text>
+        <text x="220" y="66" text-anchor="middle" font-size="12" class="t-muted">contiene ḧ, luego u: la impone el QP en cada paso</text>
+        <rect x="20" y="112" width="400" height="66" rx="6" class="box-soft"/>
+        <text x="220" y="139" text-anchor="middle" font-size="15" class="t-mono">ψ₁ = ḣ + α₁h ≥ 0</text>
+        <text x="220" y="163" text-anchor="middle" font-size="12" class="t-muted">«acercarse, pero no demasiado deprisa»</text>
+        <rect x="20" y="209" width="400" height="66" rx="6" class="box-tesis"/>
+        <text x="220" y="236" text-anchor="middle" font-size="15" class="t-mono">ψ₀ = h ≥ 0</text>
+        <text x="220" y="260" text-anchor="middle" font-size="12" class="t-muted">fuera del obstáculo</text>
+        <g class="ln" marker-end="url(#f3b)"><path d="M220,81 L220,110"/><path d="M220,178 L220,207"/></g>
+        <text x="230" y="100" font-size="11" class="t-muted">cota de la parte 2 para ψ₁, si ψ₁(0) ≥ 0</text>
+        <text x="230" y="197" font-size="11" class="t-muted">cota de la parte 2 para h, si h(0) ≥ 0</text>
+      </svg>
+      <figcaption>Cada flecha es la hoja «por qué funciona» de la parte 2, aplicada a una función distinta.</figcaption>
+    </figure>
+    <div class="stack">
+      <ol>
+        <li>\(\psi_1 \ge 0\) es exactamente \(\dot h \ge -\alpha_1 h\): la condición de la parte 2. Si se cumple siempre, \(h \ge h(0)\,e^{-\alpha_1 t} \ge 0\).</li>
+        <li>Pero \(\psi_1\) no se controla directamente (no contiene \(u\)). Se le aplica la misma regla: \(\psi_2 = \dot\psi_1 + \alpha_2\psi_1 \ge 0\) mantiene \(\psi_1 \ge 0\).</li>
+        <li>\(\dot\psi_1 = \ddot h + \alpha_1\dot h\) sí contiene \(u\): esa condición la puede imponer el filtro.</li>
+      </ol>
+      <div class="callout error"><span class="tag">Condiciones iniciales</span>Hace falta empezar con \(h(0) \ge 0\) <strong>y</strong> \(\psi_1(0) \ge 0\): fuera del obstáculo y sin acercarse ya demasiado deprisa. El conjunto que se garantiza es la intersección \(\{h \ge 0\} \cap \{\psi_1 \ge 0\}\) <a class="cite" data-ref="xiao2019"></a>. Si se empieza en el borde moviéndose hacia dentro, \(\psi_1 \lt 0\) para cualquier \(\alpha\) y no hay garantía.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF de orden alto · paso a paso</p>
   <h2>La condición de orden 2 para un dron y un obstáculo</h2>
-  <p><strong>Notación:</strong> \(p, v\), posición y velocidad; \(u\), aceleración mandada; \(c\), centro del obstáculo; \(r\), radio de seguridad (obstáculo más dron); \(d = p - c\); \(\psi_1\), condición intermedia; \(\alpha_1 = \alpha_2 = \alpha\).</p>
+  <p>Con la notación de la parte (\(d = p - c\), \(\dot d = v\), \(\dot v = u\)) y \(\alpha_1 = \alpha_2 = \alpha\):</p>
   <div class="table-wrap">
     <table class="t">
       <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
-      <tr><td><strong>1</strong></td><td>\(h = d\cdot d - r^2,\quad \dot h = 2\,d\cdot v,\quad \ddot h = 2\,v\cdot v + 2\,d\cdot u\)</td><td>Derivar con \(\dot d = v\) y \(\dot v = u\); la entrada aparece en \(\ddot h\)</td></tr>
+      <tr><td><strong>1</strong></td><td>\(h = d\cdot d - r^2,\quad \dot h = 2\,d\cdot v,\quad \ddot h = 2\,v\cdot v + 2\,d\cdot u\)</td><td>Derivar con \(\dot d = v\) y \(\dot v = u\) (regla del producto); la entrada aparece en \(\ddot h\)</td></tr>
       <tr><td><strong>2</strong></td><td>\(\psi_1 = \dot h + \alpha h \ge 0\)</td><td>Primera condición de la cadena de Xiao y Belta: «acercarse, pero no demasiado deprisa»</td></tr>
       <tr><td><strong>3</strong></td><td>\(\dot\psi_1 + \alpha\,\psi_1 \ge 0\)</td><td>La condición de CBF aplicada a \(\psi_1\): mantiene \(\psi_1 \ge 0\), y con ello \(h \ge 0\)</td></tr>
-      <tr><td><strong>4</strong></td><td>\(\ddot h + 2\alpha\,\dot h + \alpha^2 h \ge 0\)</td><td>Sustituir \(\psi_1\) y \(\dot\psi_1 = \ddot h + \alpha \dot h\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\ddot h + 2\alpha\,\dot h + \alpha^2 h \ge 0\)</td><td>Sustituir \(\psi_1\) y \(\dot\psi_1 = \ddot h + \alpha \dot h\): \((\ddot h + \alpha\dot h) + \alpha(\dot h + \alpha h)\)</td></tr>
       <tr><td><strong>5</strong></td><td>\(2\,d\cdot u + 2\,v\cdot v + 2\alpha\,\dot h + \alpha^2 h \ge 0\)</td><td>Paso 1 en el 4: lineal en \(u\), así que el filtro sigue siendo un QP</td></tr>
     </table>
   </div>
-  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>Dron en \((4, 0)\) a 3 m/s hacia un poste en \((10, 0)\) con \(r = 1{,}3\): \(h = 34{,}31\), \(\dot h = -36\). Con \(\alpha = 1\), la condición exige \(u_x \le -1{,}64\) m/s²: frenar ya. Con \(\alpha = 2\), \(u_x \le 0{,}94\): todavía puede acelerar un poco. Si se empieza en el borde moviéndose hacia dentro, \(\psi_1 &lt; 0\) para cualquier \(\alpha\) y no hay garantía (Xiao y Belta).</p></div>
+  <div class="cols">
+    <div class="aparte"><span class="rotulo">Con dos ganancias distintas</span><p>El paso 4 queda \(\ddot h + (\alpha_1 + \alpha_2)\,\dot h + \alpha_1\alpha_2\, h \ge 0\); el experimento usa \(\alpha_1 = \alpha_2\).</p></div>
+    <div class="aparte"><span class="rotulo">En la forma del QP</span><p>\(a = 2|v|^2 + 2\alpha\dot h + \alpha^2 h\) y \(b = 2d^\top\): todo lo de la parte 2 (proyección, Hildreth) sirve igual.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF de orden alto · el ejemplo del poste</p>
+  <h2>Con \(\alpha = 1\) hay que frenar ya; con \(\alpha = 2\), todavía se puede acelerar</h2>
+  <p>El dron de la hoja «todo o nada»: \(p = (4, 0)\), \(v = (3, 0)\) m/s, poste en \((10, 0)\), \(r = 1{,}3\) m. Solo cuenta \(u_x\), porque \(d = (-6, 0)\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th style="width:4%">#</th><th style="width:34%">Cuenta</th><th>\(\alpha = 1\)</th><th>\(\alpha = 2\)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1</strong></td><td>\(h\); \(\dot h = 2\,d\cdot v\)</td><td class="n">34,31; −36</td><td class="n">34,31; −36</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\psi_1 = \dot h + \alpha h\)</td><td class="n">−1,69</td><td class="n">32,62</td></tr>
+        <tr><td><strong>3</strong></td><td>\(2|v|^2 + 2\alpha\dot h + \alpha^2 h\)</td><td class="n">18 − 72 + 34,31 = −19,69</td><td class="n">18 − 144 + 137,24 = 11,24</td></tr>
+        <tr><td><strong>4</strong></td><td>\(2\,d\cdot u = -12\,u_x\); condición \(-12\,u_x + (\text{3}) \ge 0\)</td><td class="n">\(u_x \le -1{,}64\) m/s²</td><td class="n">\(u_x \le 0{,}94\) m/s²</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Comparado con la física</span>Quedan 4,7 m hasta el borde, y frenar de 3 m/s a 6 m/s² cuesta 0,75 m. Las dos ganancias son prudentes aquí; \(\alpha = 1\), mucho más: obliga a empezar a frenar con unas 6 veces el sitio que haría falta frenando a tope.</div>
+    <div class="callout error"><span class="tag">Fíjate en ψ₁</span>Con \(\alpha = 1\), \(\psi_1 = -1{,}69 \lt 0\): el dron ya va más deprisa de lo que permite la primera condición, y la garantía formal pide \(\psi_1(0) \ge 0\). El déficit es pequeño y el filtro lo corrige frenando, pero esa garantía no cubre este arranque. <code>ejemplos_a14.py</code>, ejemplo 8.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">CBF de orden alto · en el plano de fases</p>
+  <h2>El dron sube de velocidad, llega a la recta \(\psi_1 = 0\) y baja por ella hasta parar</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 490 280" role="img" aria-label="Plano distancia al borde frente a velocidad de acercamiento. Dos trayectorias filtradas que empiezan a 10 metros, aceleran, tocan la recta v igual a alfa por s y bajan por ella hasta el origen; la parábola de frenada máxima queda por encima.">
+        <line x1="60" y1="250" x2="478" y2="250" class="ln"/><line x1="60" y1="250" x2="60" y2="18" class="ln"/>
+        <g font-size="11" class="t-mono t-muted" text-anchor="middle">
+          <text x="60" y="266">0</text><text x="162.5" y="266">2,5</text><text x="265" y="266">5</text><text x="367.5" y="266">7,5</text><text x="470" y="266">10</text>
+          <text x="265" y="279">s: distancia al borde (m)</text>
+        </g>
+        <g font-size="11" class="t-mono t-muted" text-anchor="end"><text x="54" y="254">0</text><text x="54" y="155">3</text><text x="54" y="56">6</text></g>
+        <text x="66" y="16" font-size="11" class="t-muted">v (m/s)</text>
+        <path d="M60.0,250.0 L70.2,193.1 L80.5,169.5 L90.8,151.4 L101.0,136.2 L111.2,122.7 L121.5,110.6 L131.8,99.4 L142.0,89.0 L152.2,79.3 L162.5,70.0 L172.8,61.3 L183.0,52.9 L193.2,44.8 L203.5,37.1 L213.8,29.6 L224.0,22.4" class="ln ln-dash" stroke-width="1.6"/>
+        <line x1="60" y1="250" x2="347" y2="20" class="ln-tesis ln-dash" stroke-width="1.4"/>
+        <line x1="60" y1="250" x2="203.5" y2="20" class="ln-accent ln-dash" stroke-width="1.4"/>
+        <path d="M470.0,250.0 L469.4,240.1 L467.5,230.3 L464.4,220.4 L460.1,210.6 L454.6,200.7 L447.8,190.9 L439.8,181.0 L430.6,171.1 L420.1,161.3 L408.4,151.9 L395.7,144.8 L382.3,140.0 L368.3,137.0 L354.2,135.6 L339.9,135.5 L325.6,136.5 L311.6,138.3 L297.8,140.8 L284.3,143.8 L271.3,147.3 L258.7,151.0 L246.6,155.0 L235.0,159.1 L223.9,163.3 L213.4,167.5 L203.3,171.7 L193.8,175.8 L184.8,179.9 L176.3,183.9 L168.3,187.7 L160.8,191.4 L153.7,195.0 L147.1,198.4 L140.8,201.7 L135.0,204.8 L129.5,207.7 L124.4,210.5 L119.7,213.2 L115.3,215.7 L111.1,218.1 L107.3,220.3 L103.7,222.4 L100.4,224.3 L97.3,226.2 L94.4,227.9 L91.8,229.5 L89.3,231.0 L87.0,232.4 L84.9,233.7 L83.0,234.9 L81.2,236.1 L79.5,237.1 L77.9,238.1 L76.5,239.0 L75.2,239.8 L74.0,240.6 L72.9,241.4 L71.8,242.0 L70.9,242.7 L70.0,243.2 L69.2,243.8 L68.4,244.3 L67.7,244.7 L67.1,245.1 L66.5,245.5 L66.0,245.9 L65.5,246.2 L65.0,246.5 L64.6,246.8 L64.2,247.1 L63.9,247.3 L63.6,247.5 L63.3,247.7 L63.0,247.9 L62.7,248.1 L62.5,248.2 L62.3,248.4 L62.1,248.5 L61.9,248.6 L61.8,248.8 L61.6,248.9 L61.5,248.9 L61.4,249.0 L61.2,249.1 L61.1,249.2 L61.0,249.3 L61.0,249.3 L60.9,249.4 L60.8,249.4 L60.7,249.5 L60.7,249.5 L60.6,249.6 L60.6,249.6 L60.5,249.6 L60.5,249.7 L60.4,249.7 L60.4,249.7 L60.4,249.7 L60.3,249.8 L60.3,249.8 L60.3,249.8 L60.2,249.8 L60.2,249.8 L60.2,249.8 L60.2,249.9 L60.2,249.9 L60.2,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,250.0 L60.1,250.0 L60.1,250.0 L60.0,250.0" class="ln-tesis" stroke-width="2.4"/>
+        <path d="M470.0,250.0 L469.4,240.1 L467.5,230.3 L464.4,220.4 L460.1,210.6 L454.6,200.7 L447.8,190.9 L439.8,181.0 L430.6,171.1 L420.1,161.3 L408.4,151.4 L395.5,141.6 L381.4,131.7 L366.0,121.9 L349.4,112.0 L331.5,102.1 L312.5,92.3 L292.2,82.7 L271.0,79.5 L249.9,82.9 L229.5,90.7 L210.2,101.2 L192.4,113.1 L176.1,125.6 L161.4,138.0 L148.2,150.1 L136.4,161.4 L126.0,171.9 L116.9,181.5 L108.9,190.2 L102.0,198.0 L95.9,204.9 L90.7,211.1 L86.2,216.4 L82.3,221.2 L79.0,225.3 L76.1,228.8 L73.7,231.9 L71.6,234.6 L69.8,236.9 L68.3,238.8 L67.0,240.5 L65.9,241.9 L65.0,243.2 L64.2,244.2 L63.5,245.1 L63.0,245.9 L62.5,246.5 L62.1,247.1 L61.8,247.5 L61.5,247.9 L61.2,248.2 L61.0,248.5 L60.9,248.8 L60.7,249.0 L60.6,249.1 L60.5,249.3 L60.4,249.4 L60.4,249.5 L60.3,249.6 L60.2,249.6 L60.2,249.7 L60.2,249.7 L60.1,249.8 L60.1,249.8 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.1,249.9 L60.0,249.9 L60.0,249.9 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0 L60.0,250.0" class="ln-accent" stroke-width="2.4"/>
+        <g font-size="12">
+          <line x1="74" y1="34" x2="98" y2="34" class="ln-accent ln-dash" stroke-width="1.4"/><text x="104" y="38" class="t-accent">v = 2s</text>
+          <line x1="74" y1="52" x2="98" y2="52" class="ln-tesis ln-dash" stroke-width="1.4"/><text x="104" y="56" class="t-tesis">v = s</text>
+          
+        </g>
+        <text x="300" y="72" font-size="12" class="t-accent">α = 2 (pico 5,19 m/s)</text>
+        <text x="234" y="30" font-size="12" class="t-muted">frenada máx.</text>
+        <text x="330" y="128" font-size="12" class="t-tesis">α = 1 (pico 3,49 m/s)</text>
+      </svg>
+      <figcaption>Pared, \(h = s\); el dron empieza parado a 10 m y la política pide siempre 3 m/s² hacia la pared. Discontinuas: \(\psi_1 = 0\) para cada \(\alpha\) y la frenada máxima \(v = \sqrt{2 \cdot 6\, s}\). <code>ejemplos_a14.py</code>, ejemplo 8b.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Para una pared todo es lineal: \(h = s\), \(\dot h = -v\), \(\ddot h = -u\) (con \(u\), aceleración hacia la pared). Entonces</p>
+      \[ \psi_1 = \alpha s - v \ge 0 \iff v \le \alpha s \]
+      \[ \psi_2 \ge 0 \iff u \le \alpha^2 s - 2\alpha v \]
+      <p>Lejos, la segunda no muerde y el dron acelera. Al acercarse a \(v = \alpha s\) el filtro frena lo justo para deslizarse por la recta: \(s\) baja como \(e^{-\alpha t}\) y nunca llega a 0 (a los 12 s, 1,2 mm con \(\alpha = 1\)).</p>
+      <p>Las dos trayectorias quedan bajo la parábola de frenada: con 6 m/s² el QP siempre tiene solución. En la parte 4 se ve qué pasa con 2 m/s².</p>
+    </div>
+  </div>
 </section>
 
 <!-- ============ PARTE 4 ============ -->
@@ -257,6 +798,25 @@
   <p class="num">Parte 4</p>
   <h2>Cuando el estado no es el que se cree</h2>
   <p>Discretización, ruido de estimación, perturbaciones y retardo: lo que rompe la garantía y cómo se repara.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Qué es cada letra de las imperfecciones</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo</th></tr>
+      <tr><td>\(\Delta t\), \(t_k\)</td><td>Periodo del filtro e instantes en que se evalúa, \(t_k = k\,\Delta t\)</td><td>10 ms en el experimento; 50 ms en los ejemplos</td></tr>
+      <tr><td>\(\hat x\), \(\hat p\), \(\hat v\)</td><td>Estado, posición y velocidad <strong>estimados</strong>: lo que ve el filtro</td><td>La salida del EKF de A4a</td></tr>
+      <tr><td>\(e = x - \hat x\), \(\varepsilon\)</td><td>Error de estimación y una cota suya, \(\|e\| \le \varepsilon\)</td><td>\(\varepsilon = 0{,}6\) m</td></tr>
+      <tr><td>\(\sigma\), \(\Phi\)</td><td>Desviación típica del ruido de estimación, por eje; función de distribución de la normal estándar</td><td>\(\sigma = 0{,}3\) m; \(\Phi(2) = 0{,}977\)</td></tr>
+      <tr><td>\(L\)</td><td>Constante de Lipschitz de la condición respecto del estado: cuánto puede cambiar por metro de error</td><td>\(L = 6\) en el ejemplo</td></tr>
+      <tr><td>\(w\), \(w_{\max}\)</td><td>Perturbación de aceleración que el filtro no conoce (viento) y la cota que supone</td><td>\(w_{\max} = 1\) m/s²</td></tr>
+      <tr><td>\(\tau\)</td><td>Retardo entre la medida y la actuación</td><td>50 ms</td></tr>
+      <tr><td>\(a_{\max}\)</td><td>Aceleración máxima por eje</td><td>2 o 6 m/s²</td></tr>
+      <tr><td>\(b_k\), \(y_k\)</td><td>Belief y observaciones hasta el instante \(k\) (A7a)</td><td>\(b_k = p(x_k \mid y_{1:k})\)</td></tr>
+    </table>
+  </div>
 </section>
 
 <section class="slide">
@@ -278,6 +838,81 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Estado imperfecto · 1 · el muestreo</p>
+  <h2>Entre dos evaluaciones, nadie mira: con \(\alpha\Delta t > 1\) se cruza el borde en un paso</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El caso más sencillo: dron mandado en velocidad contra una pared, \(h\) = distancia (m), \(\dot h = -u\). El filtro se evalúa en \(t_k\) y la orden se mantiene hasta \(t_{k+1}\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(u_k = \alpha h_k\)</td><td>La orden más agresiva que deja la condición \(-u \ge -\alpha h\) en \(t_k\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(h_{k+1} = h_k - u_k\,\Delta t\)</td><td>Durante el paso, \(u\) es constante y \(h\) baja en línea recta</td></tr>
+          <tr><td><strong>3</strong></td><td>\(h_{k+1} = (1 - \alpha\Delta t)\,h_k\)</td><td>Sustituir el paso 1</td></tr>
+          <tr><td><strong>4</strong></td><td>\(h_{k+1} \ge 0 \iff \alpha\Delta t \le 1\)</td><td>Si el factor es negativo, el dron atraviesa el borde dentro del paso</td></tr>
+        </table>
+      </div>
+      <p>Con \(\Delta t = 50\) ms: \(\alpha = 2\) da un factor 0,90; \(\alpha = 10\), 0,50; \(\alpha = 25\), \(-0{,}25\).</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 480 225" role="img" aria-label="h en los instantes de muestreo para dos ganancias. Con alfa 10, h se divide por dos en cada paso y se queda positiva; con alfa 25, cruza el cero en el primer paso y oscila alrededor de él.">
+          <rect x="60" y="151.4" width="400" height="48.6" class="box-time" opacity="0.5"/>
+          <text x="455" y="192" font-size="11" text-anchor="end">h &lt; 0: dentro</text>
+          <line x1="60" y1="151.4" x2="465" y2="151.4" class="ln"/><line x1="60" y1="200" x2="60" y2="22" class="ln"/>
+          <g font-size="11" class="t-mono t-muted" text-anchor="middle"><text x="60" y="216">t₀</text><text x="140" y="216">t₁</text><text x="220" y="216">t₂</text><text x="300" y="216">t₃</text><text x="380" y="216">t₄</text><text x="460" y="216">t₅</text></g>
+          <g font-size="11" class="t-mono t-muted" text-anchor="end"><text x="54" y="155">0</text><text x="54" y="34">1</text></g>
+          <path d="M60.0,30.0 140.0,90.7 140.0,90.7 220.0,121.1 220.0,121.1 300.0,136.2 300.0,136.2 380.0,143.8 380.0,143.8 460.0,147.6" class="ln-accent" stroke-width="2.4"/>
+          <path d="M60.0,30.0 140.0,181.8 140.0,181.8 220.0,143.8 220.0,143.8 300.0,153.3 300.0,153.3 380.0,151.0 380.0,151.0 460.0,151.5" class="ln-time" stroke-width="2.4"/>
+          <text x="236" y="114" font-size="12" class="t-accent">α = 10: factor 0,5</text>
+          <text x="230" y="180" font-size="12" class="t-time">α = 25: factor −0,25</text>
+        </svg>
+        <figcaption>\(h_0 = 1\) m, \(\Delta t = 50\) ms. Entre muestras, \(h\) va en línea recta. <code>ejemplos_a14.py</code>, ejemplo 9.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">En el dron</span>Con \(h\) cuadrática y grado relativo 2 la cuenta no es exacta, pero queda un error por paso. Reparación: un margen \(v\,\Delta t\), lo que se recorre en un paso (6 cm a 6 m/s con 10 ms; 30 cm con 50 ms). En la parte 6, esos «choques» entran 0,01 mm.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · 2 · el ruido de estimación</p>
+  <h2>El filtro cumple la condición para \(\hat x\); el dron está en \(x\)</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 480 230" role="img" aria-label="Distribución de la posición real dado lo estimado, a lo largo de la dirección del obstáculo. Si la estimación está a 0,2 metros del borde con sigma 0,3, una cuarta parte de la campana queda dentro del obstáculo; si está a 0,6 metros, solo el 2,3 por ciento.">
+        <rect x="40" y="30" width="175" height="170" class="box-time" opacity="0.45"/>
+        <text x="128" y="50" text-anchor="middle" font-size="12">obstáculo</text>
+        <line x1="215" y1="30" x2="215" y2="200" class="ln-tesis" stroke-width="2.4"/>
+        <text x="219" y="44" font-size="12" class="t-tesis">borde</text>
+        <line x1="40" y1="200" x2="465" y2="200" class="ln"/>
+        <path d="M40.0,199.9 L44.4,199.9 L48.8,199.9 L53.1,199.9 L57.5,199.8 L61.9,199.8 L66.2,199.7 L70.6,199.6 L75.0,199.4 L79.4,199.2 L83.8,199.0 L88.1,198.7 L92.5,198.3 L96.9,197.8 L101.2,197.3 L105.6,196.5 L110.0,195.7 L114.4,194.6 L118.7,193.3 L123.1,191.8 L127.5,190.0 L131.9,187.9 L136.2,185.5 L140.6,182.6 L145.0,179.4 L149.4,175.8 L153.8,171.7 L158.1,167.1 L162.5,162.1 L166.9,156.6 L171.2,150.7 L175.6,144.3 L180.0,137.5 L184.4,130.4 L188.8,123.0 L193.1,115.5 L197.5,107.8 L201.9,100.2 L206.2,92.6 L210.6,85.3 L215.0,78.3 L215.0,200.0 L40.0,200.0 Z" class="fill-time" opacity="0.6"/>
+        <path d="M40.0,200.0 L44.4,200.0 L48.8,200.0 L53.1,200.0 L57.5,200.0 L61.9,200.0 L66.2,200.0 L70.6,200.0 L75.0,200.0 L79.4,200.0 L83.8,200.0 L88.1,200.0 L92.5,200.0 L96.9,200.0 L101.2,200.0 L105.6,200.0 L110.0,199.9 L114.4,199.9 L118.7,199.9 L123.1,199.9 L127.5,199.8 L131.9,199.8 L136.2,199.7 L140.6,199.6 L145.0,199.4 L149.4,199.2 L153.8,199.0 L158.1,198.7 L162.5,198.3 L166.9,197.8 L171.2,197.3 L175.6,196.5 L180.0,195.7 L184.4,194.6 L188.8,193.3 L193.1,191.8 L197.5,190.0 L201.9,187.9 L206.2,185.5 L210.6,182.6 L215.0,179.4 L215.0,200.0 L40.0,200.0 Z" class="fill-accent" opacity="0.8"/>
+        <path d="M40.0,199.9 L44.4,199.9 L48.8,199.9 L53.1,199.9 L57.5,199.8 L61.9,199.8 L66.2,199.7 L70.6,199.6 L75.0,199.4 L79.4,199.2 L83.8,199.0 L88.1,198.7 L92.5,198.3 L96.9,197.8 L101.2,197.3 L105.6,196.5 L110.0,195.7 L114.4,194.6 L118.7,193.3 L123.1,191.8 L127.5,190.0 L131.9,187.9 L136.2,185.5 L140.6,182.6 L145.0,179.4 L149.4,175.8 L153.8,171.7 L158.1,167.1 L162.5,162.1 L166.9,156.6 L171.2,150.7 L175.6,144.3 L180.0,137.5 L184.4,130.4 L188.8,123.0 L193.1,115.5 L197.5,107.8 L201.9,100.2 L206.2,92.6 L210.6,85.3 L215.0,78.3 L219.4,71.8 L223.7,65.9 L228.1,60.7 L232.5,56.2 L236.9,52.7 L241.2,50.1 L245.6,48.5 L250.0,48.0 L254.4,48.5 L258.8,50.1 L263.1,52.7 L267.5,56.2 L271.9,60.7 L276.2,65.9 L280.6,71.8 L285.0,78.3 L289.4,85.3 L293.8,92.6 L298.1,100.2 L302.5,107.8 L306.9,115.5 L311.2,123.0 L315.6,130.4 L320.0,137.5 L324.4,144.3 L328.8,150.7 L333.1,156.6 L337.5,162.1 L341.9,167.1 L346.2,171.7 L350.6,175.8 L355.0,179.4 L359.4,182.6 L363.8,185.5 L368.1,187.9 L372.5,190.0 L376.9,191.8 L381.2,193.3 L385.6,194.6 L390.0,195.7 L394.4,196.5 L398.7,197.3 L403.1,197.8 L407.5,198.3 L411.9,198.7 L416.2,199.0 L420.6,199.2 L425.0,199.4 L429.4,199.6 L433.8,199.7 L438.1,199.8 L442.5,199.8 L446.9,199.9 L451.2,199.9 L455.6,199.9 L460.0,199.9" class="ln-time" stroke-width="2.2"/>
+        <path d="M40.0,200.0 L44.4,200.0 L48.8,200.0 L53.1,200.0 L57.5,200.0 L61.9,200.0 L66.2,200.0 L70.6,200.0 L75.0,200.0 L79.4,200.0 L83.8,200.0 L88.1,200.0 L92.5,200.0 L96.9,200.0 L101.2,200.0 L105.6,200.0 L110.0,199.9 L114.4,199.9 L118.7,199.9 L123.1,199.9 L127.5,199.8 L131.9,199.8 L136.2,199.7 L140.6,199.6 L145.0,199.4 L149.4,199.2 L153.8,199.0 L158.1,198.7 L162.5,198.3 L166.9,197.8 L171.2,197.3 L175.6,196.5 L180.0,195.7 L184.4,194.6 L188.8,193.3 L193.1,191.8 L197.5,190.0 L201.9,187.9 L206.2,185.5 L210.6,182.6 L215.0,179.4 L219.4,175.8 L223.7,171.7 L228.1,167.1 L232.5,162.1 L236.9,156.6 L241.2,150.7 L245.6,144.3 L250.0,137.5 L254.4,130.4 L258.8,123.0 L263.1,115.5 L267.5,107.8 L271.9,100.2 L276.2,92.6 L280.6,85.3 L285.0,78.3 L289.4,71.8 L293.8,65.9 L298.1,60.7 L302.5,56.2 L306.9,52.7 L311.2,50.1 L315.6,48.5 L320.0,48.0 L324.4,48.5 L328.8,50.1 L333.1,52.7 L337.5,56.2 L341.9,60.7 L346.2,65.9 L350.6,71.8 L355.0,78.3 L359.4,85.3 L363.8,92.6 L368.1,100.2 L372.5,107.8 L376.9,115.5 L381.2,123.0 L385.6,130.4 L390.0,137.5 L394.4,144.3 L398.7,150.7 L403.1,156.6 L407.5,162.1 L411.9,167.1 L416.2,171.7 L420.6,175.8 L425.0,179.4 L429.4,182.6 L433.8,185.5 L438.1,187.9 L442.5,190.0 L446.9,191.8 L451.2,193.3 L455.6,194.6 L460.0,195.7" class="ln-accent" stroke-width="2.2"/>
+        <line x1="250" y1="200" x2="250" y2="44" class="ln-time ln-dash"/>
+        <line x1="320" y1="200" x2="320" y2="44" class="ln-accent ln-dash"/>
+        <text x="250" y="216" text-anchor="middle" font-size="11" class="t-mono t-time">0,2</text>
+        <text x="320" y="216" text-anchor="middle" font-size="11" class="t-mono t-accent">0,6</text>
+        <text x="215" y="216" text-anchor="middle" font-size="11" class="t-mono t-muted">0</text>
+        <text x="420" y="216" text-anchor="middle" font-size="11" class="t-muted">distancia (m)</text>
+        <text x="150" y="150" font-size="12" class="t-time" text-anchor="end">25 % dentro</text>
+        <text x="40" y="217" font-size="12" class="t-accent">azul: 2,3 % dentro</text>
+      </svg>
+      <figcaption>Dónde puede estar el dron real si el estimador dice que está a 0,2 m o a 0,6 m del borde, con \(\sigma = 0{,}3\) m. <code>ejemplos_a14.py</code>, ejemplo 10.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>El filtro evalúa \(h(\hat p)\) y su condición. Si \(\hat p = p - e\) con \(e \sim \mathcal N(0, \sigma^2)\) en la dirección del obstáculo, lo que importa es esa componente:</p>
+      \[ \begin{aligned} P(\text{dentro}) &= P(e > \text{margen})\\ &= 1 - \Phi\!\left(\frac{\text{margen}}{\sigma}\right) \end{aligned} \]
+      <ul>
+        <li>A 0,2 m: \(1 - \Phi(0{,}67) = 0{,}25\).</li>
+        <li>A 0,6 m (\(2\sigma\)): \(1 - \Phi(2) = 0{,}023\).</li>
+      </ul>
+      <p>Un filtro que lleva al dron a deslizarse por el borde estimado lo pone justo en el primer caso: una de cada cuatro veces, el dron real ya está dentro.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Estado imperfecto · error de medida paso a paso</p>
   <h2>Endurecer la condición lo que pueda equivocarse el estimador</h2>
   <p><strong>Notación:</strong> \(\hat x\), estado estimado; \(e = x - \hat x\), error de estimación, con \(\|e\| \le \varepsilon\); \(L\), constante de Lipschitz de la condición de la CBF respecto del estado (cuánto puede cambiar por metro de error).</p>
@@ -290,7 +925,156 @@
       <tr><td><strong>4</strong></td><td>en Dean et al., el margen es \(\varepsilon\,(L_{L_f h} + L_{\alpha\circ h} + L_{L_g h}\|u\|)\)</td><td>Separan las constantes de cada término; como el margen crece con \(\|u\|\), el filtro pasa a ser un programa cónico de segundo orden</td></tr>
     </table>
   </div>
-  <div class="aparte"><span class="rotulo">En el experimento</span><p>Usamos una versión sencilla: inflar el radio del obstáculo en \(2\sigma\) (dos desviaciones típicas del ruido de posición) más lo que se recorre en dos pasos. Es endurecer \(h\) en vez de la condición, con el mismo efecto: más distancia a cambio de menos rendimiento.</p></div>
+  <div class="aparte"><span class="rotulo">Con números</span><p>Dron mandado en velocidad: \(\text{cond}(p, u) = 2d\cdot u + \alpha(|d|^2 - r^2)\), cuyo gradiente respecto de \(p\) es \(2u + 2\alpha d\). Con \(|u| = 1\) m/s, \(|d| = 2\) m y \(\alpha = 1\), \(L = 2|u| + 2\alpha|d| = 6\); con \(\varepsilon = 0{,}3\) m, el margen es \(L\varepsilon = 1{,}8\), frente a \(\alpha h = 3\) (con \(r = 1\)): se come el 60 % de la holgura. La hoja siguiente hace algo más simple con el mismo efecto. Ejemplo 10.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · 3 · inflar el radio</p>
+  <h2>Si el error es como mucho \(\varepsilon\), basta con exigir \(r + \varepsilon\) a la estimación</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 290" style="max-height:320px" role="img" aria-label="Un obstáculo de radio r y el círculo inflado de radio r más epsilon. La estimación está en el borde inflado; el círculo de radio epsilon a su alrededor, donde puede estar el dron real, toca el borde real sin entrar.">
+        <circle cx="150" cy="150" r="114" class="ln-tesis ln-dash" stroke-width="1.8" fill="none"/>
+        <circle cx="150" cy="150" r="78" class="box-time"/>
+        <text x="150" y="146" text-anchor="middle" font-size="13">obstáculo</text>
+        <line x1="150" y1="150" x2="150" y2="72" class="ln"/><text x="156" y="108" font-size="12" class="t-mono">r = 1,3</text>
+        <line x1="150" y1="150" x2="69.4" y2="230.6" class="ln-tesis"/><text x="40" y="262" font-size="12" class="t-mono t-tesis">r + ε = 1,9</text>
+        <circle cx="264" cy="150" r="36" class="box-accent" opacity="0.7"/>
+        <circle cx="264" cy="150" r="5" class="fill-accent"/>
+        <text x="270" y="140" font-size="13" class="t-accent">p̂</text>
+        <line x1="264" y1="150" x2="300" y2="150" class="ln-accent"/>
+        <text x="282" y="166" font-size="11" class="t-mono t-accent">ε</text>
+        <circle cx="228" cy="150" r="3.5" class="fill-time"/>
+        <text x="236" y="210" font-size="11" class="t-muted">el peor p: justo en el borde</text>
+        <line x1="236" y1="200" x2="229" y2="156" class="ln-rule"/>
+      </svg>
+      <figcaption>60 px por metro; \(\varepsilon = 0{,}6\) m \(= 2\sigma\) con \(\sigma = 0{,}3\). Ejemplo 10.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(|p - \hat p| \le \varepsilon\)</td><td>Hipótesis: el error de posición está acotado</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|\hat p - c| \le |p - c| + |p - \hat p|\)</td><td>Desigualdad triangular</td></tr>
+          <tr><td><strong>3</strong></td><td>\(|p - c| \ge |\hat p - c| - \varepsilon\)</td><td>Despejar y usar el paso 1</td></tr>
+          <tr><td><strong>4</strong></td><td>la CBF con radio \(r + \varepsilon\) sobre \(\hat p\) da \(|\hat p - c| \ge r + \varepsilon\), luego \(|p - c| \ge r\)</td><td>Sustituir en el paso 3: el dron real queda fuera</td></tr>
+        </table>
+      </div>
+      <p>Es endurecer \(h\) en vez de la condición (lo de la hoja anterior), con el mismo efecto: más distancia a cambio de menos rendimiento.</p>
+      <div class="aparte"><span class="rotulo">Lo que hace el experimento</span><p>Infla en \(2\sigma\) más lo que se recorre en dos pasos con la velocidad estimada, \(2\Delta t\,|\hat v|\), que cubre en parte el error de velocidad. Con ruido gaussiano no hay cota dura: \(2\sigma\) cubre el 95,4 % de las muestras por eje. Con \(\sigma = 0{,}3\) m, la distancia mínima mediana pasa a 0,62 m (parte 6).</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · 4 · el viento</p>
+  <h2>Un término que el filtro no ve, cubierto con su peor caso</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con viento, la dinámica es \(\dot v = u + w\), con \(w\) desconocida pero \(|w| \le w_{\max}\). Rehaciendo la parte 3:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\ddot h = 2|v|^2 + 2d\cdot u + 2d\cdot w\)</td><td>Derivar \(\dot h = 2d\cdot v\) con \(\dot v = u + w\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(d\cdot w \ge -|d|\,|w| \ge -|d|\,w_{\max}\)</td><td>Cauchy-Schwarz; la igualdad, con el viento empujando hacia el centro</td></tr>
+          <tr><td><strong>3</strong></td><td>\(2d\cdot u + 2|v|^2 + 2\alpha\dot h + \alpha^2 h - 2|d|\,w_{\max} \ge 0\)</td><td>Pedir la condición en el peor caso: la CBF robusta del experimento</td></tr>
+        </table>
+      </div>
+      <p>De frente, cada m/s² de \(w_{\max}\) quita exactamente 1 m/s² de aceleración permitida: el filtro reserva frenada para el viento.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 190" role="img" aria-label="El obstáculo a la izquierda, el dron a la derecha, el vector d del centro al dron y el viento: el peor caso empuja hacia el centro; el viento lateral no acerca.">
+          <defs><marker id="f4w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+          <marker id="f4d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <circle cx="80" cy="95" r="50" class="box-time"/><text x="80" y="99" text-anchor="middle" font-size="12">c</text>
+          <line x1="80" y1="95" x2="290" y2="95" class="ln ln-dash" marker-end="url(#f4d)"/>
+          <text x="180" y="88" font-size="12" class="t-mono t-muted">d = p − c</text>
+          <circle cx="300" cy="95" r="7" class="fill-accent"/><text x="312" y="80" font-size="12">dron</text>
+          <line x1="300" y1="118" x2="222" y2="118" class="ln-time" stroke-width="2.4" marker-end="url(#f4w)"/>
+          <text x="222" y="140" font-size="12" class="t-time">peor w: hacia c</text>
+          <line x1="300" y1="95" x2="300" y2="40" class="ln-time" stroke-width="1.6" marker-end="url(#f4w)"/>
+          <text x="310" y="46" font-size="11" class="t-muted">lateral: d·w = 0</text>
+        </svg>
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Dron de la parte 3, \(\alpha = 2\)</th><th>\(2|d|\,w_{\max}\)</th><th>\(u_x\) permitida</th></tr></thead>
+          <tbody>
+            <tr><td>\(w_{\max} = 0\)</td><td class="n">0</td><td class="n">≤ 0,94</td></tr>
+            <tr><td>\(w_{\max} = 1\) m/s²</td><td class="n">12</td><td class="n">≤ −0,06</td></tr>
+            <tr><td>\(w_{\max} = 2{,}5\) m/s²</td><td class="n">30</td><td class="n">≤ −1,56</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">\(p = (4, 0)\), \(v = (3, 0)\), poste en \((10, 0)\), \(|d| = 6\) m. Ejemplo 11.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · 5 · el retardo</p>
+  <h2>La orden se aplica a un estado que ya no existe: predecirlo con lo que ya se mandó</h2>
+  <figure class="fig">
+    <svg viewBox="30 18 850 162" style="max-height:250px" role="img" aria-label="Línea de tiempo: en t sub k se mide el estado; la orden que se calcula entonces llega al dron 50 milisegundos después. Entretanto se aplican cinco órdenes que ya se habían enviado. La predicción integra el modelo con esas órdenes para obtener el estado en el instante en que se aplicará la nueva.">
+      <defs><marker id="f4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+      <line x1="40" y1="100" x2="870" y2="100" class="ln"/>
+      <g class="ln"><line x1="200" y1="94" x2="200" y2="106"/><line x1="300" y1="94" x2="300" y2="106"/><line x1="400" y1="94" x2="400" y2="106"/><line x1="500" y1="94" x2="500" y2="106"/><line x1="600" y1="94" x2="600" y2="106"/><line x1="700" y1="94" x2="700" y2="106"/></g>
+      <circle cx="200" cy="100" r="7" class="fill-tesis"/>
+      <text x="200" y="128" text-anchor="middle" font-size="19" class="t-tesis">t_k: se mide x</text>
+      <circle cx="700" cy="100" r="7" class="fill-time"/>
+      <text x="700" y="128" text-anchor="middle" font-size="19" class="t-time">t_k + τ: se aplica la orden nueva</text>
+      <g font-size="18" class="t-mono">
+        <rect x="205" y="50" width="90" height="34" rx="4" class="box"/><text x="250" y="72" text-anchor="middle">u[k−5]</text>
+        <rect x="305" y="50" width="90" height="34" rx="4" class="box"/><text x="350" y="72" text-anchor="middle">u[k−4]</text>
+        <rect x="405" y="50" width="90" height="34" rx="4" class="box"/><text x="450" y="72" text-anchor="middle">u[k−3]</text>
+        <rect x="505" y="50" width="90" height="34" rx="4" class="box"/><text x="550" y="72" text-anchor="middle">u[k−2]</text>
+        <rect x="605" y="50" width="90" height="34" rx="4" class="box"/><text x="650" y="72" text-anchor="middle">u[k−1]</text>
+      </g>
+      <text x="450" y="40" text-anchor="middle" font-size="18" class="t-muted">órdenes ya enviadas que se aplican mientras tanto (10 ms cada una)</text>
+      <path d="M200,148 L692,148" class="ln-accent" stroke-width="2.2" marker-end="url(#f4r)"/>
+      <text x="450" y="170" text-anchor="middle" font-size="18" class="t-accent">predicción: integrar el modelo desde x con esas órdenes → evaluar la CBF ahí</text>
+    </svg>
+  </figure>
+  <div class="cols c3">
+    <div class="callout error"><span class="tag">Sin predicción</span>El filtro razona sobre un estado viejo: a 6 m/s, 50 ms son 30 cm que no ve (15 cm a 3 m/s; 60 cm con 100 ms).</div>
+    <div class="callout clave"><span class="tag">Con predicción</span>Singletary et al. evalúan la CBF en el estado predicho con las entradas ya enviadas <a class="cite" data-ref="singletary2020"></a>. Ejemplo: a 4 m/s con cinco órdenes de −2 m/s² en camino, \(\hat v = 3{,}90\) m/s y avance de 19,7 cm.</div>
+    <div class="callout realidad"><span class="tag">Lo que queda</span>Sin perturbaciones, la predicción es exacta. Con un viento desconocido de 1 m/s², en 50 ms se equivoca en \(w\tau^2/2 = 1{,}25\) mm de posición y \(w\tau = 5\) cm/s de velocidad. Ejemplo 12.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado imperfecto · 6 · la actuación limitada</p>
+  <h2>La CBF deja entrar en estados desde los que ya no se puede frenar</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 490 280" role="img" aria-label="Plano distancia frente a velocidad con aceleración máxima de 2. La recta v igual a 2 s cruza la parábola de frenada en s igual a 1. La trayectoria filtrada acelera, se queda bajo la recta pero por encima de la parábola, y acaba entrando casi un metro en la pared.">
+        <rect x="50" y="20" width="54.8" height="230" class="box-time" opacity="0.5"/>
+        <text x="77" y="40" text-anchor="middle" font-size="11">pared</text>
+        <line x1="50" y1="250" x2="478" y2="250" class="ln"/><line x1="104.8" y1="250" x2="104.8" y2="18" class="ln"/>
+        <g font-size="11" class="t-mono t-muted" text-anchor="middle">
+          <text x="104.8" y="266">0</text><text x="141.3" y="266">1</text><text x="287" y="266">5</text><text x="470" y="266">10</text><text x="68" y="266">−1</text>
+          <text x="300" y="279">s: distancia al borde (m)</text>
+        </g>
+        <g font-size="11" class="t-mono t-muted" text-anchor="end"><text x="99" y="254">0</text><text x="99" y="139">3</text><text x="99" y="24">6</text></g>
+        <path d="M104.8,250.0 L109.3,222.9 L113.9,211.7 L118.5,203.1 L123.0,195.8 L127.6,189.4 L132.2,183.6 L136.7,178.3 L141.3,173.3 L145.9,168.7 L150.4,164.3 L155.0,160.1 L159.6,156.1 L164.1,152.3 L168.7,148.6 L173.3,145.0 L177.8,141.6 L182.4,138.2 L187.0,135.0 L191.5,131.8 L196.1,128.8 L200.7,125.8 L205.2,122.9 L209.8,120.0 L214.3,117.2 L218.9,114.5 L223.5,111.8 L228.0,109.2 L232.6,106.6 L237.2,104.0 L241.7,101.5 L246.3,99.1 L250.9,96.7 L255.4,94.3 L260.0,91.9 L264.6,89.6 L269.1,87.4 L273.7,85.1 L278.3,82.9 L282.8,80.7 L287.4,78.6 L292.0,76.4 L296.5,74.3 L301.1,72.3 L305.7,70.2 L310.2,68.2 L314.8,66.2 L319.3,64.2 L323.9,62.2 L328.5,60.3 L333.0,58.3 L337.6,56.4 L342.2,54.5 L346.7,52.7 L351.3,50.8 L355.9,49.0 L360.4,47.2 L365.0,45.4 L369.6,43.6 L374.1,41.8 L378.7,40.0 L383.3,38.3 L387.8,36.6 L392.4,34.9 L397.0,33.2 L401.5,31.5 L406.1,29.8 L410.7,28.1 L415.2,26.5 L419.8,24.8 L424.3,23.2 L428.9,21.6 L433.5,20.0" class="ln ln-dash" stroke-width="1.8"/>
+        <line x1="104.8" y1="250" x2="214.3" y2="20" class="ln-accent ln-dash" stroke-width="1.4"/>
+        <path d="M470.0,250.0 L469.6,242.3 L468.5,234.7 L466.7,227.0 L464.1,219.3 L460.9,211.7 L456.8,204.0 L452.1,196.3 L446.6,188.7 L440.4,181.0 L433.4,173.3 L425.8,165.7 L417.4,158.0 L408.2,150.3 L398.4,142.7 L387.8,135.0 L376.4,127.3 L364.4,119.7 L351.6,112.0 L338.1,104.3 L323.8,96.7 L308.9,89.0 L293.2,81.3 L276.7,75.3 L260.1,76.4 L243.8,82.8 L228.3,90.5 L213.5,98.2 L199.4,105.8 L186.0,113.5 L173.4,121.2 L161.5,128.8 L150.3,136.5 L139.8,144.2 L130.1,151.8 L121.1,159.5 L112.9,167.2 L105.4,174.8 L98.6,182.5 L92.5,190.2 L87.2,197.8 L82.6,205.5 L78.7,213.2 L75.6,220.8 L73.1,228.5 L71.5,236.2 L70.5,243.8" class="ln-time" stroke-width="2.6"/>
+        <circle cx="141.3" cy="173.3" r="4" class="fill-tesis"/>
+        <text x="148" y="190" font-size="11" class="t-tesis">(1; 2)</text>
+        <text x="220" y="30" font-size="12" class="t-accent">ψ₁ = 0: v = 2s</text>
+        <text x="380" y="66" font-size="12" class="t-muted">frenada máx.: v = √(4s)</text>
+        <text x="300" y="150" font-size="12" class="t-time">trayectoria filtrada</text>
+      </svg>
+      <figcaption>Pared, \(\alpha = 2\), \(a_{\max} = 2\) m/s²; desde 10 m, la política pide 3 m/s² hacia la pared (saturados a 2). Entre la recta y la parábola (\(s > 1\) m) están los estados que la CBF admite y de los que no se puede parar. <code>ejemplos_a14.py</code>, ejemplo 8b.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>La recta \(\psi_1 = 0\) (\(v = \alpha s\)) y la parábola de frenada (\(v = \sqrt{2a_{\max}s}\)) se cruzan en \(s = 2a_{\max}/\alpha^2\): 1 m con estos números, 3 m con \(a_{\max} = 6\).</p>
+      <p>Sobre la recta, la condición pide frenar \(\alpha^2 s\), más de lo que hay en cuanto \(s > a_{\max}/\alpha^2 = 0{,}5\) m. En \(s = 1\), \(v = 2\): pide 4 m/s² y hay 2.</p>
+      <div class="callout error"><span class="tag">Resultado</span>El QP no tiene solución en 2405 de los 12 000 pasos y el dron entra 0,94 m en la pared. La garantía suponía que siempre existe una \(u\) en \(U\): con estos \(h\) y \(\alpha\), no es una CBF para \(a_{\max} = 2\).</div>
+      <p>Reparación: elegir \(h\) y \(\alpha\) compatibles con la frenada. En el experimento, con 2 m/s² el QP falla en el 1,4 % de los pasos, pero no hay choques: la política, más lenta, no lleva al dron a esa zona.</p>
+    </div>
+  </div>
 </section>
 
 <section class="slide">
@@ -337,6 +1121,135 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 5</p>
+  <h2>Qué es cada letra de la alcanzabilidad</h2>
+  <div class="callout error"><span class="tag">Cambian de significado</span>\(f\) y \(g\) ya no son los términos de \(\dot x = f + g\,u\): \(f\) es la dinámica en tiempo discreto y \(g\), la función de margen (así las escriben Hsu et al.). La perturbación, que ellos llaman \(d\), aquí es \(w\), porque \(d\) ya es \(p - c\).</div>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:31%">En la pared (doble integrador)</th></tr>
+      <tr><td>\(x_k, u_k, w_k\); \(U, W\)</td><td>Estado, control y perturbación en el paso \(k\); sus conjuntos posibles</td><td>\(x = (s, v)\), \(|u| \le a\)</td></tr>
+      <tr><td>\(f\)</td><td>Dinámica discreta: \(x_{k+1} = f(x_k, u_k, w_k)\)</td><td>\(s' = s - v\Delta t\), \(v' = v + u\Delta t\)</td></tr>
+      <tr><td>\(g\), \(\mathcal F\)</td><td>Función de margen, negativa en el conjunto de fallo \(\mathcal F\) (p. ej., una distancia con signo)</td><td>\(g = s\): fallo si \(s \lt 0\)</td></tr>
+      <tr><td>\(V_k\), \(V\)</td><td>Valor de seguridad: lo más cerca del fallo que se llegará, jugando bien contra la peor perturbación (a \(k\) pasos del final; con horizonte infinito)</td><td>\(V = s - v^2/(2a)\)</td></tr>
+      <tr><td>\(\Omega^*\), BRT</td><td>Conjunto seguro máximo \(\{V \ge 0\}\) y su complementario: el tubo de alcanzabilidad hacia atrás, desde donde el fallo es inevitable</td><td>Bajo y sobre la parábola \(v = \sqrt{2as}\)</td></tr>
+      <tr><td>\(\pi^*\), \(\pi^{\text{task}}\)</td><td>Política de seguridad óptima y política de la tarea</td><td>\(\pi^*\): frenar a tope</td></tr>
+      <tr><td>\(T\), \(H\), \(\nabla V\)</td><td>Horizonte; hamiltoniano y gradiente de \(V\) en la versión continua</td><td>\(T = 1\) s</td></tr>
+      <tr><td>\(n\)</td><td>Dimensión del estado</td><td>\(n = 2\); un cuadricóptero, 12</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Alcanzabilidad · el conjunto, dibujado</p>
+  <h2>En la pared se resuelve a mano: no hay escape si la frenada no cabe</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 490 280" role="img" aria-label="Plano distancia frente a velocidad. Las fronteras del conjunto de alcanzabilidad para horizontes de 0,25, 0,5 y 1 segundo y para horizonte infinito, que es la parábola de frenada; por encima, el choque es inevitable.">
+        <line x1="60" y1="250" x2="478" y2="250" class="ln"/><line x1="60" y1="250" x2="60" y2="18" class="ln"/>
+        <g font-size="11" class="t-mono t-muted" text-anchor="middle">
+          <text x="60" y="266">0</text><text x="162.5" y="266">1</text><text x="265" y="266">2</text><text x="367.5" y="266">3</text><text x="470" y="266">4</text>
+          <text x="265" y="279">s: distancia a la pared (m)</text>
+        </g>
+        <g font-size="11" class="t-mono t-muted" text-anchor="end"><text x="54" y="254">0</text><text x="54" y="139">4</text><text x="54" y="24">8</text></g>
+        <text x="66" y="16" font-size="11" class="t-muted">v (m/s)</text>
+        <path d="M60.0,250.0 L65.1,227.7 L70.2,218.5 L75.4,211.4 L80.5,205.4 L85.6,199.7 L90.8,193.9 L95.9,188.2 L101.0,182.4 L106.1,176.7 L111.2,170.9 L116.4,165.2 L121.5,159.4 L126.6,153.7 L131.8,147.9 L136.9,142.2 L142.0,136.4 L147.1,130.7 L152.2,124.9 L157.4,119.2 L162.5,113.4 L167.6,107.7 L172.8,101.9 L177.9,96.2 L183.0,90.4 L188.1,84.7 L193.2,78.9 L198.4,73.2 L203.5,67.4 L208.6,61.7 L213.8,55.9 L218.9,50.2 L224.0,44.4 L229.1,38.7 L234.3,32.9 L239.4,27.2 L244.5,21.4" class="ln" stroke-width="1.6"/>
+        <path d="M60.0,250.0 L65.1,227.7 L70.2,218.5 L75.4,211.4 L80.5,205.5 L85.6,200.2 L90.8,195.5 L95.9,191.1 L101.0,187.0 L106.1,183.2 L111.2,179.6 L116.4,176.1 L121.5,172.9 L126.6,169.7 L131.8,166.7 L136.9,163.8 L142.0,160.9 L147.1,158.0 L152.2,155.1 L157.4,152.2 L162.5,149.4 L167.6,146.5 L172.8,143.6 L177.9,140.8 L183.0,137.9 L188.1,135.0 L193.2,132.1 L198.4,129.2 L203.5,126.4 L208.6,123.5 L213.8,120.6 L218.9,117.8 L224.0,114.9 L229.1,112.0 L234.3,109.1 L239.4,106.2 L244.5,103.4 L249.6,100.5 L254.8,97.6 L259.9,94.8 L265.0,91.9 L270.1,89.0 L275.2,86.1 L280.4,83.2 L285.5,80.4 L290.6,77.5 L295.8,74.6 L300.9,71.8 L306.0,68.9 L311.1,66.0 L316.2,63.1 L321.4,60.2 L326.5,57.4 L331.6,54.5 L336.8,51.6 L341.9,48.8 L347.0,45.9 L352.1,43.0 L357.3,40.1 L362.4,37.2 L367.5,34.4 L372.6,31.5 L377.8,28.6 L382.9,25.7 L388.0,22.9 L393.1,20.0" class="ln-time" stroke-width="1.8"/>
+        <path d="M60.0,250.0 L65.1,227.7 L70.2,218.5 L75.4,211.4 L80.5,205.5 L85.6,200.2 L90.8,195.5 L95.9,191.1 L101.0,187.0 L106.1,183.2 L111.2,179.6 L116.4,176.1 L121.5,172.9 L126.6,169.7 L131.8,166.7 L136.9,163.8 L142.0,160.9 L147.1,158.2 L152.2,155.5 L157.4,152.9 L162.5,150.4 L167.6,147.9 L172.8,145.5 L177.9,143.2 L183.0,140.9 L188.1,138.7 L193.2,136.4 L198.4,134.3 L203.5,132.2 L208.6,130.1 L213.8,128.0 L218.9,126.0 L224.0,124.0 L229.1,122.1 L234.3,120.1 L239.4,118.3 L244.5,116.4 L249.6,114.5 L254.8,112.7 L259.9,110.9 L265.0,109.2 L270.1,107.4 L275.2,105.7 L280.4,104.0 L285.5,102.3 L290.6,100.6 L295.8,99.0 L300.9,97.3 L306.0,95.7 L311.1,94.1 L316.2,92.5 L321.4,91.0 L326.5,89.4 L331.6,87.9 L336.8,86.4 L341.9,84.8 L347.0,83.3 L352.1,81.9 L357.3,80.4 L362.4,78.9 L367.5,77.5 L372.6,76.1 L377.8,74.6 L382.9,73.2 L388.0,71.8 L393.1,70.3 L398.2,68.9 L403.4,67.4 L408.5,66.0 L413.6,64.6 L418.8,63.1 L423.9,61.7 L429.0,60.2 L434.1,58.8 L439.2,57.4 L444.4,55.9 L449.5,54.5 L454.6,53.1 L459.8,51.6 L464.9,50.2 L470.0,48.8" class="ln-tesis" stroke-width="2"/>
+        <path d="M60.0,250.0 L65.1,227.7 L70.2,218.5 L75.4,211.4 L80.5,205.5 L85.6,200.2 L90.8,195.5 L95.9,191.1 L101.0,187.0 L106.1,183.2 L111.2,179.6 L116.4,176.1 L121.5,172.9 L126.6,169.7 L131.8,166.7 L136.9,163.8 L142.0,160.9 L147.1,158.2 L152.2,155.5 L157.4,152.9 L162.5,150.4 L167.6,147.9 L172.8,145.5 L177.9,143.2 L183.0,140.9 L188.1,138.7 L193.2,136.4 L198.4,134.3 L203.5,132.2 L208.6,130.1 L213.8,128.0 L218.9,126.0 L224.0,124.0 L229.1,122.1 L234.3,120.1 L239.4,118.3 L244.5,116.4 L249.6,114.5 L254.8,112.7 L259.9,110.9 L265.0,109.2 L270.1,107.4 L275.2,105.7 L280.4,104.0 L285.5,102.3 L290.6,100.6 L295.8,99.0 L300.9,97.3 L306.0,95.7 L311.1,94.1 L316.2,92.5 L321.4,91.0 L326.5,89.4 L331.6,87.9 L336.8,86.4 L341.9,84.8 L347.0,83.3 L352.1,81.9 L357.3,80.4 L362.4,78.9 L367.5,77.5 L372.6,76.1 L377.8,74.6 L382.9,73.2 L388.0,71.8 L393.1,70.5 L398.2,69.1 L403.4,67.7 L408.5,66.4 L413.6,65.0 L418.8,63.7 L423.9,62.4 L429.0,61.0 L434.1,59.7 L439.2,58.4 L444.4,57.1 L449.5,55.9 L454.6,54.6 L459.8,53.3 L464.9,52.1 L470.0,50.8" class="ln-accent" stroke-width="2.6"/>
+        <g font-size="12">
+          <line x1="392" y1="146" x2="414" y2="146" class="ln" stroke-width="1.6"/><text x="420" y="150" class="t-muted">T = 0,25 s</text>
+          <line x1="392" y1="164" x2="414" y2="164" class="ln-time" stroke-width="1.8"/><text x="420" y="168" class="t-time">T = 0,5 s</text>
+          <line x1="392" y1="182" x2="414" y2="182" class="ln-tesis" stroke-width="2"/><text x="420" y="186" class="t-tesis">T = 1 s</text>
+          <line x1="392" y1="200" x2="414" y2="200" class="ln-accent" stroke-width="2.6"/><text x="420" y="204" class="t-accent">T = ∞</text>
+        </g>
+        <text x="120" y="70" font-size="13" class="t-bold">BRT</text>
+        <text x="250" y="225" font-size="13" class="t-bold">Ω* (seguro)</text>
+        <circle cx="265" cy="135" r="5" class="fill-accent"/><text x="273" y="150" font-size="11" class="t-mono">(2; 4)</text>
+        <circle cx="265" cy="77.5" r="5" class="fill-time"/><text x="258" y="70" font-size="11" class="t-mono" text-anchor="end">(2; 6)</text>
+      </svg>
+      <figcaption>Frenada máxima \(a = 6\) m/s². Cada curva separa los estados desde los que se choca antes de \(T\) aunque se frene a tope (encima) de los que no; la de \(T = 1\) s coincide con la parábola hasta \(s = 3\) m y queda casi tapada. <code>ejemplos_a14.py</code>, ejemplo 14.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Para la pared, lo mejor que puede hacer el control es frenar a tope; lo más cerca que llegará es la distancia menos la frenada:</p>
+      \[ V(s, v) = \min_{t \ge 0} s(t) = s - \frac{v^2}{2a}\quad (v > 0) \]
+      <ul>
+        <li>\((2;\ 4)\): \(V = 2 - 1{,}33 = +0{,}67\): seguro.</li>
+        <li>\((2;\ 6)\): \(V = 2 - 3 = -1\): en el BRT, el choque es inevitable.</li>
+        <li>\((3;\ 6)\): \(V = 0\): en la frontera, frenando a tope roza la pared.</li>
+      </ul>
+      <p>Con horizonte \(T\) más corto que la frenada (\(v/a \gt T\)), lo más cerca en ese tiempo es \(s - vT + aT^2/2\): la frontera es la parábola hasta \(s = aT^2/2\) y una recta después. Al crecer \(T\), el BRT crece hasta la parábola.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Alcanzabilidad · la ecuación de Bellman de la seguridad</p>
+  <h2>Como en RL, pero con un mínimo sobre el tiempo en vez de una suma</h2>
+  \[ V_k(x) = \min\Big\{\, g(x),\ \max_{u \in U}\ \min_{w \in W}\ V_{k+1}\big(f(x, u, w)\big) \Big\},\qquad V_H(x) = g(x) \]
+  <p>Ecuación 9 de Hsu et al. <a class="cite" data-ref="hsu2024"></a>, con \(w\) en vez de \(d\). \(V_k(x)\) es el margen en el peor momento de lo que queda: \(\min_{j = k, \dots, H} g(x_j)\), con el mejor control contra la peor perturbación.</p>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(\min_{j \ge k} g(x_j) = \min\{g(x_k),\ \min_{j \ge k+1} g(x_j)\}\)</td><td>Separar el instante actual del resto</td></tr>
+        <tr><td><strong>2</strong></td><td>\(g(x_k)\) sale fuera del \(\max\min\)</td><td>No depende de \(u\) ni de \(w\), y \(\min\{c, \cdot\}\) es creciente</td></tr>
+        <tr><td><strong>3</strong></td><td>lo de después, desde \(x_{k+1} = f(x, u, w)\), vale \(V_{k+1}(x_{k+1})\)</td><td>Principio de optimalidad, como en Bellman</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\Omega^* = \{V \ge 0\}\), \(\ \pi^*(x) = \arg\max_u \min_w V(f(x, u, w))\)</td><td>Con \(k \to -\infty\), \(V_k \to V\) (ecuación 10 de Hsu et al.)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Frente a la de RL</span>En RL, \(V(x) = \max_u [\,r + \gamma V(x')\,]\): se suman recompensas. Aquí cuenta solo el peor momento (\(\min\)), sin descuento, y la perturbación juega en contra (\(\min_w\)): es un juego de dos jugadores.</div>
+      <div class="callout realidad"><span class="tag">En una rejilla</span>Pared, rejilla de 221 × 201 puntos en \((s, v)\), \(\Delta t = 0{,}01\) s, 300 iteraciones (3 s): \(V(2;\ 4) = +0{,}664\) (a mano, +0,667) y \(V(2;\ 6) = -1{,}003\) (a mano, −1). Ejemplo 14.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Alcanzabilidad · la versión continua (HJI)</p>
+  <h2>Con un paso \(dt \to 0\) sale la desigualdad variacional de Hamilton-Jacobi-Isaacs</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(V(x, t) = \min\{g(x),\ \max_u \min_w V(x + f\,dt,\ t + dt)\}\)</td><td>La ecuación de la hoja anterior con un paso \(dt\); ahora \(f\) es \(\dot x = f(x, u, w)\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(V(x + f\,dt,\ t + dt) \approx V + (\partial_t V + \nabla V\, f)\,dt\)</td><td>Taylor de primer orden (supone \(V\) derivable)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(0 = \min\{g - V,\ dt\,(\partial_t V + H)\}\), con \(H = \max_u \min_w \nabla V\, f\)</td><td>Sustituir y restar \(V\) dentro del mínimo; \(\partial_t V\) no depende de \(u\) ni \(w\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\min\{\,g(x) - V(x, t),\ \partial_t V + H(x, \nabla V)\,\} = 0,\quad V(x, T) = g(x)\)</td><td>Dividir el segundo término por \(dt > 0\), que no cambia su signo</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <p><strong>Término a término:</strong> \(g - V \ge 0\) siempre (el futuro no puede dejarte más lejos del fallo que el presente); donde \(V \lt g\), manda \(\partial_t V + H = 0\), la ecuación de Hamilton-Jacobi-Isaacs con hamiltoniano \(H = \max_u \min_w \nabla V\cdot f\) (ecuaciones 12 y 13 de Bansal et al.) <a class="cite" data-ref="bansal2017"></a>.</p>
+    <div class="callout realidad"><span class="tag">Comprobación en la pared</span>\(\nabla V = (1,\ -v/a)\), \(f = (-v,\ u)\): \(\nabla V\, f = -v - v\,u/a\). El máximo en \(u \in [-a, a]\) es \(u = -a\) (frenar), y da \(H = 0\): con \(\partial_t V = 0\) (horizonte infinito), la ecuación se cumple.</div>
+  </div>
+  <p class="small muted">\(V\) no siempre es derivable; por eso se habla de soluciones de viscosidad, y Hsu et al. presentan la ecuación continua como la contrapartida de la discreta <a class="cite" data-ref="hsu2024"></a>. La cuenta con Taylor es nuestra, para ver de dónde sale cada término.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Alcanzabilidad · como filtro, y su precio</p>
+  <h2>Conmutar al respaldo cuando el valor del paso siguiente se haría negativo</h2>
+  \[ \phi\big(x, \pi^{\text{task}}(x)\big) = \begin{cases} \pi^{\text{task}}(x) & \text{si } \min_{w} V\big(f(x, \pi^{\text{task}}(x), w)\big) \ge 0\\[2pt] \pi^*(x) & \text{si no} \end{cases} \]
+  <div class="cols">
+    <div class="stack">
+      <p>Es el filtro de «conmutar» de la parte 1 (ecuación 11 de Hsu et al.): se deja pasar la tarea si, en el peor caso, el paso siguiente sigue en \(\Omega^*\). Solo interviene cerca del borde de \(\Omega^*\) y es mínimamente restrictivo, pero puede dar tirones (<em>chatter</em>) si la tarea empuja una y otra vez hacia fuera <a class="cite" data-ref="hsu2024"></a>.</p>
+      <p>Si \(V\) es derivable, también es una CBF válida para \(\Omega^*\) y se puede usar en un QP suave en lugar de conmutar <a class="cite" data-ref="hsu2024"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(n\)</th><th>Puntos (100 por eje)</th><th>Memoria (4 bytes)</th></tr></thead>
+          <tbody>
+            <tr><td class="n">2</td><td class="n">10⁴</td><td class="n">40 kB</td></tr>
+            <tr><td class="n">4</td><td class="n">10⁸</td><td class="n">400 MB</td></tr>
+            <tr><td class="n">6</td><td class="n">10¹²</td><td class="n">4 TB</td></tr>
+            <tr><td class="n">12</td><td class="n">10²⁴</td><td class="n">4·10²⁴ B</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout error"><span class="tag">La maldición de la dimensionalidad</span>Coste y memoria exponenciales en \(n\): según Hsu et al., limitan el método a sistemas de no más de seis variables de estado continuas <a class="cite" data-ref="hsu2024"></a>. Un cuadricóptero completo tiene 12. Ejemplo 14.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Otras garantías · aprender el certificado</p>
   <h2>Cuando no se sabe escribir \(h\), se puede aprender</h2>
   <div class="cols">
@@ -348,17 +1261,145 @@
       </ul>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">El precio</span>Un certificado aprendido solo se ha comprobado en las muestras: entre ellas, la garantía depende de constantes de Lipschitz o de verificación aparte. Es más flexible y menos firme que una \(h\) escrita a mano.</div>
+      <div class="callout clave"><span class="tag">La idea</span>Si no se sabe escribir \(h\) a mano, se busca una red que cumpla las condiciones de una CBF. Es más flexible y menos firme que una \(h\) escrita a mano: las dos hojas siguientes dicen cómo se entrena y qué garantiza.</div>
       <div class="aparte"><span class="rotulo">Normas</span><p>En aviación, la EASA publicó en 2024 (según su página) la segunda versión de su documento de concepto sobre inteligencia artificial, con guías para aplicaciones de aprendizaje automático de nivel 1 y 2 <a class="cite" data-ref="easa2024"></a>.</p></div>
     </div>
   </div>
 </section>
 
 <!-- ============ PARTE 6 ============ -->
+<section class="slide">
+  <p class="kicker">Aprender el certificado · cómo se entrena</p>
+  <h2>Muestras del espacio de estados, una red y una pérdida por cada condición incumplida</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 900 175" style="max-height:160px" role="img" aria-label="Esquema: se muestrean estados y se etiquetan como seguros o prohibidos; una red calcula h en cada uno; la pérdida suma tres penalizaciones; el descenso de gradiente actualiza la red.">
+      <defs><marker id="f5a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="13">
+        <rect x="10" y="40" width="170" height="80" rx="6" class="box-soft"/><text x="95" y="70" text-anchor="middle">muestras xⱼ</text><text x="95" y="92" text-anchor="middle" font-size="11" class="t-muted">etiquetadas: seguras</text><text x="95" y="108" text-anchor="middle" font-size="11" class="t-muted">o prohibidas</text>
+        <rect x="230" y="40" width="130" height="80" rx="6" class="box-accent"/><text x="295" y="76" text-anchor="middle">red h_θ(x)</text><text x="295" y="98" text-anchor="middle" font-size="11" class="t-muted">y su gradiente</text>
+        <rect x="410" y="15" width="300" height="130" rx="6" class="box-tesis"/>
+        <text x="560" y="38" text-anchor="middle" class="t-bold">pérdida empírica</text>
+        <text x="424" y="64" font-size="12">① seguras con h &lt; 0: max(−h, 0)</text>
+        <text x="424" y="90" font-size="12">② prohibidas con h ≥ 0: max(h, 0)</text>
+        <text x="424" y="116" font-size="12">③ condición incumplida: max(0, −(ḣ + αh))</text>
+        <text x="424" y="136" font-size="11" class="t-muted">sumadas con pesos λ₁, λ₂, λ₃</text>
+        <rect x="760" y="40" width="130" height="80" rx="6" class="box"/><text x="825" y="76" text-anchor="middle">descenso de</text><text x="825" y="96" text-anchor="middle">gradiente en θ</text>
+      </g>
+      <g class="ln" marker-end="url(#f5a)"><path d="M180,80 L228,80"/><path d="M360,80 L408,80"/><path d="M710,80 L758,80"/><path d="M825,120 C825,170 295,170 295,122"/></g>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>Dawson et al. lo escriben en general (ecuación 19): con cada condición en la forma \(c_i(x, h) \le 0\),</p>
+      \[ \mathcal L = \sum_i \frac{\lambda_i}{N} \sum_{j = 1}^{N} \max\big(c_i(x_j, h),\ 0\big) \]
+      <p>Se relajan las condiciones con penalizaciones y se imponen solo en \(N\) muestras, en vez de en todo el espacio <a class="cite" data-ref="dawson2023"></a>. El término ③ usa la mejor \(u\) disponible (en su ejemplo, la holgura de un QP relajado).</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Su ejemplo</span>Una CBF para mantener un satélite cerca de otro: \(h\) es una red de 2 capas ocultas de 256 unidades, \(N = 10^5\) muestras y pesos \(\lambda_1 = \lambda_2 = 100\), \(\lambda_3 = 1\) <a class="cite" data-ref="dawson2023"></a>. Usan el signo contrario al nuestro (\(h \le 0\) es lo seguro).</div>
+      <div class="callout error"><span class="tag">El aviso</span>Pérdida empírica cero no garantiza que el certificado sea válido: solo da evidencia estadística <a class="cite" data-ref="dawson2023"></a>. La hoja siguiente dice qué falta para una garantía.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender el certificado · la garantía entre muestras</p>
+  <h2>Cumplir con margen \(L\tau\) en cada punto de la rejilla lo garantiza entre ellos</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 480 235" role="img" aria-label="Una condición c de x que debe ser negativa, evaluada en siete puntos de una rejilla. Sobre cada punto, una tienda de pendiente L acota lo que puede valer c hasta medio camino del siguiente; ninguna tienda llega a cero.">
+        <rect x="50" y="30" width="400" height="40" class="box-time" opacity="0.45"/>
+        <text x="445" y="50" text-anchor="end" font-size="11">c &gt; 0: la condición falla</text>
+        <line x1="50" y1="70" x2="450" y2="70" class="ln-tesis" stroke-width="2"/>
+        <line x1="50" y1="92.5" x2="450" y2="92.5" class="ln-accent ln-dash"/>
+        <text x="455" y="96" font-size="11" class="t-mono t-accent">−Lτ</text>
+        <text x="455" y="74" font-size="11" class="t-mono t-tesis">0</text>
+        <path d="M50.0,150.0 L53.3,147.8 L56.7,145.5 L60.0,143.3 L63.3,141.1 L66.7,139.0 L70.0,137.0 L73.3,135.0 L76.7,133.1 L80.0,131.3 L83.3,129.6 L86.7,128.0 L90.0,126.5 L93.3,125.2 L96.7,124.0 L100.0,122.9 L103.3,122.0 L106.7,121.3 L110.0,120.7 L113.3,120.3 L116.7,120.1 L120.0,120.0 L123.3,120.1 L126.7,120.4 L130.0,120.8 L133.3,121.4 L136.7,122.1 L140.0,123.0 L143.3,124.1 L146.7,125.3 L150.0,126.7 L153.3,128.1 L156.7,129.7 L160.0,131.5 L163.3,133.3 L166.7,135.2 L170.0,137.2 L173.3,139.2 L176.7,141.4 L180.0,143.6 L183.3,145.8 L186.7,148.0 L190.0,150.3 L193.3,152.5 L196.7,154.7 L200.0,156.9 L203.3,159.1 L206.7,161.2 L210.0,163.3 L213.3,165.3 L216.7,167.1 L220.0,168.9 L223.3,170.6 L226.7,172.2 L230.0,173.7 L233.3,175.0 L236.7,176.1 L240.0,177.2 L243.3,178.1 L246.7,178.8 L250.0,179.3 L253.3,179.7 L256.7,179.9 L260.0,180.0 L263.3,179.9 L266.7,179.6 L270.0,179.2 L273.3,178.5 L276.7,177.8 L280.0,176.8 L283.3,175.8 L286.7,174.5 L290.0,173.2 L293.3,171.7 L296.7,170.1 L300.0,168.4 L303.3,166.5 L306.7,164.6 L310.0,162.6 L313.3,160.5 L316.7,158.4 L320.0,156.2 L323.3,154.0 L326.7,151.7 L330.0,149.5 L333.3,147.2 L336.7,145.0 L340.0,142.8 L343.3,140.7 L346.7,138.5 L350.0,136.5 L353.3,134.5 L356.7,132.6 L360.0,130.9 L363.3,129.2 L366.7,127.6 L370.0,126.2 L373.3,124.9 L376.7,123.7 L380.0,122.7 L383.3,121.9 L386.7,121.2 L390.0,120.6 L393.3,120.2 L396.7,120.0 L400.0,120.0 L403.3,120.1 L406.7,120.4 L410.0,120.9 L413.3,121.5 L416.7,122.3 L420.0,123.3 L423.3,124.4 L426.7,125.6 L430.0,127.0 L433.3,128.5 L436.7,130.1 L440.0,131.8 L443.3,133.7 L446.7,135.6 L450.0,137.6" class="ln" stroke-width="1.6"/>
+        <path d="M50.0,150.0 L50.0,150.0 L83.3,127.5 M83.3,97.6 L116.7,120.1 L150.0,97.6 M150.0,123.3 L183.3,145.8 L216.7,123.3 M216.7,156.8 L250.0,179.3 L283.3,156.8 M283.3,135.9 L316.7,158.4 L350.0,135.9 M350.0,99.4 L383.3,121.9 L416.7,99.4 M416.7,115.1 L450.0,137.6 L450.0,137.6" class="ln-accent" stroke-width="2"/>
+        <g class="fill-accent"><circle cx="50.0" cy="150.0" r="4"/><circle cx="116.7" cy="120.1" r="4"/><circle cx="183.3" cy="145.8" r="4"/><circle cx="250.0" cy="179.3" r="4"/><circle cx="316.7" cy="158.4" r="4"/><circle cx="383.3" cy="121.9" r="4"/><circle cx="450.0" cy="137.6" r="4"/></g>
+        <line x1="50" y1="215" x2="450" y2="215" class="ln"/>
+        <text x="250" y="232" text-anchor="middle" font-size="11" class="t-muted">x (puntos cada 2τ = 0,5)</text>
+      </svg>
+      <figcaption>Juguete: \(c(x) = -0{,}8 + 0{,}3\sin 3x\), \(L = 0{,}9\), \(\tau = 0{,}25\). El peor punto vale −0,50 \(\le -L\tau = -0{,}225\): garantizado en todo el intervalo. <code>ejemplos_a14.py</code>, ejemplo 15.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>todo \(x\) está a \(\le \tau\) de un punto \(x_j\)</td><td>Separación \(2\tau\), norma del máximo (aquí \(\tau\) no es el retardo)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|c(x) - c(x_j)| \le L\,\tau\)</td><td>Definición de constante de Lipschitz</td></tr>
+          <tr><td><strong>3</strong></td><td>\(c(x_j) \le -L\tau \Rightarrow c(x) \le 0\)</td><td>Sumar: el margen cubre lo que puede cambiar</td></tr>
+        </table>
+      </div>
+      <p>Es el criterio que recogen Dawson et al. <a class="cite" data-ref="dawson2023"></a>. Con \(L = 10\) y puntos cada 0,1, el margen es 0,5; en \([-5, 5]^n\) hay \(100^n\) puntos que comprobar: \(10^8\) con \(n = 4\).</p>
+      <div class="callout realidad"><span class="tag">El precio</span>Entre muestras, la garantía depende de constantes de Lipschitz (difíciles de estimar o muy holgadas) o de verificación aparte, y la rejilla vuelve a la maldición de la dimensionalidad.</div>
+    </div>
+  </div>
+</section>
+
 <section class="slide divider" data-section="Experimento">
   <p class="num">Parte 6</p>
   <h2>Un filtro CBF sobre una política que no ve los obstáculos</h2>
   <p>Choques, llegadas e intervenciones, con estado perfecto, ruido, viento y poca aceleración.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · esquema</p>
+  <h2>Un lazo cada 10 ms: estimar, pedir, filtrar, mover</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1000 300" style="max-height:300px" role="img" aria-label="Lazo del experimento: el dron, un doble integrador con viento, da su estado real; se le suma ruido para obtener el estimado; la política PD pide una aceleración hacia la meta; el filtro CBF la corrige con doce restricciones; la aceleración filtrada vuelve al dron. Aparte, las métricas que se miden.">
+      <defs><marker id="f6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="14">
+        <rect x="20" y="40" width="190" height="90" rx="6" class="box-time"/>
+        <text x="115" y="66" text-anchor="middle" class="t-bold">dron</text>
+        <text x="115" y="88" text-anchor="middle" font-size="12">doble integrador, |u| ≤ 6 m/s²</text>
+        <text x="115" y="106" text-anchor="middle" font-size="12">|v| ≤ 6 m/s; + viento w</text>
+        <rect x="270" y="40" width="190" height="90" rx="6" class="box-soft"/>
+        <text x="365" y="66" text-anchor="middle" class="t-bold">estimación</text>
+        <text x="365" y="88" text-anchor="middle" font-size="12">p̂ = p + ruido σ</text>
+        <text x="365" y="106" text-anchor="middle" font-size="12">v̂ = v + ruido σ</text>
+        <rect x="520" y="40" width="190" height="90" rx="6" class="box-accent"/>
+        <text x="615" y="66" text-anchor="middle" class="t-bold">política «aprendida»</text>
+        <text x="615" y="88" text-anchor="middle" font-size="12">PD hacia la meta,</text>
+        <text x="615" y="106" text-anchor="middle" font-size="12">no ve los obstáculos</text>
+        <rect x="770" y="40" width="210" height="90" rx="6" class="box-tesis"/>
+        <text x="875" y="66" text-anchor="middle" class="t-bold">filtro CBF-QP</text>
+        <text x="875" y="88" text-anchor="middle" font-size="12">8 CBF de orden 2 + 4 límites</text>
+        <text x="875" y="106" text-anchor="middle" font-size="12">Hildreth, 60 barridos</text>
+      </g>
+      <g class="ln" marker-end="url(#f6a)"><path d="M210,85 L268,85"/><path d="M460,85 L518,85"/><path d="M710,85 L768,85"/><path d="M875,130 C875,200 115,200 115,132"/></g>
+      <text x="239" y="76" text-anchor="middle" font-size="12" class="t-mono t-muted">p, v</text>
+      <text x="489" y="76" text-anchor="middle" font-size="12" class="t-mono t-muted">p̂, v̂</text>
+      <text x="739" y="76" text-anchor="middle" font-size="12" class="t-mono t-muted">u_nom</text>
+      <text x="500" y="192" text-anchor="middle" font-size="13" class="t-mono t-tesis">u (cada 10 ms)</text>
+      <text x="875" y="155" text-anchor="middle" font-size="12" class="t-muted">también ve p̂, v̂ y los obstáculos</text>
+      <rect x="20" y="222" width="960" height="66" rx="6" class="box"/>
+      <text x="40" y="246" font-size="13" class="t-bold">Se mide en 200 escenas de 12 s:</text>
+      <text x="40" y="272" font-size="13">choques · llegadas (a menos de 0,5 m de la meta) · distancia mínima · intervención media |u − u_nom| · pasos con el QP imposible</text>
+    </svg>
+  </figure>
+  <div class="cols c3">
+    <div class="callout clave"><span class="tag">Lo que se varía</span>La ganancia \(\alpha\); el margen de un paso; el ruido \(\sigma\) (0,1 y 0,3 m); el viento y la \(w_{\max}\) que supone el filtro; \(a_{\max}\) (6 o 2 m/s²).</div>
+    <div class="callout realidad"><span class="tag">Lo que no</span>La política, las 200 escenas (semilla 0) y la meta, en \((28, 10)\) m. El dron empieza en \(x = 2\) m, parado.</div>
+    <div class="callout tesis"><span class="tag">Qué lo hace interesante</span>La política es mala a propósito: va recta. Todo lo que evita choques es mérito del filtro; cuando el dron no llega, es porque el filtro lo frena ante un obstáculo que la política no sabe rodear.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · un paso del bucle</p>
+  <h2>Lo que hace <code>figuras_a14.py</code> en cada paso de 10 ms</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>De dónde sale</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\hat p = p + \mathcal N(0, \sigma^2)\), \(\ \hat v = v + \mathcal N(0, \sigma^2)\) por eje</td><td>Ruido de estimación (parte 4, «el ruido de estimación»); \(\sigma = 0\) con estado perfecto</td></tr>
+      <tr><td><strong>2</strong></td><td>\(u_{\text{nom}} = \text{clip}\big(K_p(\text{meta} - \hat p) - K_d\hat v,\ \pm 6\big)\), \(K_p = 2\), \(K_d = 2{,}2\)</td><td>La política agresiva: un PD que no ve nada</td></tr>
+      <tr><td><strong>3</strong></td><td>radio de cada obstáculo: \(r_i + 0{,}3\) m + márgenes</td><td>Radio del dron; margen de un paso \(\Delta t|\hat v| + 2\) cm; margen robusto \(2\sigma + 2\Delta t|\hat v|\)</td></tr>
+      <tr><td><strong>4</strong></td><td>8 restricciones \(2d\cdot u + 2|\hat v|^2 + 2\alpha\dot h + \alpha^2 h - 2|d|\,w_{\max} \ge 0\) y \(|u_x|, |u_y| \le a_{\max}\)</td><td>CBF de orden 2 (parte 3), con el término del viento (parte 4, «el viento»)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(u\) = Hildreth con 60 barridos, recortado a \(\pm a_{\max}\)</td><td>Parte 2, hoja «varias restricciones»</td></tr>
+      <tr><td><strong>6</strong></td><td>\(v \leftarrow v + (u + w)\Delta t\) (con \(|v| \le 6\) m/s), \(\ p \leftarrow p + v\Delta t\)</td><td>Euler; \(w\), viento de Ornstein-Uhlenbeck de desviación 1 m/s² y \(\tau = 1\) s, desconocido para el filtro</td></tr>
+      <tr><td><strong>7</strong></td><td>choque si la distancia al borde \(\lt 0\); llegada si \(|p - \text{meta}| \lt 0{,}5\) m</td><td>Los episodios que chocan o llegan se congelan</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Con números</span><p>En el primer paso, \(p = (2, 10)\) y \(v = 0\): \(K_p(\text{meta} - p) = (52, 0)\), recortado a \((6, 0)\) m/s²: a fondo hacia la meta. Con \(p = (24, 10)\) a 6 m/s, \(2 \cdot 4 - 2{,}2 \cdot 6 = -5{,}2\): ya frena. Ejemplo 16.</p></div>
 </section>
 
 <section class="slide">
@@ -379,7 +1420,7 @@
       <ul>
         <li><strong>Dron:</strong> doble integrador en el plano, aceleración de hasta 6 m/s² por eje, paso de 10 ms.</li>
         <li><strong>Política «aprendida»:</strong> un PD hacia la meta que no ve nada; hace de política agresiva sin garantías.</li>
-        <li><strong>Filtro:</strong> la CBF de orden 2 de la parte 3 para cada obstáculo y la zona prohibida, más los límites de la entrada, en un QP resuelto con el método de Hildreth. Una llamada tarda 2,9 ms en CPU.</li>
+        <li><strong>Filtro:</strong> la CBF de orden 2 de la parte 3 para cada obstáculo y la zona prohibida, más los límites de la entrada, en un QP resuelto con el método de Hildreth (parte 2). Una llamada tarda 2,9 ms en CPU.</li>
       </ul>
       <p class="xsmall muted">200 escenas de 12 s. Choque: entrar en un obstáculo o en la zona prohibida, aunque sea una décima de milímetro. <code>figuras_a14.py</code>.</p>
     </div>
@@ -420,33 +1461,52 @@
       <tr><td><strong>1</strong></td><td>la condición se impone en \(t_k\) y la entrada se mantiene hasta \(t_{k+1}\)</td><td>El filtro es digital: un QP por paso</td></tr>
       <tr><td><strong>2</strong></td><td>con \(\alpha\) grande, el filtro deja al dron acercarse hasta casi \(h = 0\)</td><td>Paso 4 de la cota exponencial: \(h\) decae como \(e^{-\alpha t}\)</td></tr>
       <tr><td><strong>3</strong></td><td>en un paso se recorren \(v\,\Delta t\): a 6 m/s, 6 cm</td><td>Lo que puede pasar entre dos evaluaciones</td></tr>
-      <tr><td><strong>4</strong></td><td>inflar el radio: \(r \to r + v\,\Delta t + 2\) cm</td><td>Cubre lo que se recorre sin vigilancia; es una versión sencilla de la teoría para sistemas muestreados</td></tr>
+      <tr><td><strong>4</strong></td><td>inflar el radio: \(r \to r + v\,\Delta t + 2\) cm</td><td>Cubre lo que se recorre sin vigilancia (parte 4, «el muestreo»); es una versión sencilla de la teoría para sistemas muestreados</td></tr>
     </table>
   </div>
   <div class="aparte"><span class="rotulo">Lo medido</span><p>Los «choques» con \(\alpha = 2\) entran una mediana de 0,01 mm en el obstáculo: el filtro funciona, pero la garantía es de tiempo continuo. Con el margen de un paso desaparecen todos. Con un paso de 50 ms serían 30 cm por paso: el margen tiene que crecer con el periodo del filtro.</p></div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Experimento · ruido y viento</p>
-  <h2>Con 0,3 m de ruido, el filtro normal choca en el 28 % de los vuelos; con margen robusto, en ninguno</h2>
+  <p class="kicker">Experimento · ruido de estimación</p>
+  <h2>Con 0,3 m de ruido, el filtro normal choca en el 28&nbsp;% de los vuelos; con margen robusto, en ninguno</h2>
   <div class="cols">
     <div class="table-wrap">
       <table class="t">
         <thead><tr><th>Con margen de un paso, \(\alpha = 2\)</th><th>Choques</th><th>Llegan</th><th>Distancia mínima</th></tr></thead>
         <tbody>
-          <tr><td>Ruido 0,1 m, filtro normal</td><td class="n">2 %</td><td class="n">82 %</td><td class="n">0,08 m</td></tr>
-          <tr><td>Ruido 0,1 m, margen robusto</td><td class="n">0 %</td><td class="n">74 %</td><td class="n">0,31 m</td></tr>
-          <tr><td>Ruido 0,3 m, filtro normal</td><td class="n">28 %</td><td class="n">70 %</td><td class="n">0,07 m</td></tr>
-          <tr><td>Ruido 0,3 m, margen robusto</td><td class="n">0 %</td><td class="n">52 %</td><td class="n">0,62 m</td></tr>
-          <tr><td>Viento, filtro normal</td><td class="n">44 %</td><td class="n">51 %</td><td class="n">0,05 m</td></tr>
-          <tr><td>Viento, CBF robusta, \(w_{\max} = 1\)</td><td class="n">14 %</td><td class="n">61 %</td><td class="n">0,26 m</td></tr>
-          <tr><td>Viento, CBF robusta, \(w_{\max} = 2{,}5\)</td><td class="n">0 %</td><td class="n">30 %</td><td class="n">0,56 m</td></tr>
+          <tr><td>Ruido 0,1 m, filtro normal</td><td class="n">2 %</td><td class="n">82 %</td><td class="n">0,08 m</td></tr>
+          <tr><td>Ruido 0,1 m, margen robusto</td><td class="n">0 %</td><td class="n">74 %</td><td class="n">0,31 m</td></tr>
+          <tr><td>Ruido 0,3 m, filtro normal</td><td class="n">28 %</td><td class="n">70 %</td><td class="n">0,07 m</td></tr>
+          <tr><td>Ruido 0,3 m, margen robusto</td><td class="n">0 %</td><td class="n">52 %</td><td class="n">0,62 m</td></tr>
         </tbody>
       </table>
     </div>
     <div class="stack">
-      <p class="xsmall muted">Ruido gaussiano en la posición y la velocidad estimadas. Viento: aceleración de Ornstein-Uhlenbeck de desviación 1 m/s², desconocida para el filtro; la CBF robusta resta \(2\,|p - c|\,w_{\max}\) a la condición (el peor caso de una perturbación acotada por \(w_{\max}\)). Distancia mínima: mediana.</p>
-      <div class="callout clave"><span class="tag">Lo que sale</span>Cubrir el ruido y el viento elimina los choques, pero aleja al dron de los obstáculos (de 0,07 a 0,62 m con 0,3 m de ruido) y reduce las llegadas: del 70 % al 52 % con ruido, y al 30 % con viento y \(w_{\max} = 2{,}5\). Con \(w_{\max} = 1\), a medio camino: 14 % de choques.</div>
+      <p>Ruido gaussiano en la posición y la velocidad estimadas. «Margen robusto»: el radio se infla en \(2\sigma + 2\Delta t\,|\hat v|\) (parte 4, «inflar el radio»). Distancia mínima: mediana.</p>
+      <div class="callout clave"><span class="tag">Lo que sale</span>Cubrir el ruido elimina los choques, pero aleja al dron de los obstáculos (de 0,07 a 0,62 m con 0,3 m de ruido) y reduce las llegadas del 70 % al 52 %.</div>
+      <p>Lo que predice la parte 4: un filtro que desliza al dron por el borde estimado lo deja dentro una de cada cuatro veces cuando el error es comparable al margen.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · viento</p>
+  <h2>Contra el viento, la CBF robusta elimina los choques si supone una cota suficiente</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Con margen de un paso, \(\alpha = 2\)</th><th>Choques</th><th>Llegan</th><th>Distancia mínima</th></tr></thead>
+        <tbody>
+          <tr><td>Viento, filtro normal</td><td class="n">44 %</td><td class="n">51 %</td><td class="n">0,05 m</td></tr>
+          <tr><td>Viento, CBF robusta, \(w_{\max} = 1\)</td><td class="n">14 %</td><td class="n">61 %</td><td class="n">0,26 m</td></tr>
+          <tr><td>Viento, CBF robusta, \(w_{\max} = 2{,}5\)</td><td class="n">0 %</td><td class="n">30 %</td><td class="n">0,56 m</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Viento: aceleración de Ornstein-Uhlenbeck de desviación 1 m/s², desconocida para el filtro. La CBF robusta resta \(2\,|p - c|\,w_{\max}\) a la condición: el peor caso de una perturbación acotada por \(w_{\max}\) (parte 4, «el viento»). Distancia mínima: mediana.</p>
+      <div class="callout clave"><span class="tag">Lo que sale</span>Con \(w_{\max} = 1\), igual a la desviación del viento, quedan un 14 % de choques: el viento gaussiano supera a menudo esa cota. Con \(w_{\max} = 2{,}5\) no hay choques, pero solo llega el 30 %.</div>
     </div>
   </div>
 </section>
@@ -672,50 +1732,93 @@
 
 </main>
 <aside id="glosario" hidden>
-<h3>Funciones de barrera</h3>
-<p>Partes 1 y 2.</p>
+<h3>El filtro de seguridad</h3>
+<p>Parte 1: el ejemplo del dron que avanza hacia un poste.</p>
 <dl>
-<dt>\(x\)</dt><dd data-hojas="10">Estado del sistema.</dd>
-<dt>\(u\)</dt><dd data-hojas="10">Entrada (acción de control); en el dron, la aceleración mandada.</dd>
-<dt>\(U\)</dt><dd data-hojas="10">Conjunto de entradas posibles (límites de los actuadores).</dd>
-<dt>\(f, g\)</dt><dd data-hojas="10">Términos del sistema afín en la entrada, \(\dot x = f(x) + g(x)u\).</dd>
-<dt>\(h\)</dt><dd data-hojas="10">Función de barrera: positiva en lo seguro, cero en el borde, negativa en lo prohibido.</dd>
-<dt>\(\mathcal C\)</dt><dd data-hojas="10">Conjunto seguro, \(\{x : h(x) \ge 0\}\).</dd>
-<dt>\(L_f h, L_g h\)</dt><dd data-hojas="10">Derivadas de Lie: \(\nabla h \cdot f\) y \(\nabla h \cdot g\); \(\dot h = L_f h + L_g h\,u\).</dd>
-<dt>\(\alpha\)</dt><dd data-hojas="10">Ganancia de la CBF (en general, una función creciente con \(\alpha(0) = 0\)): cuánto se deja bajar \(h\) según el margen que queda.</dd>
-<dt>\(u_{\text{nom}}\)</dt><dd data-hojas="12">Acción que pide la política de la tarea, antes del filtro.</dd>
-<dt>\(u^\star\)</dt><dd data-hojas="12">Acción filtrada: la más parecida a \(u_{\text{nom}}\) que cumple la condición.</dd>
-<dt>\(a, b\)</dt><dd data-hojas="12">Escalar y vector fila que resumen la condición en el estado actual: \(a + b\,u \ge 0\).</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="12">Multiplicador de Lagrange del CBF-QP.</dd>
+<dt>\(u_{\text{nom}}\)</dt><dd data-hojas="6,7">Acción que pide la política de la tarea, antes del filtro.</dd>
+<dt>\(s\)</dt><dd data-hojas="7">Distancia al borde de seguridad, en m (también en las hojas de la pared de las partes 3 a 5).</dd>
+<dt>\(v'\), \(s'\)</dt><dd data-hojas="7">Velocidad y distancia predichas tras un paso con \(u_{\text{nom}}\).</dd>
+<dt>\(a_{\max}\)</dt><dd data-hojas="7,24">Aceleración (o frenada) máxima por eje, m/s²: 6 en el experimento, 2 en el caso de poca aceleración.</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="7,32">Periodo del filtro: 10 ms en el experimento; 0,1 s o 50 ms en los ejemplos a mano.</dd>
+</dl>
+<h3>Funciones de barrera</h3>
+<p>Parte 2: dron mandado en velocidad, \(\dot p = u\).</p>
+<dl>
+<dt>\(x\)</dt><dd data-hojas="10">Estado del sistema; en esta parte, la posición \(p\).</dd>
+<dt>\(u\)</dt><dd data-hojas="10">Entrada. En la parte 2, la velocidad mandada (m/s); desde la parte 3, la aceleración mandada (m/s²).</dd>
+<dt>\(U\)</dt><dd data-hojas="10,15">Conjunto de entradas posibles (límites de los actuadores).</dd>
+<dt>\(f, g\)</dt><dd data-hojas="10,12">Términos del sistema afín en la entrada, \(\dot x = f(x) + g(x)u\). En la parte 5 cambian de significado (ver allí).</dd>
+<dt>\(c\), \(r\)</dt><dd data-hojas="10,11">Centro de un obstáculo y radio de seguridad (radio del obstáculo más el del dron), m.</dd>
+<dt>\(h\)</dt><dd data-hojas="11">Función de barrera: positiva en lo seguro, cero en el borde, negativa en lo prohibido; para un círculo, \(|p - c|^2 - r^2\), en m².</dd>
+<dt>\(\mathcal C\), \(\partial\mathcal C\)</dt><dd data-hojas="10,15">Conjunto seguro, \(\{x : h(x) \ge 0\}\), y su borde, \(\{h = 0\}\).</dd>
+<dt>\(\nabla h\)</dt><dd data-hojas="11,16">Gradiente de \(h\) (vector fila); para un círculo, \(2(p - c)^\top\), que apunta hacia fuera del obstáculo.</dd>
+<dt>\(L_f h, L_g h\)</dt><dd data-hojas="12">Derivadas de Lie: \(\nabla h\, f\) y \(\nabla h\, g\); \(\dot h = L_f h + L_g h\,u\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="10,14">Ganancia de la CBF, s⁻¹ (en general, una función creciente con \(\alpha(0) = 0\)): cuánto se deja bajar \(h\) según el margen que queda; \(1/\alpha\) es una constante de tiempo.</dd>
+<dt>\(d\)</dt><dd data-hojas="14,24">Vector del centro del obstáculo al dron, \(d = p - c\).</dd>
+<dt>\(s_{\max}\), \(\delta\)</dt><dd data-hojas="14">Rapidez máxima de acercamiento que permite la CBF de frente, m/s, y distancia que queda hasta el borde, m.</dd>
+<dt>\(u^\star\)</dt><dd data-hojas="19,20">Acción filtrada: la más parecida a \(u_{\text{nom}}\) que cumple la condición.</dd>
+<dt>\(a, b\)</dt><dd data-hojas="20,21">Escalar y vector fila que resumen la condición en el estado actual: \(a + b\,u \ge 0\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="20">Multiplicador de Lagrange del CBF-QP (\(\lambda \ge 0\)).</dd>
+<dt>\(\mathcal L\)</dt><dd data-hojas="20">Lagrangiano del CBF-QP. En la parte 5, \(\mathcal L\) es la pérdida empírica de un certificado aprendido.</dd>
+<dt>\(G_j, g_j\), \(r_j\), \(\lambda_j\)</dt><dd data-hojas="22">Restricción \(j\) en la forma \(G_j u \le g_j\) (\(G_j = -b_j\), \(g_j = a_j\)), su violación y su multiplicador en el método de Hildreth.</dd>
 </dl>
 <h3>Grado relativo 2</h3>
-<p>Parte 3: dron como doble integrador.</p>
+<p>Parte 3: dron como doble integrador, \(\dot p = v\), \(\dot v = u\).</p>
 <dl>
-<dt>\(p, v\)</dt><dd data-hojas="15">Posición y velocidad del dron.</dd>
-<dt>\(c\)</dt><dd data-hojas="15">Centro de un obstáculo.</dd>
-<dt>\(r\)</dt><dd data-hojas="15">Radio de seguridad: radio del obstáculo más el del dron.</dd>
-<dt>\(d\)</dt><dd data-hojas="15">Vector del obstáculo al dron, \(d = p - c\).</dd>
-<dt>\(\psi_1\)</dt><dd data-hojas="15">Condición intermedia de la CBF de orden 2: \(\dot h + \alpha h\).</dd>
+<dt>\(p, v\)</dt><dd data-hojas="24">Posición (m) y velocidad (m/s) del dron. En las hojas de la pared, \(v\) es la velocidad de acercamiento (escalar).</dd>
+<dt>\(\dot h, \ddot h\)</dt><dd data-hojas="24,28">Primera y segunda derivada de \(h\) en el tiempo: \(\dot h = 2d\cdot v\), \(\ddot h = 2|v|^2 + 2d\cdot u\).</dd>
+<dt>\(\psi_0, \psi_1, \psi_2\)</dt><dd data-hojas="24,27">Cadena de la CBF de orden alto: \(\psi_0 = h\), \(\psi_1 = \dot h + \alpha_1 h\), \(\psi_2 = \dot\psi_1 + \alpha_2\psi_1\).</dd>
+<dt>\(\alpha_1, \alpha_2\)</dt><dd data-hojas="24,28">Ganancias de cada eslabón de la cadena, s⁻¹; en el tema, \(\alpha_1 = \alpha_2 = \alpha\).</dd>
 </dl>
 <h3>Estado imperfecto</h3>
 <p>Parte 4.</p>
 <dl>
-<dt>\(\hat x\)</dt><dd data-hojas="18">Estado estimado.</dd>
-<dt>\(e\)</dt><dd data-hojas="18">Error de estimación, \(x - \hat x\).</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="18">Cota del error de estimación, \(\|e\| \le \varepsilon\).</dd>
-<dt>\(L\)</dt><dd data-hojas="18">Constante de Lipschitz de la condición respecto del estado.</dd>
-<dt>\(b_k\)</dt><dd data-hojas="19">Belief en el instante \(k\): distribución del estado dado lo observado.</dd>
-<dt>\(w_{\max}\)</dt><dd data-hojas="27">Cota de la perturbación (viento) que supone la CBF robusta del experimento.</dd>
-<dt>\(\Delta t\)</dt><dd data-hojas="26">Periodo del filtro (10 ms en el experimento).</dd>
+<dt>\(t_k\), \(h_k\)</dt><dd data-hojas="32,34">Instantes de evaluación del filtro, \(t_k = k\Delta t\), y valor de \(h\) en ellos.</dd>
+<dt>\(\hat x\), \(\hat p\), \(\hat v\)</dt><dd data-hojas="32,36">Estado, posición y velocidad estimados: lo que ve el filtro.</dd>
+<dt>\(e\)</dt><dd data-hojas="32,36">Error de estimación, \(x - \hat x\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="36,37">Cota del error de estimación, \(\|e\| \le \varepsilon\), m.</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="32,35">Desviación típica del ruido de estimación por eje (0,1 o 0,3 m en el experimento).</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="35">Función de distribución de la normal estándar.</dd>
+<dt>\(L\)</dt><dd data-hojas="36,51">Constante de Lipschitz: de la condición respecto del estado (parte 4) o de una condición de un certificado aprendido (parte 5).</dd>
+<dt>\(w\), \(w_{\max}\)</dt><dd data-hojas="38,59">Perturbación de aceleración que el filtro no conoce (viento), m/s², y la cota que supone la CBF robusta.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="32,39">Retardo entre la medida y la actuación (50 ms en los ejemplos). En la parte 5, media separación de una rejilla.</dd>
+<dt>\(b_k\), \(y_k\)</dt><dd data-hojas="32,41">Belief en el instante \(k\) (distribución del estado dado lo observado) y observaciones.</dd>
+</dl>
+<h3>Otras garantías</h3>
+<p>Parte 5: alcanzabilidad y certificados aprendidos.</p>
+<dl>
+<dt>\(x_k, u_k, w_k\)</dt><dd data-hojas="44">Estado, control y perturbación en el paso \(k\) (Hsu et al. llaman \(d\) a la perturbación).</dd>
+<dt>\(W\)</dt><dd data-hojas="44">Conjunto de perturbaciones posibles.</dd>
+<dt>\(f\) (parte 5)</dt><dd data-hojas="44">Dinámica en tiempo discreto, \(x_{k+1} = f(x_k, u_k, w_k)\); en la versión continua, \(\dot x = f(x, u, w)\).</dd>
+<dt>\(g\) (parte 5)</dt><dd data-hojas="44,46">Función de margen: negativa en el conjunto de fallo; en la pared, \(g = s\).</dd>
+<dt>\(\mathcal F\)</dt><dd data-hojas="44">Conjunto de fallo.</dd>
+<dt>\(V_k\), \(V\)</dt><dd data-hojas="44,46">Valor de seguridad: lo más cerca del fallo que se llegará con el mejor control contra la peor perturbación; en la pared, \(s - v^2/(2a)\).</dd>
+<dt>\(\Omega^*\)</dt><dd data-hojas="44,45">Conjunto seguro máximo, \(\{V \ge 0\}\).</dd>
+<dt>\(\pi^*\), \(\pi^{\text{task}}\)</dt><dd data-hojas="44,48">Política de seguridad óptima y política de la tarea.</dd>
+<dt>\(\phi\)</dt><dd data-hojas="48">Filtro de conmutación con la función de valor (ecuación 11 de Hsu et al.).</dd>
+<dt>\(T\), \(H\)</dt><dd data-hojas="45,47">Horizonte (s) y número de pasos del horizonte; en la versión continua, \(H\) es el hamiltoniano \(\max_u \min_w \nabla V\cdot f\).</dd>
+<dt>\(\nabla V\), \(\partial_t V\)</dt><dd data-hojas="47">Gradiente de \(V\) respecto del estado y su derivada respecto del tiempo.</dd>
+<dt>\(n\)</dt><dd data-hojas="44,48">Dimensión del estado.</dd>
+<dt>\(h_\theta\)</dt><dd data-hojas="50">Barrera representada por una red de parámetros \(\theta\).</dd>
+<dt>\(c_i\), \(\lambda_i\), \(N\)</dt><dd data-hojas="50,51">Condición \(i\) de un certificado (en la forma \(c_i \le 0\)), su peso en la pérdida y número de muestras.</dd>
+</dl>
+<h3>Experimento</h3>
+<p>Parte 6.</p>
+<dl>
+<dt>\(K_p, K_d\)</dt><dd data-hojas="54">Ganancias del PD de la política nominal: 2 y 2,2.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>CBF</dt><dd data-hojas="1">Control barrier function: función de barrera de control.</dd>
-<dt>QP</dt><dd data-hojas="7">Quadratic program: programa cuadrático.</dd>
-<dt>KKT</dt><dd data-hojas="12">Condiciones de Karush-Kuhn-Tucker de optimalidad con restricciones.</dd>
-<dt>POMDP</dt><dd data-hojas="19">Partially observable Markov decision process (A7a).</dd>
-<dt>EASA</dt><dd data-hojas="22">Agencia de la Unión Europea para la Seguridad Aérea.</dd>
-<dt>PD</dt><dd data-hojas="24">Controlador proporcional-derivativo.</dd>
+<dt>CBF</dt><dd data-hojas="1,10">Control barrier function: función de barrera de control.</dd>
+<dt>QP</dt><dd data-hojas="8,19">Quadratic program: programa cuadrático.</dd>
+<dt>KKT</dt><dd data-hojas="20">Condiciones de Karush-Kuhn-Tucker de optimalidad con restricciones.</dd>
+<dt>EKF</dt><dd data-hojas="32">Extended Kalman filter (A4a).</dd>
+<dt>POMDP</dt><dd data-hojas="41">Partially observable Markov decision process (A7a).</dd>
+<dt>HJ, HJI</dt><dd data-hojas="43,47">Hamilton-Jacobi; Hamilton-Jacobi-Isaacs (con perturbación que juega en contra).</dd>
+<dt>BRT</dt><dd data-hojas="44,45">Backward reachable tube: estados desde los que el fallo es inevitable dentro del horizonte.</dd>
+<dt>RL</dt><dd data-hojas="46">Reinforcement learning.</dd>
+<dt>EASA</dt><dd data-hojas="49">Agencia de la Unión Europea para la Seguridad Aérea.</dd>
+<dt>PD</dt><dd data-hojas="55,54">Controlador proporcional-derivativo.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>

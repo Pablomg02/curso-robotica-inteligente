@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Construir un filtro de seguridad con funciones de barrera de control (CBF) para un dron que manda aceleraciones, y medir qué garantiza y qué cuesta cuando el estado, el modelo o el tiempo no son perfectos. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a14.py`, salida en `figuras/salida.txt`; las cuentas de las derivaciones, en `figuras/derivaciones_a14.py`):
+Construir un filtro de seguridad con funciones de barrera de control (CBF) para un dron que manda aceleraciones, y medir qué garantiza y qué cuesta cuando el estado, el modelo o el tiempo no son perfectos. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a14.py`, salida en `figuras/salida.txt`; los ejemplos hechos a mano y los datos de las figuras, en `figuras/ejemplos_a14.py`, salida en `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación (200 escenas de 12 s) | Valor | Paso |
 |---|---|---|
