@@ -35,7 +35,7 @@
   <p class="kicker">Objetivos de A6b</p>
   <h2>Al terminar esta jornada deberías poder…</h2>
   <ol class="body" style="font-size:20px; gap:10px;">
-    <li>Separar lo que sabe el simulador de lo que sabrá el robot, y usar lo primero solo en entrenamiento: crítico asimétrico y maestro privilegiado.</li>
+    <li>Separar lo que sabe el simulador de lo que sabrá el robot, y usar lo primero solo en entrenamiento: aleatorización de parámetros, crítico asimétrico y maestro privilegiado.</li>
     <li>Derivar por qué la clonación de comportamiento acumula errores (\(T^2\varepsilon\)) y DAgger no (\(uT\varepsilon\)).</li>
     <li>Reconocer cuándo un crítico \(V(s)\) está sesgado y qué es la brecha de imitación, dos problemas que tu tesis va a tener.</li>
     <li>Elegir qué manda la red (empujes de rotor, empuje y velocidades angulares, velocidades) y suavizarla sin añadir retardo.</li>
@@ -48,7 +48,7 @@
   <h2>La política de A6a hace trampa: ve el estado verdadero</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>En A6a la red recibe la posición, la velocidad y la actitud exactas, sin retardo, y la física es siempre la misma. Un dron real tiene sensores con ruido, un estimador que llega tarde y una masa que cambia con la batería y la carga.</li>
         <li>El simulador sí conoce todo eso. La pregunta del tema: <strong>cómo aprovechar en el entrenamiento lo que el robot no tendrá en vuelo</strong>.</li>
         <li>Brazo Fetch real, empujar y coger con imágenes: con crítico asimétrico, 5 de 5 en las tres tareas; con el crítico simétrico, 0 de 5 en todas <a class="cite" data-ref="pinto2018"></a>.</li>
@@ -81,6 +81,25 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Símbolo</th><th>Qué es</th><th style="width:34%">En el x500 de este tema</th></tr>
+      <tr><td>\(s_t\)</td><td>Estado verdadero del simulador en el paso \(t\) (cada paso dura 10 ms)</td><td>Error de posición, velocidad, rotación, giróscopo, acción anterior y \(\xi\): 25 números</td></tr>
+      <tr><td>\(\xi\)</td><td>Parámetros físicos del dron, sorteados en cada entorno con la distribución \(p(\xi)\)</td><td>\(\xi = (m/m_0,\ k_T,\ \tau_m)\), p. ej. \((1{,}05;\ 0{,}97;\ 35\text{ ms})\)</td></tr>
+      <tr><td>\(o_t\)</td><td>Observación realista del actor: ruido, retardo y nada de \(\xi\) ni de la velocidad</td><td>Posición retrasada 40 ms, rotación, giróscopo y acción anterior: 19 números</td></tr>
+      <tr><td>\(h_t\)</td><td>Historia del actor: sus últimas observaciones \((o_{t-3}, \dots, o_t)\), que ya contienen las acciones anteriores</td><td>4 × 19 = 76 números</td></tr>
+      <tr><td>\(a_t\), \(r_t\)</td><td>Acción (cuatro números en \([-1,1]\), parte 3) y recompensa del paso</td><td>\(r_t = 1 - \tanh(\text{coste}) - 10\cdot\text{choque}\), como en A6a</td></tr>
+      <tr><td>\(\pi_\theta(a\mid h)\)</td><td>El actor: red con parámetros \(\theta\). Lo único que se despliega</td><td>MLP 2 × 64</td></tr>
+      <tr><td>\(V(\cdot)\)</td><td>El crítico. Entre paréntesis, lo que ve: \(V(h)\) <strong>simétrico</strong> (lo mismo que el actor), \(V(s)\) <strong>asimétrico</strong></td><td>MLP 2 × 64; solo existe en entrenamiento</td></tr>
+      <tr><td>\(G_t\), \(\delta_t\), \(\hat A_t\)</td><td>Retorno desde \(t\), error de diferencia temporal y ventaja estimada con GAE (A6a, parte 1)</td><td>\(\gamma = 0{,}99\), \(\lambda = 0{,}95\)</td></tr>
+      <tr><td>\(J(\theta)\), \(b\)</td><td>Rendimiento esperado de la política (retorno medio, mayor es mejor) y línea base del gradiente</td><td>En la parte 2, \(J\) será un <em>coste</em>; en tu tesis, \(b\) es el belief</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Privilegiada · el montaje</p>
   <h2>Lo que sabe el simulador y no sabrá el dron</h2>
   <div class="cols">
@@ -93,7 +112,7 @@
             <tr><td>Velocidad</td><td>no</td><td>exacta</td></tr>
             <tr><td>Actitud</td><td>ruido de 1°</td><td>exacta</td></tr>
             <tr><td>Giróscopo</td><td>ruido de 0,05 rad/s</td><td>exacto</td></tr>
-            <tr><td>Masa, empuje, motor</td><td>no</td><td>sí (±20 %, ±10 %, 20–60 ms)</td></tr>
+            <tr><td>Masa, empuje, motor (\(\xi\))</td><td>no</td><td>sí (±20 %, ±10 %, 20–60 ms)</td></tr>
             <tr><td>Historia</td><td>4 últimas observaciones y acciones</td><td>no hace falta</td></tr>
           </tbody>
         </table>
@@ -105,9 +124,9 @@
         <svg viewBox="0 0 460 250" role="img" aria-label="Crítico asimétrico: el actor recibe la observación y el crítico el estado privilegiado">
           <rect x="10" y="20" width="140" height="56" rx="6" class="box"/>
           <text x="80" y="44" text-anchor="middle" class="t-bold" font-size="14">simulador</text>
-          <text x="80" y="62" text-anchor="middle" class="t-muted" font-size="12">estado s, parámetros</text>
+          <text x="80" y="62" text-anchor="middle" class="t-muted" font-size="12">estado s, parámetros ξ</text>
           <rect x="300" y="20" width="150" height="56" rx="6" class="box box-accent"/>
-          <text x="375" y="44" text-anchor="middle" class="t-bold" font-size="14">actor π(a | o)</text>
+          <text x="375" y="44" text-anchor="middle" class="t-bold" font-size="14">actor π(a | h)</text>
           <text x="375" y="62" text-anchor="middle" class="t-muted" font-size="12">se despliega</text>
           <rect x="300" y="160" width="150" height="56" rx="6" class="box box-tesis"/>
           <text x="375" y="184" text-anchor="middle" class="t-bold" font-size="14">crítico V(s)</text>
@@ -129,25 +148,232 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Privilegiada · aleatorización de dominio</p>
+  <h2>Cada entorno es un dron distinto: se sortea \(\xi\) al reiniciar</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 300" role="img" aria-label="Aleatorización de dominio: cada entorno sortea sus parámetros y la misma política se entrena con la media de todos">
+        <defs>
+          <marker id="a6bdr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect x="10" y="118" width="110" height="64" rx="6" class="box box-tesis"/>
+        <text x="65" y="144" text-anchor="middle" class="t-bold" font-size="15">p(ξ)</text>
+        <text x="65" y="164" text-anchor="middle" class="t-muted" font-size="12">sorteo al reiniciar</text>
+        <rect x="170" y="14" width="250" height="44" rx="6" class="box"/>
+        <text x="182" y="33" class="t-bold" font-size="13">entorno 1</text>
+        <text x="182" y="50" class="t-mono t-muted" font-size="12">2,11 kg · k_T 1,06 · τ_m 42 ms</text>
+        <rect x="170" y="72" width="250" height="44" rx="6" class="box"/>
+        <text x="182" y="91" class="t-bold" font-size="13">entorno 2</text>
+        <text x="182" y="108" class="t-mono t-muted" font-size="12">1,82 kg · k_T 1,08 · τ_m 57 ms</text>
+        <rect x="170" y="130" width="250" height="44" rx="6" class="box"/>
+        <text x="182" y="149" class="t-bold" font-size="13">entorno 3</text>
+        <text x="182" y="166" class="t-mono t-muted" font-size="12">1,63 kg · k_T 1,02 · τ_m 53 ms</text>
+        <text x="295" y="200" text-anchor="middle" class="t-muted" font-size="16">⋮</text>
+        <rect x="170" y="216" width="250" height="44" rx="6" class="box"/>
+        <text x="182" y="235" class="t-bold" font-size="13">entorno 4096</text>
+        <text x="182" y="252" class="t-mono t-muted" font-size="12">otro ξ en cada episodio</text>
+        <path d="M120,150 L166,36" class="ln-tesis" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M120,150 L166,94" class="ln-tesis" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M120,150 L166,152" class="ln-tesis" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M120,150 L166,238" class="ln-tesis" fill="none" marker-end="url(#a6bdr)"/>
+        <rect x="460" y="100" width="130" height="100" rx="6" class="box box-accent"/>
+        <text x="525" y="126" text-anchor="middle" class="t-bold" font-size="13">media del lote</text>
+        <text x="525" y="148" text-anchor="middle" class="t-mono" font-size="13">(1/N) Σ ĝ_i</text>
+        <text x="525" y="172" text-anchor="middle" class="t-muted" font-size="12">un paso de θ</text>
+        <text x="525" y="188" text-anchor="middle" class="t-muted" font-size="12">para todos</text>
+        <path d="M420,36 L456,130" class="ln" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M420,94 L456,140" class="ln" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M420,152 L456,155" class="ln" fill="none" marker-end="url(#a6bdr)"/>
+        <path d="M420,238 L456,172" class="ln" fill="none" marker-end="url(#a6bdr)"/>
+        <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="12">la misma política π_θ vuela en todos; cada entorno aporta su gradiente ĝ_i</text>
+      </svg>
+      <figcaption>Tres sorteos reales de los rangos del tema (ejemplo 1 de <code>figuras/ejemplos_a6b.py</code>).</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué se aleatoriza</strong> aquí: la masa (factor \(m/m_0\) entre 0,8 y 1,2, con \(m_0 = 2\) kg), la ganancia de empuje \(k_T\) (0,9 a 1,1) y la constante del motor \(\tau_m\) (20 a 60 ms). Uniformes e independientes; también el estado inicial.</p>
+      <p><strong>Cuándo:</strong> cada vez que un entorno se reinicia. Con 4096 entornos, cada lote mezcla miles de drones.</p>
+      <p><strong>Qué se busca:</strong> no el mejor vuelo en un dron, sino el mejor en media sobre la distribución:</p>
+      \[ J(\theta) = \mathbb E_{\xi\sim p(\xi)}\big[\,J(\theta;\xi)\,\big] \]
+      <p>\(J(\theta;\xi)\): retorno esperado de \(\pi_\theta\) en el dron de parámetros \(\xi\).</p>
+      <p class="small muted">El ruido y el retardo de la observación no son parte de \(\xi\): son lo que ve el actor. La apariencia visual se aleatoriza en B3b; el problema completo de transferir, en B7a.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Privilegiada · por qué funciona sortear</p>
+  <h2>La media del lote es un gradiente sin sesgo del rendimiento medio</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J(\theta;\xi) = \mathbb E_{\pi_\theta,\,\xi}\big[\sum_t\gamma^t r_t\big]\)</td><td>Retorno esperado en un dron con \(\xi\) fijo</td></tr>
+          <tr><td><strong>2</strong></td><td>\(J(\theta) = \int p(\xi)\,J(\theta;\xi)\,d\xi\)</td><td>La esperanza sobre los drones posibles, escrita como integral</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\nabla_\theta J(\theta) = \int p(\xi)\,\nabla_\theta J(\theta;\xi)\,d\xi\)</td><td>\(p(\xi)\) no depende de \(\theta\): la derivada entra en la integral</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathbb E[\hat g_i\mid\xi_i]\approx\nabla_\theta J(\theta;\xi_i)\)</td><td>Cada entorno calcula el gradiente de la política de A6a con los datos de su dron</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\frac1N\sum_{i=1}^N\hat g_i\ \longrightarrow\ \nabla_\theta J(\theta)\)</td><td>Los \(\xi_i\) salen de \(p\): la media es un estimador de Monte Carlo de la integral 3</td></tr>
+        </table>
+      </div>
+      <p>Por eso basta con sortear \(\xi\) en cada reinicio: PPO, sin cambiar una línea, sube el rendimiento <em>medio</em> sobre la familia de drones. (PPO no sigue el gradiente exacto, por el recorte de A6a, pero lo que promedia sigue siendo esa mezcla.)</p>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">Lo que no hace</span>
+        <p>Maximiza la media, no el peor caso: el dron de 2,4 kg puede volar peor que el de 2 kg y el objetivo no lo castiga aparte.</p>
+        <p>Y el actor no ve \(\xi\): su mejor respuesta es un compromiso entre todos los drones, salvo lo que pueda deducir de \(\xi\) con su historia. Cuanto más ancho el rango, peor el compromiso (hoja siguiente).</p>
+      </div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un actor que deduce \(\xi\) de su historia está estimando un estado oculto: es un belief implícito. RMA lo hace explícito con un módulo que estima \(\xi\) (A9a).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Privilegiada · aleatorización con números</p>
+  <h2>Un empuje para todas las masas: lo que cuesta no ver \(\xi\)</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un dron que solo elige su empuje \(F\) (en N) sin ver su masa \(m\sim\mathcal U(1{,}6;\ 2{,}4)\) kg. Coste: \((F - mg)^2\), el empuje que le sobra o le falta para quedarse quieto.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbb E[(F - mg)^2] = (F - g\,\mathbb E[m])^2 + g^2\operatorname{Var}(m)\)</td><td>Sumar y restar \(g\,\mathbb E[m]\); el término cruzado tiene media 0</td></tr>
+          <tr><td><strong>2</strong></td><td>\(F^* = g\,\mathbb E[m] = 9{,}81\cdot 2 = 19{,}62\) N</td><td>Anula el primer término</td></tr>
+          <tr><td><strong>3</strong></td><td>\(g^2\operatorname{Var}(m) = 96{,}24\cdot\frac{0{,}8^2}{12} = 5{,}13\ \text{N}^2\)</td><td>Varianza de una uniforme de anchura 0,8 kg</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Ejemplo 2 del script. Es estático: una política con realimentación corrige parte del error, pero solo después de ver que cae o que sube.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Masa</th><th>\(F^* - mg\)</th><th>Aceleración vertical</th></tr></thead>
+          <tbody>
+            <tr><td>1,6 kg</td><td class="n">+3,92 N</td><td class="n">+2,45 m/s²</td></tr>
+            <tr><td>2,0 kg</td><td class="n">0</td><td class="n">0</td></tr>
+            <tr><td>2,4 kg</td><td class="n">−3,92 N</td><td class="n">−1,63 m/s²</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>El paso 5 de la hoja anterior, comprobado: con 4096 masas sorteadas, el gradiente medio de \(-\)coste vale +3,18 N en \(F = 18\), −0,06 en \(F = 19{,}62\) y −2,82 en \(F = 21\) (exactos: +3,24; 0; −2,76). Apunta a \(F^*\).</p>
+      <div class="callout clave"><span class="tag">Lo que vale ver \(\xi\)</span>Quien ve la masa (el maestro de la parte 2) elige \(F = mg\) y paga 0 en vez de 5,13 N². Y el retorno de cada entorno depende de su \(\xi\): un crítico que no lo ve no puede predecirlo. De ahí el crítico asimétrico.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Privilegiada · dónde entra el crítico</p>
+  <h2>El crítico solo sirve para calcular ventajas</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 300" role="img" aria-label="Línea temporal de un despliegue: el simulador produce estados, el crítico los valora y el actor decide con su historia">
+        <defs>
+          <marker id="a6bgae" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <text x="10" y="52" class="t-muted" font-size="13">simulador</text>
+        <text x="10" y="132" class="t-tesis" font-size="13">crítico</text>
+        <text x="10" y="212" class="t-accent" font-size="13">actor</text>
+        <rect x="110" y="30" width="100" height="36" rx="6" class="box"/>
+        <text x="160" y="53" text-anchor="middle" class="t-mono" font-size="13">s_t</text>
+        <rect x="290" y="30" width="100" height="36" rx="6" class="box"/>
+        <text x="340" y="53" text-anchor="middle" class="t-mono" font-size="13">s_t+1</text>
+        <rect x="470" y="30" width="100" height="36" rx="6" class="box"/>
+        <text x="520" y="53" text-anchor="middle" class="t-mono" font-size="13">s_t+2</text>
+        <path d="M210,48 L286,48" class="ln" fill="none" marker-end="url(#a6bgae)"/>
+        <path d="M390,48 L466,48" class="ln" fill="none" marker-end="url(#a6bgae)"/>
+        <text x="248" y="40" text-anchor="middle" class="t-time t-mono" font-size="12">r_t</text>
+        <text x="428" y="40" text-anchor="middle" class="t-time t-mono" font-size="12">r_t+1</text>
+        <rect x="110" y="112" width="100" height="36" rx="6" class="box box-tesis"/>
+        <text x="160" y="135" text-anchor="middle" class="t-mono" font-size="13">V(s_t)</text>
+        <rect x="290" y="112" width="100" height="36" rx="6" class="box box-tesis"/>
+        <text x="340" y="135" text-anchor="middle" class="t-mono" font-size="13">V(s_t+1)</text>
+        <rect x="470" y="112" width="100" height="36" rx="6" class="box box-tesis"/>
+        <text x="520" y="135" text-anchor="middle" class="t-mono" font-size="13">V(s_t+2)</text>
+        <path d="M160,66 L160,108" class="ln-tesis" fill="none" marker-end="url(#a6bgae)"/>
+        <path d="M340,66 L340,108" class="ln-tesis" fill="none" marker-end="url(#a6bgae)"/>
+        <path d="M520,66 L520,108" class="ln-tesis" fill="none" marker-end="url(#a6bgae)"/>
+        <rect x="100" y="192" width="120" height="36" rx="6" class="box box-accent"/>
+        <text x="160" y="215" text-anchor="middle" class="t-mono" font-size="13">h_t → a_t</text>
+        <rect x="280" y="192" width="120" height="36" rx="6" class="box box-accent"/>
+        <text x="340" y="215" text-anchor="middle" class="t-mono" font-size="13">h_t+1 → a_t+1</text>
+        <path d="M128,66 C90,110 90,160 120,188" class="ln-dash" fill="none" marker-end="url(#a6bgae)"/>
+        <text x="64" y="172" class="t-faint" font-size="11">o_t</text>
+        <path d="M200,192 C240,150 250,100 270,66" class="ln" fill="none" marker-end="url(#a6bgae)"/>
+        <text x="236" y="170" class="t-faint" font-size="11">a_t</text>
+        <path d="M110,250 L110,258 L390,258 L390,250" class="ln-tesis" fill="none"/>
+        <text x="250" y="278" text-anchor="middle" class="t-tesis t-mono" font-size="13">δ_t = r_t + γ V(s_t+1) − V(s_t)</text>
+        <text x="300" y="296" text-anchor="middle" class="t-faint" font-size="11">el actor nunca recibe V: solo la ventaja que se calcula con ella</text>
+      </svg>
+      <figcaption>Un despliegue de PPO: el crítico mira la fila de arriba; el actor, la de abajo.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Recordatorio de A6a, parte 1, con lo que ve cada uno:</p>
+      \[ \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t) \]
+      \[ \hat A_t = \sum_{l\ge0}(\gamma\lambda)^l\,\delta_{t+l} \]
+      \[ \nabla_\theta J \approx \mathbb E\big[\nabla_\theta\log\pi_\theta(a_t\mid h_t)\,\hat A_t\big] \]
+      <p>El crítico aprende por regresión hacia \(\hat A_t + V(s_t)\). El actor solo recibe \(\hat A_t\), un número por paso: lo que mire el crítico no pasa a la red que se despliega.</p>
+      <p>\(\gamma\): descuento; \(\lambda\): mezcla de GAE entre un paso (\(\lambda = 0\)) y el retorno completo (\(\lambda = 1\)).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Privilegiada · por qué funciona</p>
   <h2>Un crítico con más información sigue siendo una línea base válida</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">El gradiente de la política solo usa el crítico para estimar la ventaja. El actor sigue siendo \(\pi_\theta(a\mid o)\) y el gradiente, \(\mathbb E[\nabla_\theta\log\pi_\theta(a_t\mid h_t)\,\hat A_t]\), con \(h_t\) la historia de observaciones.</p>
-      <ul class="small">
-        <li><strong>Como línea base</strong> (\(\lambda = 1\)), cualquier función del estado vale: no depende de la acción.</li>
-        <li><strong>Como predictor</strong> (\(\lambda &lt; 1\)), un crítico que ve el estado y los parámetros predice mucho mejor el retorno que uno que solo ve la observación ruidosa: menos varianza y menos sesgo en la práctica.</li>
-        <li>Pinto et al. lo introducen con DDPG y HER: actor con imágenes RGBD, crítico con el estado completo, más aleatorización visual <a class="cite" data-ref="pinto2018"></a>.</li>
-      </ul>
+      <p>Con línea base, el gradiente es \(\mathbb E[\nabla_\theta\log\pi_\theta(a_t\mid h_t)\,(G_t - b)]\). ¿Puede \(b\) mirar \(s_t\), que el actor no ve? Basta con que el término de \(b\) valga cero:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbb E\big[\nabla_\theta\log\pi_\theta(a_t\mid h_t)\,b(s_t,h_t)\big]\)</td><td>El término que añade la línea base</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= \mathbb E_{s_t,h_t}\Big[b(s_t,h_t)\ \mathbb E_{a\sim\pi_\theta(\cdot\mid h_t)}\big[\nabla_\theta\log\pi_\theta(a\mid h_t)\big]\Big]\)</td><td>La acción solo se sortea con \(h_t\): dada \(h_t\), no depende de \(s_t\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E_{a}[\nabla_\theta\log\pi_\theta] = \int\pi_\theta\,\frac{\nabla_\theta\pi_\theta}{\pi_\theta}\,da = \nabla_\theta\!\int\pi_\theta\,da\)</td><td>Derivada del logaritmo; sacar la derivada de la integral</td></tr>
+          <tr><td><strong>4</strong></td><td>\(= \nabla_\theta 1 = 0\)</td><td>Una distribución integra 1 para todo \(\theta\)</td></tr>
+        </table>
+      </div>
+      <p>Cualquier \(b(s_t, h_t)\) que no dependa de la acción deja el gradiente sin sesgo: solo cambia su varianza.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: la línea base puede ver el estado</summary>
-        <p class="small">La acción se muestrea con \(a_t\sim\pi_\theta(\cdot\mid h_t)\), así que, dado \(h_t\), es independiente del estado oculto \(s_t\). Para cualquier \(b(s_t, h_t)\):</p>
-        \[ \mathbb E\big[\nabla_\theta\log\pi_\theta(a_t\mid h_t)\,b(s_t,h_t)\big] \]
-        \[ = \mathbb E_{s_t,h_t}\Big[b(s_t,h_t)\textstyle\int\nabla_\theta\pi_\theta(a\mid h_t)\,da\Big] = \mathbb E\big[b\,\nabla_\theta 1\big] = 0. \]
-        <p class="small">El sesgo solo puede entrar cuando el crítico predice el futuro con \(\lambda &lt; 1\) y su valor no es el de la política real (siguiente hojas).</p>
-      </details>
+      <div class="callout realidad"><span class="tag">Ejemplo 3 del script</span>Actor gaussiano \(a\sim\mathcal N(1;\ 0{,}5^2)\) y retorno \(G = -a^2 + 5\xi\), con \(\xi = \pm1\) oculto. El gradiente exacto respecto a la media es −2. Con 200 000 muestras:</div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Línea base</th><th>Media</th><th>Desviación por muestra</th></tr></thead>
+          <tbody>
+            <tr><td>Ninguna, \(b = 0\)</td><td class="n">−1,97</td><td class="n">11,0</td></tr>
+            <tr><td>Simétrica: \(b = \mathbb E[G]\), constante</td><td class="n">−1,97</td><td class="n">10,5</td></tr>
+            <tr><td>Asimétrica: \(b = \mathbb E[G] + 5\xi\)</td><td class="n">−2,01</td><td class="n">3,26</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>La misma media; la línea base que ve \(\xi\) quita la parte del retorno que la acción no controla y deja un tercio de la desviación.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Privilegiada · como predictor</p>
+  <h2>Con \(\lambda &lt; 1\), el crítico también predice el futuro, y ahí puede sesgar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(\lambda = 1\) (y \(\gamma\) cualquiera) los valores futuros se cancelan:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\hat A_t = \sum_l\gamma^l\delta_{t+l}\)</td><td>GAE con \(\lambda = 1\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= \sum_l\gamma^l r_{t+l} + \sum_l\gamma^{l+1}V(s_{t+l+1}) - \sum_l\gamma^l V(s_{t+l})\)</td><td>Sustituir \(\delta\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(= G_t - V(s_t)\)</td><td>Cada \(V(s_{t+k})\), \(k\ge1\), sale una vez con + y otra con −</td></tr>
+        </table>
+      </div>
+      <p>El crítico es solo una línea base: la hoja anterior. Con \(\lambda &lt; 1\) los \(V(s_{t+k})\) no se cancelan y la ventaja depende de lo que el crítico <em>predice</em>. En este tema, \(\lambda = 0{,}95\).</p>
+      <div class="aparte"><span class="rotulo">Ejemplo 4 del script</span>
+        <p>Tres pasos con recompensas 0, 0, 1 y \(\gamma = 1\): el valor verdadero es 1 en todos. Si el crítico dice 1,25 en \(s_1\), con \(\lambda = 1\) sigue \(\hat A_0 = 0\); con \(\lambda = 0\), \(\hat A_0 = 0 + 1{,}25 - 1 = +0{,}25\): la acción del paso 0 parece mejor de lo que es.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <p>Un crítico que ve el estado y los parámetros predice el retorno mucho mejor que uno que solo ve la observación ruidosa: menos varianza y, en la práctica, menos sesgo.</p>
+      <p>Pinto et al. lo introducen con DDPG y HER: actor con imágenes RGBD, crítico con el estado completo, más aleatorización visual <a class="cite" data-ref="pinto2018"></a>.</p>
       <div class="callout clave"><span class="tag">En la práctica</span>Es habitual en vuelo ágil con RL: el crítico privilegiado fue «crucial» para volar desde píxeles <a class="cite" data-ref="geles2024"></a>, y uno de los cinco factores de SimpleFlight es dar al crítico información temporal que el actor no tiene <a class="cite" data-ref="chen2025"></a>.</div>
+      <p>Queda una pregunta: predecir bien, ¿respecto a qué? El valor de lo que hará el actor depende de lo que sabe, no solo del estado. Es la hoja 15, la de Baisero y Amato.</p>
     </div>
   </div>
 </section>
@@ -195,7 +421,7 @@
         </table>
       </div>
       <p class="xsmall muted">Media de 5 semillas (entre paréntesis, el rango); evaluación desde 400 arranques aleatorios durante 10 s con la observación realista. El error se mide en los vuelos que no chocan.</p>
-      <ul class="small">
+      <ul>
         <li>Sin velocidad ni masa, el crítico simétrico no predice el retorno: las ventajas son ruido y la política apenas mejora.</li>
         <li>El asimétrico aprende, con más error que una política que ve el estado (2–5 cm en A6a).</li>
       </ul>
@@ -209,21 +435,87 @@
   <h2>Cuando lo oculto solo se descubre actuando, \(V(s)\) está sesgado</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Baisero y Amato demuestran que, con observabilidad parcial <a class="cite" data-ref="baisero2022"></a>:</p>
-      <ul class="small">
+      <p>Baisero y Amato demuestran que, con observabilidad parcial <a class="cite" data-ref="baisero2022"></a>:</p>
+      <ul>
         <li>un valor de estado \(V^\pi(s)\) invariante en el tiempo «en general está mal definido» (teorema 4.1);</li>
         <li>aunque esté definido, en general es un estimador sesgado de \(V^\pi(h)\): no se garantiza \(V^\pi(h) = \mathbb E_{s\mid h}[V^\pi(s)]\) (teorema 4.2);</li>
         <li>\(V^\pi(h, s)\), con la historia y el estado, es insesgado para cualquier problema y política (teorema 5.1).</li>
       </ul>
-      <p class="small">La razón: «el estado solo no contiene información suficiente para determinar el comportamiento futuro del agente, que en general depende de la historia».</p>
+      <p>La razón: «el estado solo no contiene información suficiente para determinar el comportamiento futuro del agente, que en general depende de la historia».</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Ejemplo: dos puertas y una pista</summary>
-        <p class="small">El objetivo está detrás de la puerta izquierda o la derecha (\(s\)), con probabilidad ½. La mitad de los episodios el agente oye una pista y acierta siempre (retorno 1); la otra mitad, elige al azar (retorno esperado ½). Un crítico que solo ve \(s\) promedia los dos casos:</p>
-        \[ V(s{=}\text{izq}) = V(s{=}\text{der}) = \tfrac12\cdot1 + \tfrac12\cdot\tfrac12 = 0{,}75. \]
-        <p class="small">Pero sin pista \(V(h) = 0{,}5\), y \(\mathbb E_{s\mid h}[V(s)] = 0{,}75\): el crítico sobrevalora en 0,25 la situación de no saber, y con ella el valor de la información. \(V(h, s)\) da 0,5 y 1. (Ejemplo nuestro, construido para ilustrar el teorema 4.2.)</p>
-      </details>
+      <p>La idea en cuatro pasos (nuestra lectura, suponiendo que \(V^\pi(s)\) exista):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(V^\pi(h,s) = \mathbb E[G_t\mid h_t = h,\ s_t = s]\)</td><td>Lo que el agente sabe y lo que es verdad: fija su conducta futura</td></tr>
+          <tr><td><strong>2</strong></td><td>\(V^\pi(h) = \mathbb E_{s\mid h}\big[V^\pi(h,s)\big]\)</td><td>Esperanza total sobre los estados compatibles con \(h\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(V^\pi(s) = \mathbb E_{h'\mid s}\big[V^\pi(h',s)\big]\)</td><td>Promedia sobre <em>todas</em> las historias que llegan a \(s\), también las que no son la tuya</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathbb E_{s\mid h}[V^\pi(s)] \ne V^\pi(h)\) en general</td><td>Coinciden si \(V^\pi(h',s)\) no depende de \(h'\): si saber más no cambia lo que hará</td></tr>
+        </table>
+      </div>
+      <p>\(h'\): una historia cualquiera que acaba en \(s\), distinta en general de la \(h\) del agente.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Privilegiada · el ejemplo de las dos puertas</p>
+  <h2>Dos puertas y una pista: \(V(s)\) no ve lo que vale saber</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 290" role="img" aria-label="Árbol del ejemplo de las dos puertas: el objetivo a izquierda o derecha, con o sin pista">
+          <rect x="210" y="8" width="100" height="32" rx="6" class="box"/>
+          <text x="260" y="29" text-anchor="middle" class="t-bold" font-size="13">inicio</text>
+          <path d="M240,40 L135,86" class="ln" fill="none"/>
+          <path d="M280,40 L385,86" class="ln" fill="none"/>
+          <text x="168" y="60" text-anchor="middle" class="t-muted" font-size="12">½</text>
+          <text x="352" y="60" text-anchor="middle" class="t-muted" font-size="12">½</text>
+          <rect x="70" y="86" width="130" height="34" rx="6" class="box box-tesis"/>
+          <text x="135" y="108" text-anchor="middle" class="t-bold" font-size="13">s = izquierda</text>
+          <rect x="320" y="86" width="130" height="34" rx="6" class="box box-tesis"/>
+          <text x="385" y="108" text-anchor="middle" class="t-bold" font-size="13">s = derecha</text>
+          <text x="135" y="140" text-anchor="middle" class="t-tesis t-mono" font-size="12">V(s) = 0,75</text>
+          <text x="385" y="140" text-anchor="middle" class="t-tesis t-mono" font-size="12">V(s) = 0,75</text>
+          <path d="M110,148 L70,186" class="ln" fill="none"/>
+          <path d="M160,148 L200,186" class="ln" fill="none"/>
+          <path d="M360,148 L320,186" class="ln" fill="none"/>
+          <path d="M410,148 L450,186" class="ln" fill="none"/>
+          <rect x="22" y="186" width="96" height="32" rx="6" class="box box-accent"/>
+          <text x="70" y="207" text-anchor="middle" font-size="12">con pista</text>
+          <rect x="152" y="186" width="96" height="32" rx="6" class="box"/>
+          <text x="200" y="207" text-anchor="middle" font-size="12">sin pista</text>
+          <rect x="272" y="186" width="96" height="32" rx="6" class="box box-accent"/>
+          <text x="320" y="207" text-anchor="middle" font-size="12">con pista</text>
+          <rect x="402" y="186" width="96" height="32" rx="6" class="box"/>
+          <text x="450" y="207" text-anchor="middle" font-size="12">sin pista</text>
+          <text x="70" y="240" text-anchor="middle" class="t-accent t-mono" font-size="12">acierta: 1</text>
+          <text x="200" y="240" text-anchor="middle" class="t-mono t-muted" font-size="12">al azar: ½</text>
+          <text x="320" y="240" text-anchor="middle" class="t-accent t-mono" font-size="12">acierta: 1</text>
+          <text x="450" y="240" text-anchor="middle" class="t-mono t-muted" font-size="12">al azar: ½</text>
+          <text x="260" y="276" text-anchor="middle" class="t-faint" font-size="12">cada rama ½; el agente no ve s, solo si ha oído la pista</text>
+        </svg>
+        <figcaption>Ejemplo nuestro, construido para ilustrar el teorema 4.2 <a class="cite" data-ref="baisero2022"></a>. Ejemplo 5 del script.</figcaption>
+      </figure>
       <div class="callout tesis"><span class="tag">Tu tesis</span>La velocidad o la masa se deducen de la historia en décimas de segundo, y \(V(s)\) funciona. La posición de un objetivo que hay que buscar no: dale al crítico la historia (o el belief) además del estado.</div>
+    </div>
+    <div class="stack">
+      <p>El objetivo está detrás de la puerta izquierda o la derecha (\(s\)). La mitad de los episodios el agente oye una pista y acierta siempre; la otra mitad elige al azar. Un crítico que solo ve \(s\) promedia los dos casos: \(V(s) = \tfrac12\cdot1 + \tfrac12\cdot\tfrac12 = 0{,}75\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>Con pista</th><th>Sin pista</th></tr></thead>
+          <tbody>
+            <tr><td>\(V(h)\), lo que de verdad espera</td><td class="n">1</td><td class="n">0,5</td></tr>
+            <tr><td>\(V(h, s)\)</td><td class="n">1</td><td class="n">0,5</td></tr>
+            <tr><td>\(\mathbb E_{s\mid h}[V(s)]\), lo que dice \(V(s)\)</td><td class="n">0,75</td><td class="n">0,75</td></tr>
+            <tr><td>Error de \(V(s)\)</td><td class="n">−0,25</td><td class="n">+0,25</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Por qué importa al aprender</span>
+        <p>En media el error se compensa, pero no en cada historia: \(V(s)\) sobrevalora en 0,25 no saber e infravalora en 0,25 saber. Para él la pista vale 0; en realidad vale 0,5. Un agente que pudiera ir a buscar la pista no recibiría ninguna ventaja por hacerlo.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -236,23 +528,245 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Maestro y alumno · teoría</p>
-  <h2>Clonar al maestro acumula errores; DAgger no</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Maestro, alumno y el coste de equivocarse</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Símbolo</th><th>Qué es</th><th style="width:34%">En el x500 de este tema</th></tr>
+      <tr><td>\(\pi^*\)</td><td>El <strong>maestro</strong>: política que ve el estado \(s\) y los parámetros \(\xi\)</td><td>PPO con observación privilegiada: 0 % de choques, 1,7 cm</td></tr>
+      <tr><td>\(\hat\pi\), \(\hat\pi_i\)</td><td>El <strong>alumno</strong>: ve solo la historia realista \(h\). \(\hat\pi_i\) es el de la iteración \(i\)</td><td>MLP 2 × 64 sobre los 76 números de \(h_t\)</td></tr>
+      <tr><td>\(d^t_\pi\), \(d_\pi\)</td><td>Distribución de los estados en el paso \(t\) cuando vuela \(\pi\); \(d_\pi\), su media sobre \(t\)</td><td>\(d_{\pi^*}\): casi todo quieto junto a la consigna</td></tr>
+      <tr><td>\(C(s,a)\), \(J(\pi)\)</td><td>Coste por paso, entre 0 y 1, y coste total \(J(\pi) = \sum_{t=1}^T\mathbb E_{s\sim d^t_\pi}[C(s,\pi(s))]\). <strong>Aviso:</strong> aquí \(J\) es coste (menor es mejor), no el retorno de la parte 1</td><td>Por ejemplo, 1 si el dron está a más de 10 cm</td></tr>
+      <tr><td>\(T\)</td><td>Horizonte en pasos. (En A6a, \(T\) eran pasos por tramo; el empuje se llama \(F\))</td><td>1 s a 100 Hz: \(T = 100\)</td></tr>
+      <tr><td>\(\ell\), \(\varepsilon\)</td><td>Pérdida de imitación en un estado y su media. En la teoría, \(\ell = 1\) si \(\hat\pi(s)\ne\pi^*(s)\); \(\varepsilon\) es la frecuencia de error. (En A6a, \(\varepsilon\) era el recorte de PPO)</td><td>En el experimento, error cuadrático \(\|\hat\pi(h) - \pi^*(s)\|^2\)</td></tr>
+      <tr><td>\(Q^*_t\), \(V^*_t\)</td><td>Coste del maestro desde el paso \(t\) hasta el final, haciendo primero \(a\) (\(Q^*\)) o lo que él haría (\(V^*\))</td><td>\(Q^*_t(s,\pi^*(s)) = V^*_t(s)\)</td></tr>
+      <tr><td>\(u\)</td><td>Cota de \(Q^*_t(s,a) - V^*_t(s)\): cuánto sube el coste si se hace otra cosa una vez y después se sigue al maestro</td><td>Un dron que se recupera en pocos pasos tiene \(u\) pequeño</td></tr>
+      <tr><td>\(\beta_i\), \(\mathcal D\)</td><td>Probabilidad de que vuele el maestro en la iteración \(i\); conjunto de pares \((h, \pi^*(s))\) acumulados</td><td>\(\beta_1 = 1\), después 0</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Maestro y alumno · el esquema</p>
+  <h2>Dos fases: aprender a volar con trampa, y después sin ella</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 300" style="max-height:300px" role="img" aria-label="Esquema en dos fases: el maestro se entrena con información privilegiada y después enseña al alumno, que solo ve la historia realista">
+      <defs>
+        <marker id="a6bms" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <text x="20" y="24" class="t-bold" font-size="15">Fase 1 · entrenar al maestro (RL)</text>
+      <rect x="20" y="60" width="150" height="60" rx="6" class="box"/>
+      <text x="95" y="86" text-anchor="middle" class="t-bold" font-size="14">simulador</text>
+      <text x="95" y="106" text-anchor="middle" class="t-muted" font-size="12">s y ξ exactos</text>
+      <rect x="250" y="60" width="170" height="60" rx="6" class="box box-tesis"/>
+      <text x="335" y="86" text-anchor="middle" class="t-bold" font-size="14">maestro π*(a | s, ξ)</text>
+      <text x="335" y="106" text-anchor="middle" class="t-muted" font-size="12">PPO de A6a</text>
+      <path d="M170,80 L246,80" class="ln-tesis" fill="none" marker-end="url(#a6bms)"/>
+      <path d="M250,104 L174,104" class="ln" fill="none" marker-end="url(#a6bms)"/>
+      <text x="210" y="74" text-anchor="middle" class="t-tesis" font-size="12">s, ξ</text>
+      <text x="210" y="120" text-anchor="middle" class="t-muted" font-size="12">a</text>
+      <text x="220" y="160" text-anchor="middle" class="t-muted" font-size="13">sin observabilidad parcial:</text>
+      <text x="220" y="178" text-anchor="middle" class="t-muted" font-size="13">un problema de control fácil</text>
+      <text x="220" y="210" text-anchor="middle" class="t-mono t-faint" font-size="12">x500: 12 s de GPU, 0 % choques, 1,7 cm</text>
+      <line x1="470" y1="10" x2="470" y2="290" class="ln-rule"/>
+      <path d="M420,90 C455,90 470,170 520,176" class="ln-dash" fill="none" marker-end="url(#a6bms)"/>
+      <text x="480" y="130" class="t-faint" font-size="12">congelado</text>
+      <text x="500" y="24" class="t-bold" font-size="15">Fase 2 · enseñar al alumno (supervisado)</text>
+      <rect x="500" y="60" width="150" height="60" rx="6" class="box"/>
+      <text x="575" y="86" text-anchor="middle" class="t-bold" font-size="14">simulador</text>
+      <text x="575" y="106" text-anchor="middle" class="t-muted" font-size="12">vuela alguien</text>
+      <rect x="525" y="160" width="160" height="50" rx="6" class="box box-tesis"/>
+      <text x="605" y="182" text-anchor="middle" class="t-bold" font-size="13">maestro π*</text>
+      <text x="605" y="199" text-anchor="middle" class="t-muted" font-size="12">etiqueta: a* = π*(s)</text>
+      <rect x="760" y="60" width="170" height="60" rx="6" class="box box-accent"/>
+      <text x="845" y="86" text-anchor="middle" class="t-bold" font-size="14">alumno: decide con h</text>
+      <text x="845" y="106" text-anchor="middle" class="t-muted" font-size="12">ruido, retardo, sin ξ</text>
+      <path d="M650,80 L756,80" class="ln-accent" fill="none" marker-end="url(#a6bms)"/>
+      <text x="703" y="72" text-anchor="middle" class="t-accent" font-size="12">h</text>
+      <path d="M575,120 L590,156" class="ln-tesis" fill="none" marker-end="url(#a6bms)"/>
+      <text x="560" y="146" text-anchor="end" class="t-tesis" font-size="12">s, ξ</text>
+      <rect x="760" y="160" width="170" height="50" rx="6" class="box box-soft"/>
+      <text x="845" y="182" text-anchor="middle" class="t-bold" font-size="13">pérdida</text>
+      <text x="845" y="199" text-anchor="middle" class="t-mono" font-size="12">‖alumno(h) − a*‖²</text>
+      <path d="M685,185 L756,185" class="ln" fill="none" marker-end="url(#a6bms)"/>
+      <path d="M845,120 L845,156" class="ln" fill="none" marker-end="url(#a6bms)"/>
+      <path d="M930,185 C980,185 990,110 934,100" class="ln" fill="none" marker-end="url(#a6bms)"/>
+      <text x="985" y="150" class="t-muted" font-size="12">gradiente</text>
+      <rect x="1010" y="60" width="150" height="60" rx="6" class="box box-accent"/>
+      <text x="1085" y="86" text-anchor="middle" class="t-bold" font-size="14">se despliega</text>
+      <text x="1085" y="106" text-anchor="middle" class="t-muted" font-size="12">solo el alumno</text>
+      <path d="M930,74 L1006,74" class="ln-accent" fill="none" marker-end="url(#a6bms)"/>
+      <text x="720" y="250" text-anchor="middle" class="t-time" font-size="14">¿quién vuela en la fase 2?</text>
+      <text x="720" y="272" text-anchor="middle" class="t-time" font-size="13">clonación: siempre el maestro · DAgger: el alumno (salvo la primera iteración)</text>
+    </svg>
+    <figcaption>El maestro resuelve el control con información perfecta; el alumno resuelve una estimación: deducir de \(h\) lo que el maestro veía.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Por qué dos fases</span>RL con observación parcial es difícil (el crítico simétrico no aprendía). Separado, el RL es fácil y la imitación es aprendizaje supervisado: cada muestra trae la acción correcta, no solo una recompensa.</div>
+    <div class="callout error"><span class="tag">La pregunta de las hojas siguientes</span>En qué estados se recogen los pares \((h, a^*)\). Parece un detalle y decide si el alumno vuela.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Maestro y alumno · clonación</p>
+  <h2>Clonar al maestro: aprender solo donde él vuela</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="La clonación entrena en los estados del maestro; el primer error del alumno lo lleva a estados sin etiqueta">
+        <path d="M50,240 C150,235 220,160 300,130 C370,105 420,90 470,80" class="ln-rule" style="stroke-width:46px; stroke-opacity:0.6" stroke-linecap="round" fill="none"/>
+        <path d="M50,240 C150,235 220,160 300,130 C370,105 420,90 470,80" class="ln-accent" stroke-width="2.4" fill="none"/>
+        <circle cx="50" cy="240" r="5" class="fill-ink3"/>
+        <circle cx="470" cy="80" r="7" class="fill-accent"/>
+        <text x="470" y="62" text-anchor="middle" class="t-accent" font-size="13">consigna</text>
+        <text x="50" y="268" text-anchor="middle" class="t-muted" font-size="12">salida</text>
+        <circle cx="120" cy="236" r="3.5" class="fill-accent"/>
+        <circle cx="185" cy="210" r="3.5" class="fill-accent"/>
+        <circle cx="240" cy="166" r="3.5" class="fill-accent"/>
+        <circle cx="300" cy="130" r="3.5" class="fill-accent"/>
+        <circle cx="370" cy="105" r="3.5" class="fill-accent"/>
+        <circle cx="420" cy="92" r="3.5" class="fill-accent"/>
+        <text x="330" y="178" class="t-muted" font-size="12">gris: d_π*, donde hay datos</text>
+        <path d="M185,210 C230,200 270,215 300,240 C330,262 370,272 420,280" class="ln-time" stroke-width="2.2" stroke-dasharray="6 4" fill="none"/>
+        <circle cx="185" cy="210" r="7" fill="none" class="ln-time" stroke-width="2"/>
+        <text x="150" y="190" text-anchor="end" class="t-time" font-size="12">primer error</text>
+        <text x="425" y="262" text-anchor="end" class="t-time" font-size="12">nadie le enseñó qué hacer aquí</text>
+        <text x="60" y="30" class="t-accent" font-size="13">— maestro π*: los puntos son los pares (o, a*)</text>
+        <text x="60" y="50" class="t-time" font-size="13">- - alumno por clonación</text>
+      </svg>
+      <figcaption>Esquema: cada error saca al alumno de la zona con datos, y fuera de ella sus errores son más probables.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Clonación de comportamiento (BC):</strong> vuela el maestro, se guardan los pares (observación del alumno, acción del maestro) y el alumno hace regresión supervisada:</p>
+      \[ \hat\pi = \arg\min_{\pi}\ \mathbb E_{s\sim d_{\pi^*}}\big[\ell(s,\pi)\big]. \]
+      <p>Si el error por paso en esa distribución es \(\varepsilon\), en un horizonte \(T\) <a class="cite" data-ref="ross2011"></a>:</p>
+      \[ J(\hat\pi) \le J(\pi^*) + T^2\varepsilon, \]
+      <p>y la cota es ajustada: hay problemas en los que se alcanza. El \(\varepsilon\) se mide donde vuela el maestro, no donde volará el alumno.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Maestro y alumno · de dónde sale el \(T^2\)</p>
+  <h2>La probabilidad de estar perdido crece con \(t\), y se suma \(T\) veces</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small"><strong>Clonación de comportamiento (BC):</strong> regresión supervisada de las acciones del maestro en los estados que visita el maestro. Si el error por paso en esa distribución es \(\varepsilon\), en un horizonte \(T\) <a class="cite" data-ref="ross2011"></a>:</p>
-      \[ J(\pi) \le J(\pi^*) + T^2\varepsilon, \]
-      <p class="small">y la cota es ajustada. <strong>DAgger:</strong> el alumno vuela, el maestro etiqueta los estados que visita el alumno y se entrena con todo lo acumulado. Con \(N\) iteraciones suficientes hay una política con</p>
-      \[ J(\hat\pi) \le J(\pi^*) + uT\varepsilon_N + O(1), \]
-      <p class="small">con \(u\) lo que puede empeorar el coste futuro del maestro tras una acción equivocada <a class="cite" data-ref="ross2011"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\varepsilon_t = P_{s\sim d^t_{\pi^*}}\big(\hat\pi(s)\ne\pi^*(s)\big)\), \(\ \varepsilon = \frac1T\sum_t\varepsilon_t\)</td><td>Error en los estados del maestro, paso a paso y en media</td></tr>
+          <tr><td><strong>2</strong></td><td>Sin errores hasta \(t\): coste del paso \(t\) igual al del maestro</td><td>Hace lo mismo que él, en los mismos estados</td></tr>
+          <tr><td><strong>3</strong></td><td>\(P(\text{algún error antes de }t)\le\varepsilon_1+\dots+\varepsilon_t\le T\varepsilon\)</td><td>Cota de la unión: la probabilidad de que pase algo es como mucho la suma</td></tr>
+          <tr><td><strong>4</strong></td><td>Tras el primer error, coste extra \(\le1\) por paso</td><td>Estados que nunca vio: lo peor posible</td></tr>
+          <tr><td><strong>5</strong></td><td>\(J(\hat\pi) - J(\pi^*)\le\sum_{t=1}^{T}T\varepsilon = T^2\varepsilon\)</td><td>Sumar los pasos 3 y 4 en los \(T\) pasos</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Simplificado: la prueba de Ross et al. trata con cuidado que, condicionado a no haber fallado, la distribución de estados cambia <a class="cite" data-ref="ross2011"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: de dónde sale el \(T^2\)</summary>
-        <p class="small">Coste por paso en \([0,1]\). Mientras el alumno no se equivoque, visita los mismos estados que el maestro. La probabilidad de haberse equivocado alguna vez antes del paso \(t\) es como mucho \(t\varepsilon\) (cota de la unión), y a partir de ahí puede estar en estados que nunca vio, con coste hasta 1 en cada paso. Sumando:</p>
-        \[ J(\pi) - J(\pi^*) \le \sum_{t=1}^{T} t\,\varepsilon \le T^2\varepsilon. \]
-        <p class="small">En cambio, la diferencia de rendimiento se escribe paso a paso en los estados del alumno: \(J(\pi) - J(\pi^*) = \sum_t \mathbb E_{s\sim d^t_\pi}\big[Q^*_t(s,\pi(s)) - V^*_t(s)\big]\), y cada término vale como mucho \(u\) por la probabilidad de equivocarse allí. Si \(\varepsilon\) se mide en la distribución del propio alumno, la suma es \(\le uT\varepsilon\). DAgger entrena justo en esa distribución.</p>
-      </details>
-      <div class="callout clave"><span class="tag">El algoritmo</span>\(\pi_i = \beta_i\pi^* + (1-\beta_i)\hat\pi_i\); desplegar \(\pi_i\); etiquetar con \(\pi^*\) los estados visitados; agregar al conjunto; reentrenar. Normalmente \(\beta_1 = 1\) y después 0 <a class="cite" data-ref="ross2011"></a>.</div>
+      <p>Con \(\varepsilon_t = \varepsilon\) fijo, el paso 3 da \(t\varepsilon\) y la suma, \(\varepsilon T(T+1)/2\le T^2\varepsilon\): el área de un triángulo de base \(T\) y altura \(T\varepsilon\).</p>
+      <p>Ejemplo 6 del script: \(T = 100\) (1 s a 100 Hz), \(\varepsilon = 0{,}01\), y el peor caso del paso 4: tras un error, coste 1 hasta el final.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Paso \(t\)</th><th>\(P\)(ya falló)</th><th>Cota \(t\varepsilon\)</th><th>Coste extra acumulado</th></tr></thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="n">0,010</td><td class="n">0,01</td><td class="n">0,01</td></tr>
+            <tr><td class="n">10</td><td class="n">0,096</td><td class="n">0,10</td><td class="n">0,53</td></tr>
+            <tr><td class="n">50</td><td class="n">0,395</td><td class="n">0,50</td><td class="n">10,9</td></tr>
+            <tr><td class="n">100</td><td class="n">0,634</td><td class="n">1,00</td><td class="n">37,2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Total: 37,2 pasos de coste extra, frente a 50,5 de la cota con \(t\varepsilon\) y 100 de \(T^2\varepsilon\). Con \(T = 1000\) y \(\varepsilon = 0{,}001\) (el mismo \(T\varepsilon = 1\)), 368: crece con el horizonte aunque el número esperado de errores no cambie.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Maestro y alumno · DAgger</p>
+  <h2>DAgger: que vuele el alumno y que el maestro corrija</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Bucle de DAgger: volar, etiquetar, agregar y reentrenar">
+        <defs>
+          <marker id="a6bdg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect x="20" y="30" width="210" height="70" rx="6" class="box box-accent"/>
+        <text x="125" y="56" text-anchor="middle" class="t-bold" font-size="14">1 · vuela π_i</text>
+        <text x="125" y="78" text-anchor="middle" font-size="12">el maestro con prob. β_i; si no, el alumno</text>
+        <rect x="290" y="30" width="210" height="70" rx="6" class="box box-tesis"/>
+        <text x="395" y="56" text-anchor="middle" class="t-bold" font-size="14">2 · el maestro etiqueta</text>
+        <text x="395" y="78" text-anchor="middle" class="t-mono" font-size="12">a* = π*(s) en cada estado</text>
+        <rect x="290" y="190" width="210" height="70" rx="6" class="box"/>
+        <text x="395" y="216" text-anchor="middle" class="t-bold" font-size="14">3 · agregar</text>
+        <text x="395" y="238" text-anchor="middle" class="t-mono" font-size="12">D ← D ∪ {(h, a*)}</text>
+        <rect x="20" y="190" width="210" height="70" rx="6" class="box"/>
+        <text x="125" y="216" text-anchor="middle" class="t-bold" font-size="14">4 · reentrenar</text>
+        <text x="125" y="238" text-anchor="middle" class="t-mono" font-size="12">alumno nuevo: regresión sobre D</text>
+        <path d="M230,65 L286,65" class="ln" fill="none" marker-end="url(#a6bdg)"/>
+        <path d="M395,100 L395,186" class="ln" fill="none" marker-end="url(#a6bdg)"/>
+        <path d="M290,225 L234,225" class="ln" fill="none" marker-end="url(#a6bdg)"/>
+        <path d="M125,190 L125,104" class="ln" fill="none" marker-end="url(#a6bdg)"/>
+        <text x="260" y="140" text-anchor="middle" class="t-muted" font-size="13">i ← i + 1</text>
+        <text x="260" y="160" text-anchor="middle" class="t-faint" font-size="12">los estados salen del alumno</text>
+        <text x="260" y="290" text-anchor="middle" class="t-time" font-size="12">la etiqueta dice qué haría el maestro allí donde el alumno se ha metido</text>
+      </svg>
+      <figcaption>Dataset aggregation <a class="cite" data-ref="ross2011"></a>. Normalmente \(\beta_1 = 1\) y después 0.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>La diferencia con la clonación está en el paso 1: los estados los visita el alumno. Cuando se desvía, el maestro le dice cómo volver desde ahí, y ese par entra en \(\mathcal D\). Al iterar, \(\mathcal D\) cubre los estados a los que le llevan sus propios errores.</p>
+      <p>\(\pi_i = \beta_i\pi^* + (1-\beta_i)\hat\pi_i\) se lee así: en cada paso vuela el maestro con probabilidad \(\beta_i\) y el alumno con \(1-\beta_i\).</p>
+      <div class="callout realidad"><span class="tag">Nuestra implementación</span>40 iteraciones de 131 072 muestras (4096 entornos × 32 pasos); el búfer guarda las 4 últimas iteraciones; ruido de 0,1 en la acción al recoger datos; \(\beta_1 = 1\), después 0. La clonación usa lo mismo con \(\beta = 1\) siempre.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Maestro y alumno · de dónde sale el \(uT\)</p>
+  <h2>Si se mide en los estados del alumno, cada error cuesta como mucho \(u\)</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J(\hat\pi) - J(\pi^*) = \sum_{t=1}^T\mathbb E_{s\sim d^t_{\hat\pi}}\big[Q^*_t(s,\hat\pi(s)) - V^*_t(s)\big]\)</td><td>Diferencia de rendimiento: en cada paso, la acción del alumno frente a la del maestro, donde vuela el alumno</td></tr>
+          <tr><td><strong>2</strong></td><td>Si \(\hat\pi(s) = \pi^*(s)\), el término vale 0</td><td>Definición de \(V^*_t\)</td></tr>
+          <tr><td><strong>3</strong></td><td>Si no, vale como mucho \(u\)</td><td>Definición de \(u\)</td></tr>
+          <tr><td><strong>4</strong></td><td>Término \(t\ \le\ u\,P_{s\sim d^t_{\hat\pi}}(\hat\pi(s)\ne\pi^*(s))\)</td><td>2 y 3</td></tr>
+          <tr><td><strong>5</strong></td><td>\(J(\hat\pi) - J(\pi^*)\le uT\varepsilon\)</td><td>Sumar, con \(\varepsilon\) medido en \(d_{\hat\pi}\)</td></tr>
+        </table>
+      </div>
+      <p>DAgger entrena justo en \(d_{\hat\pi}\). Con \(N\) iteraciones suficientes hay una política con <a class="cite" data-ref="ross2011"></a></p>
+      \[ J(\hat\pi) \le J(\pi^*) + uT\varepsilon_N + O(1), \]
+      <p>\(\varepsilon_N\): error en los estados de los propios alumnos tras \(N\) iteraciones; \(O(1)\): un término acotado que recoge la convergencia con \(N\) finito.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 290" role="img" aria-label="Coste extra acumulado con la clonación y con DAgger en el ejemplo con T = 100 y epsilon = 0,01">
+          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+          <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="180" text-anchor="end" class="t-mono t-faint" font-size="12">20</text>
+          <text x="52" y="107" text-anchor="end" class="t-mono t-faint" font-size="12">40</text>
+          <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">60</text>
+          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="175" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">25</text>
+          <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">50</text>
+          <text x="405" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">75</text>
+          <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text>
+          <path d="M64.6,250.0 L69.2,249.9 L73.8,249.8 L78.4,249.6 L83.0,249.4 L87.6,249.2 L92.2,249.0 L96.8,248.7 L101.4,248.3 L106.0,248.0 L110.6,247.6 L115.2,247.1 L119.8,246.7 L124.4,246.2 L129.0,245.6 L133.6,245.0 L138.2,244.4 L142.8,243.7 L147.4,243.0 L152.0,242.3 L156.6,241.5 L161.2,240.7 L165.8,239.9 L170.4,239.0 L175.0,238.1 L179.6,237.1 L184.2,236.1 L188.8,235.1 L193.4,234.1 L198.0,232.9 L202.6,231.8 L207.2,230.6 L211.8,229.4 L216.4,228.2 L221.0,226.9 L225.6,225.6 L230.2,224.2 L234.8,222.8 L239.4,221.4 L244.0,219.9 L248.6,218.4 L253.2,216.9 L257.8,215.3 L262.4,213.7 L267.0,212.1 L271.6,210.4 L276.2,208.6 L280.8,206.9 L285.4,205.1 L290.0,203.2 L294.6,201.4 L299.2,199.5 L303.8,197.5 L308.4,195.5 L313.0,193.5 L317.6,191.5 L322.2,189.4 L326.8,187.3 L331.4,185.1 L336.0,182.9 L340.6,180.7 L345.2,178.4 L349.8,176.1 L354.4,173.7 L359.0,171.3 L363.6,168.9 L368.2,166.5 L372.8,164.0 L377.4,161.4 L382.0,158.9 L386.6,156.3 L391.2,153.6 L395.8,151.0 L400.4,148.2 L405.0,145.5 L409.6,142.7 L414.2,139.9 L418.8,137.0 L423.4,134.1 L428.0,131.2 L432.6,128.2 L437.2,125.2 L441.8,122.2 L446.4,119.1 L451.0,116.0 L455.6,112.8 L460.2,109.6 L464.8,106.4 L469.4,103.2 L474.0,99.8 L478.6,96.5 L483.2,93.1 L487.8,89.7 L492.4,86.3 L497.0,82.8 L501.6,79.3 L506.2,75.7 L510.8,72.1 L515.4,68.5 L520.0,64.8" fill="none" class="ln-dash" stroke-width="1.6"/>
+          <path d="M64.6,250.0 L69.2,249.9 L73.8,249.8 L78.4,249.6 L83.0,249.5 L87.6,249.2 L92.2,249.0 L96.8,248.7 L101.4,248.4 L106.0,248.0 L110.6,247.7 L115.2,247.2 L119.8,246.8 L124.4,246.3 L129.0,245.8 L133.6,245.3 L138.2,244.7 L142.8,244.1 L147.4,243.4 L152.0,242.8 L156.6,242.1 L161.2,241.3 L165.8,240.6 L170.4,239.8 L175.0,239.0 L179.6,238.1 L184.2,237.3 L188.8,236.4 L193.4,235.4 L198.0,234.5 L202.6,233.5 L207.2,232.5 L211.8,231.5 L216.4,230.4 L221.0,229.3 L225.6,228.2 L230.2,227.1 L234.8,225.9 L239.4,224.7 L244.0,223.5 L248.6,222.3 L253.2,221.0 L257.8,219.7 L262.4,218.4 L267.0,217.1 L271.6,215.7 L276.2,214.3 L280.8,212.9 L285.4,211.5 L290.0,210.0 L294.6,208.6 L299.2,207.1 L303.8,205.6 L308.4,204.0 L313.0,202.5 L317.6,200.9 L322.2,199.3 L326.8,197.7 L331.4,196.0 L336.0,194.4 L340.6,192.7 L345.2,191.0 L349.8,189.3 L354.4,187.5 L359.0,185.8 L363.6,184.0 L368.2,182.2 L372.8,180.4 L377.4,178.6 L382.0,176.7 L386.6,174.8 L391.2,172.9 L395.8,171.0 L400.4,169.1 L405.0,167.2 L409.6,165.2 L414.2,163.2 L418.8,161.3 L423.4,159.2 L428.0,157.2 L432.6,155.2 L437.2,153.1 L441.8,151.0 L446.4,149.0 L451.0,146.8 L455.6,144.7 L460.2,142.6 L464.8,140.4 L469.4,138.3 L474.0,136.1 L478.6,133.9 L483.2,131.7 L487.8,129.4 L492.4,127.2 L497.0,124.9 L501.6,122.7 L506.2,120.4 L510.8,118.1 L515.4,115.8 L520.0,113.5" fill="none" class="ln-time" stroke-width="2.2"/>
+          <path d="M64.6,249.9 L69.2,249.8 L73.8,249.7 L78.4,249.6 L83.0,249.4 L87.6,249.3 L92.2,249.2 L96.8,249.1 L101.4,249.0 L106.0,248.9 L110.6,248.8 L115.2,248.7 L119.8,248.6 L124.4,248.5 L129.0,248.3 L133.6,248.2 L138.2,248.1 L142.8,248.0 L147.4,247.9 L152.0,247.8 L156.6,247.7 L161.2,247.6 L165.8,247.5 L170.4,247.4 L175.0,247.2 L179.6,247.1 L184.2,247.0 L188.8,246.9 L193.4,246.8 L198.0,246.7 L202.6,246.6 L207.2,246.5 L211.8,246.4 L216.4,246.3 L221.0,246.2 L225.6,246.0 L230.2,245.9 L234.8,245.8 L239.4,245.7 L244.0,245.6 L248.6,245.5 L253.2,245.4 L257.8,245.3 L262.4,245.2 L267.0,245.1 L271.6,244.9 L276.2,244.8 L280.8,244.7 L285.4,244.6 L290.0,244.5 L294.6,244.4 L299.2,244.3 L303.8,244.2 L308.4,244.1 L313.0,243.9 L317.6,243.8 L322.2,243.7 L326.8,243.6 L331.4,243.5 L336.0,243.4 L340.6,243.3 L345.2,243.2 L349.8,243.1 L354.4,243.0 L359.0,242.8 L363.6,242.7 L368.2,242.6 L372.8,242.5 L377.4,242.4 L382.0,242.3 L386.6,242.2 L391.2,242.1 L395.8,242.0 L400.4,241.9 L405.0,241.8 L409.6,241.6 L414.2,241.5 L418.8,241.4 L423.4,241.3 L428.0,241.2 L432.6,241.1 L437.2,241.0 L441.8,240.9 L446.4,240.8 L451.0,240.7 L455.6,240.5 L460.2,240.4 L464.8,240.3 L469.4,240.2 L474.0,240.1 L478.6,240.0 L483.2,239.9 L487.8,239.8 L492.4,239.7 L497.0,239.6 L501.6,239.4 L506.2,239.3 L510.8,239.2 L515.4,239.1 L520.0,239.0" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <line x1="80" y1="50" x2="104" y2="50" class="ln-time"/>
+          <text x="112" y="54" class="t-time" font-size="13">clonación: 37,2</text>
+          <line x1="80" y1="72" x2="104" y2="72" class="ln-accent"/>
+          <text x="112" y="76" class="t-accent" font-size="13">DAgger, u = 3: 3</text>
+          <line x1="80" y1="94" x2="104" y2="94" class="ln-dash"/>
+          <text x="112" y="98" class="t-muted" font-size="12">cota εt(t+1)/2 de la clonación</text>
+          <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">paso t (coste extra acumulado hasta t)</text>
+        </svg>
+        <figcaption>Ejemplo 6 del script: \(T = 100\), \(\varepsilon = 0{,}01\); en DAgger cada error cuesta \(u = 3\) y el alumno vuelve. Monte Carlo con 100 000 episodios: 37,2 y 3,00.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">La diferencia en una frase</span>En la clonación, un error te saca de donde aprendiste y lo pagas el resto del vuelo; en DAgger aprendiste también ahí, y lo pagas una vez.</div>
     </div>
   </div>
 </section>
@@ -279,7 +793,7 @@
       <p class="xsmall muted">Alumno con la observación realista; 40 iteraciones de 131 072 muestras, búfer de las 4 últimas, ruido de 0,1 en la acción al recoger datos. Pérdida: error cuadrático medio sobre el búfer de cada método. <code>figuras_a6b.py</code>, sección 2.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Clonación:</strong> imita casi perfectamente al maestro en los estados del maestro, que pronto está quieto en la consigna. Al volar, el primer error lo lleva a estados que nunca vio, y no sabe volver: es el \(T^2\varepsilon\).</li>
         <li><strong>DAgger:</strong> su pérdida es noventa veces mayor porque se mide donde vuela el alumno, en los estados difíciles. Y vuela.</li>
         <li><strong>Frente a RL con crítico asimétrico</strong> (de 8 a 32 cm): algo peor, con 12 s para entrenar al maestro y unos 4 s por alumno.</li>
@@ -306,7 +820,7 @@
   <div class="cols">
     <div class="stack">
       <h3 style="margin:0;">Deep Drone Acrobatics (2020)</h3>
-      <ul class="small">
+      <ul>
         <li><strong>Maestro:</strong> un MPC con el estado verdadero. <strong>Alumno:</strong> historia de 8 pasos de puntos característicos de la imagen, inercial y referencia; manda empuje colectivo y velocidades angulares a 100 Hz. Entrenado con DAgger en simulación <a class="cite" data-ref="kaufmann2020"></a>.</li>
         <li><strong>Real:</strong> 100 % en 10 intentos de cada maniobra (looping, tonel, Matty flip), con aceleraciones de hasta 3 g.</li>
         <li><strong>Abstraer la entrada importa:</strong> en simulación, con la imagen en bruto, un 80 % en el fondo de entrenamiento y un 0 % en fondos nuevos; con puntos característicos, 100 % en todos.</li>
@@ -314,7 +828,7 @@
     </div>
     <div class="stack">
       <h3 style="margin:0;">Vuelo a alta velocidad en la naturaleza (2021)</h3>
-      <ul class="small">
+      <ul>
         <li><strong>Maestro:</strong> un planificador por muestreo con la nube de puntos completa y el estado perfecto, sin límite de cómputo. <strong>Alumno:</strong> imagen de profundidad ruidosa e inercial <a class="cite" data-ref="loquercio2021"></a>.</li>
         <li><strong>Real:</strong> 31 vuelos en bosque y montaña; sin un choque a 3 y 5 m/s; 8 de 10 a 7 m/s; 60 % a 10 m/s.</li>
         <li><strong>Latencia:</strong> 41,6 ms del sensor al plan en la Jetson TX2 de a bordo.</li>
@@ -329,12 +843,26 @@
   <h2>Si el maestro usa lo que el alumno no puede saber, imitarlo falla</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">«Cuando el agente que enseña decide con información privilegiada no disponible para el alumno, esa información se marginaliza durante la imitación»: es la <strong>brecha de imitación</strong> <a class="cite" data-ref="weihs2021"></a>. Pinto et al. ya lo apuntaban: la clonación falla si el experto depende de información del estado completo que no está en la observación <a class="cite" data-ref="pinto2018"></a>.</p>
-      <details class="deriv" open><summary>Derivación: qué aprende el alumno</summary>
-        <p class="small">Con pérdida cuadrática, el óptimo del alumno es la esperanza condicionada:</p>
-        \[ \pi^\star(o) = \arg\min_{a}\ \mathbb E\big[\|a - \pi^*(s)\|^2 \mid o\big] = \mathbb E\big[\pi^*(s)\mid o\big]. \]
-        <p class="small">Si la acción del maestro depende de algo que \(o\) no revela (objetivo a la izquierda o a la derecha, \(\pm1\)), el alumno aprende la media: ir recto, contra la pared del centro. Si lo oculto se deduce de la historia (la velocidad), \(\mathbb E[\pi^*\mid h]\approx\pi^*\) y no hay brecha.</p>
-      </details>
+      <p>«Cuando el agente que enseña decide con información privilegiada no disponible para el alumno, esa información se marginaliza durante la imitación»: es la <strong>brecha de imitación</strong> <a class="cite" data-ref="weihs2021"></a>. Pinto et al. ya lo apuntaban: la clonación falla si el experto depende de información del estado completo que no está en la observación <a class="cite" data-ref="pinto2018"></a>.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" style="max-height:220px" role="img" aria-label="Vista cenital: el maestro va a la salida izquierda o derecha; el alumno, que no sabe cuál, sigue recto contra la pared del centro">
+          <rect x="180" y="20" width="160" height="70" rx="4" class="box-soft"/>
+          <text x="260" y="60" text-anchor="middle" class="t-muted" font-size="13">pared</text>
+          <rect x="30" y="20" width="70" height="40" rx="4" class="box box-tesis"/>
+          <text x="65" y="45" text-anchor="middle" font-size="12">salida izq.</text>
+          <rect x="420" y="20" width="70" height="40" rx="4" class="box box-tesis"/>
+          <text x="455" y="45" text-anchor="middle" font-size="12">salida der.</text>
+          <path d="M260,215 C250,160 120,130 70,64" class="ln-tesis" stroke-width="2.2" fill="none"/>
+          <path d="M260,215 C270,160 400,130 450,64" class="ln-tesis" stroke-width="2.2" fill="none"/>
+          <path d="M260,215 L260,96" class="ln-time" stroke-width="2.4" stroke-dasharray="6 4" fill="none"/>
+          <path d="M252,100 L268,116 M268,100 L252,116" class="ln-time" stroke-width="2.4"/>
+          <circle cx="260" cy="215" r="5" class="fill-ink3"/>
+          <text x="120" y="190" text-anchor="middle" class="t-tesis" font-size="12">maestro: a* = −1</text>
+          <text x="400" y="190" text-anchor="middle" class="t-tesis" font-size="12">maestro: a* = +1</text>
+          <text x="275" y="160" class="t-time" font-size="12">alumno: media 0</text>
+        </svg>
+        <figcaption>El maestro sabe dónde está la salida; el alumno no, y aprende la media de las dos respuestas.</figcaption>
+      </figure>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">La solución de 2024</span>Xing et al.: maestro por RL con estado privilegiado, alumno por DAgger y, después, RL otra vez sobre el alumno con crítico asimétrico (calentando primero el crítico). En simulación, con píxeles: RL desde cero 0 %, DAgger 57–64 %, su método 76–85 % de éxito según el circuito. En el circuito SplitS real, 7,67 s por vuelta frente a 8,06 s con DAgger <a class="cite" data-ref="xing2024"></a>.</div>
@@ -344,11 +872,65 @@
   </div>
 </section>
 
+<section class="slide">
+  <p class="kicker">Maestro y alumno · qué aprende el alumno</p>
+  <h2>Con pérdida cuadrática, el alumno aprende la acción media del maestro</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(L(\hat\pi) = \mathbb E\big[\|\hat\pi(o) - \pi^*(s)\|^2\big]\)</td><td>La pérdida de imitación del experimento</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= \mathbb E_o\Big[\mathbb E_{s\mid o}\big[\|\hat\pi(o) - \pi^*(s)\|^2\big]\Big]\)</td><td>Esperanza total: \(\hat\pi(o)\) se elige por separado para cada \(o\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\nabla_a\,\mathbb E_{s\mid o}\|a - \pi^*(s)\|^2 = 2\big(a - \mathbb E[\pi^*(s)\mid o]\big) = 0\)</td><td>Derivar respecto a la acción \(a\) para un \(o\) fijo</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\pi^\star(o) = \mathbb E\big[\pi^*(s)\mid o\big]\)</td><td>El óptimo del alumno: la media de lo que haría el maestro</td></tr>
+          <tr><td><strong>5</strong></td><td>Pérdida mínima \(= \mathbb E_{s\mid o}\|\pi^*(s) - \pi^\star(o)\|^2\)</td><td>Es la varianza de \(\pi^*\) dado \(o\): no baja con más datos</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p>Ejemplo 7 del script, con las dos salidas: \(\pi^*(s) = -1\) (izquierda) o \(+1\) (derecha).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Lo que dice \(o\)</th><th>\(\mathbb E[\pi^*(s)\mid o]\)</th><th>Pérdida mínima</th></tr></thead>
+          <tbody>
+            <tr><td>Nada: \(P(\text{izq}\mid o) = 0{,}5\)</td><td class="n">0: recto</td><td class="n">1</td></tr>
+            <tr><td>Una pista: \(P(\text{izq}\mid o) = 0{,}8\)</td><td class="n">−0,6</td><td class="n">0,64</td></tr>
+            <tr><td>Todo: \(P(\text{izq}\mid o) = 1\)</td><td class="n">−1</td><td class="n">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Sin pista, la pérdida para \(a\) = −1, −0,5, 0, 0,5 y 1 vale 2; 1,25; 1; 1,25 y 2: el mínimo está en el centro, contra la pared.</p>
+      <p>Si lo oculto se deduce de la historia (la velocidad), \(\mathbb E[\pi^*\mid h]\approx\pi^*\) y no hay brecha. Si no se deduce (la salida), el alumno aprende un promedio que ningún maestro haría.</p>
+      <div class="callout clave"><span class="tag">Cómo detectarla</span>Una pérdida de imitación que no baja de un suelo, aunque crezcan los datos y la red, apunta a la varianza del paso 5: el maestro usa algo que el alumno no puede saber.</div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ PARTE 3 ============ -->
 <section class="slide divider" data-section="Espacios de acción">
   <p class="num">Parte 3</p>
   <h2>Qué manda la red</h2>
   <p>Empujes de rotor, empuje y velocidades angulares, o velocidades: cuánto controlador clásico dejas debajo de la política.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Qué manda la red, en símbolos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:33%">En el x500 de este tema</th></tr>
+      <tr><td>\(a = (a_0,\dots,a_3)\)</td><td>Salida de la red, recortada a \([-1,1]\). Qué significa depende del espacio de acción</td><td>CTBR: empuje y tres giros; SRT: un número por rotor</td></tr>
+      <tr><td>\(F\), \(f_i\)</td><td>Empuje colectivo y empuje del rotor \(i\) (N), \(F = \sum_i f_i\). <strong>Aviso:</strong> no se llama \(T\), que en la parte 2 era el horizonte</td><td>Estacionario: \(F = m_0g = 19{,}62\) N, 4,905 N por rotor</td></tr>
+      <tr><td>\(\boldsymbol\omega\), \(\boldsymbol\omega_d\)</td><td>Velocidad angular medida por el giróscopo y la deseada (rad/s, ejes cuerpo). En el filtro, \(\omega\) será otra cosa: frecuencia</td><td>\(\boldsymbol\omega_d\) hasta 4 rad/s en alabeo y cabeceo, 2 en guiñada</td></tr>
+      <tr><td>\(\mathbf M\), \(I_x, I_y, I_z\)</td><td>Par deseado sobre el cuerpo (N·m) e inercias (kg·m²)</td><td>\(I = (0{,}022;\ 0{,}022;\ 0{,}040)\)</td></tr>
+      <tr><td>\(\ell\), \(c_\tau\)</td><td>Brazo del rotor y relación entre el par de guiñada y el empuje de un rotor. \(\ell\) no es la pérdida de la parte 2</td><td>\(\ell = 0{,}25\) m, \(c_\tau = 0{,}016\) m</td></tr>
+      <tr><td>\(\Delta a_t\), \(w\)</td><td>Cambio de la acción entre pasos, \(a_t - a_{t-1}\), y peso del término de suavidad</td><td>\(w = 0{,}1\)</td></tr>
+      <tr><td>\(\kappa\), \(K\), \(x_t\)</td><td>Política linealizada \(a_t = \kappa a_{t-1} + Kx_t\): cuánto pesa la acción anterior, ganancia sobre el estado y desviación del estado. <strong>Aviso:</strong> \(\kappa\) no es \(c_\tau\)</td><td>\(\kappa\) son los autovalores de \(\partial\pi/\partial a_{t-1}\), una matriz 4 × 4</td></tr>
+      <tr><td>\(\lambda_T\), \(\lambda_S\), \(\sigma\)</td><td>Pesos de los dos términos de CAPS y ruido con el que se perturba el estado. No son el \(\lambda\) de GAE</td><td>\(\sigma\): el ruido de medida esperado</td></tr>
+      <tr><td>\(\tau\)</td><td>Constante de tiempo de un filtro paso bajo. <strong>Aviso:</strong> \(\tau_m\) es la del motor, parte de \(\xi\)</td><td>5, 10 y 20 ms</td></tr>
+    </table>
+  </div>
 </section>
 
 <section class="slide">
@@ -385,8 +967,125 @@
       <figcaption>Espacios de acción comparados por Kaufmann et al. <a class="cite" data-ref="kaufmann2022"></a>, más el de actitud que también acepta PX4 <a class="cite" data-ref="px4offboard"></a>.</figcaption>
     </figure>
     <div class="stack">
-      <p class="small">En locomoción, mandar consignas de ángulo a un PD fue la mejor o casi la mejor parametrización en todos los movimientos, la más rápida en aprender en 5 de 7 y de las más robustas <a class="cite" data-ref="peng2017"></a>. El lazo de debajo aporta realimentación local rápida que la red no tiene que aprender.</p>
+      <p>En locomoción, mandar consignas de ángulo a un PD fue la mejor o casi la mejor parametrización en todos los movimientos, la más rápida en aprender en 5 de 7 y de las más robustas <a class="cite" data-ref="peng2017"></a>. El lazo de debajo aporta realimentación local rápida que la red no tiene que aprender.</p>
       <div class="callout clave"><span class="tag">Por qué CTBR</span>El lazo de velocidad angular del autopiloto corre mucho más rápido que la red y absorbe el retardo del motor y los errores del modelo de pares; la red solo decide empuje y giro. Swift, Deep Drone Acrobatics, Xing, Geles y SimpleFlight mandan CTBR <a class="cite" data-ref="kaufmann2023,kaufmann2020,xing2024,geles2024,chen2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Acción · en la pila de PX4</p>
+  <h2>Cada espacio de acción entra en un piso distinto de la cascada</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 340" role="img" aria-label="Cascada de control de un multirrotor en PX4 y el mensaje offboard que entra en cada piso">
+        <defs>
+          <marker id="a6bpx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a6bpxa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        </defs>
+        <rect x="250" y="10" width="200" height="40" rx="6" class="box"/>
+        <text x="350" y="35" text-anchor="middle" font-size="13">control de posición</text>
+        <rect x="250" y="66" width="200" height="40" rx="6" class="box"/>
+        <text x="350" y="91" text-anchor="middle" font-size="13">control de velocidad</text>
+        <rect x="250" y="122" width="200" height="40" rx="6" class="box"/>
+        <text x="350" y="147" text-anchor="middle" font-size="13">control de actitud</text>
+        <rect x="250" y="178" width="200" height="40" rx="6" class="box box-accent"/>
+        <text x="350" y="203" text-anchor="middle" class="t-bold" font-size="13">control de velocidad angular</text>
+        <rect x="250" y="234" width="200" height="40" rx="6" class="box"/>
+        <text x="350" y="259" text-anchor="middle" font-size="13">asignación a los motores</text>
+        <rect x="250" y="290" width="200" height="40" rx="6" class="box"/>
+        <text x="350" y="315" text-anchor="middle" font-size="13">motores (ESC)</text>
+        <path d="M350,50 L350,63" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M350,106 L350,119" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M350,162 L350,175" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M350,218 L350,231" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M350,274 L350,287" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <text x="236" y="27" text-anchor="end" class="t-mono" font-size="11">TrajectorySetpoint</text>
+        <text x="236" y="42" text-anchor="end" class="t-muted" font-size="11">posición</text>
+        <text x="236" y="83" text-anchor="end" class="t-mono" font-size="11">TrajectorySetpoint</text>
+        <text x="236" y="98" text-anchor="end" class="t-muted" font-size="11">velocidad: LV</text>
+        <text x="236" y="139" text-anchor="end" class="t-mono" font-size="11">VehicleAttitudeSetpoint</text>
+        <text x="236" y="154" text-anchor="end" class="t-muted" font-size="11">actitud + empuje</text>
+        <text x="236" y="195" text-anchor="end" class="t-mono t-accent" font-size="11">VehicleRatesSetpoint</text>
+        <text x="236" y="210" text-anchor="end" class="t-accent" font-size="11">CTBR</text>
+        <text x="236" y="251" text-anchor="end" class="t-mono" font-size="11">VehicleThrust/TorqueSetpoint</text>
+        <text x="236" y="266" text-anchor="end" class="t-muted" font-size="11">empuje y par</text>
+        <text x="236" y="307" text-anchor="end" class="t-mono" font-size="11">ActuatorMotors</text>
+        <text x="236" y="322" text-anchor="end" class="t-muted" font-size="11">un mando por motor: SRT</text>
+        <path d="M240,30 L247,30" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M240,86 L247,86" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M240,142 L247,142" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M240,198 L247,198" class="ln-accent" stroke-width="2" fill="none" marker-end="url(#a6bpxa)"/>
+        <path d="M240,254 L247,254" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M240,310 L247,310" class="ln" fill="none" marker-end="url(#a6bpx)"/>
+        <path d="M466,178 L476,178 L476,330 L466,330" class="ln-accent" stroke-width="2" fill="none"/>
+        <text x="486" y="236" class="t-accent" font-size="12">lo que PX4 hace</text>
+        <text x="486" y="252" class="t-accent" font-size="12">por ti con CTBR:</text>
+        <text x="486" y="268" class="t-accent" font-size="12">el lazo de ω con el</text>
+        <text x="486" y="284" class="t-accent" font-size="12">giróscopo y el reparto</text>
+        <path d="M466,10 L476,10 L476,162 L466,162" class="ln-time" stroke-width="2" fill="none"/>
+        <text x="486" y="76" class="t-time" font-size="12">lo que hace tu red</text>
+        <text x="486" y="92" class="t-time" font-size="12">con CTBR</text>
+      </svg>
+      <figcaption>Pisos de la cascada de un multirrotor y el mensaje de <code>OffboardControlMode</code> que entra en cada uno <a class="cite" data-ref="px4offboard"></a> (tabla completa en la parte 4).</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Un mensaje offboard sustituye la salida de un piso: lo de encima lo haces tú y lo de debajo lo hace el autopiloto.</p>
+      <ul>
+        <li><strong>LV:</strong> PX4 sigue la velocidad; la red solo navega.</li>
+        <li><strong>CTBR:</strong> la red decide cuánto empujar y a qué ritmo girar; PX4 compara \(\boldsymbol\omega_d\) con el giróscopo y reparte el par entre los motores.</li>
+        <li><strong>SRT:</strong> la red hace también el lazo de \(\boldsymbol\omega\) y el reparto. Tiene que estabilizar el giro a su propia frecuencia y con su propio retardo.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La regla</span>Cuanto más abajo entra la red, más rápido tiene que ir el bucle que cierra ella, y más le duele cada milisegundo de retardo (B4).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Acción · CTBR en nuestro x500</p>
+  <h2>De cuatro números a cuatro empujes: lo que hace CTBR debajo de la red</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(F = m_0 g\,(1 + 0{,}8\,a_0)\)</td><td>\(a_0 = 0\) es el estacionario nominal; de 0,2 a 1,8 veces el peso</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\boldsymbol\omega_d = (4a_1,\ 4a_2,\ 2a_3)\) rad/s</td><td>Alabeo, cabeceo y guiñada deseados</td></tr>
+          <tr><td><strong>3</strong></td><td>\(M_j = 20\,I_j\,(\omega_{d,j} - \omega_j) + (\boldsymbol\omega\times I\boldsymbol\omega)_j\)</td><td>Lazo proporcional de \(\boldsymbol\omega\) (20 s⁻¹) más el término giroscópico de A1</td></tr>
+          <tr><td><strong>4</strong></td><td>\(f_i = \) asignación de \((F, \mathbf M)\)</td><td>Cuatro ecuaciones, una por rotor (hoja siguiente)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(f_{i,\text{cmd}} = k_T\,\mathrm{clip}(f_i, 0, m_0g)\); \(\ \dot f_i = (f_{i,\text{cmd}} - f_i)/\tau_m\)</td><td>Ganancia de empuje y motor de primer orden: aquí entran \(k_T\) y \(\tau_m\) de \(\xi\)</td></tr>
+        </table>
+      </div>
+      <p>\(j\in\{x,y,z\}\) recorre los ejes; \(m_0 = 2\) kg es la masa nominal. Todo sale de <code>mando_rotores</code> en <code>figuras_a6b.py</code>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 8 del script</span>En estacionario (\(\boldsymbol\omega = 0\)), la red manda \(a = (0;\ 0{,}5;\ 0;\ 0)\): «empuje nominal y alabeo a la derecha a 2 rad/s».</div>
+      <ul>
+        <li>\(F = 2\cdot9{,}81 = 19{,}62\) N y \(\boldsymbol\omega_d = (2, 0, 0)\) rad/s.</li>
+        <li>\(M_x = 20\cdot0{,}022\cdot(2 - 0) = 0{,}88\) N·m; \(M_y = M_z = 0\).</li>
+        <li>La asignación sube el rotor de \(+y\) y baja el de \(-y\): \(f = (4{,}905;\ 6{,}665;\ 4{,}905;\ 3{,}145)\) N, que suman 19,62.</li>
+        <li>Con \(a = (0{,}25;\ 0;\ 0;\ 0)\): \(F = 23{,}54\) N, 5,886 N por rotor.</li>
+      </ul>
+      <p class="small muted">«A la derecha» suponiendo el eje \(x\) hacia el morro: el simulador usa \(z\) hacia arriba y no fija dónde está el morro.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Acción · SRT en nuestro x500</p>
+  <h2>Con SRT la red tiene que hacer la asignación y el lazo de giro ella sola</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La asignación de CTBR (paso 4), con los rotores en cruz: 0 en \(+x\), 1 en \(+y\), 2 en \(-x\), 3 en \(-y\):</p>
+      \[ \begin{aligned} f_0 &= \tfrac F4 - \tfrac{M_y}{2\ell} + \tfrac{M_z}{4c_\tau} & f_1 &= \tfrac F4 + \tfrac{M_x}{2\ell} - \tfrac{M_z}{4c_\tau}\\ f_2 &= \tfrac F4 + \tfrac{M_y}{2\ell} + \tfrac{M_z}{4c_\tau} & f_3 &= \tfrac F4 - \tfrac{M_x}{2\ell} - \tfrac{M_z}{4c_\tau} \end{aligned} \]
+      <p>Comprobación: \(\sum f_i = F\); \(\ell(f_1 - f_3) = M_x\); \(\ell(f_2 - f_0) = M_y\); \(c_\tau(f_0 - f_1 + f_2 - f_3) = M_z\). Es invertir la física de A1.</p>
+      <p><strong>SRT</strong> se salta los pasos 1–4: \(\ f_i = \tfrac{m_0g}{4}(1 + 0{,}8\,a_i)\).</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 8, otra vez</span>Para el mismo alabeo, la red SRT tiene que encontrar ella \(a = (0;\ 0{,}36;\ 0;\ -0{,}36)\): \(f = (4{,}905;\ 6{,}318;\ 4{,}905;\ 3{,}492)\) N y \(M_x = 0{,}25\cdot(6{,}318 - 3{,}492) = 0{,}706\) N·m. Y corregirlo en cada paso según lo que mida el giróscopo.</div>
+      <div class="aparte"><span class="rotulo">Una diferencia con un autopiloto real</span>
+        <p>En nuestro simulador, el lazo de \(\boldsymbol\omega\) del paso 3 se evalúa una vez por paso de la red, a 100 Hz, con el \(\boldsymbol\omega\) verdadero. En PX4 corre en el autopiloto, más rápido que la red. Tenlo presente al leer la tabla de nuestro experimento, dos hojas más adelante.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -439,7 +1138,7 @@
       <p class="xsmall muted">Actor y crítico privilegiados, 5 semillas por variante, 400 arranques aleatorios. «Suavidad»: \(0{,}1\|\Delta a\|^2\) en el coste. Actividad: \(\sum_i|\Delta f_i|\) de los cuatro rotores por paso de 10 ms, en pesos del dron. Ruido: el de la observación realista, sin retardo. <code>figuras_a6b.py</code>, sección 3.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Retardo:</strong> 20 ms que la política no vio multiplican el error entre 4 y 13 veces en todas las variantes. Es el hilo de B4 otra vez.</li>
         <li><strong>Ruido:</strong> con el término de suavidad, la actividad de los rotores con ruido baja 1,6 veces en CTBR y 3,2 veces en SRT.</li>
         <li><strong>CTBR frente a SRT:</strong> aquí ninguno gana con claridad, y los dos sobreviven a 20 ms.</li>
@@ -450,11 +1149,40 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Acción · el término de suavidad</p>
+  <h2>Cambiar de acción cuesta: poco si es suave, mucho si es un salto</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El coste de cada paso en <code>figuras_a6b.py</code>, con \(\mathbf e\) el error de posición, \(\mathbf v\) la velocidad y \(\boldsymbol\omega\) la velocidad angular:</p>
+      \[ \text{coste}_t = \|\mathbf e\| + 0{,}1\,\|\mathbf v\| + 0{,}05\,\|\boldsymbol\omega\| + w\,\|a_t - a_{t-1}\|^2 \]
+      \[ r_t = 1 - \tanh(\text{coste}_t) - 10\cdot\text{choque} \]
+      <p>Con \(w = 0{,}1\) es la variante «+ suavidad»; con \(w = 0\), la otra. El cuadrado hace que el precio crezca con el tamaño del salto: muchos cambios pequeños cuestan poco, uno grande cuesta mucho.</p>
+      <p><strong>Actividad</strong> de los rotores (la columna de la tabla): \(\sum_i|\Delta f_i|/(m_0 g)\) por paso de 10 ms, el cambio total de empuje de los cuatro rotores en pesos del dron.</p>
+    </div>
+    <div class="stack">
+      <p>Ejemplo 9 del script, con \(w = 0{,}1\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Cambio \(\Delta a\)</th><th>\(0{,}1\|\Delta a\|^2\)</th></tr></thead>
+          <tbody>
+            <tr><td>0,1 en una componente</td><td class="n">0,001</td></tr>
+            <tr><td>0,5 en una componente</td><td class="n">0,025</td></tr>
+            <tr><td>\((1, -1, 1, -1)\): de 0 al límite en las cuatro</td><td class="n">0,400</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Para comparar: un coste total de 0,05 da \(r = 0{,}950\); si se le suman esos 0,400, \(r = 0{,}578\). Ese salto le quita 0,37 de recompensa al paso (y conmutar entre −1 y +1, con \(\Delta a = 2\), costaría cuatro veces más); una corrección de 0,1, una milésima de coste.</p>
+      <div class="callout error"><span class="tag">Lo que no dice</span>El término castiga \(\Delta a\) <em>en promedio</em> sobre los estados visitados. No dice nada de cómo responde el bucle a una perturbación: eso es la hoja siguiente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Acción · diagnóstico</p>
   <h2>Un término de suavidad no garantiza un bucle suave</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">La fila «CTBR + suavidad» tiene actividad nominal de 0,18 <em>sin ruido</em>. Diagnóstico: espectro de la acción en estacionario y autovalores de \(\partial\pi/\partial a_{t-1}\) (la acción anterior está en la observación):</p>
+      <p>La fila «CTBR + suavidad» tiene actividad nominal de 0,18 <em>sin ruido</em>. Diagnóstico: espectro de la acción en estacionario y autovalores de \(\partial\pi/\partial a_{t-1}\) (la acción anterior está en la observación):</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Variante</th><th>Mayor autovalor, por semilla</th><th>Qué pasa</th></tr></thead>
@@ -469,10 +1197,8 @@
       <p class="xsmall muted">Autovalor de mayor módulo de la submatriz 4 × 4 de la jacobiana de la política respecto a la acción anterior, en el estado final de un arranque. <code>figuras_a6b.py</code>, sección 3.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: una red que se apoya en su acción anterior</summary>
-        <p class="small">Linealiza la política: \(a_t = \kappa\,a_{t-1} + K x_t\). Con \(\kappa\to1\), \(a_t - a_{t-1} = Kx_t\): es acción <em>integral</em>, que suma 90° de retraso de fase y, con el retardo del motor, puede cerrar un ciclo límite de pocos hercios. Con \(\kappa\to-1\), el modo \(a_t = -a_{t-1}\) alterna cada paso: oscila a la frecuencia de Nyquist, 50 Hz a 100 Hz de control.</p>
-      </details>
-      <ul class="small">
+      <p><strong>Qué se mide.</strong> \(\partial\pi/\partial a_{t-1}\) es la matriz 4 × 4 de cuánto cambia cada salida de la red si cambia cada componente de la acción anterior, con el resto de la entrada fijo. Sus autovalores \(\kappa\) dicen cuánto se apoya la red en lo que mandó antes (hoja siguiente).</p>
+      <ul>
         <li>Sin el término, las redes aprenden \(\kappa&lt;0\) y una cae en un traqueteo de alta frecuencia como el que Mysore et al. describen en Neuroflight <a class="cite" data-ref="mysore2021"></a>; con él, \(\kappa&gt;0\) y algunas se vuelven integradores que oscilan despacio, y son más frágiles al retardo (6,6 % de choques).</li>
         <li>El autovalor de la red no basta para predecirlo (SRT con 0,77 no oscila): decide el bucle completo con el dron.</li>
       </ul>
@@ -482,14 +1208,88 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Acción · suavidad</p>
+  <p class="kicker">Acción · por qué oscila</p>
+  <h2>Una red que se apoya en su acción anterior: qué hace cada \(\kappa\)</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Linealiza la política alrededor del estacionario y quédate con un modo (una dirección propia de la matriz):</p>
+      \[ a_t = \kappa\,a_{t-1} + K x_t \]
+      <p>Sin perturbación (\(x_t = 0\)), \(a_t = \kappa^t a_0\): cada paso multiplica por \(\kappa\).</p>
+      <figure class="fig">
+        <svg viewBox="0 0 570 230" style="max-height:215px" role="img" aria-label="Respuesta de la acción a un impulso para kappa igual a menos 0,9, 0,5 y 0,95">
+          <line x1="34" y1="110" x2="182" y2="110" class="ln-rule"/>
+          <line x1="214" y1="110" x2="362" y2="110" class="ln-rule"/>
+          <line x1="394" y1="110" x2="542" y2="110" class="ln-rule"/>
+          <text x="108" y="24" text-anchor="middle" class="t-time t-bold" font-size="13">κ = −0,9</text>
+          <text x="288" y="24" text-anchor="middle" class="t-tesis t-bold" font-size="13">κ = 0,5</text>
+          <text x="468" y="24" text-anchor="middle" class="t-accent t-bold" font-size="13">κ = 0,95</text>
+        <line x1="40" y1="110" x2="40" y2="50.0" class="ln-time" stroke-width="2"/><circle cx="40" cy="50.0" r="3.5" class="fill-time"/>
+        <line x1="55" y1="110" x2="55" y2="164.0" class="ln-time" stroke-width="2"/><circle cx="55" cy="164.0" r="3.5" class="fill-time"/>
+        <line x1="70" y1="110" x2="70" y2="61.4" class="ln-time" stroke-width="2"/><circle cx="70" cy="61.4" r="3.5" class="fill-time"/>
+        <line x1="85" y1="110" x2="85" y2="153.7" class="ln-time" stroke-width="2"/><circle cx="85" cy="153.7" r="3.5" class="fill-time"/>
+        <line x1="100" y1="110" x2="100" y2="70.6" class="ln-time" stroke-width="2"/><circle cx="100" cy="70.6" r="3.5" class="fill-time"/>
+        <line x1="115" y1="110" x2="115" y2="145.4" class="ln-time" stroke-width="2"/><circle cx="115" cy="145.4" r="3.5" class="fill-time"/>
+        <line x1="130" y1="110" x2="130" y2="78.1" class="ln-time" stroke-width="2"/><circle cx="130" cy="78.1" r="3.5" class="fill-time"/>
+        <line x1="145" y1="110" x2="145" y2="138.7" class="ln-time" stroke-width="2"/><circle cx="145" cy="138.7" r="3.5" class="fill-time"/>
+        <line x1="160" y1="110" x2="160" y2="84.2" class="ln-time" stroke-width="2"/><circle cx="160" cy="84.2" r="3.5" class="fill-time"/>
+        <line x1="175" y1="110" x2="175" y2="133.2" class="ln-time" stroke-width="2"/><circle cx="175" cy="133.2" r="3.5" class="fill-time"/>
+        <line x1="220" y1="110" x2="220" y2="50.0" class="ln-tesis" stroke-width="2"/><circle cx="220" cy="50.0" r="3.5" class="fill-tesis"/>
+        <line x1="235" y1="110" x2="235" y2="80.0" class="ln-tesis" stroke-width="2"/><circle cx="235" cy="80.0" r="3.5" class="fill-tesis"/>
+        <line x1="250" y1="110" x2="250" y2="95.0" class="ln-tesis" stroke-width="2"/><circle cx="250" cy="95.0" r="3.5" class="fill-tesis"/>
+        <line x1="265" y1="110" x2="265" y2="102.5" class="ln-tesis" stroke-width="2"/><circle cx="265" cy="102.5" r="3.5" class="fill-tesis"/>
+        <line x1="280" y1="110" x2="280" y2="106.2" class="ln-tesis" stroke-width="2"/><circle cx="280" cy="106.2" r="3.5" class="fill-tesis"/>
+        <line x1="295" y1="110" x2="295" y2="108.1" class="ln-tesis" stroke-width="2"/><circle cx="295" cy="108.1" r="3.5" class="fill-tesis"/>
+        <line x1="310" y1="110" x2="310" y2="109.1" class="ln-tesis" stroke-width="2"/><circle cx="310" cy="109.1" r="3.5" class="fill-tesis"/>
+        <line x1="325" y1="110" x2="325" y2="109.5" class="ln-tesis" stroke-width="2"/><circle cx="325" cy="109.5" r="3.5" class="fill-tesis"/>
+        <line x1="340" y1="110" x2="340" y2="109.8" class="ln-tesis" stroke-width="2"/><circle cx="340" cy="109.8" r="3.5" class="fill-tesis"/>
+        <line x1="355" y1="110" x2="355" y2="109.9" class="ln-tesis" stroke-width="2"/><circle cx="355" cy="109.9" r="3.5" class="fill-tesis"/>
+        <line x1="400" y1="110" x2="400" y2="50.0" class="ln-accent" stroke-width="2"/><circle cx="400" cy="50.0" r="3.5" class="fill-accent"/>
+        <line x1="415" y1="110" x2="415" y2="53.0" class="ln-accent" stroke-width="2"/><circle cx="415" cy="53.0" r="3.5" class="fill-accent"/>
+        <line x1="430" y1="110" x2="430" y2="55.9" class="ln-accent" stroke-width="2"/><circle cx="430" cy="55.9" r="3.5" class="fill-accent"/>
+        <line x1="445" y1="110" x2="445" y2="58.6" class="ln-accent" stroke-width="2"/><circle cx="445" cy="58.6" r="3.5" class="fill-accent"/>
+        <line x1="460" y1="110" x2="460" y2="61.1" class="ln-accent" stroke-width="2"/><circle cx="460" cy="61.1" r="3.5" class="fill-accent"/>
+        <line x1="475" y1="110" x2="475" y2="63.6" class="ln-accent" stroke-width="2"/><circle cx="475" cy="63.6" r="3.5" class="fill-accent"/>
+        <line x1="490" y1="110" x2="490" y2="65.9" class="ln-accent" stroke-width="2"/><circle cx="490" cy="65.9" r="3.5" class="fill-accent"/>
+        <line x1="505" y1="110" x2="505" y2="68.1" class="ln-accent" stroke-width="2"/><circle cx="505" cy="68.1" r="3.5" class="fill-accent"/>
+        <line x1="520" y1="110" x2="520" y2="70.2" class="ln-accent" stroke-width="2"/><circle cx="520" cy="70.2" r="3.5" class="fill-accent"/>
+        <line x1="535" y1="110" x2="535" y2="72.2" class="ln-accent" stroke-width="2"/><circle cx="535" cy="72.2" r="3.5" class="fill-accent"/>
+          <text x="108" y="196" text-anchor="middle" class="t-time" font-size="12">cambia de signo cada paso</text>
+          <text x="108" y="212" text-anchor="middle" class="t-time" font-size="12">periodo 20 ms: 50 Hz</text>
+          <text x="288" y="196" text-anchor="middle" class="t-tesis" font-size="12">se apaga en pocos pasos</text>
+          <text x="468" y="196" text-anchor="middle" class="t-accent" font-size="12">se apaga despacio:</text>
+          <text x="468" y="212" text-anchor="middle" class="t-accent" font-size="12">casi un integrador</text>
+        </svg>
+        <figcaption>\(a_t = \kappa^t\) durante 10 pasos de 10 ms. Ejemplo 10 del script.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>\(\kappa\) cerca de −1:</strong> la acción alterna de signo cada paso; un ciclo dura 2 pasos, 20 ms: 50 Hz, la frecuencia de Nyquist a 100 Hz de control. Con −0,9 queda un 12 % tras 200 ms; con −0,99, un 82 %. Es el traqueteo de la tabla.</li>
+        <li><strong>\(\kappa\) cerca de +1:</strong> \(a_t - a_{t-1}\approx Kx_t\), acción <em>integral</em>. Suma 90° de retraso de fase y, con el retardo del motor, puede cerrar un ciclo límite de pocos hercios.</li>
+        <li><strong>\(|\kappa| > 1\)</strong> (el 1,32): la recursión sola crecería; la paran el recorte de la acción y la realimentación del dron.</li>
+        <li><strong>Pares complejos</strong> \(\rho\,e^{\pm j\varphi}\): giran \(\varphi\) por paso, \(\varphi/(2\pi\cdot 10\text{ ms})\) Hz, y se apagan como \(\rho^t\). El +0,32 ± 0,05j de una semilla gira a 2,5 Hz, pero queda un 3 % tras 3 pasos: no importa.</li>
+      </ul>
+      <p>Con la matriz 4 × 4, cada autovalor es el \(\kappa\) de un modo; manda el de mayor módulo, el que más tarda en apagarse.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Acción · suavidad con CAPS</p>
   <h2>Suavizar en la pérdida, no con un filtro detrás de la red</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Neuroflight, una política de PPO en el firmware de un cuadricóptero, volaba con oscilaciones de alta frecuencia en el mando que, según Mysore et al., harían recalentarse los motores y limitaban el tiempo de vuelo. CAPS añade dos términos al objetivo <a class="cite" data-ref="mysore2021"></a>:</p>
+      <p>Neuroflight, una política de PPO en el firmware de un cuadricóptero, volaba con oscilaciones de alta frecuencia en el mando que, según Mysore et al., harían recalentarse los motores y limitaban el tiempo de vuelo. CAPS añade dos términos al objetivo <a class="cite" data-ref="mysore2021"></a>:</p>
       \[ J^{\text{CAPS}} = J - \lambda_T L_T - \lambda_S L_S, \]
       \[ L_T = \|\pi(s_t) - \pi(s_{t+1})\|,\quad L_S = \|\pi(s) - \pi(\bar s)\|, \]
-      <p class="small">con \(\bar s\sim\mathcal N(s,\sigma)\) y \(\sigma\) el ruido de medida esperado: el término temporal pide acciones parecidas en pasos consecutivos; el espacial, en estados indistinguibles por el ruido.</p>
+      <p>con \(\bar s\sim\mathcal N(s,\sigma)\) y \(\sigma\) el ruido de medida esperado.</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>\(L_T\), temporal:</strong> acciones parecidas en pasos consecutivos. Es nuestro \(w\|\Delta a\|^2\), pero sobre la salida de la red en dos estados seguidos.</li>
+        <li><strong>\(L_S\), espacial:</strong> acciones parecidas en estados que el ruido no deja distinguir. Ataca la causa del traqueteo con ruido: si dos medidas casi iguales dan acciones muy distintas, el ruido se convierte en mando.</li>
+        <li>\(J\) es el objetivo de PPO; \(\lambda_T\) y \(\lambda_S\) fijan cuánto se cambia seguimiento por suavidad.</li>
+      </ul>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Vuelo real</th><th>Error (°/s)</th><th>Corriente (A)</th></tr></thead>
@@ -501,6 +1301,25 @@
         </table>
       </div>
       <p class="xsmall muted">Tabla II de Mysore et al. <a class="cite" data-ref="mysore2021"></a>: casi un 80 % menos de corriente que Neuroflight y un 96 % más de suavidad, a cambio de peor seguimiento.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Acción · el filtro es un retardo</p>
+  <h2>Un filtro paso bajo detrás de la red añade casi \(\tau\) de retardo</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\tau\,\dot y + y = u\ \Rightarrow\ H(j\omega) = \dfrac{1}{1 + j\omega\tau}\)</td><td>Filtro de primer orden; su respuesta a una sinusoide de frecuencia angular \(\omega\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(u = \sin\omega t\ \Rightarrow\ y = |H|\sin(\omega t - \varphi)\), \(\varphi = \arctan(\omega\tau)\)</td><td>Fase de \(1/(1 + j\omega\tau)\); \(j\) es la unidad imaginaria</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\sin(\omega t - \varphi) = \sin\big(\omega(t - \varphi/\omega)\big)\)</td><td>Un desfase \(\varphi\) es un retardo de \(\varphi/\omega\) segundos</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\omega\tau\ll1\): \(\arctan(\omega\tau)\approx\omega\tau\ \Rightarrow\) retardo \(\approx\tau\)</td><td>A baja frecuencia, justo donde vuela el dron</td></tr>
+        </table>
+      </div>
+      <p>Ejemplo 11, con \(\tau = 20\) ms (corte en 8 Hz): a 1 Hz, \(\omega\tau = 0{,}126\) y el retardo es 19,9 ms; a 5 Hz, \(\omega\tau = 0{,}628\), \(\varphi = 0{,}561\) rad y 17,9 ms, con ganancia 0,847; a 10 Hz, 14,3 ms. Una media móvil de 5 muestras a 100 Hz retrasa \((5-1)/2\cdot10 = 20\) ms a todas las frecuencias.</p>
     </div>
     <div class="stack">
       <figure class="fig">
@@ -525,10 +1344,7 @@
         </svg>
         <figcaption>Retardo que añade un filtro paso bajo de primer orden, \(\arctan(\omega\tau)/\omega\). <code>figuras_a6b.py</code>, sección 4.</figcaption>
       </figure>
-      <details class="deriv"><summary>Derivación: un filtro es un retardo</summary>
-        <p class="small">\(H(j\omega) = 1/(1 + j\omega\tau)\) desfasa \(\arctan(\omega\tau)\); a una sinusoide de frecuencia \(\omega\) eso equivale a retrasarla \(\arctan(\omega\tau)/\omega\), que tiende a \(\tau\) cuando \(\omega\tau\ll1\). Una media móvil de 5 muestras a 100 Hz retrasa 20 ms a todas las frecuencias.</p>
-      </details>
-      <div class="callout error"><span class="tag">La trampa</span>Con \(\tau = 20\) ms, casi 20 ms más en la banda en la que vuela el dron: el retardo no modelado que multiplicó el error entre 4 y 13 veces dos hojas atrás. Si filtras, entrena con el filtro.</div>
+      <div class="callout error"><span class="tag">La trampa</span>Con \(\tau = 20\) ms, casi 20 ms más en la banda en la que vuela el dron: el retardo no modelado que multiplicó el error entre 4 y 13 veces en nuestro experimento (hoja 36). Si filtras, entrena con el filtro.</div>
     </div>
   </div>
 </section>
@@ -545,7 +1361,7 @@
   <h2>CTBR en PX4: velocidades angulares y empuje normalizado</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">En modo <em>offboard</em>, un ordenador de a bordo manda consignas por MAVLink o ROS 2 <a class="cite" data-ref="px4offboard"></a>:</p>
+      <p>En modo <em>offboard</em>, un ordenador de a bordo manda consignas por MAVLink o ROS 2 <a class="cite" data-ref="px4offboard"></a>:</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Campo de <code>OffboardControlMode</code></th><th>Mensaje de consigna</th></tr></thead>
@@ -558,11 +1374,52 @@
           </tbody>
         </table>
       </div>
-      <p class="small"><code>VehicleRatesSetpoint</code> lleva las velocidades de alabeo, cabeceo y guiñada en rad/s, en ejes FRD, y un empuje <em>normalizado</em> en \([-1, 1]\); en un multirrotor, <code>thrust_body[2]</code> es menos la demanda de empuje <a class="cite" data-ref="px4offboard"></a>.</p>
     </div>
     <div class="stack">
-      <div class="callout error"><span class="tag">Tres trampas</span>(1) <strong>Marcos:</strong> el simulador de este curso usa \(z\) hacia arriba; PX4, NED y FRD. Un signo cambiado en la guiñada o el empuje es un choque. (2) <strong>Escala:</strong> la red piensa en newtons y PX4 en empuje normalizado; la relación depende de motor, hélice y batería, y hay que identificarla (B2). (3) <strong>Estimación:</strong> el modo exige una estimación de posición o actitud; tu política recibe la del estimador de PX4 (EKF2; el filtrado, en A4a), no el estado verdadero.</div>
+      <p><code>VehicleRatesSetpoint</code> lleva las velocidades de alabeo, cabeceo y guiñada en rad/s, en ejes FRD, y un empuje <em>normalizado</em> en \([-1, 1]\); en un multirrotor, <code>thrust_body[2]</code> es menos la demanda de empuje <a class="cite" data-ref="px4offboard"></a>.</p>
       <div class="callout clave"><span class="tag">Prueba de vida</span>PX4 exige un flujo continuo de al menos 2 Hz antes de entrar en offboard; si se corta durante más de <code>COM_OF_LOSS_T</code>, ejecuta la acción de fallo configurada en <code>COM_OBL_RC_ACT</code> <a class="cite" data-ref="px4offboard"></a>. Tu política a 100 Hz debe vigilar sus propios tiempos (B4).</div>
+      <p class="small muted">Dónde entra cada mensaje en la cascada del autopiloto: hoja 32.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Despliegue · tres trampas</p>
+  <h2>Marcos, escala y estimación: tres conversiones que hay que escribir</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 210" style="max-height:200px" role="img" aria-label="Ejes del cuerpo en el simulador, con z hacia arriba, y en PX4, con z hacia abajo">
+          <defs>
+            <marker id="a6bfr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+            <marker id="a6bfra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          </defs>
+          <text x="130" y="22" text-anchor="middle" class="t-bold" font-size="13">simulador: FLU</text>
+          <path d="M130,120 L210,120" class="ln-accent" stroke-width="2" fill="none" marker-end="url(#a6bfra)"/>
+          <path d="M130,120 L80,160" class="ln" stroke-width="2" fill="none" marker-end="url(#a6bfr)"/>
+          <path d="M130,120 L130,45" class="ln" stroke-width="2" fill="none" marker-end="url(#a6bfr)"/>
+          <text x="214" y="116" class="t-accent t-mono" font-size="12">x morro</text>
+          <text x="40" y="178" class="t-mono t-muted" font-size="12">y izquierda</text>
+          <text x="138" y="50" class="t-mono t-muted" font-size="12">z arriba</text>
+          <text x="390" y="22" text-anchor="middle" class="t-bold" font-size="13">PX4: FRD</text>
+          <path d="M390,90 L470,90" class="ln-accent" stroke-width="2" fill="none" marker-end="url(#a6bfra)"/>
+          <path d="M390,90 L440,50" class="ln" stroke-width="2" fill="none" marker-end="url(#a6bfr)"/>
+          <path d="M390,90 L390,165" class="ln" stroke-width="2" fill="none" marker-end="url(#a6bfr)"/>
+          <text x="474" y="94" class="t-accent t-mono" font-size="12">x morro</text>
+          <text x="446" y="48" class="t-mono t-muted" font-size="12">y derecha</text>
+          <text x="398" y="178" class="t-mono t-muted" font-size="12">z abajo</text>
+          <text x="260" y="204" text-anchor="middle" class="t-faint" font-size="12">mismo morro; y y z cambian de signo: (x, y, z) → (x, −y, −z)</text>
+        </svg>
+        <figcaption>Suponiendo \(x\) hacia el morro en el simulador (que solo fija \(z\) hacia arriba).</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Ejemplo 12 del script</span>La acción \(a = (0;\ 0{,}5;\ 0{,}25;\ 0{,}5)\) pide \(\boldsymbol\omega_d = (2, 1, 1)\) rad/s en FLU; en FRD, \((2, -1, -1)\). Una posición \((1, 2, 3)\) con \(z\) arriba (ENU) es \((2, 1, -3)\) en NED.</div>
+    </div>
+    <div class="stack">
+      <ol>
+        <li><strong>Marcos:</strong> el simulador de este curso usa \(z\) hacia arriba; PX4, NED y FRD. Un signo cambiado en la guiñada o el empuje es un choque.</li>
+        <li><strong>Escala:</strong> la red piensa en newtons y PX4 en empuje normalizado. Si la relación fuera lineal con el máximo de nuestro simulador (\(4m_0g = 78{,}48\) N), el estacionario sería \(19{,}62/78{,}48 = 0{,}25\) y <code>thrust_body</code> \(= (0, 0, -0{,}25)\). En un dron real depende de motor, hélice y batería, y hay que identificarla (B2).</li>
+        <li><strong>Estimación:</strong> el modo exige una estimación de posición o actitud; tu política recibe la del estimador de PX4 (EKF2; el filtrado, en A4a), no el estado verdadero.</li>
+      </ol>
     </div>
   </div>
 </section>
@@ -572,7 +1429,7 @@
   <h2>Antes de que la política salga del simulador</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
+      <ol>
         <li><strong>Tiempo:</strong> misma frecuencia que en entrenamiento, retardo medido de punta a punta y dentro del simulador, marcas de tiempo en todo (B4).</li>
         <li><strong>Entrada:</strong> normalización y escalas congeladas junto con los pesos; mismos marcos y unidades; mismo orden de la historia.</li>
         <li><strong>Salida:</strong> recortes de empuje y velocidad angular en el autopiloto, no solo en la red.</li>
@@ -624,6 +1481,7 @@
   <h2>Lo que te llevas de A6b</h2>
   <ul class="body" style="font-size:19px; gap:9px;">
     <li>El simulador sabe más que el robot: úsalo en entrenamiento, nunca en la entrada del actor.</li>
+    <li>Sortear \(\xi\) en cada reinicio hace que PPO maximice el rendimiento medio sobre los drones posibles; el actor, que no ve \(\xi\), aprende un compromiso o lo deduce de su historia.</li>
     <li>Crítico asimétrico: una línea base que ve el estado no sesga el gradiente; mejora mucho la estimación de ventajas.</li>
     <li>\(V(s)\) está sesgado si lo oculto solo se descubre actuando; \(V(h,s)\) no.</li>
     <li>Clonar al maestro: error \(T^2\varepsilon\) y una pérdida baja que no predice nada; DAgger: \(uT\varepsilon\).</li>
@@ -801,128 +1659,153 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado verdadero, \(o\) observación, \(h_t\) historia de observaciones y acciones, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor, \(\hat A_t\) ventaja estimada con GAE.</p>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado verdadero, \(o\) observación, \(h_t\) historia de observaciones y acciones, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor, \(\hat A_t\) ventaja estimada con GAE. Cada parte empieza con su hoja de notación (hojas 6, 18 y 30).</p>
 <dl>
-<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza (media). El subíndice o la condición indican sobre qué se promedia, p. ej. \(\mathbb E_{s\mid h}\).</dd>
-<dt>\(\mid\)</dt><dd data-hojas="7">Condicionado a: \(\pi_\theta(a\mid o)\) es la probabilidad de \(a\) dada la observación \(o\).</dd>
-<dt>\(\sim\)</dt><dd data-hojas="7">«Se distribuye según», p. ej. \(a_t\sim\pi_\theta(\cdot\mid h_t)\).</dd>
-<dt>\(\nabla_\theta\)</dt><dd data-hojas="7">Gradiente respecto a los parámetros de la política.</dd>
-<dt>\(\hat{\ }\)</dt><dd data-hojas="7">Sombrero: valor estimado (\(\hat A_t\)) o política aprendida por el alumno (\(\hat\pi\)).</dd>
-<dt>\(\bar{\ }\)</dt><dd data-hojas="21">Barra: valor perturbado, p. ej. \(\bar s\) es el estado con ruido añadido.</dd>
-<dt>\(^*\), \(^\star\)</dt><dd data-hojas="11,15">Asterisco: política óptima o del maestro, \(\pi^*\); \(\pi^\star(o)\) es el óptimo del alumno.</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="19">Norma euclídea de un vector, p. ej. \(\|\Delta a\|^2\).</dd>
-<dt>\(\arg\min\)</dt><dd data-hojas="15">Argumento que minimiza la expresión; da el óptimo del alumno.</dd>
-<dt>\(\approx\)</dt><dd data-hojas="15">Aproximadamente igual.</dd>
-<dt>\(\mathcal N\)</dt><dd data-hojas="21">Distribución gaussiana: \(\bar s\sim\mathcal N(s,\sigma)\).</dd>
-<dt>\(\partial\)</dt><dd data-hojas="20">Derivada parcial; aparece en la jacobiana de la política respecto a la acción anterior.</dd>
-<dt>\(O(1)\)</dt><dd data-hojas="11">Término acotado por una constante, en la cota de DAgger.</dd>
-<dt>\(\int\)</dt><dd data-hojas="7">Integral sobre acciones.</dd>
-<dt>\(\sum\)</dt><dd data-hojas="11">Suma sobre pasos de tiempo.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="9,12">Esperanza (media). El subíndice o la condición indican sobre qué se promedia, p. ej. \(\mathbb E_{s\mid h}\) o \(\mathbb E_{\xi\sim p(\xi)}\).</dd>
+<dt>\(\mid\)</dt><dd data-hojas="6">Condicionado a: \(\pi_\theta(a\mid h)\) es la probabilidad de \(a\) dada la historia \(h\).</dd>
+<dt>\(\sim\)</dt><dd data-hojas="8,12">«Se distribuye según», p. ej. \(\xi\sim p(\xi)\) o \(a\sim\pi_\theta(\cdot\mid h_t)\).</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="9,12">Gradiente respecto a los parámetros de la política.</dd>
+<dt>\(\hat{\ }\)</dt><dd data-hojas="11,18">Sombrero: valor estimado (\(\hat A_t\), \(\hat g_i\)) o política aprendida por el alumno (\(\hat\pi\)).</dd>
+<dt>\(\bar{\ }\)</dt><dd data-hojas="40">Barra: valor perturbado, p. ej. \(\bar s\) es el estado con ruido añadido.</dd>
+<dt>\(^*\), \(^\star\)</dt><dd data-hojas="18,28">Asterisco: política del maestro, \(\pi^*\), y su acción \(a^*\); \(\pi^\star(o)\) es el óptimo del alumno. (\(F^*\) en la hoja 10: el empuje óptimo.)</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="37">Norma euclídea de un vector, p. ej. \(\|a_t - a_{t-1}\|^2\).</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="20,28">Argumento que minimiza la expresión: la política del alumno que mejor imita.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="9">Aproximadamente igual.</dd>
+<dt>\(\mathcal N\)</dt><dd data-hojas="12,40">Distribución gaussiana: \(a\sim\mathcal N(1;\ 0{,}5^2)\) en el ejemplo 3; \(\bar s\sim\mathcal N(s,\sigma)\) en CAPS.</dd>
+<dt>\(\mathcal U\)</dt><dd data-hojas="10">Distribución uniforme: \(m\sim\mathcal U(1{,}6;\ 2{,}4)\) kg.</dd>
+<dt>\(\operatorname{Var}\)</dt><dd data-hojas="10">Varianza; la de una uniforme de anchura \(w\) es \(w^2/12\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="38">Derivada parcial; aparece en la jacobiana de la política respecto a la acción anterior.</dd>
+<dt>\(O(1)\)</dt><dd data-hojas="23">Término acotado por una constante, en la cota de DAgger.</dd>
+<dt>\(\int\)</dt><dd data-hojas="9,12">Integral sobre parámetros (\(d\xi\)) o sobre acciones (\(da\)).</dd>
+<dt>\(\sum\)</dt><dd data-hojas="9,21">Suma sobre entornos o sobre pasos de tiempo.</dd>
+<dt>\(\mathrm{clip}\)</dt><dd data-hojas="33">Recorte a un intervalo: \(\mathrm{clip}(f_i, 0, m_0g)\).</dd>
+<dt>\(\tanh\)</dt><dd data-hojas="6,37">Tangente hiperbólica; acota el coste en la recompensa \(r_t = 1 - \tanh(\text{coste}_t) - 10\cdot\text{choque}\).</dd>
 </dl>
 
 <h3>Información privilegiada (parte 1)</h3>
 <dl>
-<dt>\(s\)</dt><dd data-hojas="9">Estado verdadero del simulador (posición, velocidad, actitud y parámetros físicos). El actor no lo verá en vuelo.</dd>
-<dt>\(o\)</dt><dd data-hojas="7">Observación realista del actor: con ruido, retardo y sin masa ni velocidad exactas.</dd>
-<dt>\(h_t\)</dt><dd data-hojas="7">Historia de observaciones (y acciones) hasta el paso \(t\), que el actor puede usar.</dd>
-<dt>\(h\)</dt><dd data-hojas="9">Historia, en las funciones de valor \(V^\pi(h)\) y \(V^\pi(h,s)\).</dd>
-<dt>\(a\), \(a_t\)</dt><dd data-hojas="7">Acción de la política en el paso \(t\).</dd>
-<dt>\(\pi_\theta(a\mid o)\)</dt><dd data-hojas="7">El actor: política con parámetros \(\theta\) que decide a partir de la observación. Es lo que se despliega.</dd>
-<dt>\(\pi_\theta(a_t\mid h_t)\)</dt><dd data-hojas="7">El actor condicionado a la historia de observaciones.</dd>
-<dt>\(\hat A_t\)</dt><dd data-hojas="7">Ventaja estimada con GAE (A6a). El crítico solo interviene aquí.</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="7">Parámetro de GAE. Con 1, el crítico es solo línea base; con menos de 1, predice el futuro y puede sesgar.</dd>
-<dt>\(b(s_t,h_t)\)</dt><dd data-hojas="7">Línea base cualquiera, función del estado y la historia pero no de la acción: su término del gradiente vale cero. (En la tesis, \(b\) también es el belief, ver más abajo.)</dd>
-<dt>\(V(s)\)</dt><dd data-hojas="4">Crítico que solo ve el estado verdadero. Está sesgado si lo oculto solo se descubre actuando.</dd>
-<dt>\(V^\pi(s)\)</dt><dd data-hojas="9">Valor del estado \(s\) bajo la política \(\pi\), invariante en el tiempo.</dd>
-<dt>\(V^\pi(h)\)</dt><dd data-hojas="9">Valor de la historia \(h\): lo que realmente se espera obtener sabiendo lo que el agente sabe.</dd>
-<dt>\(V^\pi(h,s)\)</dt><dd data-hojas="9">Crítico con historia y estado: insesgado para cualquier problema y política (teorema 5.1 de Baisero y Amato).</dd>
-<dt>\(V(b,s)\)</dt><dd data-hojas="26">Crítico con belief además del estado, propuesto para tareas de búsqueda (con historia: \(V(h,s)\), hoja 9).</dd>
-<dt>\(b\)</dt><dd data-hojas="26">Belief: distribución sobre el estado oculto dado lo que el agente sabe. En la tesis, entrada del crítico \(V(b,s)\).</dd>
-<dt>\(V(s{=}\text{izq})\)</dt><dd data-hojas="9">Valor del estado «objetivo a la izquierda» en el ejemplo de las dos puertas; con \(V(s{=}\text{der})\) vale 0,75.</dd>
-<dt>\(V(o)\)</dt><dd data-hojas="28">Crítico que solo ve la última observación (opción de la autoevaluación).</dd>
+<dt>\(s_t\)</dt><dd data-hojas="6,7">Estado verdadero del simulador en el paso \(t\) (10 ms): error de posición, velocidad, rotación, giróscopo, acción anterior y \(\xi\), 25 números. El actor no lo verá en vuelo.</dd>
+<dt>\(\xi\)</dt><dd data-hojas="6,8">Parámetros físicos del dron sorteados en cada entorno: \((m/m_0,\ k_T,\ \tau_m)\).</dd>
+<dt>\(p(\xi)\)</dt><dd data-hojas="8,9">Distribución de la que se sortean los parámetros: uniformes e independientes, en cada reinicio.</dd>
+<dt>\(m/m_0\), \(m_0\)</dt><dd data-hojas="8,33">Factor de masa (0,8 a 1,2) y masa nominal, 2 kg.</dd>
+<dt>\(k_T\)</dt><dd data-hojas="8,33">Ganancia de empuje sorteada (0,9 a 1,1): multiplica el empuje que se manda a cada rotor.</dd>
+<dt>\(\tau_m\)</dt><dd data-hojas="8,33">Constante de tiempo del motor, sorteada entre 20 y 60 ms. (No es la \(\tau\) del filtro.)</dd>
+<dt>\(J(\theta;\xi)\)</dt><dd data-hojas="8,9">Retorno esperado de la política \(\pi_\theta\) en el dron de parámetros \(\xi\).</dd>
+<dt>\(J(\theta)\)</dt><dd data-hojas="8,9">Rendimiento medio sobre la distribución de drones, \(\mathbb E_{\xi\sim p(\xi)}[J(\theta;\xi)]\): lo que maximiza la aleatorización de dominio. (En la parte 2, \(J\) es un coste.)</dd>
+<dt>\(\hat g_i\)</dt><dd data-hojas="9,8">Gradiente de la política calculado con los datos del entorno \(i\); la media de los \(N\) es un estimador de Monte Carlo de \(\nabla_\theta J(\theta)\).</dd>
+<dt>\(N\) (entornos)</dt><dd data-hojas="9">Número de entornos en paralelo, 4096. (En DAgger, \(N\) es el número de iteraciones.)</dd>
+<dt>\(F\), \(F^*\)</dt><dd data-hojas="10">Empuje colectivo (N) y, en el ejemplo, el mejor empuje constante para todas las masas: \(F^* = g\,\mathbb E[m] = 19{,}62\) N.</dd>
+<dt>\(m\), \(g\)</dt><dd data-hojas="10">Masa del dron (kg) y gravedad, 9,81 m/s².</dd>
+<dt>\(o_t\)</dt><dd data-hojas="6,7">Observación realista del actor: posición retrasada 40 ms y con ruido, rotación y giróscopo con ruido, acción anterior; 19 números, sin velocidad ni \(\xi\).</dd>
+<dt>\(h_t\)</dt><dd data-hojas="6,11">Historia del actor, \((o_{t-3},\dots,o_t)\): 76 números.</dd>
+<dt>\(a_t\), \(r_t\)</dt><dd data-hojas="6,11">Acción y recompensa del paso \(t\).</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6,11">Descuento, 0,99.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="11,13">Parámetro de GAE, 0,95. Con 1, el crítico es solo línea base; con menos de 1, predice el futuro y puede sesgar.</dd>
+<dt>\(\pi_\theta(a\mid h)\)</dt><dd data-hojas="6,7">El actor: política con parámetros \(\theta\) que decide con la historia realista. Es lo que se despliega.</dd>
+<dt>\(V(h)\)</dt><dd data-hojas="6">Crítico simétrico: ve lo mismo que el actor.</dd>
+<dt>\(V(s)\)</dt><dd data-hojas="6,14">Crítico asimétrico: ve el estado verdadero y los parámetros. Está sesgado si lo oculto solo se descubre actuando.</dd>
+<dt>\(G_t\)</dt><dd data-hojas="12,13">Retorno desde el paso \(t\): \(\sum_l\gamma^l r_{t+l}\).</dd>
+<dt>\(\delta_t\)</dt><dd data-hojas="11,13">Error de diferencia temporal: \(r_t + \gamma V(s_{t+1}) - V(s_t)\).</dd>
+<dt>\(\hat A_t\)</dt><dd data-hojas="11,13">Ventaja estimada con GAE, \(\sum_l(\gamma\lambda)^l\delta_{t+l}\). El crítico solo interviene aquí.</dd>
+<dt>\(b(s_t,h_t)\)</dt><dd data-hojas="12">Línea base cualquiera, función del estado y la historia pero no de la acción: su término del gradiente vale cero. (En la tesis, \(b\) también es el belief, ver más abajo.)</dd>
+<dt>\(V^\pi(s)\)</dt><dd data-hojas="15">Valor del estado \(s\) bajo la política \(\pi\), invariante en el tiempo: promedia sobre todas las historias que llegan a \(s\).</dd>
+<dt>\(V^\pi(h)\)</dt><dd data-hojas="15">Valor de la historia \(h\): lo que realmente se espera obtener sabiendo lo que el agente sabe.</dd>
+<dt>\(V^\pi(h,s)\)</dt><dd data-hojas="15,16">Crítico con historia y estado: insesgado para cualquier problema y política (teorema 5.1 de Baisero y Amato).</dd>
+<dt>\(h'\)</dt><dd data-hojas="15">Una historia cualquiera que acaba en \(s\), distinta en general de la del agente.</dd>
+<dt>\(V(b, s)\)</dt><dd data-hojas="47">Crítico con belief además del estado, propuesto para tareas de búsqueda (con historia: \(V(h,s)\), hojas 15–16).</dd>
+<dt>\(b\)</dt><dd data-hojas="47">Belief: distribución sobre el estado oculto dado lo que el agente sabe. En la tesis, entrada del crítico \(V(b,s)\).</dd>
+<dt>\(V(o)\)</dt><dd data-hojas="49">Crítico que solo ve la última observación (opción de la autoevaluación).</dd>
 </dl>
 
 <h3>Maestro y alumno (parte 2)</h3>
 <dl>
-<dt>\(\pi^*\)</dt><dd data-hojas="11">Política del maestro, que ve el estado y los parámetros verdaderos.</dd>
-<dt>\(\hat\pi\), \(\hat\pi_i\)</dt><dd data-hojas="11">Política del alumno, que solo ve la observación realista; \(\hat\pi_i\) es la de la iteración \(i\) de DAgger.</dd>
-<dt>\(J(\pi)\)</dt><dd data-hojas="11">Coste acumulado de la política \(\pi\) en el horizonte \(T\) (menor es mejor, en la cota de clonación).</dd>
-<dt>\(T\)</dt><dd data-hojas="11">Horizonte del episodio en pasos.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="11">Error por paso del alumno respecto al maestro, medido en la distribución de estados de entrenamiento. (En A6a, \(\varepsilon\) era el recorte de PPO.)</dd>
-<dt>\(\varepsilon_N\)</dt><dd data-hojas="11">Error por paso tras \(N\) iteraciones de DAgger, medido en los estados del alumno.</dd>
-<dt>\(N\)</dt><dd data-hojas="11">Número de iteraciones de DAgger.</dd>
-<dt>\(u\)</dt><dd data-hojas="11">Cuánto puede empeorar el coste futuro del maestro tras una acción equivocada; aparece como factor en \(uT\varepsilon\).</dd>
-<dt>\(T^2\varepsilon\)</dt><dd data-hojas="11">Cota de la clonación de comportamiento: los errores se acumulan cuadráticamente con el horizonte.</dd>
-<dt>\(uT\varepsilon_N\)</dt><dd data-hojas="11">Cota de DAgger: crece solo linealmente con el horizonte.</dd>
-<dt>\(\beta_i\)</dt><dd data-hojas="11">Mezcla de DAgger: probabilidad de usar al maestro en la iteración \(i\); \(\pi_i=\beta_i\pi^*+(1-\beta_i)\hat\pi_i\), con \(\beta_1=1\) y después 0.</dd>
-<dt>\(i\)</dt><dd data-hojas="11">Índice de iteración de DAgger (o del peldaño \(i\) de los cuatro rotores, en la hoja 19).</dd>
-<dt>\(d^t_\pi\)</dt><dd data-hojas="11">Distribución de estados visitados en el paso \(t\) por la política \(\pi\).</dd>
-<dt>\(Q^*_t(s,a)\)</dt><dd data-hojas="11">Valor de acción del maestro desde el paso \(t\) al final.</dd>
-<dt>\(V^*_t(s)\)</dt><dd data-hojas="11">Valor del maestro en el estado \(s\) desde el paso \(t\).</dd>
-<dt>\(\pi^\star(o)\)</dt><dd data-hojas="15">Política óptima del alumno con pérdida cuadrática: la esperanza de la acción del maestro dada la observación.</dd>
-<dt>\(\mathbb E\big[\pi^*(s)\mid o\big]\)</dt><dd data-hojas="15">Acción media del maestro entre los estados compatibles con \(o\). Si el maestro usa algo que \(o\) no revela, aparece la brecha de imitación.</dd>
-<dt>\(\pm1\)</dt><dd data-hojas="15">Acción del maestro (izquierda o derecha) en el ejemplo de la brecha: el alumno aprende la media, 0.</dd>
+<dt>\(\pi^*\)</dt><dd data-hojas="18,19">Política del maestro, que ve el estado y los parámetros verdaderos.</dd>
+<dt>\(\hat\pi\), \(\hat\pi_i\)</dt><dd data-hojas="18,22">Política del alumno, que solo ve la historia realista; \(\hat\pi_i\) es la de la iteración \(i\) de DAgger.</dd>
+<dt>\(a^*\)</dt><dd data-hojas="19,22">Etiqueta: la acción que el maestro haría en el estado visitado, \(\pi^*(s)\).</dd>
+<dt>\(d^t_\pi\), \(d_\pi\)</dt><dd data-hojas="18,21">Distribución de los estados visitados en el paso \(t\) por la política \(\pi\), y su media sobre \(t\).</dd>
+<dt>\(C(s,a)\), \(J(\pi)\)</dt><dd data-hojas="18,21">Coste por paso, entre 0 y 1, y coste total en el horizonte \(T\) (menor es mejor, a diferencia de la parte 1).</dd>
+<dt>\(T\)</dt><dd data-hojas="18,21">Horizonte del episodio en pasos. (En A6a, pasos por tramo; el empuje se llama \(F\).)</dd>
+<dt>\(\ell\), \(\varepsilon\)</dt><dd data-hojas="18,21">Pérdida de imitación en un estado y su media: en la teoría, frecuencia con la que el alumno no hace lo del maestro. (En A6a, \(\varepsilon\) era el recorte de PPO.)</dd>
+<dt>\(\varepsilon_t\)</dt><dd data-hojas="21">Probabilidad de error del alumno en el paso \(t\), en los estados del maestro.</dd>
+<dt>\(\varepsilon_N\)</dt><dd data-hojas="23">Error por paso tras \(N\) iteraciones de DAgger, medido en los estados de los alumnos.</dd>
+<dt>\(N\) (iteraciones)</dt><dd data-hojas="23">Número de iteraciones de DAgger (40 en el experimento).</dd>
+<dt>\(u\)</dt><dd data-hojas="18,23">Cota de \(Q^*_t(s,a) - V^*_t(s)\): cuánto sube el coste si se hace otra cosa una vez y después se sigue al maestro.</dd>
+<dt>\(Q^*_t\), \(V^*_t\)</dt><dd data-hojas="18,23">Coste del maestro desde el paso \(t\) hasta el final, haciendo primero \(a\) o lo que él haría.</dd>
+<dt>\(T^2\varepsilon\)</dt><dd data-hojas="20,21">Cota de la clonación de comportamiento: los errores se acumulan cuadráticamente con el horizonte.</dd>
+<dt>\(uT\varepsilon_N\)</dt><dd data-hojas="23">Cota de DAgger: crece solo linealmente con el horizonte.</dd>
+<dt>\(\beta_i\)</dt><dd data-hojas="18,22">Mezcla de DAgger: probabilidad de que vuele el maestro en la iteración \(i\); \(\pi_i=\beta_i\pi^*+(1-\beta_i)\hat\pi_i\), con \(\beta_1=1\) y después 0.</dd>
+<dt>\(\mathcal D\)</dt><dd data-hojas="18,22">Conjunto de pares (historia, acción del maestro) que DAgger acumula.</dd>
+<dt>\(i\)</dt><dd data-hojas="22">Índice de iteración de DAgger (o del rotor \(i\), en la parte 3).</dd>
+<dt>\(L(\hat\pi)\)</dt><dd data-hojas="28">Pérdida cuadrática de imitación, \(\mathbb E\big[\|\hat\pi(o) - \pi^*(s)\|^2\big]\).</dd>
+<dt>\(\pi^\star(o)\)</dt><dd data-hojas="28">Política óptima del alumno con pérdida cuadrática: la esperanza de la acción del maestro dada la observación.</dd>
+<dt>\(\mathbb E\big[\pi^*(s)\mid o\big]\)</dt><dd data-hojas="28">Acción media del maestro entre los estados compatibles con \(o\). Si el maestro usa algo que \(o\) no revela, aparece la brecha de imitación; la pérdida mínima es la varianza de \(\pi^*\) dado \(o\).</dd>
 </dl>
 
 <h3>Qué manda la red (parte 3)</h3>
 <dl>
-<dt>\(\Delta a\)</dt><dd data-hojas="19">Cambio de la acción entre pasos; \(0{,}1\|\Delta a\|^2\) es el término de suavidad del coste.</dd>
-<dt>\(\Delta f_i\)</dt><dd data-hojas="19">Cambio del empuje del rotor \(i\) entre pasos; la actividad es \(\sum_i|\Delta f_i|\), en pesos del dron.</dd>
-<dt>\(a_{t-1}\)</dt><dd data-hojas="20">Acción anterior, que forma parte de la observación de la política.</dd>
-<dt>\(a_t\)</dt><dd data-hojas="20">Acción actual; en la política linealizada, \(a_t=\kappa a_{t-1}+Kx_t\).</dd>
-<dt>\(\partial\pi/\partial a_{t-1}\)</dt><dd data-hojas="20">Jacobiana de la política respecto a la acción anterior (submatriz \(4\times4\)); sus autovalores dicen si la red se apoya en su acción pasada.</dd>
-<dt>\(\kappa\)</dt><dd data-hojas="20">Autovalor (escalar) del modo de la acción anterior en la política linealizada. Cerca de 1, acción integral; cerca de −1, alternancia a la frecuencia de Nyquist.</dd>
-<dt>\(K\)</dt><dd data-hojas="20">Ganancia de la política linealizada sobre el estado \(x_t\). (No es el número de épocas de A6a.)</dd>
-<dt>\(x_t\)</dt><dd data-hojas="20">Estado (o desviación del equilibrio) del bucle cerrado, en la política linealizada.</dd>
-</dl>
-
-<h3>Suavidad: CAPS y filtros</h3>
-<dl>
-<dt>\(J^{\text{CAPS}}\)</dt><dd data-hojas="21">Objetivo de RL con regularización de suavidad: \(J-\lambda_TL_T-\lambda_SL_S\).</dd>
-<dt>\(L_T\)</dt><dd data-hojas="21">Término temporal de CAPS: diferencia entre las acciones de pasos consecutivos.</dd>
-<dt>\(L_S\)</dt><dd data-hojas="21">Término espacial de CAPS: diferencia entre las acciones en un estado y en uno cercano perturbado.</dd>
-<dt>\(\lambda_T\), \(\lambda_S\)</dt><dd data-hojas="21">Pesos de los dos términos de CAPS.</dd>
-<dt>\(\bar s\)</dt><dd data-hojas="21">Estado perturbado con ruido gaussiano de desviación \(\sigma\).</dd>
-<dt>\(\sigma\)</dt><dd data-hojas="21">Desviación del ruido de medida esperado, con el que CAPS perturba el estado.</dd>
-<dt>\(H(j\omega)\)</dt><dd data-hojas="21">Respuesta en frecuencia del filtro paso bajo de primer orden: \(1/(1+j\omega\tau)\).</dd>
-<dt>\(\omega\) (filtro)</dt><dd data-hojas="21">Frecuencia angular de la señal que atraviesa el filtro. (En el dron, \(\omega\) es velocidad angular.)</dd>
-<dt>\(\tau\)</dt><dd data-hojas="21">Constante de tiempo del filtro paso bajo (5, 10, 20 ms). Retrasa la señal \(\arctan(\omega\tau)/\omega\), que tiende a \(\tau\).</dd>
-<dt>\(j\)</dt><dd data-hojas="21">Unidad imaginaria en la respuesta en frecuencia.</dd>
-<dt>\(\arctan\)</dt><dd data-hojas="21">Arcotangente, para el desfase del filtro.</dd>
-<dt>\(\omega\tau\ll1\)</dt><dd data-hojas="21">Régimen de bajas frecuencias, donde el filtro retrasa casi exactamente \(\tau\).</dd>
+<dt>\(a = (a_0,\dots,a_3)\)</dt><dd data-hojas="30,33">Salida de la red, recortada a \([-1,1]\): en CTBR, empuje y tres giros; en SRT, un número por rotor.</dd>
+<dt>\(F\), \(f_i\)</dt><dd data-hojas="30,33">Empuje colectivo y empuje del rotor \(i\) (N), \(F=\sum_if_i\). En CTBR, \(F = m_0g(1 + 0{,}8a_0)\); en SRT, \(f_i = \tfrac{m_0g}{4}(1 + 0{,}8a_i)\).</dd>
+<dt>\(\boldsymbol\omega\), \(\boldsymbol\omega_d\)</dt><dd data-hojas="30,33">Velocidad angular medida por el giróscopo y la deseada (rad/s, ejes cuerpo); \(\boldsymbol\omega_d = (4a_1, 4a_2, 2a_3)\).</dd>
+<dt>\(\mathbf M\), \(I_x, I_y, I_z\)</dt><dd data-hojas="30,33">Par deseado sobre el cuerpo (N·m) e inercias del x500 (0,022; 0,022; 0,040 kg·m²).</dd>
+<dt>\(M_j\)</dt><dd data-hojas="33">Componente \(j\in\{x,y,z\}\) del par que pide el lazo de velocidad angular.</dd>
+<dt>\(j\) (eje)</dt><dd data-hojas="33">Índice de eje, \(x\), \(y\) o \(z\). (En el filtro y en los autovalores, \(j\) es la unidad imaginaria.)</dd>
+<dt>\(\ell\), \(c_\tau\)</dt><dd data-hojas="30,34">Brazo del rotor (0,25 m) y relación par/empuje de un rotor (0,016 m). \(\ell\) no es la pérdida de la parte 2.</dd>
+<dt>\(\Delta a_t\), \(w\)</dt><dd data-hojas="30,37">Cambio de la acción entre pasos, \(a_t - a_{t-1}\), y peso del término de suavidad \(w\|\Delta a\|^2\) (0,1).</dd>
+<dt>\(\Delta f_i\)</dt><dd data-hojas="36,37">Cambio del empuje del rotor \(i\) entre pasos; la actividad es \(\sum_i|\Delta f_i|\), en pesos del dron.</dd>
+<dt>\(\mathbf e\), \(\mathbf v\)</dt><dd data-hojas="37">Error de posición y velocidad en el coste de cada paso.</dd>
+<dt>\(\partial\pi/\partial a_{t-1}\)</dt><dd data-hojas="38">Jacobiana de la política respecto a la acción anterior (submatriz \(4\times4\)); sus autovalores dicen si la red se apoya en su acción pasada.</dd>
+<dt>\(\kappa\), \(K\), \(x_t\)</dt><dd data-hojas="30,39">Política linealizada \(a_t=\kappa a_{t-1}+Kx_t\): autovalor del modo de la acción anterior (cerca de 1, acción integral; cerca de −1, alternancia a 50 Hz), ganancia sobre el estado y desviación del estado. \(K\) no es el número de épocas de A6a.</dd>
+<dt>\(\rho\,e^{\pm j\varphi}\)</dt><dd data-hojas="39">Par de autovalores complejos: módulo \(\rho\) (cuánto queda tras cada paso) y ángulo \(\varphi\) (cuánto gira por paso).</dd>
+<dt>\(J^{\text{CAPS}}\)</dt><dd data-hojas="40">Objetivo de RL con regularización de suavidad: \(J-\lambda_TL_T-\lambda_SL_S\).</dd>
+<dt>\(L_T\)</dt><dd data-hojas="40">Término temporal de CAPS: diferencia entre las acciones de pasos consecutivos.</dd>
+<dt>\(L_S\)</dt><dd data-hojas="40">Término espacial de CAPS: diferencia entre las acciones en un estado y en uno cercano perturbado.</dd>
+<dt>\(\lambda_T\), \(\lambda_S\)</dt><dd data-hojas="30,40">Pesos de los dos términos de CAPS. No son el \(\lambda\) de GAE.</dd>
+<dt>\(\bar s\)</dt><dd data-hojas="40">Estado perturbado con ruido gaussiano de desviación \(\sigma\).</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="40">Desviación del ruido de medida esperado, con el que CAPS perturba el estado.</dd>
+<dt>\(H(j\omega)\)</dt><dd data-hojas="41">Respuesta en frecuencia del filtro paso bajo de primer orden: \(1/(1+j\omega\tau)\).</dd>
+<dt>\(\omega\) (filtro)</dt><dd data-hojas="41">Frecuencia angular de la señal que atraviesa el filtro, \(2\pi f\). (En el dron, \(\boldsymbol\omega\) es velocidad angular.)</dd>
+<dt>\(\tau\)</dt><dd data-hojas="30,41">Constante de tiempo del filtro paso bajo (5, 10, 20 ms). Retrasa la señal \(\arctan(\omega\tau)/\omega\), que tiende a \(\tau\).</dd>
+<dt>\(\varphi\)</dt><dd data-hojas="39,41">Ángulo: el que gira un autovalor complejo por paso, o el desfase \(\arctan(\omega\tau)\) del filtro.</dd>
+<dt>\(j\) (imaginaria)</dt><dd data-hojas="41">Unidad imaginaria en la respuesta en frecuencia.</dd>
+<dt>\(\arctan\)</dt><dd data-hojas="41">Arcotangente, para el desfase del filtro.</dd>
+<dt>\(\omega\tau\ll1\)</dt><dd data-hojas="41">Régimen de bajas frecuencias, donde el filtro retrasa casi exactamente \(\tau\).</dd>
 </dl>
 
 <h3>Siglas</h3>
 <dl>
 <dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; tema de la hoja: RL en robots reales.</dd>
-<dt>DARPA</dt><dd data-hojas="13">Defense Advanced Research Projects Agency; en el tema, DARPA SubT, el reto subterráneo donde el cuadrúpedo ANYmal hizo cuatro misiones de 60 min sin una caída.</dd>
-<dt>CARLA</dt><dd data-hojas="13">Simulador de conducción donde un agente que ve el mapa y el tráfico enseña a un agente que solo ve la cámara.</dd>
-<dt>CTBR</dt><dd data-hojas="17">Collective thrust and body rates: la red manda empuje colectivo y velocidades angulares, y el autopiloto cierra el lazo de velocidad angular.</dd>
-<dt>SRT</dt><dd data-hojas="17">Single-rotor thrust: la red manda el empuje de cada rotor.</dd>
-<dt>LV</dt><dd data-hojas="17">Linear velocity: la red manda una velocidad lineal.</dd>
-<dt>BC</dt><dd data-hojas="11">Behavior cloning: clonación de comportamiento, regresión supervisada de las acciones del maestro.</dd>
-<dt>DAgger</dt><dd data-hojas="11">Dataset aggregation: el maestro etiqueta los estados que visita el alumno y se reentrena con todo lo acumulado.</dd>
-<dt>RMA</dt><dd data-hojas="13">Rapid motor adaptation: política con factores del entorno en un vector latente y módulo que lo estima de la historia.</dd>
-<dt>CAPS</dt><dd data-hojas="21">Regularización de suavidad temporal y espacial de la política.</dd>
-<dt>PID</dt><dd data-hojas="21">Proportional-integral-derivative: controlador clásico que aparece como línea base en la tabla de comparación.</dd>
-<dt>PX4</dt><dd data-hojas="23">Autopiloto de código abierto al que se manda la salida de la red.</dd>
-<dt>NED</dt><dd data-hojas="23">North-east-down: marco de PX4 con z hacia abajo.</dd>
-<dt>FRD</dt><dd data-hojas="23">Forward-right-down: ejes del cuerpo en PX4.</dd>
-<dt>ROS</dt><dd data-hojas="23">Robot Operating System: en modo offboard, el ordenador de a bordo manda consignas por MAVLink o ROS 2.</dd>
-<dt>SITL</dt><dd data-hojas="24">Software-in-the-loop: el autopiloto real corriendo contra un simulador.</dd>
-<dt>HIL</dt><dd data-hojas="24">Hardware-in-the-loop: una Pixhawk real conectada a un simulador.</dd>
-<dt>MAVLink</dt><dd data-hojas="23">Protocolo de mensajes con el que un ordenador de a bordo manda consignas a PX4.</dd>
-<dt>EKF2</dt><dd data-hojas="23">Filtro de Kalman extendido del estimador de PX4.</dd>
-<dt>INDI</dt><dd data-hojas="18">Incremental nonlinear dynamic inversion: lazo de control de bajo nivel usado como comparación.</dd>
-<dt>MPC</dt><dd data-hojas="14">Model predictive control: el maestro de Deep Drone Acrobatics.</dd>
-<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization (A6a); aquí se usa con crítico asimétrico.</dd>
-<dt>DDPG</dt><dd data-hojas="7">Deep deterministic policy gradient: base del método de Pinto et al.</dd>
-<dt>HER</dt><dd data-hojas="7">Hindsight experience replay, usado con DDPG por Pinto et al.</dd>
-<dt>RGBD</dt><dd data-hojas="7">Imagen de color más profundidad.</dd>
-<dt>PD</dt><dd data-hojas="17">Controlador proporcional-derivativo que sigue una consigna de ángulo.</dd>
-<dt>COM_OF_LOSS_T, COM_OBL_RC_ACT</dt><dd data-hojas="23">Parámetros de PX4: tiempo de pérdida del flujo offboard y acción de fallo configurada.</dd>
-<dt>MLP</dt><dd data-hojas="24">Multilayer perceptron: red neuronal densa; una MLP pequeña cuesta microsegundos por paso.</dd>
-<dt>POMDP</dt><dd data-hojas="26">Partially observable Markov decision process: el actor del tema ya es un POMDP pequeño que deduce velocidad y masa de cuatro observaciones.</dd>
+<dt>GAE</dt><dd data-hojas="6,11">Generalized advantage estimation: la ventaja como media exponencial de errores de diferencia temporal (A6a).</dd>
+<dt>DARPA</dt><dd data-hojas="25">Defense Advanced Research Projects Agency; en el tema, DARPA SubT, el reto subterráneo donde el cuadrúpedo ANYmal hizo cuatro misiones de 60 min sin una caída.</dd>
+<dt>CARLA</dt><dd data-hojas="25">Simulador de conducción donde un agente que ve el mapa y el tráfico enseña a un agente que solo ve la cámara.</dd>
+<dt>CTBR</dt><dd data-hojas="31,33">Collective thrust and body rates: la red manda empuje colectivo y velocidades angulares, y el autopiloto cierra el lazo de velocidad angular.</dd>
+<dt>SRT</dt><dd data-hojas="31,34">Single-rotor thrust: la red manda el empuje de cada rotor.</dd>
+<dt>LV</dt><dd data-hojas="31,32">Linear velocity: la red manda una velocidad lineal.</dd>
+<dt>BC</dt><dd data-hojas="20">Behavior cloning: clonación de comportamiento, regresión supervisada de las acciones del maestro en sus propios estados.</dd>
+<dt>DAgger</dt><dd data-hojas="22">Dataset aggregation: el maestro etiqueta los estados que visita el alumno y se reentrena con todo lo acumulado.</dd>
+<dt>RMA</dt><dd data-hojas="9,25">Rapid motor adaptation: política con factores del entorno en un vector latente y módulo que lo estima de la historia.</dd>
+<dt>CAPS</dt><dd data-hojas="40">Regularización de suavidad temporal y espacial de la política.</dd>
+<dt>PID</dt><dd data-hojas="40">Proportional-integral-derivative: controlador clásico que aparece como línea base en la tabla de comparación.</dd>
+<dt>PX4</dt><dd data-hojas="32,43">Autopiloto de código abierto al que se manda la salida de la red.</dd>
+<dt>ESC</dt><dd data-hojas="32">Electronic speed controller: el variador que mueve cada motor.</dd>
+<dt>NED</dt><dd data-hojas="44">North-east-down: marco de mundo de PX4, con z hacia abajo.</dd>
+<dt>ENU</dt><dd data-hojas="44">East-north-up: marco de mundo con z hacia arriba, como el del simulador.</dd>
+<dt>FRD</dt><dd data-hojas="43,44">Forward-right-down: ejes del cuerpo en PX4.</dd>
+<dt>FLU</dt><dd data-hojas="44">Forward-left-up: ejes del cuerpo con z hacia arriba, los del simulador si \(x\) apunta al morro.</dd>
+<dt>ROS</dt><dd data-hojas="43">Robot Operating System: en modo offboard, el ordenador de a bordo manda consignas por MAVLink o ROS 2.</dd>
+<dt>SITL</dt><dd data-hojas="42,45">Software-in-the-loop: el autopiloto real corriendo contra un simulador.</dd>
+<dt>HIL</dt><dd data-hojas="45">Hardware-in-the-loop: una Pixhawk real conectada a un simulador.</dd>
+<dt>MAVLink</dt><dd data-hojas="43">Protocolo de mensajes con el que un ordenador de a bordo manda consignas a PX4.</dd>
+<dt>EKF2</dt><dd data-hojas="44">Filtro de Kalman extendido del estimador de PX4.</dd>
+<dt>INDI</dt><dd data-hojas="35">Incremental nonlinear dynamic inversion: lazo de control de bajo nivel usado como comparación.</dd>
+<dt>MPC</dt><dd data-hojas="26">Model predictive control: el maestro de Deep Drone Acrobatics.</dd>
+<dt>PPO</dt><dd data-hojas="9,19">Proximal policy optimization (A6a); aquí se usa con crítico asimétrico y para entrenar al maestro.</dd>
+<dt>DDPG</dt><dd data-hojas="13">Deep deterministic policy gradient: base del método de Pinto et al.</dd>
+<dt>HER</dt><dd data-hojas="13">Hindsight experience replay, usado con DDPG por Pinto et al.</dd>
+<dt>RGBD</dt><dd data-hojas="13">Imagen de color más profundidad.</dd>
+<dt>PD</dt><dd data-hojas="31">Controlador proporcional-derivativo que sigue una consigna de ángulo.</dd>
+<dt>COM_OF_LOSS_T, COM_OBL_RC_ACT</dt><dd data-hojas="43">Parámetros de PX4: tiempo de pérdida del flujo offboard y acción de fallo configurada.</dd>
+<dt>MLP</dt><dd data-hojas="6,45">Multilayer perceptron: red neuronal densa; una MLP pequeña cuesta microsegundos por paso.</dd>
+<dt>POMDP</dt><dd data-hojas="47">Partially observable Markov decision process: el actor del tema ya es un POMDP pequeño que deduce velocidad y masa de cuatro observaciones.</dd>
 </dl>
 </aside>
 
