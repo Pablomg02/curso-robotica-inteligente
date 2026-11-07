@@ -48,7 +48,7 @@
   <h2>Menos interacción, y un belief que además sabe imaginar</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>PILCO aprendió a levantar y equilibrar un péndulo invertido real con 17,5 s de interacción en total <a class="cite" data-ref="deisenroth2011"></a>.</li>
         <li>DayDreamer: un cuadrúpedo A1 aprende a darse la vuelta, levantarse y caminar desde cero, sin simulador ni reinicios, en una hora de experiencia real <a class="cite" data-ref="wu2022"></a>.</li>
         <li>DreamerV3, con una sola configuración, supera a métodos especializados en más de 150 tareas y es, según sus autores, el primero en conseguir diamantes en Minecraft sin datos humanos <a class="cite" data-ref="hafner2025"></a>.</li>
@@ -80,47 +80,440 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:34%">Ejemplo en el x500</th></tr>
+      <tr><td>\(s_t\), \(a_t\), \(r_t\)</td><td>Estado, acción y recompensa en el paso \(t\)</td><td>\(s\): posición, velocidad, actitud; \(a\): empuje y velocidades angulares a <span class="hz">50 Hz</span></td></tr>
+      <tr><td>\(T(s'\mid s,a)\), \(\hat T\)</td><td>Dinámica verdadera y <strong>modelo aprendido</strong>: distribuciones del siguiente estado \(s'\)</td><td>\(T\): el simulador de B2 o el dron; \(\hat T\): una red entrenada con datos</td></tr>
+      <tr><td>\(\pi\), \(\mathcal D\)</td><td>Política; conjunto de transiciones reales \((s, a, r, s')\) guardadas</td><td>Los 3000 episodios de 3 s del laboratorio</td></tr>
+      <tr><td>\(k\), \(\gamma\)</td><td>Longitud (en pasos) de un despliegue dentro del modelo; factor de descuento</td><td>1 s de predicción = 50 pasos</td></tr>
+      <tr><td>\(e_k\), \(\delta\), \(L\)</td><td>Error tras \(k\) pasos en bucle abierto; error que el modelo añade en cada paso; factor con que la dinámica amplifica un error</td><td>Hojas 12–14</td></tr>
+      <tr><td>\(\mathrm{TV}(p, q)\), \(\varepsilon\)</td><td>Variación total: la mayor diferencia de probabilidad que dos distribuciones dan a un mismo suceso, \(\tfrac12\sum|p-q|\); \(\varepsilon\) es su cota por paso entre \(\hat T\) y \(T\)</td><td>\(\varepsilon = 0{,}01\): el modelo se equivoca en un 1 % de la probabilidad</td></tr>
+      <tr><td>\(d_t\), \(\hat d_t\)</td><td>Distribución de estados en el paso \(t\), en el mundo y en el modelo, con la misma política e inicio</td><td>Dónde puede estar el dron a los \(t\) pasos</td></tr>
+      <tr><td>\(J_k\), \(\hat J_k\), \(R_{\max}\)</td><td>Retorno esperado de \(k\) pasos en el mundo y en el modelo; cota de la recompensa</td><td>Hojas 15–17</td></tr>
+      <tr><td>\(B\), \(\mu_b\), \(\sigma_b^2\)</td><td>Número de redes de un conjunto; media y varianza que predice la red \(b\)</td><td>PETS: \(B = 5\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · el bucle</p>
+  <h2>Qué hace un algoritmo basado en modelo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 360" role="img" aria-label="Bucle del aprendizaje por refuerzo basado en modelo: entorno, datos, modelo, imaginación y política">
+        <defs>
+          <marker id="a8m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect x="20" y="140" width="150" height="64" rx="8" class="box-soft"/>
+        <text x="95" y="167" text-anchor="middle" class="t-bold" font-size="16">Entorno</text>
+        <text x="95" y="188" text-anchor="middle" class="t-muted" font-size="13">simulador o dron</text>
+        <rect x="225" y="16" width="150" height="64" rx="8" class="box"/>
+        <text x="300" y="43" text-anchor="middle" class="t-bold" font-size="16">Datos reales 𝒟</text>
+        <text x="300" y="64" text-anchor="middle" class="t-muted t-mono" font-size="13">(s, a, r, s′)</text>
+        <rect x="430" y="140" width="150" height="64" rx="8" class="box-accent"/>
+        <text x="505" y="167" text-anchor="middle" class="t-bold" font-size="16">Modelo T̂</text>
+        <text x="505" y="188" text-anchor="middle" class="t-muted" font-size="13">aprendizaje supervisado</text>
+        <rect x="360" y="280" width="170" height="64" rx="8" class="box-tesis"/>
+        <text x="445" y="307" text-anchor="middle" class="t-bold" font-size="16">Imaginación</text>
+        <text x="445" y="328" text-anchor="middle" class="t-muted" font-size="13">despliegues o planes</text>
+        <rect x="70" y="280" width="170" height="64" rx="8" class="box-time"/>
+        <text x="155" y="307" text-anchor="middle" class="t-bold" font-size="16">Política π</text>
+        <text x="155" y="328" text-anchor="middle" class="t-muted" font-size="13">la que se despliega</text>
+        <path d="M95 140 Q 110 48 222 48" class="ln" marker-end="url(#a8m1)"/>
+        <path d="M378 48 Q 495 48 505 137" class="ln" marker-end="url(#a8m1)"/>
+        <path d="M505 204 L478 277" class="ln" marker-end="url(#a8m1)"/>
+        <path d="M360 312 L243 312" class="ln" marker-end="url(#a8m1)"/>
+        <path d="M140 280 L100 207" class="ln" marker-end="url(#a8m1)"/>
+        <path d="M300 80 L205 277" class="ln-dash" marker-end="url(#a8m1)"/>
+        <text x="40" y="120" class="t-muted" font-size="13">registrar</text>
+        <text x="520" y="95" class="t-muted" font-size="13">entrenar</text>
+        <text x="500" y="248" class="t-muted" font-size="13">imaginar</text>
+        <text x="300" y="300" text-anchor="middle" class="t-muted" font-size="13">mejorar</text>
+        <text x="112" y="248" text-anchor="end" class="t-muted" font-size="13">actuar</text>
+        <text x="256" y="190" class="t-faint" font-size="13">RL sin modelo</text>
+      </svg>
+      <figcaption>El RL sin modelo (A6a) va de los datos a la política directamente (discontinua). El basado en modelo pasa antes por un modelo y por la imaginación.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Entra:</strong> transiciones reales. <strong>Sale:</strong> una política. El modelo convierte pocos datos reales en muchos imaginados.</p>
+      <p>Los métodos se distinguen por lo que hacen en la caja de imaginación:</p>
+      <ul>
+        <li><strong>Dyna, MBPO:</strong> fabrican transiciones para un agente sin modelo.</li>
+        <li><strong>PETS, PlaNet, TD-MPC:</strong> planifican en cada paso (MPC, A3b).</li>
+        <li><strong>Dreamer:</strong> entrenan actor y crítico dentro del modelo.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">En el laboratorio</span>Los episodios del x500 son la caja de datos; el RSSM, la del modelo; el paso 5 (opcional), la imaginación y la política.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Modelos · usos</p>
   <h2>Tres formas de usar un modelo aprendido</h2>
-  <div class="cols c3 body cards-sm">
+  <div class="cols c3 body">
     <div class="card"><span class="meta">DATOS IMAGINADOS</span><h3>Dyna y MBPO</h3><p>El modelo genera transiciones con las que se entrena un agente sin modelo. MBPO arranca despliegues de \(k\) pasos desde estados reales, con un conjunto de redes probabilísticas y SAC; fijar \(k = 1\) «conserva buena parte del beneficio», y despliegues de 500 pasos son demasiado imprecisos <a class="cite" data-ref="janner2019"></a>. Dyna es el caso de despliegues de un paso.</p></div>
     <div class="card"><span class="meta">PLANIFICAR</span><h3>PETS, PlaNet</h3><p>MPC con el modelo (A3b): optimizar acciones en línea. PETS planifica con CEM sobre un conjunto de 5 redes probabilísticas y 20 partículas; en half-cheetah iguala a SAC y PPO con 8 y 125 veces menos muestras <a class="cite" data-ref="chua2018"></a>. PlaNet planifica en el latente con CEM (horizonte 12, 1000 candidatos) <a class="cite" data-ref="hafner2019"></a>.</p></div>
     <div class="card"><span class="meta">APRENDER EN IMAGINACIÓN</span><h3>World Models, Dreamer</h3><p>La política se entrena en trayectorias imaginadas por el modelo. World Models evoluciona un controlador lineal dentro del «sueño» <a class="cite" data-ref="ha2018"></a>; Dreamer entrena actor y crítico con gradientes a través de la imaginación <a class="cite" data-ref="hafner2020"></a> (parte 3).</p></div>
   </div>
-  <div class="callout clave"><span class="tag">Incertidumbre</span>PETS separa la aleatoria («estocasticidad inherente del sistema», con salidas probabilísticas) de la epistémica («incertidumbre subjetiva por datos limitados», con el desacuerdo entre los modelos del conjunto) <a class="cite" data-ref="chua2018"></a>. PILCO sin su incertidumbre no aprendía: el modelo era demasiado confiado <a class="cite" data-ref="deisenroth2011"></a>.</div>
+  <p class="small muted">Las tres hojas siguientes abren las dos primeras cajas: cómo ramifica MBPO y cómo mide PETS su incertidumbre.</p>
 </section>
 
 <section class="slide">
-  <p class="kicker">Modelos · error compuesto</p>
-  <h2>Un error pequeño por paso se acumula con el horizonte</h2>
-  <div class="cols">
+  <p class="kicker">Modelos · MBPO y Dyna</p>
+  <h2>Despliegues cortos que se ramifican desde datos reales</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 230" role="img" aria-label="Trayectoria real con ramas cortas de tres pasos simulados en el modelo y una rama de un paso de Dyna">
+        <path d="M40 150 L100 140 L160 135 L220 138 L280 128 L340 122 L400 126 L460 118 L520 112" class="ln" stroke-width="2.6"/>
+        <g class="fill-ink3">
+          <circle cx="40" cy="150" r="5"/><circle cx="100" cy="140" r="5"/><circle cx="160" cy="135" r="5"/><circle cx="220" cy="138" r="5"/><circle cx="280" cy="128" r="5"/><circle cx="340" cy="122" r="5"/><circle cx="400" cy="126" r="5"/><circle cx="460" cy="118" r="5"/><circle cx="520" cy="112" r="5"/>
+        </g>
+        <path d="M100 140 L130 115 L160 98 L190 78" class="ln-accent ln-dash"/>
+        <path d="M280 128 L310 103 L340 86 L370 66" class="ln-accent ln-dash"/>
+        <path d="M460 118 L490 93 L520 76 L550 56" class="ln-accent ln-dash"/>
+        <g class="fill-accent">
+          <circle cx="130" cy="115" r="4"/><circle cx="160" cy="98" r="4"/><circle cx="190" cy="78" r="4"/>
+          <circle cx="310" cy="103" r="4"/><circle cx="340" cy="86" r="4"/><circle cx="370" cy="66" r="4"/>
+          <circle cx="490" cy="93" r="4"/><circle cx="520" cy="76" r="4"/><circle cx="550" cy="56" r="4"/>
+        </g>
+        <path d="M160 135 L190 168" class="ln-tesis ln-dash"/>
+        <circle cx="190" cy="168" r="4" class="fill-tesis"/>
+        <text x="130" y="60" class="t-accent" font-size="13">k = 3 pasos en el modelo, con π</text>
+        <text x="198" y="186" class="t-tesis" font-size="13">Dyna: k = 1</text>
+        <text x="300" y="175" class="t-muted" font-size="13">trayectoria real (𝒟)</text>
+        <text x="40" y="172" text-anchor="middle" class="t-mono t-faint" font-size="12">s₀</text>
+        <text x="520" y="134" text-anchor="middle" class="t-mono t-faint" font-size="12">s₈</text>
+        <text x="280" y="218" text-anchor="middle" class="t-faint" font-size="12">cada rama empieza en un estado real elegido al azar</text>
+      </svg>
+      <figcaption>Esquema de los despliegues ramificados de MBPO <a class="cite" data-ref="janner2019"></a>.</figcaption>
+    </figure>
     <div class="stack">
-      <p class="small">Si el modelo \(\hat T\) se equivoca en cada paso como mucho \(\varepsilon\) en variación total, \(\max_{s,a}\mathrm{TV}\big(\hat T(\cdot\mid s,a), T(\cdot\mid s,a)\big)\le\varepsilon\), las distribuciones de estados de un despliegue de \(k\) pasos se separan como mucho \(k\varepsilon\), y el retorno estimado puede equivocarse en</p>
-      \[ |\hat J_k - J_k| \le R_{\max}\sum_{t=1}^{k}\gamma^t\, t\,\varepsilon. \]
-      <ul class="small">
-        <li>Despliegues largos en el modelo: el error crece con \(k\) (casi cuadrático en \(k\) para \(\gamma\approx1\)).</li>
-        <li>Por eso MBPO genera despliegues <em>cortos</em> desde estados reales, y Dreamer imagina pocos pasos y cierra con un crítico.</li>
-        <li>El modelo además se usa donde la política lo lleva: lejos de los datos, \(\varepsilon\) crece. Es la explotación del modelo.</li>
-      </ul>
-    </div>
-    <div class="stack">
-      <details class="deriv" open><summary>Derivación: de un paso a \(k\) pasos</summary>
-        <p class="small">Sean \(d_t\) y \(\hat d_t\) las distribuciones de estados reales y del modelo en el paso \(t\) con la misma política y el mismo inicio. Con un acoplamiento:</p>
-        \[ \mathrm{TV}(\hat d_{t+1}, d_{t+1}) \le \mathrm{TV}(\hat d_t, d_t) + \varepsilon \ \Rightarrow\ \mathrm{TV}(\hat d_t, d_t)\le t\,\varepsilon. \]
-        <p class="small">Para una recompensa acotada por \(R_{\max}\) en valor absoluto, \(|\mathbb E_{\hat d_t}[r] - \mathbb E_{d_t}[r]|\le 2R_{\max}\,\mathrm{TV}\); sumando con descuento sale la cota (con \(2R_{\max}\) si la recompensa toma signos opuestos; \(R_{\max}\) si está en \([0, R_{\max}]\)). Es la idea de los lemas de simulación; las constantes exactas cambian según el artículo.</p>
-      </details>
-      <div class="callout realidad"><span class="tag">En nuestro x500</span>El error del RSSM pasa de 8 cm a 0,1 s a 28 cm a 0,5 s y 63 cm a 1 s (parte 2): más deprisa que linealmente, como predice el error compuesto con un modelo imperfecto. MBPO lo resume en una cota cuadrática en el horizonte efectivo \(1/(1-\gamma)\) <a class="cite" data-ref="janner2019"></a>.</div>
+      <p>Un ciclo de MBPO <a class="cite" data-ref="janner2019"></a>:</p>
+      <ol>
+        <li>Entrenar el conjunto de modelos con \(\mathcal D\) por máxima verosimilitud.</li>
+        <li>Actuar con \(\pi\) en el entorno y añadir lo vivido a \(\mathcal D\).</li>
+        <li>Muchas veces: tomar un estado real al azar de \(\mathcal D\) y desplegar \(k\) pasos en el modelo, eligiendo en cada paso una red del conjunto al azar.</li>
+        <li>Actualizar SAC con esas transiciones imaginadas.</li>
+      </ol>
+      <div class="callout clave"><span class="tag">Por qué ramas cortas</span>Con \(k\) pequeño el error del modelo no tiene tiempo de acumularse (hojas 12–17), y empezar en estados reales cubre los sitios donde el dron de verdad ha estado. Dyna es el caso \(k = 1\).</div>
     </div>
   </div>
 </section>
 
+<section class="slide">
+  <p class="kicker">Modelos · PETS · 1</p>
+  <h2>Dos incertidumbres: ruido del sistema y modelos que discrepan</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 250" role="img" aria-label="Predicciones de cinco redes con su barra de desviación cerca y lejos de los datos, y la incertidumbre total del conjunto">
+        <line x1="40" y1="220" x2="500" y2="220" class="ln-rule"/>
+        <line x1="40" y1="190" x2="500" y2="190" class="ln-rule" stroke-dasharray="2 4"/>
+        <line x1="40" y1="130" x2="500" y2="130" class="ln-rule" stroke-dasharray="2 4"/>
+        <line x1="40" y1="70" x2="500" y2="70" class="ln-rule" stroke-dasharray="2 4"/>
+        <text x="34" y="194" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="34" y="134" text-anchor="end" class="t-mono t-faint" font-size="12">10</text>
+        <text x="34" y="74" text-anchor="end" class="t-mono t-faint" font-size="12">20 cm</text>
+        <g class="ln-accent" stroke-width="2">
+          <path d="M70 118 V142 M100 106 V130 M130 122.6 V149.4 M160 113.6 V134.4 M190 100 V124"/>
+          <path d="M310 118 V142 M340 58 V82 M370 176.6 V203.4 M400 89.6 V110.4 M430 148 V172"/>
+        </g>
+        <g class="fill-accent">
+          <circle cx="70" cy="130" r="4"/><circle cx="100" cy="118" r="4"/><circle cx="130" cy="136" r="4"/><circle cx="160" cy="124" r="4"/><circle cx="190" cy="112" r="4"/>
+          <circle cx="310" cy="130" r="4"/><circle cx="340" cy="70" r="4"/><circle cx="370" cy="190" r="4"/><circle cx="400" cy="100" r="4"/><circle cx="430" cy="160" r="4"/>
+        </g>
+        <path d="M225 109.3 V138.7" class="ln-tesis" stroke-width="5"/>
+        <circle cx="225" cy="124" r="5" class="fill-tesis"/>
+        <path d="M465 85.9 V174.1" class="ln-tesis" stroke-width="5"/>
+        <circle cx="465" cy="130" r="5" class="fill-tesis"/>
+        <text x="130" y="30" text-anchor="middle" class="t-bold" font-size="14">cerca de los datos</text>
+        <text x="370" y="30" text-anchor="middle" class="t-bold" font-size="14">lejos de los datos</text>
+        <text x="130" y="48" text-anchor="middle" class="t-muted" font-size="12">las 5 redes coinciden</text>
+        <text x="370" y="48" text-anchor="middle" class="t-muted" font-size="12">las 5 redes discrepan</text>
+        <text x="130" y="240" text-anchor="middle" class="t-accent" font-size="12">redes b = 1…5: μ<tspan baseline-shift="sub" font-size="9">b</tspan> ± σ<tspan baseline-shift="sub" font-size="9">b</tspan></text>
+        <text x="345" y="240" text-anchor="middle" class="t-tesis" font-size="12">conjunto: media ± desviación total</text>
+      </svg>
+      <figcaption>Cambio de altura en el siguiente paso predicho por cada red (números supuestos). <code>ejemplos_a8a.py</code>, ejemplo 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>PETS entrena \(B = 5\) redes, cada una con su remuestreo de los datos, y cada red no da un número sino una gaussiana \(\mathcal N(\mu_b, \sigma_b^2)\) <a class="cite" data-ref="chua2018"></a>.</p>
+      <ul>
+        <li><strong>\(\sigma_b\), dentro de cada red:</strong> la incertidumbre <em>aleatoria</em>, el ruido del propio sistema. Más datos no la quitan.</li>
+        <li><strong>La dispersión de las \(\mu_b\):</strong> la <em>epistémica</em>. Donde hubo datos, todas aprenden lo mismo; lejos, cada una extrapola a su manera.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Incertidumbre</span>PETS separa la aleatoria («estocasticidad inherente del sistema») de la epistémica («incertidumbre subjetiva por datos limitados») <a class="cite" data-ref="chua2018"></a>. PILCO sin su incertidumbre no aprendía: el modelo era demasiado confiado <a class="cite" data-ref="deisenroth2011"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · PETS · 2</p>
+  <h2>De dónde sale «total = media de varianzas + varianza de medias»</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>El conjunto predice la mezcla \(\tfrac1B\sum_b \mathcal N(\mu_b, \sigma_b^2)\) <a class="cite" data-ref="chua2018"></a>: elegir una red al azar y muestrear su gaussiana. Su varianza:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathrm{Var}[s'] = \mathbb E[s'^2] - \mathbb E[s']^2\)</td><td>Definición de varianza</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathbb E[s'] = \tfrac1B\sum_b\mu_b \equiv \bar\mu\)</td><td>Cada red se elige con probabilidad \(1/B\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E[s'^2] = \tfrac1B\sum_b(\sigma_b^2 + \mu_b^2)\)</td><td>En cada gaussiana, \(\mathbb E[x^2] = \sigma^2 + \mu^2\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{Var}[s'] = \underbrace{\tfrac1B\textstyle\sum_b\sigma_b^2}_{\text{aleatoria}} + \underbrace{\tfrac1B\textstyle\sum_b(\mu_b-\bar\mu)^2}_{\text{epistémica}}\)</td><td>Restar \(\bar\mu^2\) y usar \(\tfrac1B\sum\mu_b^2 - \bar\mu^2 = \tfrac1B\sum(\mu_b-\bar\mu)^2\)</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Es la ley de la varianza total. PETS la usa con las partículas: la aleatoria es la varianza media dentro de cada red y la epistémica la varianza de las medias de cada red <a class="cite" data-ref="chua2018"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con los números de la figura</span>
+        <p class="small">Cerca: varianzas 4, 4, 5, 3, 4 (media <strong>4</strong>); medias 10, 12, 9, 11, 13 (media 11, varianza <strong>2</strong>). Total 6 cm², ±2,4 cm.</p>
+        <p class="small">Lejos: mismas varianzas (<strong>4</strong>); medias 10, 20, 0, 15, 5 (varianza <strong>50</strong>). Total 54 cm², ±7,3 cm.</p>
+        <p class="small">Con dos millones de muestras de la mezcla: 6,000 y 53,997. <code>ejemplos_a8a.py</code>, ejemplo 1.</p>
+      </div>
+      <div class="aparte"><span class="rotulo">Cómo propaga PETS</span>
+        <p>Crea 20 partículas desde el estado actual y las avanza con el modelo. En TS1 cada partícula cambia de red en cada paso; en TS∞ conserva la suya todo el episodio, y así las dos incertidumbres se pueden separar <a class="cite" data-ref="chua2018"></a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 1</p>
+  <h2>Bucle abierto: el modelo se alimenta de sus propias predicciones</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 240" role="img" aria-label="Trayectoria real, predicción del modelo en bucle abierto que se separa cada vez más, y predicciones a un paso que se quedan a la misma distancia">
+        <path d="M50 180 L140 174 L230 168 L320 162 L410 156 L500 150" class="ln" stroke-width="2.6"/>
+        <path d="M50 180 L140 164 L230 146 L320 126 L410 104 L500 80" class="ln-accent" stroke-width="2.2"/>
+        <g class="ln-time" stroke-width="2">
+          <path d="M140 174 V164 M230 168 V146 M320 162 V126 M410 156 V104 M500 150 V80"/>
+        </g>
+        <g class="ln-tesis ln-dash" stroke-width="1.4">
+          <path d="M50 180 L140 164 M140 174 L230 158 M230 168 L320 152 M320 162 L410 146 M410 156 L500 140"/>
+        </g>
+        <g class="fill-ink3"><circle cx="50" cy="180" r="5"/><circle cx="140" cy="174" r="5"/><circle cx="230" cy="168" r="5"/><circle cx="320" cy="162" r="5"/><circle cx="410" cy="156" r="5"/><circle cx="500" cy="150" r="5"/></g>
+        <g class="fill-accent"><circle cx="140" cy="164" r="4.5"/><circle cx="230" cy="146" r="4.5"/><circle cx="320" cy="126" r="4.5"/><circle cx="410" cy="104" r="4.5"/><circle cx="500" cy="80" r="4.5"/></g>
+        <g class="fill-tesis"><circle cx="230" cy="158" r="3.5"/><circle cx="320" cy="152" r="3.5"/><circle cx="410" cy="146" r="3.5"/><circle cx="500" cy="140" r="3.5"/></g>
+        <text x="236" y="140" class="t-time t-mono" font-size="12">e₂</text>
+        <text x="416" y="98" class="t-time t-mono" font-size="12">e₄</text>
+        <text x="506" y="116" class="t-time t-mono" font-size="12">e₅</text>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="50" y="205">0</text><text x="140" y="205">1</text><text x="230" y="205">2</text><text x="320" y="205">3</text><text x="410" y="205">4</text><text x="500" y="205">5 pasos</text>
+        </g>
+        <text x="20" y="30" class="t-accent" font-size="13">azul: modelo en bucle abierto (usa su ŝ anterior)</text>
+        <text x="20" y="48" class="t-tesis" font-size="13">morado: modelo a un paso (usa el s real anterior)</text>
+        <text x="20" y="66" class="t-muted" font-size="13">gris: trayectoria real · naranja: error eₖ</text>
+        <text x="280" y="230" text-anchor="middle" class="t-faint" font-size="12">mismas acciones en las tres; esquema</text>
+      </svg>
+      <figcaption>Esquema: el error a un paso se queda en \(\delta\); en bucle abierto crece con el horizonte.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Entra:</strong> un estado inicial \(s_0\) y las acciones \(a_0, \dots, a_{k-1}\). <strong>Sale:</strong> la predicción \(\hat s_k\), sin ver nada más del mundo.</p>
+      <p>Es lo que hace Dreamer al imaginar 15 pasos, o nuestro RSSM al predecir 1 s del x500 (50 pasos). Dos efectos se suman:</p>
+      <ol>
+        <li>cada paso añade su propio error \(\delta\);</li>
+        <li>la dinámica <strong>propaga</strong> los errores anteriores: los amplifica o los amortigua, y los pasa de una variable a otra.</li>
+      </ol>
+      <p class="small muted">Las dos hojas siguientes lo hacen con números a mano; las tres de después, con distribuciones.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 2</p>
+  <h2>El caso escalar: cómo se suman y amplifican los errores</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Mundo \(x_{t+1} = L\,x_t + u_t\). Modelo con el mismo \(L\) pero que se equivoca en \(\delta\) cada paso: \(\hat x_{t+1} = L\,\hat x_t + u_t + \delta\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(e_t = \hat x_t - x_t\), \(e_0 = 0\)</td><td>Mismo inicio</td></tr>
+          <tr><td><strong>2</strong></td><td>\(e_{t+1} = L\,e_t + \delta\)</td><td>Restar las dos ecuaciones: \(u_t\) se cancela</td></tr>
+          <tr><td><strong>3</strong></td><td>\(e_k = \delta\,(1 + L + \dots + L^{k-1})\)</td><td>Desenrollar: el error del paso \(j\) se multiplica \(k-1-j\) veces por \(L\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(e_k = \delta\,\dfrac{L^k - 1}{L - 1}\); si \(L = 1\), \(e_k = k\,\delta\)</td><td>Suma geométrica</td></tr>
+        </table>
+      </div>
+      <ul>
+        <li>\(L \lt 1\) (estable): se satura en \(\delta/(1-L)\).</li>
+        <li>\(L = 1\) (un integrador, como la posición): crece lineal.</li>
+        <li>\(L > 1\) (inestable en bucle abierto): crece exponencial.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 580 280" style="max-height:250px" role="img" aria-label="Error en bucle abierto frente al número de pasos para L igual a 0,9, 1 y 1,1">
+          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+          <g class="t-mono t-faint" font-size="14" text-anchor="end">
+            <text x="52" y="254">0</text><text x="52" y="180.7">20</text><text x="52" y="107.3">40</text><text x="52" y="34">60 cm</text>
+          </g>
+          <g class="t-mono t-faint" font-size="14" text-anchor="middle">
+            <text x="60" y="268">0</text><text x="175" y="268">5</text><text x="290" y="268">10</text><text x="405" y="268">15</text><text x="520" y="268">20 pasos</text>
+          </g>
+          <line x1="60" y1="213.3" x2="520" y2="213.3" class="ln-dash"/>
+          <text x="70" y="207" class="t-faint" font-size="14">δ/(1 − L) = 10</text>
+          <path d="M60.0,250.0 L83.0,246.3 L106.0,243.0 L129.0,240.1 L152.0,237.4 L175.0,235.0 L198.0,232.8 L221.0,230.9 L244.0,229.1 L267.0,227.5 L290.0,226.1 L313.0,224.8 L336.0,223.7 L359.0,222.7 L382.0,221.7 L405.0,220.9 L428.0,220.1 L451.0,219.4 L474.0,218.8 L497.0,218.3 L520.0,217.8" class="ln-time" stroke-width="2.2"/>
+          <path d="M60.0,250.0 L83.0,246.3 L106.0,242.7 L129.0,239.0 L152.0,235.3 L175.0,231.7 L198.0,228.0 L221.0,224.3 L244.0,220.7 L267.0,217.0 L290.0,213.3 L313.0,209.7 L336.0,206.0 L359.0,202.3 L382.0,198.7 L405.0,195.0 L428.0,191.3 L451.0,187.7 L474.0,184.0 L497.0,180.3 L520.0,176.7" class="ln" stroke-width="2.2"/>
+          <path d="M60.0,250.0 L83.0,246.3 L106.0,242.3 L129.0,237.9 L152.0,233.0 L175.0,227.6 L198.0,221.7 L221.0,215.2 L244.0,208.1 L267.0,200.2 L290.0,191.6 L313.0,182.1 L336.0,171.6 L359.0,160.1 L382.0,147.4 L405.0,133.5 L428.0,118.2 L451.0,101.3 L474.0,82.8 L497.0,62.4 L520.0,40.0" class="ln-accent" stroke-width="2.2"/>
+          <text x="528" y="44" class="t-accent t-mono" font-size="14">L = 1,1</text>
+          <text x="528" y="180" class="t-mono t-muted" font-size="14">L = 1</text>
+          <text x="528" y="222" class="t-time t-mono" font-size="14">L = 0,9</text>
+        </svg>
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\delta = 1\) cm</th><th>\(e_1\)</th><th>\(e_2\)</th><th>\(e_3\)</th><th>\(e_5\)</th><th>\(e_{20}\)</th></tr>
+          <tr><td>\(L = 0{,}9\)</td><td class="n">1</td><td class="n">1,9</td><td class="n">2,71</td><td class="n">4,10</td><td class="n">8,78</td></tr>
+          <tr><td>\(L = 1\)</td><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">5</td><td class="n">20</td></tr>
+          <tr><td>\(L = 1{,}1\)</td><td class="n">1</td><td class="n">2,1</td><td class="n">3,31</td><td class="n">6,11</td><td class="n">57,3</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">\(\delta\) y \(L\) supuestos. <code>ejemplos_a8a.py</code>, ejemplo 2.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 3</p>
+  <h2>El acoplamiento: un error de aceleración acaba en la posición</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Un dron es una cadena de integradores. Con paso \(\Delta t\): \(p_{t+1} = p_t + \Delta t\,v_t\) y \(v_{t+1} = v_t + \Delta t\,a_t\). Supón que el modelo se equivoca en la aceleración en una cantidad fija \(b\) (por ejemplo, porque no conoce la masa).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(e^v_{k} = k\,\Delta t\,b\)</td><td>La velocidad integra un error constante: el caso \(L = 1\) de la hoja anterior, con \(\delta = \Delta t\,b\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(e^p_{k} = \Delta t\sum_{j=0}^{k-1} e^v_j = \Delta t^2\,b\sum_{j=0}^{k-1} j\)</td><td>La posición integra el error de la velocidad: ese \(\Delta t\) es el acoplamiento</td></tr>
+          <tr><td><strong>3</strong></td><td>\(e^p_k = \Delta t^2\,b\,\dfrac{k(k-1)}{2}\approx \tfrac12\,b\,(k\Delta t)^2\)</td><td>\(0 + 1 + \dots + (k-1) = k(k-1)/2\)</td></tr>
+        </table>
+      </div>
+      <p class="small">En matriz: \(\mathbf e_{t+1} = A\,\mathbf e_t + (0, \Delta t\,b)\) con \(A = \left[\begin{smallmatrix}1&\Delta t\\0&1\end{smallmatrix}\right]\). El término fuera de la diagonal lleva el error de una variable a otra.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 460 110" style="max-height:120px" role="img" aria-label="Cadena de integradores: el error de aceleración b se integra en error de velocidad y este en error de posición">
+          <defs><marker id="a8c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <text x="10" y="50" class="t-time t-bold" font-size="16">b</text>
+          <path d="M28 45 H78" class="ln" marker-end="url(#a8c1)"/>
+          <rect x="80" y="22" width="90" height="46" rx="6" class="box"/>
+          <text x="125" y="51" text-anchor="middle" font-size="15">× Δt, sumar</text>
+          <path d="M170 45 H238" class="ln" marker-end="url(#a8c1)"/>
+          <text x="204" y="36" text-anchor="middle" class="t-time" font-size="15">eᵛ</text>
+          <rect x="240" y="22" width="90" height="46" rx="6" class="box"/>
+          <text x="285" y="51" text-anchor="middle" font-size="15">× Δt, sumar</text>
+          <path d="M330 45 H398" class="ln" marker-end="url(#a8c1)"/>
+          <text x="420" y="50" class="t-time t-bold" font-size="16">eᵖ</text>
+          <text x="125" y="92" text-anchor="middle" class="t-muted" font-size="13">crece como k</text>
+          <text x="285" y="92" text-anchor="middle" class="t-muted" font-size="13">crece como k²</text>
+        </svg>
+      </figure>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">A mano, a 50 Hz</span>
+        <p class="small">\(\Delta t = 0{,}02\) s y \(b = 0{,}5\) m/s² (supuesto, ≈ 5 % de \(g\)): la velocidad gana 1 cm/s de error en cada paso.</p>
+        <div class="table-wrap">
+          <table class="t">
+            <tr><th>\(k\)</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5 (<span class="hz">0,1 s</span>)</th><th>25 (<span class="hz">0,5 s</span>)</th><th>50 (<span class="hz">1 s</span>)</th></tr>
+            <tr><td>\(e^v\) (cm/s)</td><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">4</td><td class="n">5</td><td class="n">25</td><td class="n">50</td></tr>
+            <tr><td>\(e^p\) (cm)</td><td class="n">0</td><td class="n">0,02</td><td class="n">0,06</td><td class="n">0,12</td><td class="n">0,20</td><td class="n">6,0</td><td class="n">24,5</td></tr>
+          </table>
+        </div>
+        <p class="xsmall muted"><code>ejemplos_a8a.py</code>, ejemplo 3.</p>
+      </div>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>El error nace en una variable que no se observa (la velocidad, la masa) y aparece después, multiplicado, en la que sí (la posición). Un paso del modelo parece casi perfecto; 1 s, no.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 4</p>
+  <h2>Con distribuciones: la separación crece como mucho \(t\,\varepsilon\)</h2>
+  <p>Ahora el modelo es estocástico. Cota por paso: \(\max_{s,a}\mathrm{TV}\big(\hat T(\cdot\mid s,a), T(\cdot\mid s,a)\big)\le\varepsilon\). Misma política y mismo \(d_0\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(d_{t+1} = \sum_s d_t(s)\,T(\cdot\mid s)\), \(\ \hat d_{t+1} = \sum_s \hat d_t(s)\,\hat T(\cdot\mid s)\)</td><td>Un paso de cada cadena (la acción es \(\pi(s)\))</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathrm{TV}(\hat d_{t+1}, d_{t+1}) \le \mathrm{TV}\big(\textstyle\sum_s \hat d_t\hat T, \sum_s\hat d_t T\big) + \mathrm{TV}\big(\sum_s\hat d_t T, \sum_s d_t T\big)\)</td><td>Desigualdad triangular con un intermedio: los estados del modelo movidos con la dinámica real</td></tr>
+      <tr><td><strong>3</strong></td><td>Primer término \(\le \sum_s\hat d_t(s)\,\mathrm{TV}\big(\hat T(\cdot\mid s), T(\cdot\mid s)\big)\le\varepsilon\)</td><td>La TV de dos mezclas con los mismos pesos no supera la media de las TV</td></tr>
+      <tr><td><strong>4</strong></td><td>Segundo término \(\le \mathrm{TV}(\hat d_t, d_t)\)</td><td>Mover dos distribuciones con la misma dinámica no las separa (acoplamiento, abajo)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mathrm{TV}_{t+1}\le\mathrm{TV}_t+\varepsilon\), \(\mathrm{TV}_0 = 0\ \Rightarrow\ \mathrm{TV}(\hat d_t, d_t)\le t\,\varepsilon\)</td><td>Inducción</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">El acoplamiento del paso 4</span>
+    <p>Se sortean las dos cadenas a la vez: los dos estados coinciden con probabilidad \(1 - \mathrm{TV}\), y cuando coinciden se mueven con las mismas monedas y siguen juntos. Así, la probabilidad de que difieran no crece al aplicar la misma \(T\). Es el mismo papel que el término que propaga el error en el caso escalar, con \(L\le1\).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 5</p>
+  <h2>Comprobación en una cadena de dos estados</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El mundo pasa del estado A al B con probabilidad 0,10; el modelo, con 0,15. Desde B los dos vuelven a A con 0,20. La única diferencia está en A, así que \(\varepsilon = \tfrac12(|0{,}90-0{,}85| + |0{,}10-0{,}15|) = 0{,}05\). Las dos cadenas salen de A:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>\(d_t(\mathrm A)\)</th><th>\(\hat d_t(\mathrm A)\)</th><th>TV</th><th>\(t\varepsilon\)</th></tr>
+          <tr><td>1</td><td class="n">0,900</td><td class="n">0,850</td><td class="n">0,050</td><td class="n">0,05</td></tr>
+          <tr><td>2</td><td class="n">0,830</td><td class="n">0,753</td><td class="n">0,078</td><td class="n">0,10</td></tr>
+          <tr><td>3</td><td class="n">0,781</td><td class="n">0,689</td><td class="n">0,092</td><td class="n">0,15</td></tr>
+          <tr><td>5</td><td class="n">0,723</td><td class="n">0,621</td><td class="n">0,102</td><td class="n">0,25</td></tr>
+          <tr><td>50</td><td class="n">0,667</td><td class="n">0,571</td><td class="n">0,095</td><td class="n">2,50</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Con dos estados, la TV es la diferencia en A. <code>ejemplos_a8a.py</code>, ejemplo 4.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 250" role="img" aria-label="Variación total entre las dos cadenas frente al tiempo, que se estanca en 0,095, y la cota lineal t por épsilon">
+          <line x1="60" y1="220" x2="520" y2="220" class="ln-rule"/>
+          <line x1="60" y1="20" x2="60" y2="220" class="ln-rule"/>
+          <g class="t-mono t-faint" font-size="14" text-anchor="end"><text x="52" y="224">0</text><text x="52" y="184">0,1</text><text x="52" y="124">0,25</text><text x="52" y="24">0,5</text></g>
+          <g class="t-mono t-faint" font-size="14" text-anchor="middle"><text x="60" y="240">0</text><text x="175" y="240">5</text><text x="290" y="240">10</text><text x="520" y="240">20 pasos</text></g>
+          <path d="M60.0,220.0 L83.0,200.0 L106.0,180.0 L129.0,160.0 L152.0,140.0 L175.0,120.0 L198.0,100.0 L221.0,80.0 L244.0,60.0 L267.0,40.0 L290.0,20.0" class="ln-dash"/>
+          <path d="M60.0,220.0 L83.0,200.0 L106.0,189.0 L129.0,183.2 L152.0,180.5 L175.0,179.4 L198.0,179.1 L221.0,179.3 L244.0,179.7 L267.0,180.1 L290.0,180.4 L313.0,180.8 L336.0,181.0 L359.0,181.2 L382.0,181.4 L405.0,181.5 L428.0,181.6 L451.0,181.7 L474.0,181.8 L497.0,181.8 L520.0,181.8" class="ln-accent" stroke-width="2.6"/>
+          <text x="300" y="40" class="t-muted" font-size="15">cota t·ε</text>
+          <text x="380" y="168" class="t-accent" font-size="15">TV real: se queda en 0,095</text>
+        </svg>
+        <figcaption>La cota es el peor caso: esta cadena olvida su inicio y la TV deja de crecer. <code>ejemplos_a8a.py</code>, ejemplo 4.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Cuándo la cota casi se alcanza</span>Si el modelo cae con probabilidad \(\varepsilon\) en un estado del que no se vuelve y que el mundo nunca visita, la separación nunca se recupera: \(\mathrm{TV} = 1-(1-\varepsilon)^t\), que vale 0,226 a los 5 pasos frente a la cota 0,25 (ejemplo 4).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto · 6</p>
+  <h2>Del error en estados al error en el retorno</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Retorno de \(k\) pasos, \(J_k = \sum_{t=0}^{k}\gamma^t\,\mathbb E_{d_t}[r(s_t)]\), y \(\hat J_k\) igual con \(\hat d_t\). Con la recompensa en \([0, R_{\max}]\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\big|\mathbb E_{\hat d_t}[r] - \mathbb E_{d_t}[r]\big|\le R_{\max}\,\mathrm{TV}(\hat d_t, d_t)\)</td><td>La diferencia de esperanzas es \(\sum r\,(\hat d_t - d_t)\); lo peor es \(r = R_{\max}\) donde \(\hat d_t > d_t\) y 0 en el resto, y esa masa es la TV</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|\hat J_k - J_k|\le \sum_{t=0}^{k}\gamma^t R_{\max}\,t\,\varepsilon\)</td><td>Desigualdad triangular en la suma y la hoja anterior; el término \(t = 0\) vale 0</td></tr>
+        </table>
+      </div>
+      \[ |\hat J_k - J_k| \le R_{\max}\sum_{t=1}^{k}\gamma^t\, t\,\varepsilon \]
+      <p>Con \(\gamma\approx1\) la suma es \(\varepsilon\,k(k+1)/2\): <strong>casi cuadrática en \(k\)</strong>. Si la recompensa toma signos opuestos, \(2R_{\max}\). Es la idea de los lemas de simulación; las constantes cambian según el artículo.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números</span>
+        <p class="small">\(\varepsilon = 0{,}01\), \(\gamma = 0{,}99\), \(R_{\max} = 1\). Para \(k = 5\): \(0{,}0099 + 0{,}0196 + 0{,}0291 + 0{,}0384 + 0{,}0475 = 0{,}145\).</p>
+        <p class="small">\(k = 15\): 1,08. \(k = 50\): 9,16, sobre un retorno que como mucho vale unos 40. <code>ejemplos_a8a.py</code>, ejemplo 5.</p>
+      </div>
+      <div class="callout clave"><span class="tag">Consecuencia</span>MBPO genera despliegues <em>cortos</em> desde estados reales, y Dreamer imagina pocos pasos y cierra con un crítico. MBPO lo resume en una cota cuadrática en el horizonte efectivo \(1/(1-\gamma)\) <a class="cite" data-ref="janner2019"></a>.</div>
+      <div class="callout realidad"><span class="tag">En nuestro x500</span>El error del RSSM pasa de 8 cm a 0,1 s a 28 cm a 0,5 s y 63 cm a 1 s (parte 2): más deprisa que linealmente, como el acoplamiento de la hoja 14. Y el modelo se usa donde la política lo lleva: lejos de los datos, \(\varepsilon\) crece (hoja siguiente).</div>
+    </div>
+  </div>
+</section>
 
 <section class="slide">
   <p class="kicker">Modelos · explotación</p>
   <h2>La política encuentra los errores del modelo, si la dejas</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">World Models en VizDoom: el controlador se entrena dentro del sueño del modelo con una «temperatura» \(\tau\) que controla su incertidumbre <a class="cite" data-ref="ha2018"></a>.</p>
+      <p>World Models en VizDoom: el controlador se entrena dentro del sueño del modelo con una «temperatura» \(\tau\) que controla su incertidumbre <a class="cite" data-ref="ha2018"></a>.</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>\(\tau\)</th><th>Puntuación en el sueño</th><th>En el entorno real</th></tr></thead>
@@ -131,7 +524,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Con un modelo demasiado seguro, la política aprende trucos que solo existen en el modelo y en el mundo real lo hace peor que el azar. Con más incertidumbre, lo aprendido se transfiere.</p>
+      <p>Con un modelo demasiado seguro, la política aprende trucos que solo existen en el modelo y en el mundo real lo hace peor que el azar. Con más incertidumbre, lo aprendido se transfiere.</p>
     </div>
     <div class="stack">
       <div class="callout error"><span class="tag">Desajuste de objetivos</span>El modelo se entrena para predecir bien un paso; la tarea es controlar bien. «La verosimilitud de las predicciones a un paso no siempre se correlaciona con el rendimiento en control», y un modelo útil para una tarea no necesita ser preciso en todas partes <a class="cite" data-ref="lambert2020"></a>.</div>
@@ -149,60 +542,363 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">World models · RSSM</p>
-  <h2>El RSSM: un filtro aprendido con una parte determinista y otra estocástica</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Las piezas de un world model latente</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:21%">Símbolo</th><th>Qué es</th><th style="width:31%">En nuestro RSSM del x500</th></tr>
+      <tr><td>\(o_t\), \(a_t\)</td><td>Observación y acción en el paso \(t\)</td><td>\(o\): 15 números; \(a\): 4</td></tr>
+      <tr><td>\(h_t\)</td><td>Estado <strong>determinista</strong>: la memoria, salida de una GRU \(f_\theta\)</td><td>128 números</td></tr>
+      <tr><td>\(z_t\), \(\hat z_t\)</td><td>Estado <strong>estocástico</strong> (se muestrea): \(z_t\) del posterior; \(\hat z_t\) del prior</td><td>16 números, gaussiana diagonal</td></tr>
+      <tr><td>\(s_t = (h_t, z_t)\)</td><td>Estado completo: lo que usan decodificador, actor y crítico</td><td>144 números</td></tr>
+      <tr><td>\(p_\theta(z_t\mid h_t)\)</td><td><strong>Prior</strong>: predice \(z_t\) solo con la memoria</td><td>Red de 128 → 128 → 2·16</td></tr>
+      <tr><td>\(q_\phi(z_t\mid h_t, o_t)\)</td><td><strong>Posterior</strong>: infiere \(z_t\) con memoria y observación</td><td>Red de (128 + 128) → 128 → 2·16</td></tr>
+      <tr><td>\(p_\theta(o_t\mid h_t, z_t)\)</td><td><strong>Decodificador</strong>: reconstruye la observación desde el estado</td><td>Red de 144 → 128 → 128 → 15</td></tr>
+      <tr><td>\(\mu, \sigma\); \(\theta\), \(\phi\)</td><td>Media y desviación de cada gaussiana (\(\mu_q, \sigma_q\) del posterior; \(\mu_p, \sigma_p\) del prior); parámetros del modelo y del posterior</td><td>\(\sigma = \mathrm{softplus}(\cdot) + 0{,}1\)</td></tr>
+      <tr><td>\(\mathrm{KL}(q\,\|\,p)\), \(\mathrm{sg}(\cdot)\)</td><td>Divergencia de Kullback-Leibler; «detener el gradiente»: mismo valor, gradiente cero</td><td>Hojas 26 y 28</td></tr>
+      <tr><td>\(T\)</td><td>Longitud de la secuencia. <strong>No es</strong> la transición \(T\) de la parte 1</td><td>Secuencias de 50 pasos</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: en A7a, \(z\) era una observación; aquí es el estado latente. En la parte 3, TD-MPC y MuZero vuelven a usar \(h\) y \(z\) con otro sentido.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · RSSM · 1</p>
+  <h2>El RSSM en un dibujo: filtrar con el posterior, imaginar con el prior</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 360" role="img" aria-label="RSSM desplegado en tres pasos: estados deterministas en cuadrados, estocásticos en círculos, posterior con observación en los dos primeros y prior sin observación en el tercero">
+        <defs>
+          <marker id="a8r1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a8r2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a8r3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <text x="215" y="22" text-anchor="middle" class="t-accent t-bold" font-size="14">filtrar (con observación)</text>
+        <text x="530" y="22" text-anchor="middle" class="t-tesis t-bold" font-size="14">imaginar (sin ella)</text>
+        <line x1="425" y1="30" x2="425" y2="330" class="ln-dash"/>
+        <rect x="65" y="38" width="90" height="36" rx="6" class="box"/>
+        <text x="110" y="61" text-anchor="middle" font-size="15">o<tspan baseline-shift="sub" font-size="11">t−1</tspan></text>
+        <rect x="275" y="38" width="90" height="36" rx="6" class="box"/>
+        <text x="320" y="61" text-anchor="middle" font-size="15">o<tspan baseline-shift="sub" font-size="11">t</tspan></text>
+        <rect x="470" y="38" width="120" height="36" rx="6" class="box-tesis" stroke-dasharray="5 4"/>
+        <text x="530" y="61" text-anchor="middle" font-size="14">ô, r̂ predichos</text>
+        <circle cx="110" cy="165" r="26" class="box-accent"/>
+        <text x="110" y="170" text-anchor="middle" font-size="15">z<tspan baseline-shift="sub" font-size="11">t−1</tspan></text>
+        <circle cx="320" cy="165" r="26" class="box-accent"/>
+        <text x="320" y="170" text-anchor="middle" font-size="15">z<tspan baseline-shift="sub" font-size="11">t</tspan></text>
+        <circle cx="530" cy="165" r="26" class="box-tesis"/>
+        <text x="530" y="170" text-anchor="middle" font-size="15">ẑ<tspan baseline-shift="sub" font-size="11">t+1</tspan></text>
+        <rect x="75" y="253" width="70" height="44" rx="4" class="box"/>
+        <text x="110" y="280" text-anchor="middle" font-size="15">h<tspan baseline-shift="sub" font-size="11">t−1</tspan></text>
+        <rect x="285" y="253" width="70" height="44" rx="4" class="box"/>
+        <text x="320" y="280" text-anchor="middle" font-size="15">h<tspan baseline-shift="sub" font-size="11">t</tspan></text>
+        <rect x="495" y="253" width="70" height="44" rx="4" class="box"/>
+        <text x="530" y="280" text-anchor="middle" font-size="15">h<tspan baseline-shift="sub" font-size="11">t+1</tspan></text>
+        <path d="M145 275 H282" class="ln" marker-end="url(#a8r1)"/>
+        <path d="M355 275 H492" class="ln" marker-end="url(#a8r1)"/>
+        <text x="213" y="267" text-anchor="middle" class="t-muted" font-size="13">GRU f<tspan baseline-shift="sub" font-size="10">θ</tspan></text>
+        <text x="463" y="267" text-anchor="middle" class="t-muted" font-size="12">GRU</text>
+        <path d="M128 184 L286 254" class="ln" marker-end="url(#a8r1)"/>
+        <path d="M338 184 L496 254" class="ln" marker-end="url(#a8r1)"/>
+        <path d="M250 335 L288 300" class="ln" marker-end="url(#a8r1)"/>
+        <text x="240" y="350" text-anchor="middle" class="t-muted" font-size="13">a<tspan baseline-shift="sub" font-size="10">t−1</tspan></text>
+        <path d="M460 335 L498 300" class="ln" marker-end="url(#a8r1)"/>
+        <text x="450" y="350" text-anchor="middle" class="t-muted" font-size="13">a<tspan baseline-shift="sub" font-size="10">t</tspan></text>
+        <path d="M110 74 V136" class="ln-accent" marker-end="url(#a8r2)"/>
+        <path d="M110 253 V194" class="ln-accent" marker-end="url(#a8r2)"/>
+        <path d="M320 74 V136" class="ln-accent" marker-end="url(#a8r2)"/>
+        <path d="M320 253 V194" class="ln-accent" marker-end="url(#a8r2)"/>
+        <text x="300" y="115" text-anchor="end" class="t-accent" font-size="13">posterior q<tspan baseline-shift="sub" font-size="10">φ</tspan></text>
+        <text x="290" y="160" text-anchor="end" class="t-tesis" font-size="13">prior p<tspan baseline-shift="sub" font-size="10">θ</tspan>(z | h):</text>
+        <text x="290" y="177" text-anchor="end" class="t-tesis" font-size="13">entra en el KL</text>
+        <path d="M530 253 V194" class="ln-tesis" marker-end="url(#a8r3)"/>
+        <text x="542" y="228" class="t-tesis" font-size="13">prior p<tspan baseline-shift="sub" font-size="10">θ</tspan></text>
+        <path d="M530 139 V77" class="ln-tesis ln-dash" marker-end="url(#a8r3)"/>
+        <text x="518" y="112" text-anchor="end" class="t-tesis" font-size="12">decodificador</text>
+      </svg>
+      <figcaption>Cuadrados: deterministas. Círculos: se muestrean. Adaptado de la figura 2 de PlaNet <a class="cite" data-ref="hafner2019"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Cada paso tiene dos mitades:</p>
+      <ol>
+        <li><strong>La memoria avanza</strong> con lo que pasó: \(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\). Siempre, filtrando o imaginando.</li>
+        <li><strong>El estado estocástico</strong> se muestrea:
+          <ul>
+            <li>filtrando, del posterior \(q_\phi(z_t\mid h_t, o_t)\), que corrige con la observación;</li>
+            <li>imaginando, del prior \(p_\theta(z_t\mid h_t)\), que solo puede predecir.</li>
+          </ul>
+        </li>
+      </ol>
+      <p class="small">Es el ciclo predecir → corregir de un filtro de Kalman (M1, A4a), con redes en lugar de matrices: el prior es la predicción y el posterior, la corrección.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · RSSM · 2</p>
+  <h2>Qué entra y qué sale de cada red</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Red</th><th style="width:27%">Fórmula</th><th style="width:20%">Entra</th><th style="width:15%">Sale</th><th>Se usa al…</th></tr>
+      <tr><td>Camino determinista</td><td>\(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\) (una GRU)</td><td>memoria, latente y acción anteriores</td><td>\(h_t\)</td><td>filtrar e imaginar</td></tr>
+      <tr><td>Prior (imaginar)</td><td>\(\hat z_t\sim p_\theta(z_t\mid h_t)\)</td><td>\(h_t\)</td><td>\(\mu_p, \sigma_p\)</td><td>imaginar; y en el KL de la pérdida</td></tr>
+      <tr><td>Posterior (filtrar)</td><td>\(z_t\sim q_\phi(z_t\mid h_t, o_t)\)</td><td>\(h_t\) y la observación codificada</td><td>\(\mu_q, \sigma_q\)</td><td>filtrar con datos reales; entrenar</td></tr>
+      <tr><td>Decodificador</td><td>\(\hat o_t\sim p_\theta(o_t\mid h_t, z_t)\); en Dreamer, también \(\hat r_t\)</td><td>\(h_t, z_t\)</td><td>\(\hat o_t\) (y \(\hat r_t\))</td><td>entrenar: es la señal de aprendizaje</td></tr>
+    </table>
+  </div>
   <div class="cols">
+    <div class="stack">
+      <p>La muestra se toma con reparametrización, \(z = \mu + \sigma\,\epsilon\) con \(\epsilon\sim\mathcal N(0, I)\), para que el gradiente pase por \(\mu\) y \(\sigma\). Filtrar es usar el posterior con cada observación; imaginar es usar el prior solo con acciones <a class="cite" data-ref="hafner2019"></a>.</p>
+    </div>
+    <div class="aparte"><span class="rotulo">Por qué dos caminos</span>
+      <p>Solo estocástico: le cuesta recordar información durante muchos pasos. Solo determinista: no puede representar varios futuros y el planificador explota sus errores. Además, toda la información de la observación pasa por la muestra del posterior, para que no haya un atajo determinista de la entrada a la reconstrucción <a class="cite" data-ref="hafner2019"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · la pérdida · 1</p>
+  <h2>De dónde sale la pérdida: la cota de evidencia en un paso</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Queremos que el modelo dé mucha probabilidad a lo que observamos: maximizar la <strong>evidencia</strong> \(\log p(o)\). Pero \(z\) no se observa y hay que integrarlo, y esa integral no se puede calcular. La salida: una distribución auxiliar \(q(z)\) y la desigualdad de Jensen.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\log p(o) = \log\int p(o\mid z)\,p(z)\,dz\)</td><td>Marginalizar el latente</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= \log\mathbb E_{q}\Big[\dfrac{p(o\mid z)\,p(z)}{q(z)}\Big]\)</td><td>Multiplicar y dividir por \(q(z)\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\ge \mathbb E_{q}\Big[\log\dfrac{p(o\mid z)\,p(z)}{q(z)}\Big]\)</td><td>Jensen: el log es cóncavo (figura)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(= \mathbb E_q[\log p(o\mid z)] - \mathrm{KL}\big(q(z)\,\|\,p(z)\big)\)</td><td>Partir el log; \(\mathbb E_q[\log q/p]\) es el KL</td></tr>
+        </table>
+      </div>
+      <p class="small">El hueco de la desigualdad es \(\mathrm{KL}\big(q(z)\,\|\,p(z\mid o)\big)\): la cota es exacta si \(q\) es el posterior verdadero (se ve escribiendo \(p(o\mid z)p(z) = p(z\mid o)p(o)\) en el paso 3).</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 360 220" role="img" aria-label="Curva del logaritmo con dos puntos: el logaritmo de la media queda por encima de la media de los logaritmos">
+          <line x1="50" y1="160" x2="340" y2="160" class="ln-rule"/>
+          <path d="M83.6,200.9 L89.2,188.5 L94.8,177.9 L100.4,168.4 L106.0,160.0 L111.6,152.4 L117.2,145.4 L122.8,139.0 L128.4,133.1 L134.0,127.6 L139.6,122.4 L145.2,117.5 L150.8,113.0 L156.4,108.7 L162.0,104.5 L167.6,100.6 L173.2,96.9 L178.8,93.4 L184.4,90.0 L190.0,86.7 L195.6,83.6 L201.2,80.5 L206.8,77.6 L212.4,74.8 L218.0,72.1 L223.6,69.5 L229.2,66.9 L234.8,64.5 L240.4,62.1 L246.0,59.8 L251.6,57.5 L257.2,55.3 L262.8,53.2 L268.4,51.1 L274.0,49.1 L279.6,47.1 L285.2,45.2 L290.8,43.3 L296.4,41.5 L302.0,39.7 L307.6,37.9 L313.2,36.2 L318.8,34.5 L324.4,32.9 L330.0,31.2" class="ln-accent" stroke-width="2.2"/>
+          <path d="M106 160 L274 49.1" class="ln-time ln-dash"/>
+          <line x1="190" y1="160" x2="190" y2="86.7" class="ln-dash"/>
+          <circle cx="106" cy="160" r="4.5" class="fill-time"/>
+          <circle cx="274" cy="49.1" r="4.5" class="fill-time"/>
+          <circle cx="190" cy="104.5" r="5" class="fill-time"/>
+          <circle cx="190" cy="86.7" r="5" class="fill-accent"/>
+          <text x="182" y="80" text-anchor="end" class="t-accent" font-size="12">log 2,5 = 0,92</text>
+          <text x="198" y="120" class="t-time" font-size="12">media de los log = 0,69</text>
+          <text x="300" y="26" class="t-accent t-mono" font-size="12">log w</text>
+          <g class="t-mono t-faint" font-size="12" text-anchor="middle"><text x="106" y="178">1</text><text x="190" y="178">2,5</text><text x="274" y="178">4</text><text x="330" y="178">w</text></g>
+        </svg>
+        <figcaption>Dos valores, \(w = 1\) y \(w = 4\): \(\log\) de su media (0,92) frente a la media de sus \(\log\) (0,69). <code>ejemplos_a8a.py</code>, ejemplo 6.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Los dos términos</span><strong>Reconstrucción:</strong> con muestras de \(q\), explica bien \(o\). <strong>KL:</strong> no te alejes del prior.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · la pérdida · 2</p>
+  <h2>La misma cota con una secuencia: se parte en un término por paso</h2>
+  <p>Modelo, dadas las acciones: \(p(o_{1:T}, z_{1:T}) = \prod_t p(z_t\mid h_t)\,p(o_t\mid h_t, z_t)\). Posterior que filtra: \(q(z_{1:T}\mid o_{1:T}) = \prod_t q(z_t\mid h_t, o_t)\). En los dos, \(h_t\) es una función determinista de \(z_{\lt t}\) y \(a_{\lt t}\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\log p(o_{1:T}) \ge \mathbb E_{q}\big[\log p(o_{1:T}, z_{1:T}) - \log q(z_{1:T})\big]\)</td><td>El paso 3 de la hoja anterior con \(z = z_{1:T}\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(= \mathbb E_q\Big[\sum_t \log p(o_t\mid h_t, z_t) + \log\dfrac{p(z_t\mid h_t)}{q(z_t\mid h_t, o_t)}\Big]\)</td><td>Log de un producto = suma de logs. Los tres factores del paso \(t\) usan el mismo \(h_t\), calculado con las mismas muestras pasadas</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= \sum_t \Big(\mathbb E_q[\log p(o_t\mid h_t, z_t)] - \mathbb E_{q(z_{\lt t})}\big[\mathrm{KL}\big(q(z_t\mid h_t, o_t)\,\|\,p(z_t\mid h_t)\big)\big]\Big)\)</td><td>En el término \(t\), la esperanza sobre \(z_t\) de \(\log q - \log p\) es un KL; los \(z\) futuros no aparecen y se integran a 1</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Es la ecuación 3 de PlaNet <a class="cite" data-ref="hafner2019"></a>. La esperanza exterior del KL es sobre los latentes pasados, que fijan \(h_t\).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · la pérdida · 3</p>
+  <h2>Lo que dice cada término de la cota</h2>
+  \[ \log p(o_{1:T}\mid a) \ \ge\ \sum_{t=1}^T \Big(\underbrace{\mathbb E_{q}\big[\log p(o_t\mid h_t, z_t)\big]}_{\text{reconstrucción}}\ -\ \underbrace{\mathbb E_q\big[\mathrm{KL}\big(q(z_t\mid h_t, o_t)\,\|\,p(z_t\mid h_t)\big)\big]}_{\text{predicción del latente}}\Big) \]
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Reconstrucción por paso:</strong> el estado filtrado \((h_t, z_t)\) debe explicar su observación. Es lo que obliga al latente a guardar información.</li>
+        <li><strong>KL por paso:</strong> el prior, que no ve \(o_t\), debe predecir lo que el posterior infiere con \(o_t\). <em>Es lo que entrena la dinámica</em>: si el prior acierta, imaginar sirve.</li>
+      </ul>
+      <p>Las dos tiran en sentidos opuestos: guardar mucho de \(o_t\) ayuda a reconstruir pero hace a \(z_t\) difícil de predecir. La hoja 27 lo muestra con números.</p>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">En la práctica</span>
+        <p>Una muestra de \(q\) por paso para la reconstrucción (reparametrizada) y el KL entre gaussianas en forma cerrada, que es la hoja siguiente. Así lo hace <code>figuras_a8a.py</code>.</p>
+      </div>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>El posterior \(q(z_t\mid h_t, o_t)\) usa todo el pasado (vía \(h_t\)) y la observación de ahora: es exactamente la forma de un belief filtrado (A4a, A7a).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · la pérdida · 4</p>
+  <h2>El KL entre dos gaussianas, en forma cerrada</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Con \(q = \mathcal N(\mu_q, \sigma_q^2)\) y \(p = \mathcal N(\mu_p, \sigma_p^2)\) en una dimensión (con covarianza diagonal, se suma dimensión a dimensión):</p>
+      <div class="table-wrap" style="padding-bottom:8px">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathrm{KL}(q\,\|\,p) = \mathbb E_q[\log q(z) - \log p(z)]\)</td><td>Definición</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\log\mathcal N(z;\mu,\sigma^2) = -\log\sigma - \tfrac12\log 2\pi - \dfrac{(z-\mu)^2}{2\sigma^2}\)</td><td>Densidad gaussiana; el \(\tfrac12\log2\pi\) se cancela entre las dos</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E_q[(z-\mu_q)^2] = \sigma_q^2\); \(\ \mathbb E_q[(z-\mu_p)^2] = \sigma_q^2 + (\mu_q-\mu_p)^2\)</td><td>Varianza; en la segunda, sumar y restar \(\mu_q\): el cruzado tiene media 0</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{KL} = \log\dfrac{\sigma_p}{\sigma_q} + \dfrac{\sigma_q^2 + (\mu_q-\mu_p)^2}{2\sigma_p^2} - \dfrac12\)</td><td>Juntar: el \(-\tfrac12\) es \(-\sigma_q^2/(2\sigma_q^2)\) de \(\log q\)</td></tr>
+        </table>
+      </div>
+      <p class="small">Es la función <code>kl</code> de <code>figuras_a8a.py</code>. Vale 0 solo si las dos gaussianas son iguales; un prior inseguro (\(\sigma_p\) grande) paga menos por no acertar.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">A mano</span>
+        <p class="small">\(q = \mathcal N(1, 0{,}5^2)\), \(p = \mathcal N(0, 1)\):</p>
+        <p class="small">\(\ln\frac{1}{0{,}5} + \frac{0{,}25 + 1}{2} - \frac12 = 0{,}693 + 0{,}625 - 0{,}5 = 0{,}818\) nat.</p>
+        <p class="small">Con 200 000 muestras de \(q\), \(\mathbb E_q[\log q - \log p] = 0{,}818\).</p>
+        <p class="small">Al revés, \(\mathrm{KL}(p\,\|\,q) = 2{,}807\) nat. <code>ejemplos_a8a.py</code>, ejemplo 7.</p>
+      </div>
+      <div class="callout clave"><span class="tag">No es simétrico</span>Qué distribución va a cada lado cambia el valor y, sobre todo, a quién empuja el gradiente. Dreamer lo aprovecha (hoja 28).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · la pérdida · 5</p>
+  <h2>La cota con números: un latente, una observación</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p>Prior \(p(z) = \mathcal N(0, 1)\); observación \(o = z + \) ruido de desviación 0,5; vemos \(o = 1\).</p>
+      <ul class="small">
+        <li>Evidencia exacta: \(o\sim\mathcal N(0, 1 + 0{,}25)\), así que \(\ln p(o) = -1{,}4305\).</li>
+        <li>Posterior exacto, como el barómetro de M1: varianza \(1/(1 + 4) = 0{,}2\) y media \(0{,}2\cdot4\cdot1 = 0{,}8\).</li>
+        <li>Reconstrucción: \(\mathbb E_q[\log\mathcal N(o; z, 0{,}25)]\) \(= -0{,}226 - 2\,\mathbb E_q[(o-z)^2]\), con \(\mathbb E_q[(o-z)^2]\) \(= (o-\mu_q)^2 + \sigma_q^2\).</li>
+      </ul>
+    </div>
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
-          <tbody>
-            <tr><td>Camino determinista</td><td>\(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\) (una GRU)</td></tr>
-            <tr><td>Prior (imaginar)</td><td>\(\hat z_t\sim p_\theta(z_t\mid h_t)\)</td></tr>
-            <tr><td>Posterior (filtrar)</td><td>\(z_t\sim q_\phi(z_t\mid h_t, o_t)\)</td></tr>
-            <tr><td>Decodificador</td><td>\(\hat o_t\sim p_\theta(o_t\mid h_t, z_t)\); en Dreamer, también \(\hat r_t\)</td></tr>
-          </tbody>
+          <tr><th>\(q(z)\)</th><th>\(\mathbb E_q[(o-z)^2]\)</th><th>Reconstr.</th><th>KL</th><th>Cota</th><th>Hueco</th></tr>
+          <tr><td>posterior exacto \(\mathcal N(0{,}8;\ 0{,}2)\)</td><td class="n">0,24</td><td class="n">−0,706</td><td class="n">0,725</td><td class="n">−1,431</td><td class="n">0</td></tr>
+          <tr><td>peor media \(\mathcal N(0{,}5;\ 0{,}2)\)</td><td class="n">0,45</td><td class="n">−1,126</td><td class="n">0,530</td><td class="n">−1,656</td><td class="n">0,225</td></tr>
+          <tr><td>copia la observación \(\mathcal N(1;\ 0{,}01)\)</td><td class="n">0,01</td><td class="n">−0,246</td><td class="n">2,308</td><td class="n">−2,553</td><td class="n">1,123</td></tr>
+          <tr><td>ignora la observación \(q = p\)</td><td class="n">2,00</td><td class="n">−4,226</td><td class="n">0</td><td class="n">−4,226</td><td class="n">2,795</td></tr>
         </table>
       </div>
-      <p class="small">Filtrar es usar el posterior con cada observación; imaginar es usar el prior solo con acciones. El camino determinista guarda memoria a largo plazo; el estocástico representa lo que no se puede predecir <a class="cite" data-ref="hafner2019"></a>.</p>
-    </div>
-    <div class="stack">
-      <details class="deriv"><summary>Derivación: la cota de evidencia por pasos</summary>
-        <p class="small">Con \(q(z_{1:T}\mid o_{1:T}, a) = \prod_t q(z_t\mid h_t, o_t)\) y el modelo \(\prod_t p(z_t\mid h_t)\,p(o_t\mid h_t, z_t)\), la desigualdad de Jensen da</p>
-        \[ \log p(o_{1:T}\mid a) \ge \sum_{t=1}^T \Big(\mathbb E_{q}\big[\log p(o_t\mid h_t, z_t)\big] \]
-        \[ \qquad -\ \mathbb E_q\big[\mathrm{KL}\big(q(z_t\mid h_t, o_t)\,\|\,p(z_t\mid h_t)\big)\big]\Big). \]
-        <p class="small">Reconstruir cada observación y que el prior prediga lo que el posterior infiere con la observación. El KL es la parte que obliga al modelo a predecir.</p>
-      </details>
-      <div class="callout clave"><span class="tag">Los trucos de DreamerV3</span>KL partido en dos con gradiente detenido en un lado (\(\beta_{\text{dyn}}\) entrena al prior hacia el posterior, \(\beta_{\text{rep}}\) al posterior hacia el prior) y bits libres para no forzar el KL por debajo de 1 nat; pesos \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) <a class="cite" data-ref="hafner2025"></a>. La primera versión de arXiv daba \(\beta_{\text{dyn}} = 0{,}5\); probamos las dos.</div>
+      <p class="xsmall muted">Hueco \(= \ln p(o) - \text{cota} = \mathrm{KL}(q\,\|\,\text{posterior exacto})\), comprobado en cada fila. <code>ejemplos_a8a.py</code>, ejemplo 8.</p>
+      <div class="callout clave"><span class="tag">Lo que enseña</span>Copiar la observación reconstruye mejor que nadie, pero el KL la castiga; ignorarla no paga KL, pero reconstruye fatal. El máximo de la cota es justo el posterior de Bayes: <strong>la pérdida del RSSM es un filtro bayesiano aprendido</strong>.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">World models · Dreamer V2 y V3</p>
-  <h2>Latentes discretos, KL equilibrado y una sola configuración</h2>
+  <p class="kicker">World models · KL equilibrado</p>
+  <h2>Partir el KL: a quién empuja cada mitad</h2>
   <div class="cols">
     <div class="stack">
-      <h3 style="margin:0;">DreamerV2 (2021)</h3>
-      <ul class="small">
-        <li>El estado estocástico son 32 variables categóricas de 32 clases: un vector binario de 1024 con 32 bits activos, con gradientes «straight-through» <a class="cite" data-ref="hafner2021"></a>.</li>
-        <li>KL equilibrado: el prior se mueve hacia el posterior más deprisa que al revés (\(\alpha = 0{,}8\)).</li>
-        <li>Primer agente que alcanza nivel humano en los 55 juegos de Atari aprendiendo dentro de un world model entrenado aparte; mediana de 2,15 veces la puntuación de un jugador humano, con una sola GPU V100 en menos de 10 días <a class="cite" data-ref="hafner2021"></a>.</li>
-      </ul>
+      <p>El KL de la cota hace dos cosas a la vez: lleva el <strong>prior</strong> hacia el posterior (aprender la dinámica) y el <strong>posterior</strong> hacia el prior (simplificar la representación). No queremos regularizar las representaciones hacia un prior aún mal entrenado <a class="cite" data-ref="hafner2021"></a>.</p>
+      <p>Con \(\mathrm{sg}\) (mismo valor, gradiente cero) se separan:</p>
+      \[ \begin{aligned} L_{\text{dyn}} &= \mathrm{KL}\big(\mathrm{sg}(q)\,\|\,p\big) &&\text{solo mueve } p\\ L_{\text{rep}} &= \mathrm{KL}\big(q\,\|\,\mathrm{sg}(p)\big) &&\text{solo mueve } q\end{aligned} \]
+      <p>\(\beta_{\text{dyn}}L_{\text{dyn}} + \beta_{\text{rep}}L_{\text{rep}}\) vale \((\beta_{\text{dyn}} + \beta_{\text{rep}})\,\mathrm{KL}\), pero el prior recibe el gradiente con peso \(\beta_{\text{dyn}}\) y el posterior con \(\beta_{\text{rep}}\). DreamerV2: \(\alpha\,L_{\text{dyn}} + (1-\alpha)\,L_{\text{rep}}\) con \(\alpha = 0{,}8\) <a class="cite" data-ref="hafner2021"></a>; DreamerV3: \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) <a class="cite" data-ref="hafner2025"></a>.</p>
     </div>
     <div class="stack">
-      <h3 style="margin:0;">DreamerV3 (Nature, 2025)</h3>
-      <ul class="small">
-        <li>Pérdida con \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) y bits libres de 1 nat; transformación symlog \(\operatorname{sign}(x)\ln(|x|+1)\) para entradas y objetivos de escalas muy distintas; retornos normalizados por el rango entre los percentiles 5 y 95 <a class="cite" data-ref="hafner2025"></a>.</li>
-        <li>Lo que más pesa en sus ablaciones: el KL equilibrado y los bits libres, después la normalización del retorno.</li>
-        <li>Más de 150 tareas en 8 dominios con los mismos hiperparámetros; en Minecraft, 1 GPU durante 9 días frente a las 720 GPU de VPT, según sus autores.</li>
-      </ul>
-      <div class="callout clave"><span class="tag">Por qué symlog</span>Una recompensa puede valer 0,01 en una tarea y 1000 en otra. Comprimir con symlog permite una sola configuración sin normalizar a mano: es lo que hace a V3 «robusto por defecto».</div>
+      <figure class="fig">
+        <svg viewBox="0 0 440 200" style="max-height:190px" role="img" aria-label="Prior centrado en cero y posterior centrado en dos; flechas del paso de gradiente de cada uno, diez veces mayor la del prior">
+          <defs><marker id="a8b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker></defs>
+          <line x1="30" y1="150" x2="410" y2="150" class="ln-rule"/>
+          <path d="M30.0,148.6 L39.5,147.5 L49.0,145.8 L58.5,143.1 L68.0,139.0 L77.5,133.3 L87.0,125.6 L96.5,115.7 L106.0,103.7 L115.5,89.9 L125.0,75.1 L134.5,60.3 L144.0,46.9 L153.5,36.0 L163.0,29.0 L172.5,26.5 L182.0,29.0 L191.5,36.0 L201.0,46.9 L210.5,60.3 L220.0,75.1 L229.5,89.9 L239.0,103.7 L248.5,115.7 L258.0,125.6 L267.5,133.3 L277.0,139.0 L286.5,143.1 L296.0,145.8 L305.5,147.5 L315.0,148.6 L334.0,149.6 L353.0,149.9 L410.0,150.0" class="ln-tesis" stroke-width="2.2"/>
+          <path d="M30.0,150.0 L87.0,149.9 L106.0,149.6 L125.0,148.6 L134.5,147.5 L144.0,145.8 L153.5,143.1 L163.0,139.0 L172.5,133.3 L182.0,125.6 L191.5,115.7 L201.0,103.7 L210.5,89.9 L220.0,75.1 L229.5,60.3 L239.0,46.9 L248.5,36.0 L258.0,29.0 L267.5,26.5 L277.0,29.0 L286.5,36.0 L296.0,46.9 L305.5,60.3 L315.0,75.1 L324.5,89.9 L334.0,103.7 L343.5,115.7 L353.0,125.6 L362.5,133.3 L372.0,139.0 L381.5,143.1 L391.0,145.8 L400.5,147.5 L410.0,148.6" class="ln-accent" stroke-width="2.2"/>
+          <path d="M172.5 14 H218" class="ln-tesis" stroke-width="2.4" marker-end="url(#a8b1)"/>
+          <path d="M267.5 14 H262.8" class="ln-accent" stroke-width="2.4"/>
+          <text x="120" y="60" text-anchor="end" class="t-tesis" font-size="13">prior p</text>
+          <text x="330" y="60" class="t-accent" font-size="13">posterior q</text>
+          <text x="172.5" y="168" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="267.5" y="168" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+          <text x="220" y="192" text-anchor="middle" class="t-faint" font-size="12">flechas: un paso de gradiente, ×5 y a escala entre sí</text>
+        </svg>
+      </figure>
+      <div class="callout realidad"><span class="tag">A mano</span>
+        <p class="small">\(q = \mathcal N(2, 1)\), \(p = \mathcal N(0, 1)\): KL \(= (\mu_q-\mu_p)^2/2 = 2\) nat, y su derivada respecto a cada media vale 2 en valor absoluto. Un paso con tasa 0,1:</p>
+        <div class="table-wrap">
+          <table class="t">
+            <tr><th>Pérdida</th><th>\(\mu_p\)</th><th>\(\mu_q\)</th></tr>
+            <tr><td>KL sin partir</td><td class="n">0 → 0,20</td><td class="n">2 → 1,80</td></tr>
+            <tr><td>DreamerV2, \(\alpha = 0{,}8\)</td><td class="n">0 → 0,16</td><td class="n">2 → 1,96</td></tr>
+            <tr><td>DreamerV3, 1 y 0,1</td><td class="n">0 → 0,20</td><td class="n">2 → 1,98</td></tr>
+          </table>
+        </div>
+        <p class="xsmall muted"><code>ejemplos_a8a.py</code>, ejemplo 9.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">World models · experimento</p>
+  <p class="kicker">World models · la pérdida de DreamerV3</p>
+  <h2>Bits libres, y la pérdida completa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>DreamerV3 suma tres términos por paso <a class="cite" data-ref="hafner2025"></a>:</p>
+      \[ \mathcal L = \sum_{t=1}^{T}\big(\beta_{\text{pred}}L_{\text{pred}} + \beta_{\text{dyn}}L_{\text{dyn}} + \beta_{\text{rep}}L_{\text{rep}}\big) \]
+      \[ L_{\text{pred}} = -\ln p(o_t\mid z_t, h_t) - \ln p(r_t\mid z_t, h_t) - \ln p(c_t\mid z_t, h_t) \]
+      \[ \begin{aligned} L_{\text{dyn}} &= \max\big(1,\ \mathrm{KL}(\mathrm{sg}(q)\,\|\,p)\big)\\ L_{\text{rep}} &= \max\big(1,\ \mathrm{KL}(q\,\|\,\mathrm{sg}(p))\big)\end{aligned} \]
+      <p class="small">\(L_{\text{pred}}\) es la reconstrucción de la cota más la de la recompensa \(r_t\) y la de \(c_t\), la señal de que el episodio continúa. Pesos \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\); la primera versión de arXiv daba \(\beta_{\text{dyn}} = 0{,}5\), y probamos las dos.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Bits libres: el max(1, ·)</span>Si el KL ya está por debajo de 1 nat, el término vale la constante 1 y su gradiente es 0: deja de tirar y el aprendizaje se centra en predecir. Evita la solución degenerada de una dinámica trivial de predecir que no guarda información de la entrada <a class="cite" data-ref="hafner2025"></a>.</div>
+      <div class="callout realidad"><span class="tag">A mano</span>Con \(q = \mathcal N(1, 1)\) y \(p = \mathcal N(0, 1)\), el KL es 0,5 nat: \(\max(1, 0{,}5) = 1\) y ninguna de las dos medias se mueve. Con \(\mu_q = 2\) (KL 2) se mueven como en la hoja anterior. <code>ejemplos_a8a.py</code>, ejemplo 9.</div>
+      <div class="aparte"><span class="rotulo">En nuestro código</span>
+        <p>Los mismos dos KL con bits libres, latentes gaussianos de 16 dimensiones en lugar de categóricos, y reconstrucción \(\tfrac12\|o - \hat o\|^2\), que es \(-\ln\mathcal N(o;\hat o, I)\) salvo una constante. Sin recompensa ni \(c_t\): solo aprendemos el modelo.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · DreamerV2</p>
+  <h2>Latentes discretos y gradientes «straight-through»</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El estado estocástico de DreamerV2 son 32 variables categóricas de 32 clases: un vector binario de 1024 con 32 bits activos <a class="cite" data-ref="hafner2021"></a>. Muestrear una clase no es derivable; el truco <a class="cite" data-ref="hafner2021"></a>:</p>
+      \[ \begin{aligned} &\text{muestra} = \text{one-hot}(\text{sortear}(\text{logits}))\\ &\text{probs} = \mathrm{softmax}(\text{logits})\\ &z = \text{muestra} + \text{probs} - \mathrm{sg}(\text{probs})\end{aligned} \]
+      <p>Hacia delante, \(z\) vale exactamente la muestra (los dos últimos términos se cancelan). Hacia atrás, \(\mathrm{sg}\) no deja pasar nada y el gradiente es el de \(\text{probs}\): se finge que la muestra fue la probabilidad. Es un estimador sesgado, pero de poca varianza.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">A mano</span>
+        <p class="small">Una variable de 3 clases con logits \((1, 0, -1)\): probs \((0{,}665;\ 0{,}245;\ 0{,}090)\). Sale la clase 1: \(z = (1, 0, 0)\) hacia delante, y hacia atrás el jacobiano del softmax, \(\mathrm{diag}(\text{probs}) - \text{probs}\,\text{probs}^\top\), cuya primera fila es \((0{,}223;\ -0{,}163;\ -0{,}060)\). <code>ejemplos_a8a.py</code>, ejemplo 10.</p>
+      </div>
+      <ul class="small">
+        <li>KL equilibrado con \(\alpha = 0{,}8\) (hoja 28).</li>
+        <li>Primer agente que alcanza nivel humano en los 55 juegos de Atari aprendiendo dentro de un world model entrenado aparte; mediana de 2,15 veces la puntuación de un jugador humano, con una sola GPU V100 en menos de 10 días <a class="cite" data-ref="hafner2021"></a>.</li>
+      </ul>
+      <div class="aparte"><span class="rotulo">En DreamerV3</span>
+        <p>Siguen los latentes categóricos con straight-through, y cada distribución se mezcla con un 1 % de uniforme para que nunca sea determinista y el KL se porte bien <a class="cite" data-ref="hafner2025"></a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · DreamerV3</p>
+  <h2>Una sola configuración: symlog y retornos normalizados</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Una recompensa puede valer 0,01 en una tarea y 1000 en otra. DreamerV3 comprime entradas y objetivos con <a class="cite" data-ref="hafner2025"></a></p>
+      \[ \begin{aligned}\mathrm{symlog}(x) &= \operatorname{sign}(x)\ln(|x|+1)\\ \mathrm{symexp}(x) &= \operatorname{sign}(x)\big(e^{|x|}-1\big)\end{aligned} \]
+      <p class="small">La red predice en espacio symlog y se vuelve con symexp. Cerca de 0 es casi la identidad; lejos, un logaritmo. A mano: symlog(0,01) = 0,010; symlog(1) = 0,693; symlog(±1000) = ±6,909 (ejemplo 11).</p>
+      <p>El actor divide su señal por \(\max(1, S)\), con \(S\) el rango entre los percentiles 5 y 95 de los retornos, suavizado con una media exponencial <a class="cite" data-ref="hafner2025"></a>. Retornos entre 2 y 52: se divide por 50. Entre 0,1 y 0,5: por 1, para no amplificar el ruido cuando las recompensas son pequeñas.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>Pesos \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) y bits libres de 1 nat (hoja 29).</li>
+        <li>Lo que más pesa en sus ablaciones: el KL equilibrado y los bits libres, después la normalización del retorno <a class="cite" data-ref="hafner2025"></a>.</li>
+        <li>Más de 150 tareas en 8 dominios con los mismos hiperparámetros; en Minecraft, 1 GPU durante 9 días frente a las 720 GPU de VPT, según sus autores.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué symlog</span>Comprimir así permite una sola configuración sin normalizar a mano: es lo que hace a V3 «robusto por defecto». En un dron, las mismas redes pueden recibir posiciones en metros y velocidades de motor en miles de rpm.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · experimento · 1</p>
   <h2>Un RSSM del x500: predecir 1 s sin mirar</h2>
   <div class="cols">
     <figure class="fig">
@@ -240,21 +936,32 @@
         </table>
       </div>
       <p class="xsmall muted">Error de posición en cm. Observación: posición (2 cm de ruido), actitud y giróscopo, sin velocidad; masa ±15 % por episodio; 3000 episodios de 3 s; 6000 pasos de Adam (de 3 a 44 s en una RTX 4060 Ti). En otras dos ejecuciones, el RSSM con \(\beta_{\text{dyn}} = 1\) dio 75 y 59 cm a 1 s: la diferencia entre los dos \(\beta_{\text{dyn}}\) está dentro de la variación entre ejecuciones.</p>
-      <ul class="small">
-        <li>El error crece con el horizonte en todos: es el error compuesto. A 1 s, el RSSM se equivoca 63,2 cm con un dron que se mueve a 0,95 m/s de media.</li>
-        <li>Sin memoria no se sabe la velocidad: la MLP no mejora a «quedarse quieto» más allá de 0,5 s.</li>
-        <li>La dispersión de las muestras del RSSM (22 cm a 0,5 s) apenas se correlaciona con el error de cada episodio (0,14): su incertidumbre no está calibrada.</li>
-      </ul>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">World models · el belief latente</p>
-  <h2>El estado del RSSM sabe la velocidad que nunca vio</h2>
+  <p class="kicker">World models · experimento · 2</p>
+  <h2>Qué dice la curva del x500</h2>
   <div class="cols">
     <div class="stack">
-      <div class="table-wrap">
+      <ul>
+        <li>El error crece con el horizonte en todos: es el error compuesto. A 1 s, el RSSM se equivoca 63,2 cm con un dron que se mueve a 0,95 m/s de media.</li>
+        <li>Sin memoria no se sabe la velocidad: la MLP no mejora a «quedarse quieto» más allá de 0,5 s.</li>
+        <li>La dispersión de las muestras del RSSM (22 cm a 0,5 s) apenas se correlaciona con el error de cada episodio (0,14): su incertidumbre no está calibrada.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">El error compuesto, medido</span>Es la parte 1 con datos: lo que el modelo no sabe de la velocidad y de la masa se integra en la posición (hoja 14), y el error crece más deprisa que linealmente: 8,5 → 28,2 → 63,2 cm.</div>
+      <div class="callout tesis"><span class="tag">Incertidumbre</span>Que la dispersión de las muestras no prediga el error de cada episodio es un problema para tu tesis: un belief que no sabe cuánto se equivoca no sirve para decidir dónde mirar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · el belief latente · 1</p>
+  <h2>El estado del RSSM sabe la velocidad que nunca vio</h2>
+  <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Sondeo lineal desde…</th><th>Velocidad (x, y, z) a 0,5 s</th><th>A 3 s</th><th>Masa a 3 s</th></tr></thead>
           <tbody>
@@ -266,14 +973,21 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">R² en 400 episodios de prueba; sondeo ajustado con otros 600 (regresión de cresta). <code>figuras_a8a.py</code>, sección 4.</p>
-    </div>
+  <p class="xsmall muted">R² en 400 episodios de prueba; sondeo ajustado con otros 600 (regresión de cresta). <code>figuras_a8a.py</code>, sección 4.</p>
+  <ul>
+    <li><strong>Velocidad:</strong> el RSSM la codifica casi entera a 0,5 s, también la vertical, que la diferencia finita de dos posiciones con 2 cm de ruido no recupera. Es un belief aprendido sin que nadie le enseñara la velocidad; con el tiempo se degrada algo.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · el belief latente · 2</p>
+  <h2>La masa, y por qué la versión determinista guarda menos</h2>
+  <div class="cols">
+    <ul>
+      <li><strong>Masa:</strong> solo en parte (R² 0,32): 3 s cerca del estacionario dan poca información, y el modelo solo necesita lo que mejora sus predicciones.</li>
+      <li><strong>Determinista:</strong> reconstruye mejor (pérdida 0,003 frente a 0,13) y predice peor. Nuestra lectura: sin el cuello de botella del KL, el posterior copia la observación y el camino recurrente no tiene por qué aprender la dinámica.</li>
+    </ul>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Velocidad:</strong> el RSSM la codifica casi entera a 0,5 s, también la vertical, que la diferencia finita de dos posiciones con 2 cm de ruido no recupera. Es un belief aprendido sin que nadie le enseñara la velocidad; con el tiempo se degrada algo.</li>
-        <li><strong>Masa:</strong> solo en parte (R² 0,32): 3 s cerca del estacionario dan poca información, y el modelo solo necesita lo que mejora sus predicciones.</li>
-        <li><strong>Determinista:</strong> reconstruye mejor (pérdida 0,003 frente a 0,13) y predice peor. Nuestra lectura: sin el cuello de botella del KL, el posterior copia la observación y el camino recurrente no tiene por qué aprender la dinámica.</li>
-      </ul>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Aquí el belief aparece como subproducto de predecir. Es la versión práctica del estado de información aproximado de A7a: lo que hay que conservar es lo que sirve para predecir. Y es la herramienta para tu búsqueda: un modelo que además del dron aprenda dónde puede estar el objetivo.</div>
     </div>
   </div>
@@ -310,7 +1024,7 @@
       <figcaption>Posición \(x\) en el episodio de prueba que más rápido se mueve al final del filtrado: verdadera (gris grueso), observada (gris fino), cinco muestras del RSSM (azul), versión determinista (naranja) y MLP (morado). <code>figuras_a8a.py</code>, sección 3.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Las muestras del RSSM se abren con el horizonte: el modelo no sabe la masa exacta ni el futuro de su propio ruido.</li>
         <li>Una política entrenada en imaginación (Dreamer, parte 3) aprende con miles de estos futuros, sin tocar el simulador.</li>
       </ul>
@@ -327,42 +1041,285 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Actuar · Dreamer</p>
-  <h2>Dreamer: actor y crítico en trayectorias imaginadas</h2>
-  <div class="cols">
+  <p class="kicker">Notación de la parte 3 · Dreamer</p>
+  <h2>Las letras de aprender en imaginación</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:21%">Símbolo</th><th>Qué es</th><th style="width:30%">Valor o ejemplo</th></tr>
+      <tr><td>\(t\), \(\tau\)</td><td>\(t\): el paso real donde arranca la imaginación (un estado filtrado con datos). \(\tau\): un paso dentro de la imaginación, \(t\le\tau\le t+H\)</td><td>\(s_t\) sale del posterior</td></tr>
+      <tr><td>\(H\)</td><td>Horizonte de imaginación: cuántos pasos se imaginan desde cada inicio</td><td>15 en Dreamer</td></tr>
+      <tr><td>\(s_\tau\), \(r_\tau\)</td><td>Estado del modelo \((h_\tau, z_\tau)\) imaginado con el prior, y recompensa que predice el modelo en él</td><td>Nada de esto toca el mundo</td></tr>
+      <tr><td>\(\pi_\vartheta(a_\tau\mid s_\tau)\)</td><td>Actor (política) con parámetros \(\vartheta\). Dreamer los llama \(\phi\), que aquí ya es el posterior</td><td>Gaussiana con tanh</td></tr>
+      <tr><td>\(v_\psi(s_\tau)\)</td><td>Crítico: estima el retorno desde \(s_\tau\) siguiendo al actor</td><td>Resume lo que pasa después de \(H\)</td></tr>
+      <tr><td>\(\gamma\), \(\lambda\)</td><td>Descuento; peso con que se mezclan los retornos de distintos horizontes</td><td>\(\gamma = 0{,}99\), \(\lambda = 0{,}95\)</td></tr>
+      <tr><td>\(V^k_N(s_\tau)\)</td><td>Retorno de \(k\) pasos: \(k\) recompensas imaginadas y el crítico al final</td><td>Hoja 40</td></tr>
+      <tr><td>\(V_\lambda(s_\tau)\)</td><td>Retorno \(\lambda\): la media ponderada de todos los \(V^k_N\)</td><td>Hojas 40–42</td></tr>
+      <tr><td>\(h\) (índice)</td><td>\(h = \min(\tau+k,\ t+H)\): el último paso de un retorno de \(k\) pasos. <strong>No es</strong> la memoria \(h_t\)</td><td>Se corta en \(t + H\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · Dreamer · 1</p>
+  <h2>Aprender en imaginación: la línea temporal</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 620 300" role="img" aria-label="Arriba, una secuencia real filtrada; desde un estado filtrado arranca una trayectoria imaginada de H pasos con el actor, recompensas predichas y el crítico al final; el gradiente vuelve hacia atrás">
+        <defs>
+          <marker id="a8i1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a8i2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+          <marker id="a8i3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        </defs>
+        <text x="20" y="20" class="t-muted" font-size="13">datos reales, filtrados con el posterior</text>
+        <g class="box"><rect x="40" y="30" width="50" height="24" rx="4"/><rect x="110" y="30" width="50" height="24" rx="4"/><rect x="180" y="30" width="50" height="24" rx="4"/><rect x="250" y="30" width="50" height="24" rx="4"/><rect x="320" y="30" width="50" height="24" rx="4"/></g>
+        <g font-size="13" text-anchor="middle"><text x="65" y="47">o, a</text><text x="135" y="47">o, a</text><text x="205" y="47">o, a</text><text x="275" y="47">o, a</text><text x="345" y="47">o, a</text></g>
+        <g class="box-accent"><rect x="53" y="80" width="24" height="24"/><rect x="123" y="80" width="24" height="24"/><rect x="193" y="80" width="24" height="24"/><rect x="263" y="80" width="24" height="24"/><rect x="333" y="80" width="24" height="24"/></g>
+        <g class="ln"><path d="M65 54 V78 M135 54 V78 M205 54 V78 M275 54 V78 M345 54 V78 M77 92 H121 M147 92 H191 M217 92 H261 M287 92 H331"/></g>
+        <text x="390" y="97" class="t-faint" font-size="12">de cada estado sale una imaginación</text>
+        <path d="M205 104 V183" class="ln-tesis" marker-end="url(#a8i2)"/>
+        <text x="213" y="150" class="t-tesis" font-size="12">inicio sₜ</text>
+        <g class="box-tesis"><circle cx="205" cy="200" r="16"/><circle cx="285" cy="200" r="16"/><circle cx="365" cy="200" r="16"/><circle cx="445" cy="200" r="16"/><circle cx="545" cy="200" r="16"/></g>
+        <g font-size="12" text-anchor="middle"><text x="205" y="204">sₜ</text><text x="285" y="204">sₜ₊₁</text><text x="365" y="204">sₜ₊₂</text><text x="445" y="204">sₜ₊₃</text><text x="545" y="204">sₜ₊H</text></g>
+        <g class="ln-tesis"><path d="M221 200 H266 M301 200 H346 M381 200 H426"/></g>
+        <path d="M461 200 H480" class="ln-tesis"/><text x="496" y="205" text-anchor="middle" class="t-tesis" font-size="14">⋯</text><path d="M510 200 H526" class="ln-tesis" marker-end="url(#a8i2)"/>
+        <g class="t-time" font-size="12" text-anchor="middle"><text x="244" y="190">π</text><text x="324" y="190">π</text><text x="404" y="190">π</text></g>
+        <g class="t-time t-mono" font-size="12" text-anchor="middle"><text x="205" y="232">r̂ₜ</text><text x="285" y="232">r̂ₜ₊₁</text><text x="365" y="232">r̂ₜ₊₂</text><text x="445" y="232">r̂ₜ₊₃</text></g>
+        <text x="566" y="205" class="t-bold" font-size="13">v<tspan baseline-shift="sub" font-size="10">ψ</tspan></text>
+        <path d="M205 246 V252 H545 V246" class="ln"/>
+        <text x="375" y="266" text-anchor="middle" class="t-muted" font-size="12">H pasos del prior, sin observaciones (15 en Dreamer)</text>
+        <path d="M545 286 H210" class="ln-accent ln-dash" marker-end="url(#a8i3)"/>
+        <text x="375" y="282" text-anchor="middle" class="t-accent" font-size="12">gradiente del actor hacia atrás, a través del modelo</text>
+      </svg>
+      <figcaption>Esquema de una iteración de Dreamer <a class="cite" data-ref="hafner2020"></a>. El modelo está congelado mientras aprende el comportamiento.</figcaption>
+    </figure>
     <div class="stack">
-      <ul class="small">
-        <li>Desde estados filtrados con datos reales, el prior imagina trayectorias de \(H = 15\) pasos con la política actual <a class="cite" data-ref="hafner2020"></a>.</li>
-        <li>El crítico \(v_\psi\) aprende retornos λ de esas trayectorias; el actor maximiza los mismos retornos con gradientes analíticos a través del modelo (reparametrización).</li>
-        <li>Valores del artículo: \(\gamma = 0{,}99\), \(\lambda = 0{,}95\).</li>
-        <li>En 20 tareas visuales de DeepMind Control, tras \(5\cdot10^6\) pasos: 823 de media, frente a 332 de PlaNet y 786 de D4PG con \(10^8\) pasos <a class="cite" data-ref="hafner2020"></a>.</li>
-      </ul>
-      <div class="callout clave"><span class="tag">Gradientes a través del modelo</span>Es el estimador de primer orden de B6 aplicado a un simulador aprendido: el modelo es diferenciable por construcción, aunque el mundo no lo sea.</div>
-    </div>
-    <div class="stack">
-      <details class="deriv" open><summary>Derivación: el retorno λ en imaginación</summary>
-        <p class="small">El retorno de \(k\) pasos cierra con el crítico en el último estado imaginado:</p>
-        \[ V^k_N(s_\tau) = \mathbb E\Big[\sum_{n=\tau}^{h-1}\gamma^{n-\tau}r_n + \gamma^{h-\tau}v_\psi(s_h)\Big], \]
-        <p class="small">con \(h = \min(\tau + k,\ t + H)\).</p>
-        <p class="small">El retorno λ mezcla todos los horizontes, como GAE en A6a:</p>
-        \[ V_\lambda(s_\tau) = (1-\lambda)\sum_{n=1}^{H-1}\lambda^{n-1}V^n_N(s_\tau) + \lambda^{H-1}V^H_N(s_\tau). \]
-        <p class="small">Horizontes cortos limitan el error compuesto; el crítico resume lo que queda más allá, y según sus autores hace a Dreamer más robusto a la longitud del horizonte <a class="cite" data-ref="hafner2020"></a>.</p>
-      </details>
+      <ol>
+        <li>Filtrar un lote de secuencias reales con el posterior (en Dreamer, 50 secuencias de 50 pasos).</li>
+        <li>Desde <strong>cada</strong> estado filtrado, imaginar \(H = 15\) pasos con el prior y el actor; el modelo predice las recompensas <a class="cite" data-ref="hafner2020"></a>.</li>
+        <li>Calcular el retorno \(\lambda\) en cada estado imaginado (tres hojas siguientes).</li>
+        <li>El crítico aprende a predecirlo; el actor, a hacerlo grande.</li>
+      </ol>
+      <div class="callout realidad"><span class="tag">Resultado</span>En 20 tareas visuales de DeepMind Control, tras \(5\cdot10^6\) pasos: 823 de media, frente a 332 de PlaNet y 786 de D4PG con \(10^8\) pasos <a class="cite" data-ref="hafner2020"></a>.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Actuar · TD-MPC</p>
-  <h2>TD-MPC: planificar en el latente sin reconstruir la observación</h2>
+  <p class="kicker">Actuar · retorno λ · 1</p>
+  <h2>Retornos de \(k\) pasos, y su mezcla</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">«Aprender a predecir las observaciones futuras es un problema extremadamente difícil: obliga a modelarlo todo, incluidos detalles irrelevantes como el sombreado» <a class="cite" data-ref="hansen2022"></a>. TD-MPC aprende un latente con tres pérdidas:</p>
-      \[ c_1\|\hat r_i - r_i\|^2 + c_3\|d(z_i, a_i) - h^-(s_{i+1})\|^2 \]
-      \[ +\ c_2\|Q(z_i,a_i) - (r_i + \gamma Q^-(z_{i+1}, \pi(z_{i+1})))\|^2, \]
-      <p class="small">recompensa, consistencia del latente predicho con el codificado y valor por diferencias temporales. Planifica con MPPI (A3b) a \(H = 5\) pasos, 512 trayectorias, y cierra con \(\gamma^H Q(z_H, a_H)\).</p>
-      <p class="small">Resuelve Dog y Humanoid, con acciones de hasta 38 dimensiones, en 1 M de pasos <a class="cite" data-ref="hansen2022"></a>.</p>
+      <p>El retorno de \(k\) pasos suma \(k\) recompensas imaginadas y cierra con el crítico en el último estado <a class="cite" data-ref="hafner2020"></a>:</p>
+      \[ V^k_N(s_\tau) = \mathbb E\Big[\sum_{n=\tau}^{h-1}\gamma^{n-\tau}r_n + \gamma^{h-\tau}v_\psi(s_h)\Big] \]
+      <p class="small">con \(h = \min(\tau + k,\ t + H)\): el retorno no puede pasar del final de la imaginación.</p>
+      <p class="small">\(k = 1\) confía casi todo en el crítico (sesgo si el crítico está mal); \(k = H\) confía en las recompensas imaginadas (varianza y error del modelo). El retorno \(\lambda\) mezcla todos, como GAE en A6a:</p>
+      \[ V_\lambda(s_\tau) = (1-\lambda)\sum_{n=1}^{H-1}\lambda^{n-1}V^n_N(s_\tau) + \lambda^{H-1}V^H_N(s_\tau) \]
+      <p class="small"><strong>Los pesos suman 1:</strong> \((1-\lambda)(1 + \lambda + \dots + \lambda^{H-2}) = 1 - \lambda^{H-1}\), más el \(\lambda^{H-1}\) del último.</p>
     </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 200" role="img" aria-label="Tres retornos de uno, dos y tres pasos sobre una trayectoria imaginada, con su valor y su peso">
+          <g class="fill-tesis"><circle cx="60" cy="36" r="6"/><circle cx="170" cy="36" r="6"/><circle cx="280" cy="36" r="6"/><circle cx="390" cy="36" r="6"/></g>
+          <path d="M60 36 H390" class="ln-tesis"/>
+          <g class="t-mono" font-size="12" text-anchor="middle"><text x="60" y="20">s₀</text><text x="170" y="20">s₁</text><text x="280" y="20">s₂</text><text x="390" y="20">s₃</text></g>
+          <g class="t-time t-mono" font-size="12" text-anchor="middle"><text x="115" y="56">r₀ = 1</text><text x="225" y="56">r₁ = 0</text><text x="335" y="56">r₂ = 2</text></g>
+          <g class="t-faint t-mono" font-size="11" text-anchor="middle"><text x="170" y="70">v = 5</text><text x="280" y="70">v = 4</text><text x="390" y="70">v = 3</text></g>
+          <path d="M60 96 H170" class="ln-accent" stroke-width="4"/><circle cx="170" cy="96" r="5" class="fill-accent"/>
+          <text x="20" y="100" class="t-bold" font-size="13">V¹</text>
+          <text x="182" y="100" class="t-muted" font-size="12">1 + 0,9·5 = 5,5 · peso 0,5</text>
+          <path d="M60 136 H280" class="ln-accent" stroke-width="4"/><circle cx="280" cy="136" r="5" class="fill-accent"/>
+          <text x="20" y="140" class="t-bold" font-size="13">V²</text>
+          <text x="292" y="140" class="t-muted" font-size="12">1 + 0 + 0,81·4 = 4,24 · peso 0,25</text>
+          <path d="M60 176 H390" class="ln-accent" stroke-width="4"/><circle cx="390" cy="176" r="5" class="fill-accent"/>
+          <text x="20" y="180" class="t-bold" font-size="13">V³</text>
+          <text x="402" y="180" class="t-muted" font-size="12">4,807 · peso 0,25</text>
+        </svg>
+        <figcaption>\(H = 3\), \(\gamma = 0{,}9\), \(\lambda = 0{,}5\) y valores del crítico supuestos. \(V_\lambda(s_0) = 0{,}5\cdot5{,}5 + 0{,}25\cdot4{,}24 + 0{,}25\cdot4{,}807 = 5{,}012\). <code>ejemplos_a8a.py</code>, ejemplo 12.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Con los valores de Dreamer</span>\(H = 15\), \(\lambda = 0{,}95\): \(V^1\) pesa 0,05, \(V^2\) 0,048… y \(V^{15}\), el más largo, 0,488. Casi la mitad del peso va al retorno completo de 15 pasos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · retorno λ · 2</p>
+  <h2>La recursión que se usa en el código, derivada</h2>
+  <p>Calcular cada \(V^n_N\) por separado cuesta del orden de \(H^2\) sumas por estado. Se puede hacer en una pasada hacia atrás. Sea \(K = t + H - \tau\) el número de pasos que quedan desde \(s_\tau\) (escribo \(V^n\) por \(V^n_N(s_\tau)\) y \(V'^n\) por \(V^n_N(s_{\tau+1})\)).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(V^1 = r_\tau + \gamma\,v(s_{\tau+1})\); \(\ V^n = r_\tau + \gamma\,V'^{\,n-1}\) para \(n\ge2\)</td><td>Un retorno de \(n\) pasos es una recompensa más un retorno de \(n-1\) pasos desde el siguiente estado (sale de la definición)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(V_\lambda(s_\tau) = (1-\lambda)\sum_{n=1}^{K-1}\lambda^{n-1}V^n + \lambda^{K-1}V^K\)</td><td>La definición: los \(V^n\) con \(n\ge K\) son iguales a \(V^K\) porque el horizonte se corta</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= r_\tau + \gamma(1-\lambda)\,v(s_{\tau+1}) + \gamma\lambda\Big[(1-\lambda)\sum_{m=1}^{K-2}\lambda^{m-1}V'^{\,m} + \lambda^{K-2}V'^{\,K-1}\Big]\)</td><td>Sustituir el paso 1. \(r_\tau\) sale entero porque los pesos suman 1; en el resto, \(m = n - 1\) y sacar un \(\lambda\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(V_\lambda(s_\tau) = r_\tau + \gamma\big[(1-\lambda)\,v(s_{\tau+1}) + \lambda\,V_\lambda(s_{\tau+1})\big]\), con \(V_\lambda(s_{t+H}) = v(s_{t+H})\)</td><td>El corchete del paso 3 es la definición del paso 2 en \(s_{\tau+1}\), al que le quedan \(K - 1\) pasos</td></tr>
+    </table>
+  </div>
+  <p>Lectura del paso 4: «recompensa de ahora, y para el resto una media entre lo que dice el crítico (\(1-\lambda\)) y lo que dice el propio retorno \(\lambda\) del paso siguiente (\(\lambda\))». Es la forma que usan DreamerV2 y V3 <a class="cite" data-ref="hafner2021,hafner2025"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · retorno λ · 3</p>
+  <h2>La recursión con los números de antes</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Mismo ejemplo: \(\gamma = 0{,}9\), \(\lambda = 0{,}5\), recompensas \(1, 0, 2\) y crítico \(v(s_1) = 5\), \(v(s_2) = 4\), \(v(s_3) = 3\). Se recorre de atrás hacia delante:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\tau\)</th><th>\(r_\tau + \gamma\big[(1-\lambda)\,v(s_{\tau+1}) + \lambda\,V_\lambda(s_{\tau+1})\big]\)</th><th>\(V_\lambda(s_\tau)\)</th></tr>
+          <tr><td>3</td><td>fin del horizonte: \(v(s_3)\)</td><td class="n">3</td></tr>
+          <tr><td>2</td><td>\(2 + 0{,}9\,(0{,}5\cdot3 + 0{,}5\cdot3)\)</td><td class="n">4,7</td></tr>
+          <tr><td>1</td><td>\(0 + 0{,}9\,(0{,}5\cdot4 + 0{,}5\cdot4{,}7)\)</td><td class="n">3,915</td></tr>
+          <tr><td>0</td><td>\(1 + 0{,}9\,(0{,}5\cdot5 + 0{,}5\cdot3{,}915)\)</td><td class="n">5,01175</td></tr>
+        </table>
+      </div>
+      <p>La definición daba \(0{,}5\cdot5{,}5 + 0{,}25\cdot4{,}24 + 0{,}25\cdot4{,}807 = 5{,}01175\). Coinciden. Con \(H = 15\), \(\gamma = 0{,}99\), \(\lambda = 0{,}95\) y valores al azar, también (−2,277615 por los dos caminos). <code>ejemplos_a8a.py</code>, ejemplo 12.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Por qué horizontes cortos</span>El error compuesto (parte 1) crece con el número de pasos imaginados; el crítico resume lo que queda más allá. Según sus autores, eso hace a Dreamer más robusto a la longitud del horizonte <a class="cite" data-ref="hafner2020"></a>.</div>
+      <div class="aparte"><span class="rotulo">Los dos extremos</span>
+        <p>\(\lambda = 0\): \(V_\lambda = r_\tau + \gamma\,v(s_{\tau+1})\), el objetivo de TD a un paso. \(\lambda = 1\): \(V_\lambda = V^K\), todas las recompensas imaginadas y el crítico solo al final. En el ejemplo, 5,5 y 4,807.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · Dreamer · actor y crítico</p>
+  <h2>Qué optimiza cada uno, y por dónde pasa el gradiente</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(V_\lambda\) calculado en todos los estados imaginados <a class="cite" data-ref="hafner2020"></a>:</p>
+      \[ \text{actor: }\max_\vartheta\ \mathbb E\Big[\sum_{\tau=t}^{t+H}V_\lambda(s_\tau)\Big] \]
+      \[ \text{crítico: }\min_\psi\ \mathbb E\Big[\sum_{\tau=t}^{t+H}\tfrac12\big(v_\psi(s_\tau) - V_\lambda(s_\tau)\big)^2\Big] \]
+      <ul>
+        <li><strong>Crítico:</strong> regresión hacia \(V_\lambda\), con el gradiente detenido en el objetivo.</li>
+        <li><strong>Actor (Dreamer V1):</strong> \(V_\lambda\) depende de las recompensas y valores predichos, que dependen de los estados imaginados, que dependen de las acciones. Todo son redes: la regla de la cadena da el gradiente <em>analítico</em> a través de la dinámica aprendida, con reparametrización para acciones continuas y latentes <a class="cite" data-ref="hafner2020"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Gradientes a través del modelo</span>Es el estimador de primer orden de B6 aplicado a un simulador aprendido: el modelo es diferenciable por construcción, aunque el mundo no lo sea.</div>
+      <div class="aparte"><span class="rotulo">En V2 y V3</span>
+        <p>DreamerV2 mezcla el gradiente de REINFORCE, sin sesgo pero ruidoso, con el straight-through a través del modelo <a class="cite" data-ref="hafner2021"></a>. La versión 2 de arXiv de DreamerV3 usa REINFORCE para acciones discretas y continuas, con la ventaja \(V_\lambda - v\) dividida por \(\max(1, S)\) y un término de entropía <a class="cite" data-ref="hafner2025"></a>.</p>
+      </div>
+      <div class="callout tesis"><span class="tag">Cómputo limitado</span>Todo esto pasa en el aprendiz, no a bordo: en vuelo, el dron solo filtra con la GRU y evalúa el actor, una pasada por paso.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación · TD-MPC y MuZero</p>
+  <h2>Las mismas letras, otros significados</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Símbolo</th><th>Qué es</th><th style="width:26%">Aviso</th></tr>
+      <tr><td>\(s_i\), \(z_i = h_\theta(s_i)\)</td><td>TD-MPC: \(s_i\) es la observación (o el estado) real del paso \(i\); \(h_\theta\) la codifica en el latente \(z_i\)</td><td>Aquí \(h\) es el <strong>codificador</strong>, no la memoria del RSSM</td></tr>
+      <tr><td>\(d_\theta\), \(R_\theta\), \(Q_\theta\), \(\pi_\theta\)</td><td>Dinámica latente \(z_{i+1} = d(z_i, a_i)\), recompensa, valor acción-estado y política, todo sobre el latente</td><td>Deterministas, sin GRU</td></tr>
+      <tr><td>\(h^-\), \(Q^-\)</td><td>Copias «objetivo»: media exponencial lenta de los parámetros, sin gradiente</td><td>Como en DQN y SAC</td></tr>
+      <tr><td>\(c_1, c_2, c_3\), \(\lambda\)</td><td>Pesos de las pérdidas de recompensa, valor y consistencia; peso temporal que da menos importancia a los pasos lejanos</td><td>Este \(\lambda\) no es el del retorno \(\lambda\)</td></tr>
+      <tr><td>\(h_\theta\), \(g_\theta\), \(f_\theta\)</td><td>MuZero: representación (observaciones → estado), dinámica (estado, acción → recompensa, estado) y predicción (estado → política, valor)</td><td>Otra \(h\)</td></tr>
+      <tr><td>\(s^k\), \(r^k\), \(p^k\), \(v^k\)</td><td>Estado oculto tras \(k\) acciones hipotéticas y lo que se predice en él</td><td>Superíndice = pasos dentro del modelo</td></tr>
+      <tr><td>\(u_t\), \(z_t\), \(\pi_t\)</td><td>MuZero: recompensa observada, objetivo de valor y política de la búsqueda en árbol</td><td>Aquí \(z\) es un <strong>valor</strong></td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · TD-MPC · 1</p>
+  <h2>TD-MPC: un latente que solo predice lo que sirve para decidir</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 620 270" role="img" aria-label="TD-MPC: solo el primer estado se codifica; el latente se despliega con la dinámica y en cada paso predice recompensa, valor y acción; los estados reales siguientes se codifican con la red objetivo para la consistencia">
+        <defs>
+          <marker id="a8t1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="a8t2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <g class="box"><rect x="60" y="20" width="70" height="30" rx="4"/><rect x="200" y="20" width="70" height="30" rx="4"/><rect x="340" y="20" width="70" height="30" rx="4"/><rect x="480" y="20" width="70" height="30" rx="4"/></g>
+        <g font-size="14" text-anchor="middle"><text x="95" y="40">sₜ</text><text x="235" y="40">sₜ₊₁</text><text x="375" y="40">sₜ₊₂</text><text x="515" y="40">sₜ₊₃</text></g>
+        <path d="M95 50 V128" class="ln-accent" marker-end="url(#a8t1)"/>
+        <text x="87" y="95" text-anchor="end" class="t-accent" font-size="13">h<tspan baseline-shift="sub" font-size="10">θ</tspan></text>
+        <g class="ln-dash"><path d="M235 50 V78 M375 50 V78 M515 50 V78"/></g>
+        <g class="box" stroke-dasharray="4 3"><circle cx="235" cy="90" r="12"/><circle cx="375" cy="90" r="12"/><circle cx="515" cy="90" r="12"/></g>
+        <g class="t-faint" font-size="12"><text x="251" y="88">h⁻(sₜ₊₁)</text><text x="391" y="88">h⁻</text><text x="531" y="88">h⁻</text></g>
+        <g class="ln-time" stroke-width="2"><path d="M235 102 V128 M375 102 V128 M515 102 V128"/></g>
+        <text x="245" y="120" class="t-time" font-size="12">consistencia</text>
+        <g class="box-accent"><circle cx="95" cy="150" r="20"/><circle cx="235" cy="150" r="20"/><circle cx="375" cy="150" r="20"/><circle cx="515" cy="150" r="20"/></g>
+        <g font-size="13" text-anchor="middle"><text x="95" y="155">zₜ</text><text x="235" y="155">zₜ₊₁</text><text x="375" y="155">zₜ₊₂</text><text x="515" y="155">zₜ₊₃</text></g>
+        <g class="ln-accent"><path d="M115 150 H212 M255 150 H352 M395 150 H492"/></g>
+        <g class="t-accent" font-size="12" text-anchor="middle"><text x="165" y="143">d(z, aₜ)</text><text x="305" y="143">d</text><text x="445" y="143">d</text></g>
+        <g class="ln" ><path d="M95 170 V196 M235 170 V196 M375 170 V196 M515 170 V196"/></g>
+        <g font-size="12" text-anchor="middle"><text x="95" y="212">R̂ · Q · π</text><text x="235" y="212">R̂ · Q · π</text><text x="375" y="212">R̂ · Q · π</text><text x="515" y="212">R̂ · Q · π</text></g>
+        <g class="t-faint" font-size="11" text-anchor="middle"><text x="95" y="228">frente a rₜ y TD</text><text x="235" y="228">rₜ₊₁ y TD</text><text x="375" y="228">rₜ₊₂ y TD</text><text x="515" y="228">rₜ₊₃ y TD</text></g>
+        <text x="310" y="258" text-anchor="middle" class="t-muted" font-size="12">solo se codifica el primer estado; el resto se predice en el latente</text>
+      </svg>
+      <figcaption>Entrenamiento del modelo de TD-MPC (TOLD) <a class="cite" data-ref="hansen2022"></a>. Gris discontinuo: red objetivo, solo como diana.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>«Aprender a predecir las observaciones futuras es un problema extremadamente difícil: obliga a modelarlo todo, incluidos detalles irrelevantes como el sombreado» <a class="cite" data-ref="hansen2022"></a>.</p>
+      <p><strong>Planificar:</strong> MPPI (A3b) muestrea 512 secuencias de \(H = 5\) acciones, más un 5 % propuestas por el actor \(\pi\),, las despliega en el latente y puntúa cada una con</p>
+      \[ \textstyle\sum_{i=0}^{H-1}\gamma^i R(z_i, a_i) + \gamma^H Q(z_H, a_H), \]
+      <p class="small">la recompensa de 5 pasos más el valor de lo que viene después; 6 iteraciones con las 64 mejores <a class="cite" data-ref="hansen2022"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · TD-MPC · 2</p>
+  <h2>Las tres pérdidas que sostienen un latente sin reconstrucción</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Por cada tramo de \(H\) pasos de datos, \(J = \sum_{i=t}^{t+H}\lambda^{i-t}L_i\) con <a class="cite" data-ref="hansen2022"></a></p>
+      \[ L_i = c_1\,\|\hat r_i - r_i\|^2 \]
+      \[ +\ c_2\,\|Q(z_i,a_i) - (r_i + \gamma Q^-(z_{i+1}, \pi(z_{i+1})))\|^2 \]
+      \[ +\ c_3\,\|d(z_i, a_i) - h^-(s_{i+1})\|^2 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:22%">Término</th><th>Qué obliga a guardar en el latente</th></tr>
+          <tr><td>Recompensa, \(c_1\)</td><td>Lo que distingue estados con recompensas distintas</td></tr>
+          <tr><td>Valor por TD, \(c_2\)</td><td>Lo que decide el futuro a largo plazo; es el aprendizaje Q de A6a</td></tr>
+          <tr><td>Consistencia, \(c_3\)</td><td>Que predecir en el latente lleve al mismo sitio que codificar el estado real: la dinámica</td></tr>
+        </table>
+      </div>
+      <p class="small">Valores: \(c_1 = 0{,}5\), \(c_2 = 0{,}1\), \(c_3 = 2\), \(\lambda = 0{,}5\) <a class="cite" data-ref="hansen2022"></a>. Pesos de los 6 pasos: 1; 0,5; 0,25; 0,125; 0,0625; 0,031.</p>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">El colapso</span>Solo con la consistencia, la solución trivial gana: el codificador da siempre el mismo \(z\) y \(d\) lo copia, con pérdida cero. La recompensa y el valor lo impiden: con dos estados de recompensa 1 y 0 y el mismo \(z\), la mejor predicción es 0,5 y el error cuadrático medio 0,25; solo distinguirlos lo baja (ejemplo 13).</div>
+      <div class="callout realidad"><span class="tag">A mano, el objetivo TD</span>\(r = 1\), \(\gamma = 0{,}99\), \(Q^- = 10\): objetivo \(1 + 0{,}99\cdot10 = 10{,}9\). Con \(Q = 10\), el error al cuadrado es 0,81. <code>ejemplos_a8a.py</code>, ejemplo 13.</div>
+      <div class="aparte"><span class="rotulo">Comparación</span>
+        <p>Con \(c_3 = 0\), TD-MPC se parece a MuZero, que solo aprende recompensa, valor y política <a class="cite" data-ref="hansen2022"></a>. Resuelve Dog y Humanoid, con acciones de hasta 38 dimensiones, en 1 M de pasos.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · TD-MPC2 · 1</p>
+  <h2>TD-MPC2: lo que cambia para que escale</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La pérdida del modelo de TD-MPC2 <a class="cite" data-ref="hansen2024"></a>:</p>
+      \[ \mathcal L = \sum_{t=0}^{H}\lambda^t\Big(\|z'_t - \mathrm{sg}(h(s'_t))\|^2 + \mathrm{CE}(\hat r_t, r_t) + \mathrm{CE}(\hat q_t, q_t)\Big) \]
+      <ul>
+        <li><strong>Consistencia</strong> con el codificador actual detenido (\(\mathrm{sg}\)), no con una copia lenta.</li>
+        <li><strong>Recompensa y valor como clasificación</strong> (entropía cruzada, CE) en un espacio logarítmico: la escala de las recompensas de cada tarea deja de importar. El objetivo \(q_t = r_t + \gamma\bar Q(z'_t, p(z'_t))\) usa \(\bar Q\), media exponencial de \(Q\).</li>
+        <li>Cinco funciones \(Q\); el objetivo es el mínimo de dos elegidas al azar.</li>
+      </ul>
+      <p class="small">Pesos 20, 0,1 y 0,1; \(\lambda = 0{,}5\) <a class="cite" data-ref="hansen2024"></a>.</p>
+    </div>
+    <div class="stack">
+      <p><strong>SimNorm.</strong> El latente se parte en grupos de \(V\) componentes y a cada grupo se le aplica un softmax <a class="cite" data-ref="hansen2024"></a>:</p>
+      \[ g_i = \frac{e^{z_{i:i+V}/\tau}}{\sum_{j=1}^{V}e^{z_{i:i+V}/\tau}} \]
+      <div class="callout realidad"><span class="tag">A mano, con V = 4</span>
+        <p class="small">(El artículo usa \(V = 8\) y \(\tau = 1\).) \(z = (2, 0, 0, 0 \mid 1, 1, -1, 0)\) da \((0{,}711;\ 0{,}096;\ 0{,}096;\ 0{,}096 \mid 0{,}399;\ 0{,}399;\ 0{,}054;\ 0{,}147)\): cada grupo suma 1. La norma pasa de 2,65 a 0,94 y nunca supera \(\sqrt{L}\), con \(L\) el número de grupos. <code>ejemplos_a8a.py</code>, ejemplo 14.</p>
+      </div>
+      <div class="callout clave"><span class="tag">Por qué</span>Un latente acotado no puede crecer sin control al desplegarse varios pasos: SimNorm es, según sus autores, «esencial» para la estabilidad <a class="cite" data-ref="hansen2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · TD-MPC2 · 2</p>
+  <h2>Un agente para 80 tareas, y cómo escala</h2>
+  <div class="cols">
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
@@ -376,7 +1333,46 @@
         </table>
       </div>
       <p class="xsmall muted">Un solo agente en 80 tareas (Meta-World y DMControl) con 545 M de transiciones; tabla 1 de Hansen et al. <a class="cite" data-ref="hansen2024"></a>.</p>
-      <div class="callout realidad"><span class="tag">TD-MPC2</span>104 tareas en 4 dominios con los mismos hiperparámetros. SimNorm (proyectar el latente en símplices con softmax) es, según sus autores, «esencial» para la estabilidad <a class="cite" data-ref="hansen2024"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">TD-MPC2</span>104 tareas en 4 dominios con los mismos hiperparámetros <a class="cite" data-ref="hansen2024"></a>.</div>
+      <div class="callout tesis"><span class="tag">Latencia y cómputo</span>Planificar con MPPI significa evaluar cientos de trayectorias latentes (512 en TD-MPC) en cada paso de control. A bordo de un dron que decide a <span class="hz">50 Hz</span>, el presupuesto por paso son <span class="hz">20 ms</span>, y eso limita el tamaño del modelo y el horizonte.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · MuZero</p>
+  <h2>MuZero: tres funciones y ninguna reconstrucción</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 620 260" role="img" aria-label="MuZero: la representación codifica las observaciones en el estado inicial; la dinámica avanza el estado con cada acción y da una recompensa; la predicción da política y valor en cada estado; abajo, los objetivos del juego real">
+        <defs><marker id="a8z1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="70" y="14" width="100" height="30" rx="4" class="box"/>
+        <text x="120" y="34" text-anchor="middle" font-size="13">o₁ … oₜ</text>
+        <path d="M120 44 V100" class="ln-accent" marker-end="url(#a8z1)"/>
+        <text x="112" y="76" text-anchor="end" class="t-accent t-bold" font-size="14">h</text>
+        <g class="box-accent"><rect x="92" y="102" width="56" height="36" rx="4"/><rect x="222" y="102" width="56" height="36" rx="4"/><rect x="352" y="102" width="56" height="36" rx="4"/><rect x="482" y="102" width="56" height="36" rx="4"/></g>
+        <g font-size="14" text-anchor="middle"><text x="120" y="125">s⁰</text><text x="250" y="125">s¹</text><text x="380" y="125">s²</text><text x="510" y="125">s³</text></g>
+        <g class="ln-tesis"><path d="M148 120 H219 M278 120 H349 M408 120 H479"/></g>
+        <g class="t-tesis t-bold" font-size="14" text-anchor="middle"><text x="184" y="112">g</text><text x="314" y="112">g</text><text x="444" y="112">g</text></g>
+        <g class="t-muted" font-size="12" text-anchor="middle"><text x="184" y="138">aₜ₊₁</text><text x="314" y="138">aₜ₊₂</text><text x="444" y="138">aₜ₊₃</text></g>
+        <g class="ln-tesis ln-dash"><path d="M184 98 V70 M314 98 V70 M444 98 V70"/></g>
+        <g class="t-tesis t-mono" font-size="13" text-anchor="middle"><text x="184" y="64">r¹</text><text x="314" y="64">r²</text><text x="444" y="64">r³</text></g>
+        <g class="ln"><path d="M120 138 V166 M250 138 V166 M380 138 V166 M510 138 V166"/></g>
+        <g class="t-bold" font-size="13" text-anchor="middle"><text x="132" y="156">f</text><text x="262" y="156">f</text><text x="392" y="156">f</text><text x="522" y="156">f</text></g>
+        <g class="t-mono" font-size="13" text-anchor="middle"><text x="120" y="184">p⁰, v⁰</text><text x="250" y="184">p¹, v¹</text><text x="380" y="184">p², v²</text><text x="510" y="184">p³, v³</text></g>
+        <g class="ln-time ln-dash"><path d="M120 192 V212 M250 192 V212 M380 192 V212 M510 192 V212"/></g>
+        <g class="t-time" font-size="12" text-anchor="middle"><text x="120" y="228">πₜ, zₜ</text><text x="250" y="228">uₜ₊₁, πₜ₊₁, zₜ₊₁</text><text x="380" y="228">uₜ₊₂, πₜ₊₂, zₜ₊₂</text><text x="510" y="228">uₜ₊₃, πₜ₊₃, zₜ₊₃</text></g>
+        <text x="310" y="252" text-anchor="middle" class="t-faint" font-size="12">objetivos sacados de la partida real (K = 5 pasos en el artículo; aquí 3)</text>
+      </svg>
+      <figcaption>Las tres funciones de MuZero desplegadas \(K\) pasos <a class="cite" data-ref="schrittwieser2020"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>\(s^0 = h(o_1,\dots,o_t)\); \(\ r^k, s^k = g(s^{k-1}, a^k)\); \(\ p^k, v^k = f(s^k)\). La pérdida <a class="cite" data-ref="schrittwieser2020"></a>:</p>
+      \[ \begin{aligned}\ell_t = \sum_{k=0}^{K}\Big(&\ell^r(u_{t+k}, r^k) + \ell^v(z_{t+k}, v^k)\\ &+ \ell^p(\pi_{t+k}, p^k)\Big) + c\|\theta\|^2\end{aligned} \]
+      <p class="small">\(\pi_{t+k}\): la política que devolvió la búsqueda en árbol. \(z_t = u_{t+1} + \gamma u_{t+2} + \dots + \gamma^{n-1}u_{t+n} + \gamma^n\nu_{t+n}\), con \(\nu\) el valor de la búsqueda. A mano, \(n = 3\), \(\gamma = 0{,}9\), \(u = 1, 0, 2\), \(\nu = 3\): \(z_t = 4{,}807\), el \(V^3\) del retorno \(\lambda\) (ejemplo 15).</p>
+      <div class="callout clave"><span class="tag">Sin semántica</span>Al estado \(s^k\) no se le pide reconstruir la observación ni parecerse al estado verdadero: solo que prediga bien recompensa, valor y política <a class="cite" data-ref="schrittwieser2020"></a>.</div>
     </div>
   </div>
 </section>
@@ -386,8 +1382,8 @@
   <h2>¿Hace falta un modelo del mundo, o basta uno de lo que importa?</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>MuZero</strong> aprende un modelo que predice «las cantidades más directamente relevantes para planificar: la recompensa, la política y el valor»; no se le pide que su estado reconstruya la observación ni que coincida con el estado verdadero <a class="cite" data-ref="schrittwieser2020"></a>.</li>
+      <ul>
+        <li><strong>MuZero</strong> (hoja anterior) predice «las cantidades más directamente relevantes para planificar: la recompensa, la política y el valor» <a class="cite" data-ref="schrittwieser2020"></a>.</li>
         <li><strong>Equivalencia en valor:</strong> dos modelos son equivalentes respecto a un conjunto de políticas y funciones si dan los mismos operadores de Bellman sobre ellas. Al ampliar esos conjuntos, la clase de modelos equivalentes se reduce hasta un solo punto: el modelo perfecto del entorno <a class="cite" data-ref="grimm2020"></a>.</li>
       </ul>
     </div>
@@ -415,24 +1411,56 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Real · DayDreamer y drones</p>
-  <h2>Aprender en el mundo real en una hora, y volar desde píxeles</h2>
-  <div class="cols">
+  <p class="kicker">Real · DayDreamer</p>
+  <h2>Aprender en el mundo real en una hora</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 230" role="img" aria-label="DayDreamer: el hilo actor calcula acciones para el robot y guarda la experiencia; el hilo aprendiz entrena con ella el world model y el actor-crítico y devuelve los pesos">
+        <defs><marker id="a8d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="10" y="80" width="100" height="60" rx="8" class="box-soft"/>
+        <text x="60" y="106" text-anchor="middle" class="t-bold" font-size="14">Robot</text>
+        <text x="60" y="125" text-anchor="middle" class="t-muted" font-size="12">A1, UR5…</text>
+        <rect x="170" y="80" width="130" height="60" rx="8" class="box-time"/>
+        <text x="235" y="106" text-anchor="middle" class="t-bold" font-size="14">Hilo actor</text>
+        <text x="235" y="125" text-anchor="middle" class="t-muted" font-size="12">filtra y elige la acción</text>
+        <rect x="225" y="170" width="150" height="44" rx="8" class="box"/>
+        <text x="300" y="197" text-anchor="middle" font-size="13">memoria de experiencia</text>
+        <rect x="410" y="74" width="140" height="72" rx="8" class="box-accent"/>
+        <text x="480" y="98" text-anchor="middle" class="t-bold" font-size="14">Hilo aprendiz</text>
+        <text x="480" y="117" text-anchor="middle" class="t-muted" font-size="12">world model y</text>
+        <text x="480" y="133" text-anchor="middle" class="t-muted" font-size="12">actor-crítico imaginado</text>
+        <path d="M110 98 H167" class="ln" marker-end="url(#a8d1)"/>
+        <path d="M170 122 H113" class="ln" marker-end="url(#a8d1)"/>
+        <text x="140" y="90" text-anchor="middle" class="t-mono t-faint" font-size="12">o</text>
+        <text x="140" y="138" text-anchor="middle" class="t-mono t-faint" font-size="12">a</text>
+        <path d="M245 140 L270 167" class="ln" marker-end="url(#a8d1)"/>
+        <path d="M375 185 L440 149" class="ln" marker-end="url(#a8d1)"/>
+        <path d="M480 74 Q 360 10 240 77" class="ln-accent ln-dash" marker-end="url(#a8d1)"/>
+        <text x="360" y="36" text-anchor="middle" class="t-accent" font-size="12">pesos nuevos del actor</text>
+      </svg>
+      <figcaption>Actor y aprendiz en paralelo: el robot no espera al entrenamiento <a class="cite" data-ref="wu2022"></a>.</figcaption>
+    </figure>
     <div class="stack">
-      <h3 style="margin:0;">DayDreamer (2022)</h3>
-      <ul class="small">
-        <li>Dreamer en cuatro robots, con actor y aprendiz asíncronos <a class="cite" data-ref="wu2022"></a>.</li>
+      <p>Dreamer en cuatro robots, sin simulador. Un hilo aprendiz entrena sin parar el world model y el actor-crítico mientras un hilo actor calcula acciones en paralelo, para cumplir los requisitos de latencia <a class="cite" data-ref="wu2022"></a>.</p>
+      <ul>
         <li>Cuadrúpedo A1 desde cero y sin reinicios: se da la vuelta en unos 5 minutos, se pone de pie unos 20 minutos después y camina hacia la hora. Ante empujones, se adapta en 10 minutos más. SAC, con el mismo presupuesto, no llega a levantarse.</li>
         <li>Brazo UR5 con imágenes y recompensa dispersa: 2,5 objetos por minuto tras 8 horas.</li>
       </ul>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real · drones</p>
+  <h2>Modelos aprendidos de drones, y volar desde píxeles</h2>
+  <div class="cols">
     <div class="stack">
-      <h3 style="margin:0;">Drones</h3>
-      <ul class="small">
-        <li><strong>Modelos de dinámica aprendidos:</strong> NeuroBEM combina teoría de elementos de pala con una red para la dinámica residual; con 1 h 15 min de vuelo hasta 65 km/h, más de un 50 % menos de error de posición que el estado del arte previo <a class="cite" data-ref="bauersfeld2021"></a>. Es un modelo, no un agente de RL.</li>
-        <li><strong>World model para volar:</strong> DreamerV3 desde píxeles en carreras, con percepción activa emergente; hasta 9 m/s en drones reales con imágenes renderizadas en hardware-in-the-loop (preprint) <a class="cite" data-ref="romero2025"></a>.</li>
-      </ul>
+      <p><strong>Modelos de dinámica aprendidos.</strong> NeuroBEM combina teoría de elementos de pala con una red para la dinámica residual; con 1 h 15 min de vuelo hasta 65 km/h, más de un 50 % menos de error de posición que el estado del arte previo <a class="cite" data-ref="bauersfeld2021"></a>. Es un modelo, no un agente de RL.</p>
+      <p><strong>World model para volar.</strong> DreamerV3 desde píxeles en carreras, con percepción activa emergente; hasta 9 m/s en drones reales con imágenes renderizadas en hardware-in-the-loop (preprint) <a class="cite" data-ref="romero2025"></a>.</p>
+    </div>
+    <div class="stack">
       <div class="callout error"><span class="tag">Lo que falta</span>No encontramos un agente basado en world model entrenado en vuelo real (sin simulador) en un cuadricóptero. El riesgo de un dron que explora es mucho mayor que el de un cuadrúpedo que se cae.</div>
+      <div class="callout tesis"><span class="tag">Sim-to-real</span>Separar actor y aprendiz, como DayDreamer, encaja con un dron: a bordo bastaría filtrar con la GRU y evaluar el actor, y el aprendizaje podría ir en otro ordenador.</div>
     </div>
   </div>
 </section>
@@ -479,7 +1507,7 @@
   <h2>Un world model es un belief que además sabe imaginar</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Belief:</strong> el posterior del RSSM es un filtro aprendido; en el x500 guarda la velocidad que no observa. Es el estado de información aproximado de A7a hecho red.</li>
         <li><strong>Planificación:</strong> el prior permite imaginar sin el simulador: entrenar una política en imaginación (Dreamer) o planificar en línea en el espacio latente (TD-MPC, A8b).</li>
         <li><strong>Incertidumbre:</strong> la del modelo (epistémica) es la que dice dónde explorar; la nuestra no estaba calibrada. En una búsqueda, la incertidumbre sobre el objetivo es la que importa.</li>
@@ -640,104 +1668,150 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Sombrero: estimación o salida del modelo aprendido (\(\hat T\), \(\hat r_t\), \(\hat o_t\)). Subíndice \(\theta\), \(\phi\): parámetros de la red. En este tema \(z\) es el estado latente estocástico; en el tema de POMDPs (A7a) la misma letra era una observación.</p>
+<p>Sombrero: estimación o salida del modelo aprendido (\(\hat T\), \(\hat r_t\), \(\hat o_t\)). Subíndice \(\theta\), \(\phi\): parámetros de la red. En este tema \(z\) es el estado latente estocástico; en el tema de POMDPs (A7a) la misma letra era una observación, y en MuZero es un objetivo de valor. La letra \(h\) también cambia: memoria del RSSM, índice de corte en Dreamer, codificador en TD-MPC y representación en MuZero.</p>
 <dl>
-<dt>\(\sim\)</dt><dd data-hojas="10">«Se muestrea de»: \(z_t\sim q_\phi(\cdot)\) es una muestra de esa distribución.</dd>
-<dt>\(\mid\)</dt><dd data-hojas="7">«Dado que», en probabilidades condicionales.</dd>
-<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza matemática; \(\mathbb E_q\) es la esperanza cuando las muestras salen del posterior \(q\).</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="17">Norma euclídea; \(\|\cdot\|^2\) es el error cuadrático de las pérdidas de TD-MPC.</dd>
-<dt>\(\max\)</dt><dd data-hojas="7">Máximo; en la cota de error, sobre todos los estados y acciones.</dd>
-<dt>\(\mathrm{KL}(q\,\|\,p)\)</dt><dd data-hojas="10">Divergencia de Kullback-Leibler de \(q\) respecto a \(p\): mide cuánto se aleja el posterior del prior. Se mide en nats.</dd>
-<dt>\(\operatorname{sign}\), \(\ln\)</dt><dd data-hojas="11">Signo y logaritmo natural, que forman la transformación symlog.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="22">«Se muestrea de»: \(z_t\sim q_\phi(\cdot)\) es una muestra de esa distribución.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="6,20">«Dado que», en probabilidades condicionales.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="11,23">Esperanza matemática; \(\mathbb E_q\) es la esperanza cuando las muestras salen del posterior \(q\).</dd>
+<dt>\(\mathrm{Var}\)</dt><dd data-hojas="11">Varianza: \(\mathrm{Var}[s'] = \mathbb E[s'^2] - \mathbb E[s']^2\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="46,47">Norma euclídea; \(\|\cdot\|^2\) es el error cuadrático de las pérdidas de TD-MPC.</dd>
+<dt>\(\max\)</dt><dd data-hojas="15,29">Máximo; en la cota de error, sobre todos los estados y acciones; en DreamerV3, el \(\max(1,\cdot)\) de los bits libres.</dd>
+<dt>\(\mathrm{KL}(q\,\|\,p)\)</dt><dd data-hojas="20,26">Divergencia de Kullback-Leibler de \(q\) respecto a \(p\), \(\mathbb E_q[\log q - \log p]\): mide cuánto se aleja el posterior del prior. Se mide en nats. No es simétrica.</dd>
+<dt>\(\mathrm{sg}(\cdot)\)</dt><dd data-hojas="20,28">«Detener el gradiente»: mismo valor hacia delante, gradiente cero hacia atrás.</dd>
+<dt>\(\operatorname{sign}\), \(\ln\)</dt><dd data-hojas="31">Signo y logaritmo natural, que forman la transformación symlog.</dd>
+<dt>\(\mathcal N(\mu, \sigma^2)\)</dt><dd data-hojas="26,10">Distribución gaussiana de media \(\mu\) y varianza \(\sigma^2\).</dd>
 </dl>
 <h3>Modelos y error compuesto</h3>
 <dl>
-<dt>\(T\), \(\hat T\)</dt><dd data-hojas="7">Transición verdadera \(T(\cdot\mid s,a)\) y modelo aprendido \(\hat T(\cdot\mid s,a)\), distribuciones del siguiente estado.</dd>
-<dt>\(s\), \(a\)</dt><dd data-hojas="7">Estado y acción del entorno.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="7">Error por paso del modelo en variación total, acotado para todo estado y acción.</dd>
-<dt>\(\mathrm{TV}\)</dt><dd data-hojas="7">Distancia en variación total entre dos distribuciones de probabilidad.</dd>
-<dt>\(k\)</dt><dd data-hojas="6,7">Longitud (en pasos) de un despliegue en el modelo, p. ej. los despliegues de MBPO. Fijar \(k = 1\) conserva buena parte del beneficio.</dd>
-<dt>\(J_k\), \(\hat J_k\)</dt><dd data-hojas="7">Retorno de un despliegue de \(k\) pasos en el entorno real y en el modelo; su diferencia está acotada por la fórmula de la hoja.</dd>
-<dt>\(R_{\max}\)</dt><dd data-hojas="7">Cota de la recompensa en valor absoluto.</dd>
-<dt>\(\gamma\)</dt><dd data-hojas="7,16">Factor de descuento. En Dreamer, \(\gamma = 0{,}99\).</dd>
-<dt>\(d_t\), \(\hat d_t\)</dt><dd data-hojas="7">Distribución de estados en el paso \(t\) del entorno real y del modelo, con la misma política e inicio.</dd>
-<dt>\(t\)</dt><dd data-hojas="7">Índice de paso de tiempo.</dd>
-<dt>\(\tau\)</dt><dd data-hojas="8">«Temperatura» de World Models que controla la incertidumbre del modelo del que se sueña; temperatura baja da un modelo demasiado seguro.</dd>
+<dt>\(T\), \(\hat T\)</dt><dd data-hojas="6,15">Transición verdadera \(T(\cdot\mid s,a)\) y modelo aprendido \(\hat T(\cdot\mid s,a)\), distribuciones del siguiente estado.</dd>
+<dt>\(s\), \(a\)</dt><dd data-hojas="6">Estado y acción del entorno.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="6,7">Política que se despliega en el entorno.</dd>
+<dt>\(\mathcal D\)</dt><dd data-hojas="6,9">Conjunto de transiciones reales \((s, a, r, s')\) guardadas, con las que se entrena el modelo y desde las que MBPO ramifica.</dd>
+<dt>\(k\)</dt><dd data-hojas="6,9">Longitud (en pasos) de un despliegue en el modelo, p. ej. los despliegues de MBPO. Fijar \(k = 1\) conserva buena parte del beneficio.</dd>
+<dt>\(B\)</dt><dd data-hojas="10,11">Número de redes del conjunto de PETS (5).</dd>
+<dt>\(\mu_b\), \(\sigma_b^2\)</dt><dd data-hojas="10,11">Media y varianza de la gaussiana que predice la red \(b\) del conjunto.</dd>
+<dt>\(\bar\mu\)</dt><dd data-hojas="11">Media de las medias del conjunto: la predicción media.</dd>
+<dt>\(e_k\), \(\delta\), \(L\)</dt><dd data-hojas="13">Error tras \(k\) pasos en bucle abierto, error que el modelo añade en cada paso y factor con que la dinámica amplifica un error: \(e_{t+1} = L\,e_t + \delta\).</dd>
+<dt>\(\Delta t\), \(b\)</dt><dd data-hojas="14">Paso de integración (0,02 s a 50 Hz) y error fijo del modelo en la aceleración, en m/s².</dd>
+<dt>\(e^v_{k}\), \(e^p_k\)</dt><dd data-hojas="14">Errores de velocidad y de posición tras \(k\) pasos; el de posición crece como \(k^2\).</dd>
+<dt>\(A\)</dt><dd data-hojas="14">Matriz que propaga el error de un paso al siguiente en el doble integrador; su término fuera de la diagonal es el acoplamiento.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="6,15">Error por paso del modelo en variación total, acotado para todo estado y acción.</dd>
+<dt>\(\mathrm{TV}\)</dt><dd data-hojas="6,15">Distancia en variación total entre dos distribuciones: la mayor diferencia de probabilidad que dan a un mismo suceso, \(\tfrac12\sum|p-q|\).</dd>
+<dt>\(J_k\), \(\hat J_k\)</dt><dd data-hojas="6,17">Retorno de un despliegue de \(k\) pasos en el entorno real y en el modelo; su diferencia está acotada por \(R_{\max}\sum_t\gamma^t t\varepsilon\).</dd>
+<dt>\(R_{\max}\)</dt><dd data-hojas="17">Cota de la recompensa en valor absoluto.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6,38">Factor de descuento. En Dreamer, \(\gamma = 0{,}99\).</dd>
+<dt>\(d_t\), \(\hat d_t\)</dt><dd data-hojas="6,15">Distribución de estados en el paso \(t\) del entorno real y del modelo, con la misma política e inicio.</dd>
+<dt>\(t\)</dt><dd data-hojas="6">Índice de paso de tiempo.</dd>
+<dt>\(\tau\) (temperatura)</dt><dd data-hojas="18">«Temperatura» de World Models que controla la incertidumbre del modelo del que se sueña; temperatura baja da un modelo demasiado seguro.</dd>
 </dl>
-<h3>El RSSM</h3>
+<h3>El RSSM y su pérdida</h3>
 <dl>
-<dt>\(h_t\)</dt><dd data-hojas="10">Estado determinista (memoria) del RSSM, calculado por una GRU: \(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\).</dd>
-<dt>\(f_\theta\)</dt><dd data-hojas="10">Red recurrente (GRU) del camino determinista, con parámetros \(\theta\).</dd>
-<dt>\(z_t\)</dt><dd data-hojas="10">Estado estocástico (latente) en \(t\); junto con \(h_t\) forma el estado del modelo. Se obtiene con el posterior al filtrar.</dd>
-<dt>\(\hat z_t\)</dt><dd data-hojas="10">Latente imaginado, muestreado del prior sin usar la observación.</dd>
-<dt>\(a_t\), \(a_{t-1}\)</dt><dd data-hojas="10">Acción en \(t\) (y en el paso anterior).</dd>
-<dt>\(o_t\)</dt><dd data-hojas="10">Observación en \(t\) (en el x500: posición, actitud y giróscopo, sin velocidad).</dd>
-<dt>\(\hat o_t\)</dt><dd data-hojas="10">Observación reconstruida por el decodificador.</dd>
-<dt>\(\hat r_t\)</dt><dd data-hojas="10">Recompensa predicha por el decodificador en Dreamer.</dd>
-<dt>\(p_\theta(z_t\mid h_t)\)</dt><dd data-hojas="10">Prior: predice el latente solo con la memoria \(h_t\); sirve para imaginar.</dd>
-<dt>\(q_\phi(z_t\mid h_t, o_t)\)</dt><dd data-hojas="10">Posterior: infiere el latente con la memoria y la observación; sirve para filtrar. Es el belief aprendido.</dd>
-<dt>\(p_\theta(o_t\mid h_t, z_t)\)</dt><dd data-hojas="10">Decodificador: distribución de la observación dado el estado del modelo.</dd>
-<dt>\(\theta\), \(\phi\)</dt><dd data-hojas="10">Parámetros del modelo generativo (prior, decodificador, GRU) y del posterior (codificador).</dd>
-<dt>\(\log p(o_{1:T}\mid a)\)</dt><dd data-hojas="10">Log-verosimilitud (evidencia) de la secuencia de observaciones dadas las acciones: lo que acota la pérdida.</dd>
-<dt>\(q(z_{1:T}\mid o_{1:T}, a)\)</dt><dd data-hojas="10">Posterior sobre toda la secuencia de latentes, factorizado en un posterior por paso.</dd>
-<dt>\(T\) (longitud de secuencia)</dt><dd data-hojas="10">Longitud de la secuencia de observaciones en la cota de evidencia. No confundir con la transición \(T\).</dd>
-<dt>\(\beta_{\text{pred}}\), \(\beta_{\text{dyn}}\), \(\beta_{\text{rep}}\)</dt><dd data-hojas="10,11">Pesos de la pérdida de DreamerV3: predicción, dinámica (entrena el prior hacia el posterior) y representación (entrena el posterior hacia el prior). Valores \(1\), \(1\), \(0{,}1\). La versión v1 de arXiv usaba \(\beta_{\text{dyn}} = 0{,}5\).</dd>
-<dt>\(\alpha = 0{,}8\)</dt><dd data-hojas="11">Equilibrio del KL de DreamerV2: el prior se mueve hacia el posterior más deprisa que al revés.</dd>
-<dt>\(32\times32\)</dt><dd data-hojas="11">Latente discreto de DreamerV2: 32 variables categóricas de 32 clases (vector binario de 1024 con 32 bits activos).</dd>
-<dt>\(\mu_q\)</dt><dd data-hojas="13">Media del posterior; junto con \(h\) es el estado del RSSM del que se sondean velocidad y masa.</dd>
-<dt>\(R^2\)</dt><dd data-hojas="13">Coeficiente de determinación del sondeo lineal: 1 es predicción perfecta, 0 equivale a predecir la media.</dd>
-<dt>\(x\)</dt><dd data-hojas="14">Posición horizontal del dron en el episodio de la figura de imaginación, en metros.</dd>
+<dt>\(h_t\)</dt><dd data-hojas="20,21">Estado determinista (memoria) del RSSM, calculado por una GRU: \(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\). En el x500, 128 números.</dd>
+<dt>\(f_\theta\)</dt><dd data-hojas="20,22">Red recurrente (GRU) del camino determinista, con parámetros \(\theta\).</dd>
+<dt>\(z_t\)</dt><dd data-hojas="20,21">Estado estocástico (latente) en \(t\); junto con \(h_t\) forma el estado del modelo. Se obtiene con el posterior al filtrar. En el x500, 16 números.</dd>
+<dt>\(\hat z_t\)</dt><dd data-hojas="20,22">Latente imaginado, muestreado del prior sin usar la observación.</dd>
+<dt>\(s_t = (h_t, z_t)\)</dt><dd data-hojas="20">Estado completo del modelo, el que usan decodificador, actor y crítico.</dd>
+<dt>\(a_t\), \(a_{t-1}\)</dt><dd data-hojas="21,22">Acción en \(t\) (y en el paso anterior).</dd>
+<dt>\(o_t\)</dt><dd data-hojas="20">Observación en \(t\) (en el x500: posición, actitud y giróscopo, sin velocidad; 15 números).</dd>
+<dt>\(\hat o_t\)</dt><dd data-hojas="22">Observación reconstruida por el decodificador.</dd>
+<dt>\(\hat r_t\)</dt><dd data-hojas="22">Recompensa predicha por el decodificador en Dreamer.</dd>
+<dt>\(p_\theta(z_t\mid h_t)\)</dt><dd data-hojas="20,22">Prior: predice el latente solo con la memoria \(h_t\); sirve para imaginar y entra en el KL.</dd>
+<dt>\(q_\phi(z_t\mid h_t, o_t)\)</dt><dd data-hojas="20,22">Posterior: infiere el latente con la memoria y la observación; sirve para filtrar. Es el belief aprendido.</dd>
+<dt>\(p_\theta(o_t\mid h_t, z_t)\)</dt><dd data-hojas="20,22">Decodificador: distribución de la observación dado el estado del modelo.</dd>
+<dt>\(\theta\), \(\phi\)</dt><dd data-hojas="20">Parámetros del modelo generativo (prior, decodificador, GRU) y del posterior (codificador).</dd>
+<dt>\(\mu_q\), \(\sigma_q\), \(\mu_p\), \(\sigma_p\)</dt><dd data-hojas="20,26">Media y desviación del posterior y del prior gaussianos.</dd>
+<dt>\(\epsilon\)</dt><dd data-hojas="22">Ruido gaussiano estándar de la reparametrización \(z = \mu + \sigma\,\epsilon\). No es el error por paso \(\varepsilon\).</dd>
+<dt>\(\log p(o)\)</dt><dd data-hojas="23,27">Evidencia: log-verosimilitud de la observación con el latente integrado. Lo que la cota acota por abajo.</dd>
+<dt>\(q(z)\)</dt><dd data-hojas="23,27">Distribución auxiliar sobre el latente con la que se construye la cota; la cota es exacta si es el posterior verdadero \(p(z\mid o)\).</dd>
+<dt>\(w\)</dt><dd data-hojas="23">Valores de ejemplo en la figura de la desigualdad de Jensen.</dd>
+<dt>\(\log p(o_{1:T}\mid a)\)</dt><dd data-hojas="25">Log-verosimilitud (evidencia) de la secuencia de observaciones dadas las acciones: lo que acota la pérdida.</dd>
+<dt>\(q(z_{1:T}\mid o_{1:T})\)</dt><dd data-hojas="24">Posterior sobre toda la secuencia de latentes, factorizado en un posterior por paso.</dd>
+<dt>\(T\) (longitud de secuencia)</dt><dd data-hojas="20,24">Longitud de la secuencia de observaciones en la cota de evidencia. No confundir con la transición \(T\).</dd>
+<dt>\(L_{\text{dyn}}\), \(L_{\text{rep}}\)</dt><dd data-hojas="28,29">Las dos mitades del KL con el gradiente detenido en un lado: la de dinámica solo mueve el prior y la de representación solo el posterior.</dd>
+<dt>\(L_{\text{pred}}\)</dt><dd data-hojas="29">Pérdida de predicción de DreamerV3: observación, recompensa y señal de continuación.</dd>
+<dt>\(c_t\)</dt><dd data-hojas="29">Señal de que el episodio continúa, que DreamerV3 también predice.</dd>
+<dt>\(\beta_{\text{pred}}\), \(\beta_{\text{dyn}}\), \(\beta_{\text{rep}}\)</dt><dd data-hojas="29,28">Pesos de la pérdida de DreamerV3: predicción, dinámica (entrena el prior hacia el posterior) y representación (entrena el posterior hacia el prior). Valores \(1\), \(1\), \(0{,}1\). La versión v1 de arXiv usaba \(\beta_{\text{dyn}} = 0{,}5\).</dd>
+<dt>\(\alpha = 0{,}8\)</dt><dd data-hojas="28,30">Equilibrio del KL de DreamerV2: el prior se mueve hacia el posterior más deprisa que al revés.</dd>
+<dt>\(32\times32\)</dt><dd data-hojas="30">Latente discreto de DreamerV2: 32 variables categóricas de 32 clases (vector binario de 1024 con 32 bits activos).</dd>
+<dt>\(\mathrm{symlog}\), \(\mathrm{symexp}\)</dt><dd data-hojas="31">\(\operatorname{sign}(x)\ln(|x|+1)\) y su inversa: comprimen magnitudes muy distintas para usar una sola configuración.</dd>
+<dt>\(S\)</dt><dd data-hojas="31">Rango entre los percentiles 5 y 95 de los retornos, suavizado; el actor de DreamerV3 divide por \(\max(1, S)\).</dd>
+<dt>\(\mu_q\)</dt><dd data-hojas="34">Media del posterior; junto con \(h\) es el estado del RSSM del que se sondean velocidad y masa.</dd>
+<dt>\(R^2\)</dt><dd data-hojas="34">Coeficiente de determinación del sondeo lineal: 1 es predicción perfecta, 0 equivale a predecir la media.</dd>
+<dt>\(x\)</dt><dd data-hojas="36">Posición horizontal del dron en el episodio de la figura de imaginación, en metros.</dd>
 </dl>
 <h3>Actuar con el modelo</h3>
 <dl>
-<dt>\(H\)</dt><dd data-hojas="16">Horizonte de imaginación: 15 pasos en Dreamer; 5 pasos de planificación en TD-MPC.</dd>
-<dt>\(v_\psi\)</dt><dd data-hojas="16">Crítico de Dreamer con parámetros \(\psi\): estima el valor de un estado latente.</dd>
-<dt>\(\psi\)</dt><dd data-hojas="16">Parámetros del crítico.</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="16">Parámetro del retorno \(\lambda\) que mezcla horizontes; en Dreamer, \(\lambda = 0{,}95\).</dd>
-<dt>\(V^k_N(s_\tau)\)</dt><dd data-hojas="16">Retorno de \(k\) pasos desde \(s_\tau\) en la trayectoria imaginada, cerrado con el crítico en el último estado.</dd>
-<dt>\(V_\lambda(s_\tau)\)</dt><dd data-hojas="16">Retorno \(\lambda\): mezcla ponderada de los retornos de todos los horizontes, como GAE.</dd>
-<dt>\(s_\tau\), \(s_h\)</dt><dd data-hojas="16">Estados (latentes) de la trayectoria imaginada: de partida y el último, cuando se cierra con el crítico.</dd>
-<dt>\(r_n\)</dt><dd data-hojas="16">Recompensa predicha en el paso imaginado \(n\).</dd>
-<dt>\(h\) (horizonte truncado)</dt><dd data-hojas="16">Índice \(h=\min(\tau+k,\ t+H)\) del último estado de un retorno de \(k\) pasos. No es el estado determinista \(h_t\).</dd>
-<dt>\(n\)</dt><dd data-hojas="16">Índice del horizonte y de los pasos en los retornos \(V^n_N\).</dd>
-<dt>\(c_1\), \(c_2\), \(c_3\)</dt><dd data-hojas="17">Coeficientes de las tres pérdidas de TD-MPC: recompensa, valor por diferencias temporales y consistencia del latente.</dd>
-<dt>\(z_i\)</dt><dd data-hojas="17">Latente codificado en el paso \(i\) de la secuencia de entrenamiento de TD-MPC.</dd>
-<dt>\(a_i\), \(r_i\)</dt><dd data-hojas="17">Acción y recompensa del paso \(i\).</dd>
-<dt>\(\hat r_i\)</dt><dd data-hojas="17">Recompensa predicha por el modelo en TD-MPC.</dd>
-<dt>\(d(z_i, a_i)\)</dt><dd data-hojas="17">Modelo de dinámica latente: predice el siguiente latente.</dd>
-<dt>\(h^-(s_{i+1})\)</dt><dd data-hojas="17">Latente codificado del siguiente estado con el codificador objetivo (sin gradiente), al que debe parecerse el predicho.</dd>
-<dt>\(Q(z_i,a_i)\)</dt><dd data-hojas="17">Función de valor-acción en el latente.</dd>
-<dt>\(Q^-\)</dt><dd data-hojas="17">Copia objetivo de \(Q\) para el objetivo de diferencias temporales.</dd>
-<dt>\(\pi(z_{i+1})\)</dt><dd data-hojas="17">Política aprendida que propone la acción siguiente en el objetivo de valor.</dd>
-<dt>\(\gamma^H Q(z_H, a_H)\)</dt><dd data-hojas="17">Valor terminal con el que TD-MPC cierra la planificación MPPI a \(H\) pasos.</dd>
+<dt>\(H\)</dt><dd data-hojas="38,45">Horizonte de imaginación: 15 pasos en Dreamer; 5 pasos de planificación en TD-MPC.</dd>
+<dt>\(\tau\) (índice)</dt><dd data-hojas="38">Paso dentro de la imaginación, \(t\le\tau\le t+H\). No es la temperatura de World Models ni la de SimNorm.</dd>
+<dt>\(s_\tau\), \(r_\tau\)</dt><dd data-hojas="38,41">Estado imaginado con el prior y recompensa que predice el modelo en él.</dd>
+<dt>\(\pi_\vartheta(a_\tau\mid s_\tau)\)</dt><dd data-hojas="38,43">Actor de Dreamer; \(\vartheta\) son sus parámetros (Dreamer los llama \(\phi\)).</dd>
+<dt>\(v_\psi\)</dt><dd data-hojas="38,39">Crítico de Dreamer con parámetros \(\psi\): estima el valor de un estado latente.</dd>
+<dt>\(\psi\)</dt><dd data-hojas="38,43">Parámetros del crítico.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="38,40">Parámetro del retorno \(\lambda\) que mezcla horizontes; en Dreamer, \(\lambda = 0{,}95\).</dd>
+<dt>\(V^k_N(s_\tau)\)</dt><dd data-hojas="40">Retorno de \(k\) pasos desde \(s_\tau\) en la trayectoria imaginada, cerrado con el crítico en el último estado.</dd>
+<dt>\(V_\lambda(s_\tau)\)</dt><dd data-hojas="40,41">Retorno \(\lambda\): mezcla ponderada de los retornos de todos los horizontes, como GAE. Se calcula con la recursión \(r_\tau + \gamma[(1-\lambda)v + \lambda V_\lambda]\).</dd>
+<dt>\(s_\tau\), \(s_h\)</dt><dd data-hojas="40">Estados (latentes) de la trayectoria imaginada: de partida y el último, cuando se cierra con el crítico.</dd>
+<dt>\(r_n\)</dt><dd data-hojas="40">Recompensa predicha en el paso imaginado \(n\).</dd>
+<dt>\(h\) (horizonte truncado)</dt><dd data-hojas="38,40">Índice \(h=\min(\tau+k,\ t+H)\) del último estado de un retorno de \(k\) pasos. No es el estado determinista \(h_t\).</dd>
+<dt>\(n\)</dt><dd data-hojas="40">Índice del horizonte y de los pasos en los retornos \(V^n_N\).</dd>
+<dt>\(K\) (pasos restantes)</dt><dd data-hojas="41">En la derivación de la recursión, \(K = t + H - \tau\): pasos de imaginación que quedan desde \(s_\tau\).</dd>
+<dt>\(s_i\)</dt><dd data-hojas="44,45">En TD-MPC, la observación (o el estado) real del paso \(i\).</dd>
+<dt>\(h_\theta\) (codificador)</dt><dd data-hojas="44,45">Codificador de TD-MPC, \(z_i = h_\theta(s_i)\). No es la memoria del RSSM.</dd>
+<dt>\(c_1\), \(c_2\), \(c_3\)</dt><dd data-hojas="44,46">Coeficientes de las tres pérdidas de TD-MPC: recompensa (0,5), valor por diferencias temporales (0,1) y consistencia del latente (2).</dd>
+<dt>\(\lambda\) (TD-MPC)</dt><dd data-hojas="44,46">Peso temporal \(\lambda^{i-t}\) que da menos importancia a los pasos lejanos (0,5). No es el del retorno \(\lambda\).</dd>
+<dt>\(J\)</dt><dd data-hojas="46">Pérdida de TD-MPC en un tramo de \(H\) pasos, \(\sum_i\lambda^{i-t}L_i\).</dd>
+<dt>\(z_i\)</dt><dd data-hojas="44,46">Latente en el paso \(i\): el primero codificado, los siguientes predichos con \(d\).</dd>
+<dt>\(a_i\), \(r_i\)</dt><dd data-hojas="46">Acción y recompensa del paso \(i\).</dd>
+<dt>\(\hat r_i\)</dt><dd data-hojas="46">Recompensa predicha por el modelo en TD-MPC.</dd>
+<dt>\(d(z_i, a_i)\)</dt><dd data-hojas="46,45">Modelo de dinámica latente: predice el siguiente latente.</dd>
+<dt>\(h^-(s_{i+1})\)</dt><dd data-hojas="46,44">Latente codificado del siguiente estado con el codificador objetivo (sin gradiente), al que debe parecerse el predicho.</dd>
+<dt>\(Q(z_i,a_i)\)</dt><dd data-hojas="46">Función de valor-acción en el latente.</dd>
+<dt>\(Q^-\)</dt><dd data-hojas="44,46">Copia objetivo de \(Q\) (media exponencial lenta) para el objetivo de diferencias temporales.</dd>
+<dt>\(\pi(z_{i+1})\)</dt><dd data-hojas="46">Política aprendida que propone la acción siguiente en el objetivo de valor.</dd>
+<dt>\(\gamma^H Q(z_H, a_H)\)</dt><dd data-hojas="45">Valor terminal con el que TD-MPC cierra la planificación MPPI a \(H\) pasos.</dd>
+<dt>\(z'_t\)</dt><dd data-hojas="47">Latente predicho por la dinámica de TD-MPC2 para el paso siguiente.</dd>
+<dt>\(\mathrm{CE}\)</dt><dd data-hojas="47">Entropía cruzada: TD-MPC2 predice recompensa y valor como una clasificación en un espacio logarítmico.</dd>
+<dt>\(q_t\), \(\bar Q\)</dt><dd data-hojas="47">Objetivo de diferencias temporales de TD-MPC2, \(r_t + \gamma\bar Q(z'_t, p(z'_t))\), con \(\bar Q\) media exponencial de \(Q\).</dd>
+<dt>\(g_i\), \(V\)</dt><dd data-hojas="47">SimNorm: cada grupo de \(V\) componentes del latente (8 en el artículo) pasa por un softmax y da el vector \(g_i\), que suma 1.</dd>
+<dt>\(\tau\) (SimNorm)</dt><dd data-hojas="47">Temperatura del softmax de SimNorm (1 en el artículo).</dd>
+<dt>\(h_\theta\), \(g_\theta\), \(f_\theta\)</dt><dd data-hojas="44,49">MuZero: representación (observaciones → estado), dinámica (estado, acción → recompensa, estado) y predicción (estado → política, valor).</dd>
+<dt>\(s^k\), \(r^k\), \(p^k\), \(v^k\)</dt><dd data-hojas="44,49">MuZero: estado oculto tras \(k\) acciones hipotéticas, y recompensa, política y valor que se predicen en él.</dd>
+<dt>\(u_t\), \(z_t\), \(\pi_t\)</dt><dd data-hojas="44,49">MuZero: recompensa observada, objetivo de valor de \(n\) pasos y política devuelta por la búsqueda en árbol.</dd>
+<dt>\(\nu\)</dt><dd data-hojas="49">Valor estimado por la búsqueda en árbol de MuZero, con el que se cierra el objetivo \(z_t\).</dd>
+<dt>\(K\) (MuZero)</dt><dd data-hojas="49">Pasos que se despliega el modelo de MuZero en el entrenamiento (5 en el artículo).</dd>
+<dt>\(\ell^r\), \(\ell^v\), \(\ell^p\)</dt><dd data-hojas="49">Pérdidas de recompensa, valor y política de MuZero.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; aquí, basado en modelo.</dd>
-<dt>RSSM</dt><dd data-hojas="10">Recurrent state-space model: modelo de espacio de estados con una parte determinista (GRU) y otra estocástica.</dd>
-<dt>GRU</dt><dd data-hojas="10">Gated recurrent unit: la red recurrente del camino determinista.</dd>
-<dt>KL</dt><dd data-hojas="10">Kullback-Leibler: divergencia entre el posterior y el prior en la pérdida.</dd>
-<dt>Dyna</dt><dd data-hojas="6">Arquitectura que aprende un modelo y entrena con transiciones imaginadas; caso de despliegues de un paso.</dd>
-<dt>MBPO</dt><dd data-hojas="6">Model-based policy optimization: despliegues cortos desde estados reales con un conjunto de redes y SAC.</dd>
-<dt>SAC</dt><dd data-hojas="6">Soft actor-critic, método sin modelo.</dd>
-<dt>PPO</dt><dd data-hojas="6">Proximal policy optimization, método sin modelo con el que se compara PETS.</dd>
-<dt>PETS</dt><dd data-hojas="6">Probabilistic ensembles with trajectory sampling: planifica con CEM sobre un conjunto de redes probabilísticas.</dd>
-<dt>PlaNet</dt><dd data-hojas="6">Planifica con CEM en el latente de un RSSM.</dd>
-<dt>CEM</dt><dd data-hojas="6">Cross-entropy method: método de optimización de acciones por muestreo.</dd>
-<dt>MPC</dt><dd data-hojas="6">Model predictive control: optimizar acciones en línea con el modelo.</dd>
-<dt>D4PG</dt><dd data-hojas="16">Distributed distributional deep deterministic policy gradient: algoritmo sin modelo con el que se compara Dreamer en tareas visuales de DeepMind Control.</dd>
-<dt>MPPI</dt><dd data-hojas="17">Model predictive path integral: planificador por muestreo que usa TD-MPC.</dd>
+<dt>RL</dt><dd data-hojas="1,7">Reinforcement learning, aprendizaje por refuerzo; aquí, basado en modelo.</dd>
+<dt>RSSM</dt><dd data-hojas="21">Recurrent state-space model: modelo de espacio de estados con una parte determinista (GRU) y otra estocástica.</dd>
+<dt>GRU</dt><dd data-hojas="20,21">Gated recurrent unit: la red recurrente del camino determinista.</dd>
+<dt>KL</dt><dd data-hojas="23,26">Kullback-Leibler: divergencia entre el posterior y el prior en la pérdida.</dd>
+<dt>TV</dt><dd data-hojas="6,15">Variación total, distancia entre distribuciones.</dd>
+<dt>Dyna</dt><dd data-hojas="8,9">Arquitectura que aprende un modelo y entrena con transiciones imaginadas; caso de despliegues de un paso.</dd>
+<dt>MBPO</dt><dd data-hojas="8,9">Model-based policy optimization: despliegues cortos desde estados reales con un conjunto de redes y SAC.</dd>
+<dt>SAC</dt><dd data-hojas="8,9">Soft actor-critic, método sin modelo.</dd>
+<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization, método sin modelo con el que se compara PETS.</dd>
+<dt>PETS</dt><dd data-hojas="8,10">Probabilistic ensembles with trajectory sampling: planifica con CEM sobre un conjunto de redes probabilísticas.</dd>
+<dt>TS1, TS∞</dt><dd data-hojas="11">Variantes de propagación de partículas de PETS: cambiar de red en cada paso o conservarla todo el episodio.</dd>
+<dt>PlaNet</dt><dd data-hojas="8,21">Planifica con CEM en el latente de un RSSM.</dd>
+<dt>CEM</dt><dd data-hojas="8">Cross-entropy method: método de optimización de acciones por muestreo.</dd>
+<dt>MPC</dt><dd data-hojas="7,8">Model predictive control: optimizar acciones en línea con el modelo.</dd>
+<dt>D4PG</dt><dd data-hojas="39">Distributed distributional deep deterministic policy gradient: algoritmo sin modelo con el que se compara Dreamer en tareas visuales de DeepMind Control.</dd>
+<dt>REINFORCE</dt><dd data-hojas="43">Estimador del gradiente de la política por razón de verosimilitud, sin sesgo pero ruidoso; lo usan DreamerV2 (en parte) y DreamerV3.</dd>
+<dt>MPPI</dt><dd data-hojas="45">Model predictive path integral: planificador por muestreo que usa TD-MPC.</dd>
+<dt>TOLD</dt><dd data-hojas="45">Task-oriented latent dynamics: el modelo latente de TD-MPC.</dd>
 <dt>PILCO</dt><dd data-hojas="3">Método con procesos gaussianos y gradientes analíticos; aprendió un péndulo real con poca interacción.</dd>
-<dt>Dreamer, DreamerV2, DreamerV3</dt><dd data-hojas="11">Agentes que aprenden actor y crítico en imaginación dentro de un RSSM; V2 usa latentes discretos y V3 una sola configuración.</dd>
-<dt>DayDreamer</dt><dd data-hojas="20">Dreamer aplicado a robots reales, con actor y aprendiz asíncronos.</dd>
-<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="17">Planificación MPC en un latente entrenado con diferencias temporales y sin reconstruir la observación.</dd>
-<dt>MuZero</dt><dd data-hojas="18">Modelo que predice solo recompensa, política y valor, con búsqueda en árbol.</dd>
-<dt>SimNorm</dt><dd data-hojas="17">Proyección del latente en símplices con softmax, de TD-MPC2.</dd>
-<dt>NeuroBEM</dt><dd data-hojas="20">Modelo híbrido de dinámica de un dron: teoría de elementos de pala más red para lo residual.</dd>
-<dt>GAE</dt><dd data-hojas="16">Generalized advantage estimation (A6a), análogo al retorno \(\lambda\).</dd>
+<dt>Dreamer, DreamerV2, DreamerV3</dt><dd data-hojas="30,39">Agentes que aprenden actor y crítico en imaginación dentro de un RSSM; V2 usa latentes discretos y V3 una sola configuración.</dd>
+<dt>DayDreamer</dt><dd data-hojas="52">Dreamer aplicado a robots reales, con actor y aprendiz asíncronos.</dd>
+<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="45,47">Planificación MPC en un latente entrenado con diferencias temporales y sin reconstruir la observación.</dd>
+<dt>MuZero</dt><dd data-hojas="49">Modelo que predice solo recompensa, política y valor, con búsqueda en árbol.</dd>
+<dt>SimNorm</dt><dd data-hojas="47">Proyección del latente en símplices con softmax, de TD-MPC2.</dd>
+<dt>NeuroBEM</dt><dd data-hojas="53">Modelo híbrido de dinámica de un dron: teoría de elementos de pala más red para lo residual.</dd>
+<dt>GAE</dt><dd data-hojas="40">Generalized advantage estimation (A6a), análogo al retorno \(\lambda\).</dd>
 <dt>VAE</dt><dd data-hojas="4">Variational autoencoder, componente de World Models.</dd>
-<dt>VPT</dt><dd data-hojas="11">Agente de Minecraft con datos humanos con el que DreamerV3 compara su coste.</dd>
-<dt>MLP</dt><dd data-hojas="12">Perceptrón multicapa; aquí, el modelo de un paso sin memoria.</dd>
+<dt>VPT</dt><dd data-hojas="31">Agente de Minecraft con datos humanos con el que DreamerV3 compara su coste.</dd>
+<dt>MLP</dt><dd data-hojas="32">Perceptrón multicapa; aquí, el modelo de un paso sin memoria.</dd>
 <dt>x500</dt><dd data-hojas="3">Cuadricóptero del laboratorio, con observación parcial y masa aleatoria.</dd>
 </dl>
 </aside>
