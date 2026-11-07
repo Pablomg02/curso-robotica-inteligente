@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Entrenar políticas para la búsqueda con un dron de A7a con distintas formas de memoria, compararlas con las heurísticas y POMCP de A7a con el mismo protocolo, y comprobar qué hay en el estado oculto de una política recurrente. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a7b.py`, salida en `figuras/salida_gpu.txt`):
+Entrenar políticas para la búsqueda con un dron de A7a con distintas formas de memoria, compararlas con las heurísticas y POMCP de A7a con el mismo protocolo, y comprobar qué hay en el estado oculto de una política recurrente. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a7b.py`, salida en `figuras/salida_gpu.txt`; los ejemplos hechos a mano, como la GRU de una unidad o el sondeo de dos casillas, salen de `figuras/ejemplos_a7b.py`, en CPU y en segundos):
 
 | Resultado de la presentación | Valor | Paso |
 |---|---|---|

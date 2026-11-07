@@ -48,7 +48,7 @@
   <h2>Sin modelo no hay filtro de Bayes: la red tiene que hacer de filtro</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>En A7a el belief salía de Bayes con \(T\) y \(O\) conocidos. Con cámaras, viento y dinámica aprendida, no tienes ese modelo: la política tiene que resumir la historia ella sola.</li>
         <li>Un estudio de 2022 encuentra que un RL recurrente sin modelo, bien configurado, iguala o supera a métodos especializados para POMDP en 18 de 21 entornos <a class="cite" data-ref="ni2022"></a>.</li>
         <li>En 2025, una red recurrente sobre imágenes de profundidad de 16 × 12 píxeles, entrenada con simulación diferenciable (B6) y no con RL, vuela entre árboles sin odometría explícita: 90 % de éxito frente al 60 % del mejor método previo, hasta 20 m/s, con un ordenador de 21 dólares, según sus autores <a class="cite" data-ref="zhang2025"></a>.</li>
@@ -81,11 +81,159 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Memoria · por qué</p>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:36%">Ejemplo en la búsqueda de A7a</th></tr>
+      <tr><td>\(s_t\)</td><td><strong>Estado</strong> verdadero en el paso \(t\). La política no lo ve entero</td><td>Dron en (0, 0), objetivo en (4, 3)</td></tr>
+      <tr><td>\(o_t\), \(c_t\)</td><td><strong>Observación</strong>: lo que recibe la política en \(t\); \(c_t\), la casilla del dron</td><td>\(c_t\) codificada en <em>one-hot</em>: 36 números, un 1 y 35 ceros</td></tr>
+      <tr><td>\(a_t\), \(r_t\)</td><td>Acción y recompensa del paso \(t\)</td><td>Cuatro movimientos; \(-1\) por paso</td></tr>
+      <tr><td>\(o_{1:t}\)</td><td>Historia: todas las observaciones (y acciones) hasta \(t\)</td><td>Las casillas recorridas desde la esquina</td></tr>
+      <tr><td>\(h_t\)</td><td><strong>Estado oculto</strong> de la red recurrente: un vector que resume \(o_{1:t}\)</td><td>128 números en la GRU</td></tr>
+      <tr><td>\(b_t\)</td><td><strong>Belief</strong> exacto \(P(s_t\mid o_{1:t})\), del filtro de Bayes de A7a</td><td>Mapa de 36 casillas que suma 1</td></tr>
+      <tr><td>\(\pi_\theta(a\mid\cdot)\), \(V\)</td><td>Política con parámetros \(\theta\) (tras la barra, lo que recibe) y crítico</td><td>\(\pi_\theta(a\mid o_t)\), \(\pi_\theta(a\mid h_t)\), \(\pi_\theta(a\mid b_t, c_t)\)</td></tr>
+      <tr><td>\(\gamma\), \(k\)</td><td>Factor de descuento; tamaño de la pila de observaciones</td><td>\(\gamma = 0{,}99\) en PPO; \(k = 8\)</td></tr>
+      <tr><td>\(d_t\)</td><td>Fin de episodio: 1 si el episodio termina en el paso \(t\), 0 si no</td><td>Detecta el objetivo o llega a 80 pasos</td></tr>
+      <tr><td>\(N\), \(L\)</td><td>Número de entornos en paralelo; longitud del tramo que se recoge antes de cada actualización</td><td>\(N = 1024\), \(L = 32\)</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: en A6b y A7a, \(h_t\) era la historia; aquí es el estado oculto de la red, y la historia se escribe \(o_{1:t}\). En la GRU, \(z_t\) y \(r_t\) serán además dos puertas (se avisa en su hoja).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · por qué · 1 · el problema</p>
   <h2>Sin memoria, la mejor política puede tener que tirar una moneda</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 620 300" style="max-height:330px" role="img" aria-label="Dos estados, A y B. Desde A, izquierda da más uno y lleva a B; derecha da cero y se queda en A. Desde B, derecha da más uno y lleva a A; izquierda da cero y se queda en B">
+        <defs><marker id="a7bal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        <marker id="a7bala" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect x="120" y="70" width="380" height="160" rx="14" fill="none" class="ln-dash"/>
+        <text x="310" y="58" text-anchor="middle" class="t-muted" font-size="14">la política ve lo mismo en A y en B: la misma o</text>
+        <circle cx="200" cy="150" r="44" class="box"/>
+        <text x="200" y="158" text-anchor="middle" class="t-bold" font-size="24">A</text>
+        <circle cx="420" cy="150" r="44" class="box"/>
+        <text x="420" y="158" text-anchor="middle" class="t-bold" font-size="24">B</text>
+        <path d="M236 124 Q310 84 384 124" fill="none" class="ln-accent" stroke-width="2" marker-end="url(#a7bala)"/>
+        <text x="310" y="94" text-anchor="middle" class="t-accent" font-size="15">izquierda: +1</text>
+        <path d="M384 176 Q310 216 236 176" fill="none" class="ln-accent" stroke-width="2" marker-end="url(#a7bala)"/>
+        <text x="310" y="218" text-anchor="middle" class="t-accent" font-size="15">derecha: +1</text>
+        <path d="M160 128 C 100 100, 100 200, 160 172" fill="none" class="ln" marker-end="url(#a7bal)"/>
+        <text x="96" y="154" text-anchor="end" class="t-muted" font-size="15">derecha: 0</text>
+        <path d="M460 128 C 520 100, 520 200, 460 172" fill="none" class="ln" marker-end="url(#a7bal)"/>
+        <text x="524" y="154" class="t-muted" font-size="15">izquierda: 0</text>
+        <text x="310" y="270" text-anchor="middle" class="t-mono t-muted" font-size="14">arranque en A o en B con probabilidad ½ · γ = 0,9</text>
+      </svg>
+      <figcaption>Un POMDP de dos estados con <em>aliasing</em>: los dos dan la misma observación. Ejemplo nuestro; cuentas en <code>ejemplos_a7b.py</code>, ejemplo 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>La acción que paga es la contraria en cada estado: «izquierda» en A, «derecha» en B. Si viera el estado, cobraría +1 en cada paso.</p>
+      <p>Una política <strong>sin memoria</strong> es una función de la observación actual. Como A y B dan la misma \(o\), tiene que hacer lo mismo en los dos: «izquierda» con probabilidad \(p\), en A y en B.</p>
+      <p>\(V_A\) y \(V_B\): retorno descontado esperado si se empieza en A o en B. Lo que mide cada política es la media, \(\tfrac12(V_A + V_B)\).</p>
+      <div class="callout clave"><span class="tag">Una serie que se usa en las tres hojas</span>Cobrar 1 en cada paso para siempre vale \(1 + \gamma + \gamma^2 + \dots = \dfrac{1}{1-\gamma} = 10\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · por qué · 2 · sin memoria</p>
+  <h2>Siempre lo mismo vale 0,5; tirar una moneda vale 5</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Dos estados, A y B, que dan la <em>misma</em> observación. En A, «izquierda» da +1 y lleva a B; «derecha» da 0 y se queda en A. En B, al revés. \(\gamma = 0{,}9\), arranque en A o B con ½.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(V_A = p\,(1 + \gamma V_B) + (1-p)\,\gamma V_A\)</td><td>Desde A: «izquierda» con \(p\) cobra 1 y pasa a B; «derecha» cobra 0 y sigue en A</td></tr>
+          <tr><td><strong>2</strong></td><td>\(V_B = (1-p)\,(1 + \gamma V_A) + p\,\gamma V_B\)</td><td>En B paga la «derecha», que elige con \(1-p\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(p = 1\): \(V_B = \gamma V_B \Rightarrow V_B = 0\); \(V_A = 1\)</td><td>«Siempre izquierda» se atasca en B cobrando 0. Media: <strong>0,5</strong></td></tr>
+          <tr><td><strong>4</strong></td><td>\(p = \tfrac12\): \(V_A = V_B = V = \tfrac12 + \gamma V\)</td><td>Por simetría; acierta con ½ en cada paso, esté donde esté</td></tr>
+          <tr><td><strong>5</strong></td><td>\(V = \dfrac{1/2}{1-\gamma} = 5\)</td><td>Despejar: la serie de la hoja anterior, a medio premio</td></tr>
+        </table>
+      </div>
+      <p>Determinista hacia el otro lado (\(p = 0\)) da lo mismo, 0,5: se atasca en A.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 420 260" style="max-height:300px" role="img" aria-label="Valor medio de la política sin memoria en función de la probabilidad de izquierda: parábola con máximo 5 en un medio y 0,5 en los extremos; rectas en 9,5 y 10">
+          <line x1="60" y1="215" x2="380" y2="215" class="ln-rule"/>
+          <line x1="60" y1="40" x2="60" y2="215" class="ln-rule"/>
+          <text x="52" y="219" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="131.5" text-anchor="end" class="t-mono t-faint" font-size="12">5</text>
+          <text x="52" y="44" text-anchor="end" class="t-mono t-faint" font-size="12">10</text>
+          <line x1="60" y1="40" x2="380" y2="40" class="ln-rule"/>
+          <text x="376" y="33" text-anchor="end" class="t-muted" font-size="12">estado visible: 10</text>
+          <line x1="60" y1="48.75" x2="380" y2="48.75" class="ln-dash"/>
+          <text x="376" y="64" text-anchor="end" class="t-accent" font-size="12">con memoria: 9,5 (hoja siguiente)</text>
+          <path d="M60.0,206.2 L76.0,191.3 L92.0,177.9 L108.0,166.1 L124.0,155.8 L140.0,147.2 L156.0,140.1 L172.0,134.6 L188.0,130.6 L204.0,128.3 L220.0,127.5 L236.0,128.3 L252.0,130.6 L268.0,134.6 L284.0,140.1 L300.0,147.2 L316.0,155.8 L332.0,166.1 L348.0,177.9 L364.0,191.3 L380.0,206.2" fill="none" class="ln-time" stroke-width="2.4"/>
+          <circle cx="220" cy="127.5" r="5" class="fill-time"/>
+          <text x="220" y="115" text-anchor="middle" class="t-time" font-size="13">moneda: 5</text>
+          <circle cx="380" cy="206.2" r="4" class="fill-ink3"/>
+          <circle cx="60" cy="206.2" r="4" class="fill-ink3"/>
+          <text x="388" y="204" class="t-muted" font-size="12">0,5</text>
+          <text x="60" y="233" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="220" y="233" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="380" y="233" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+          <text x="220" y="252" text-anchor="middle" class="t-muted" font-size="13">p: probabilidad de «izquierda»</text>
+        </svg>
+        <figcaption>\(\tfrac12(V_A + V_B)\) resolviendo los pasos 1 y 2 para cada \(p\). En los extremos (siempre izquierda, siempre derecha), 0,5; por ejemplo, \(V(0{,}3) = 4{,}28\). <code>ejemplos_a7b.py</code>, ejemplo 1.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Lo que dice la curva</span>El máximo está en \(p = \tfrac12\): entre las políticas sin memoria, la mejor es aleatoria. Ninguna determinista se le acerca.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · por qué · 3 · con memoria</p>
+  <h2>Con la última acción y recompensa, 9,5: casi la cota de 10</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 230" style="max-height:230px" role="img" aria-label="Dos filas de cinco pasos. Empezando en A: izquierda más uno a B, y luego alterna cobrando más uno siempre. Empezando en B: izquierda cero, sigue en B, y luego alterna cobrando más uno">
+      <defs><marker id="a7bm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="150" y="22" text-anchor="middle" class="t-mono t-faint" font-size="13">t = 0</text>
+      <text x="370" y="22" text-anchor="middle" class="t-mono t-faint" font-size="13">t = 1</text>
+      <text x="590" y="22" text-anchor="middle" class="t-mono t-faint" font-size="13">t = 2</text>
+      <text x="810" y="22" text-anchor="middle" class="t-mono t-faint" font-size="13">t = 3</text>
+      <text x="1030" y="22" text-anchor="middle" class="t-mono t-faint" font-size="13">t = 4</text>
+      <text x="20" y="84" class="t-muted" font-size="14">desde A</text>
+      <text x="20" y="174" class="t-muted" font-size="14">desde B</text>
+      <rect x="125" y="55" width="50" height="44" rx="8" class="box"/><text x="150" y="84" text-anchor="middle" class="t-bold" font-size="20">A</text>
+      <rect x="345" y="55" width="50" height="44" rx="8" class="box-accent"/><text x="370" y="84" text-anchor="middle" class="t-bold" font-size="20">B</text>
+      <rect x="565" y="55" width="50" height="44" rx="8" class="box-accent"/><text x="590" y="84" text-anchor="middle" class="t-bold" font-size="20">A</text>
+      <rect x="785" y="55" width="50" height="44" rx="8" class="box-accent"/><text x="810" y="84" text-anchor="middle" class="t-bold" font-size="20">B</text>
+      <rect x="1005" y="55" width="50" height="44" rx="8" class="box-accent"/><text x="1030" y="84" text-anchor="middle" class="t-bold" font-size="20">A</text>
+      <path d="M177 77 H341" class="ln" marker-end="url(#a7bm)"/><text x="260" y="68" text-anchor="middle" font-size="14">izquierda · <tspan class="t-accent">+1</tspan></text>
+      <path d="M397 77 H561" class="ln" marker-end="url(#a7bm)"/><text x="480" y="68" text-anchor="middle" font-size="14">derecha · <tspan class="t-accent">+1</tspan></text>
+      <path d="M617 77 H781" class="ln" marker-end="url(#a7bm)"/><text x="700" y="68" text-anchor="middle" font-size="14">izquierda · <tspan class="t-accent">+1</tspan></text>
+      <path d="M837 77 H1001" class="ln" marker-end="url(#a7bm)"/><text x="920" y="68" text-anchor="middle" font-size="14">derecha · <tspan class="t-accent">+1</tspan></text>
+      <rect x="125" y="145" width="50" height="44" rx="8" class="box"/><text x="150" y="174" text-anchor="middle" class="t-bold" font-size="20">B</text>
+      <rect x="345" y="145" width="50" height="44" rx="8" class="box-accent"/><text x="370" y="174" text-anchor="middle" class="t-bold" font-size="20">B</text>
+      <rect x="565" y="145" width="50" height="44" rx="8" class="box-accent"/><text x="590" y="174" text-anchor="middle" class="t-bold" font-size="20">A</text>
+      <rect x="785" y="145" width="50" height="44" rx="8" class="box-accent"/><text x="810" y="174" text-anchor="middle" class="t-bold" font-size="20">B</text>
+      <rect x="1005" y="145" width="50" height="44" rx="8" class="box-accent"/><text x="1030" y="174" text-anchor="middle" class="t-bold" font-size="20">A</text>
+      <path d="M177 167 H341" class="ln" marker-end="url(#a7bm)"/><text x="260" y="158" text-anchor="middle" font-size="14">izquierda · <tspan class="t-muted">0</tspan></text>
+      <path d="M397 167 H561" class="ln" marker-end="url(#a7bm)"/><text x="480" y="158" text-anchor="middle" font-size="14">derecha · <tspan class="t-accent">+1</tspan></text>
+      <path d="M617 167 H781" class="ln" marker-end="url(#a7bm)"/><text x="700" y="158" text-anchor="middle" font-size="14">izquierda · <tspan class="t-accent">+1</tspan></text>
+      <path d="M837 167 H1001" class="ln" marker-end="url(#a7bm)"/><text x="920" y="158" text-anchor="middle" font-size="14">derecha · <tspan class="t-accent">+1</tspan></text>
+      <text x="150" y="216" text-anchor="middle" class="t-muted" font-size="13">no sabe dónde está</text>
+      <text x="700" y="216" text-anchor="middle" class="t-accent" font-size="13">en azul: estado conocido gracias a la memoria; alterna y cobra siempre</text>
+    </svg>
+    <figcaption>Primeros cinco pasos de la política con memoria. Suma descontada de esos cinco: 4,095 desde A y 3,095 desde B. <code>ejemplos_a7b.py</code>, ejemplo 1.</figcaption>
+  </figure>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:5%">#</th><th style="width:40%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>En \(t = 0\), «izquierda»: desde A cobra 1, desde B cobra 0</td><td>Todavía no sabe nada; en los dos casos termina en B (fila de arriba y de abajo)</td></tr>
+      <tr><td><strong>2</strong></td><td>Desde \(t = 1\), +1 en cada paso: vale \(\gamma\,(1 + \gamma + \dots) = \gamma/(1-\gamma) = 9\)</td><td>Sabe que está en B y alterna; la serie empieza un paso más tarde, por eso el factor \(\gamma\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\tfrac12(1 + 9) + \tfrac12(0 + 9) = 9{,}5\)</td><td>Media de los dos arranques. Frente a 10, pierde lo que cuesta el primer paso a ciegas</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · por qué · 4 · la lección</p>
+  <h2>La recompensa anterior desambigua el estado</h2>
+  <div class="cols">
+    <div class="stack">
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Política</th><th>Valor esperado</th></tr></thead>
@@ -97,57 +245,438 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">Ejemplo nuestro, calculado a mano en la derivación.</p>
+      <p>Por qué basta con recordar un paso: cada par (acción anterior, recompensa anterior) dice dónde está ahora.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(a_{t-1}\)</th><th>\(r_{t-1}\)</th><th>Estaba en</th><th>Ahora está en</th></tr>
+          <tr><td>izquierda</td><td class="n">+1</td><td>A</td><td>B</td></tr>
+          <tr><td>izquierda</td><td class="n">0</td><td>B</td><td>B</td></tr>
+          <tr><td>derecha</td><td class="n">+1</td><td>B</td><td>A</td></tr>
+          <tr><td>derecha</td><td class="n">0</td><td>A</td><td>A</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: los cuatro valores</summary>
-        <p class="small"><strong>Determinista:</strong> desde A, +1 y pasa a B, donde «izquierda» da 0 para siempre: valor 1. Desde B, 0 para siempre. Media: 0,5.</p>
-        <p class="small"><strong>Estocástica:</strong> en cualquier estado acierta con ½ en cada paso: \(\tfrac12/(1-\gamma) = 5\).</p>
-        <p class="small"><strong>Con memoria:</strong> primero «izquierda». Si da +1, estaba en A y ahora está en B; si da 0, está en B. A partir de ahí sabe el estado y acierta siempre: \(\tfrac12(1 + 10\gamma) + \tfrac12(0 + 10\gamma) = 9{,}5\).</p>
-      </details>
       <div class="callout clave"><span class="tag">Dos lecciones</span>La recompensa anterior desambigua el estado: por eso ayuda darla como entrada <a class="cite" data-ref="ni2022"></a>. Y sin memoria, el azar es la mejor defensa contra el aliasing: es lo que aprende la política «solo casilla» de la búsqueda, que recorre la rejilla de forma aleatoria sesgada.</div>
+      <div class="callout tesis"><span class="tag">En la búsqueda</span>Allí el aliasing es «he estado aquí o no»: dos instantes con el dron en la misma casilla dan la misma observación, aunque en uno ya haya mirado medio mapa. Lo que distingue los dos es la historia, y el belief la resume (parte 3).</div>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · qué ve la política</p>
+  <h2>Las cuatro entradas de la búsqueda, dibujadas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 346" style="max-height:350px" role="img" aria-label="Cuatro filas: casilla actual a una MLP; ocho últimas casillas y la actual a una MLP; casilla actual a una GRU y luego una MLP; belief y casilla a una MLP. Todas dan una distribución sobre cuatro acciones">
+      <defs><marker id="a7be" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="200" y="16" text-anchor="middle" class="t-faint" font-size="13">qué entra</text>
+      <text x="565" y="16" text-anchor="middle" class="t-faint" font-size="13">red</text>
+      <text x="865" y="16" text-anchor="middle" class="t-faint" font-size="13">sale</text>
+      <text x="1080" y="16" text-anchor="middle" class="t-faint" font-size="13">parámetros del actor</text>
+      <rect x="20" y="28" width="360" height="58" rx="6" class="box"/>
+      <text x="36" y="53" class="t-bold" font-size="15">solo la casilla</text>
+      <text x="36" y="75" class="t-mono" font-size="14">one-hot de c<tspan baseline-shift="sub" font-size="75%">t</tspan>: 36 números</text>
+      <rect x="440" y="28" width="250" height="58" rx="6" class="box"/>
+      <text x="565" y="62" text-anchor="middle" class="t-mono" font-size="14">MLP 128 · 128</text>
+      <rect x="20" y="104" width="360" height="58" rx="6" class="box-tesis"/>
+      <text x="36" y="129" class="t-bold" font-size="15">pila: las 8 últimas casillas y la actual</text>
+      <text x="36" y="151" class="t-mono" font-size="14">casillas t−7 … t, más t: 9 × 36 = 324</text>
+      <rect x="440" y="104" width="250" height="58" rx="6" class="box-tesis"/>
+      <text x="565" y="138" text-anchor="middle" class="t-mono" font-size="14">MLP 128 · 128</text>
+      <rect x="20" y="196" width="360" height="58" rx="6" class="box-accent"/>
+      <text x="36" y="221" class="t-bold" font-size="15">GRU: la casilla, paso a paso</text>
+      <text x="36" y="243" class="t-mono" font-size="14">one-hot de c<tspan baseline-shift="sub" font-size="75%">t</tspan>: 36 números</text>
+      <rect x="440" y="196" width="110" height="58" rx="6" class="box-accent"/>
+      <text x="495" y="230" text-anchor="middle" class="t-mono" font-size="14">GRU 128</text>
+      <rect x="580" y="196" width="110" height="58" rx="6" class="box-accent"/>
+      <text x="635" y="230" text-anchor="middle" class="t-mono" font-size="14">MLP</text>
+      <path d="M550 225 H576" class="ln" marker-end="url(#a7be)"/>
+      <path d="M470 196 C 470 178, 520 178, 520 192" fill="none" class="ln-accent" marker-end="url(#a7be)"/>
+      <text x="528" y="186" class="t-accent t-mono" font-size="12">h<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <rect x="20" y="272" width="360" height="58" rx="6" class="box-time"/>
+      <text x="36" y="297" class="t-bold" font-size="15">belief exacto (filtro de A7a) y casilla</text>
+      <text x="36" y="319" class="t-mono" font-size="14">36 · b<tspan baseline-shift="sub" font-size="75%">t</tspan> (36) + one-hot de c<tspan baseline-shift="sub" font-size="75%">t</tspan> (36) = 72</text>
+      <rect x="440" y="272" width="250" height="58" rx="6" class="box-time"/>
+      <text x="565" y="306" text-anchor="middle" class="t-mono" font-size="14">MLP 128 · 128</text>
+      <path d="M380 57 H436" class="ln" marker-end="url(#a7be)"/>
+      <path d="M380 133 H436" class="ln" marker-end="url(#a7be)"/>
+      <path d="M380 225 H436" class="ln" marker-end="url(#a7be)"/>
+      <path d="M380 301 H436" class="ln" marker-end="url(#a7be)"/>
+      <path d="M690 57 H776" class="ln" marker-end="url(#a7be)"/>
+      <path d="M690 133 H776" class="ln" marker-end="url(#a7be)"/>
+      <path d="M690 225 H776" class="ln" marker-end="url(#a7be)"/>
+      <path d="M690 301 H776" class="ln" marker-end="url(#a7be)"/>
+      <text x="865" y="62" text-anchor="middle" class="t-mono" font-size="14">π(a | ·), 4 acciones</text>
+      <text x="865" y="138" text-anchor="middle" class="t-mono" font-size="14">π(a | ·), 4 acciones</text>
+      <text x="865" y="230" text-anchor="middle" class="t-mono" font-size="14">π(a | h<tspan baseline-shift="sub" font-size="75%">t</tspan>)</text>
+      <text x="865" y="306" text-anchor="middle" class="t-mono" font-size="14">π(a | b<tspan baseline-shift="sub" font-size="75%">t</tspan>, c<tspan baseline-shift="sub" font-size="75%">t</tspan>)</text>
+      <text x="1080" y="62" text-anchor="middle" class="t-mono t-time" font-size="14">21 764</text>
+      <text x="1080" y="138" text-anchor="middle" class="t-mono t-time" font-size="14">58 628</text>
+      <text x="1080" y="230" text-anchor="middle" class="t-mono t-time" font-size="14">96 900</text>
+      <text x="1080" y="306" text-anchor="middle" class="t-mono t-time" font-size="14">26 372</text>
+    </svg>
+    <figcaption>Las cuatro políticas de <code>figuras_a7b.py</code>; el crítico tiene la misma forma con una sola salida (y, con GRU, su propia GRU). Colores como en la figura del experimento. Parámetros contados en <code>ejemplos_a7b.py</code>, ejemplo 2.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Lo que no entra.</strong> La recompensa vale \(-1\) en todos los pasos: no informa de nada. La detección tampoco: si el dron detecta, el episodio acaba, así que seguir buscando ya significa «no lo he visto».</p>
+    <p><strong>Por qué \(36\,b_t\).</strong> El belief se multiplica por el número de casillas para que una casilla con la probabilidad media valga 1, a la escala del <em>one-hot</em>.</p>
   </div>
 </section>
 
 <section class="slide">
   <p class="kicker">Memoria · opciones</p>
   <h2>Cuatro formas de darle historia a la política</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Opción</th><th>Qué recuerda</th><th>Coste y riesgo</th></tr></thead>
+      <tbody>
+        <tr><td>Pila de \(k\) observaciones</td><td>exactamente los \(k\) últimos pasos</td><td>entrada \(k\) veces mayor; nada más allá de \(k\)</td></tr>
+        <tr><td>Red recurrente (GRU, LSTM)</td><td>un resumen aprendido de toda la historia</td><td>entrenamiento por secuencias; estados ocultos que gestionar</td></tr>
+        <tr><td>Transformer</td><td>una ventana de contexto con atención</td><td>coste cuadrático en la ventana; delicado de optimizar en RL <a class="cite" data-ref="parisotto2020"></a></td></tr>
+        <tr><td>Belief explícito</td><td>lo que diga el filtro (A4a, A7a)</td><td>necesita un modelo o aprenderlo (parte 3)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Qué entra:</strong> la observación, y también la acción y la recompensa anteriores. Añadir las recompensas pasadas aumentó el retorno hasta un 30 % en Ni et al. <a class="cite" data-ref="ni2022"></a>; la acción anterior ya la usabas en A6a.</p>
+  <div class="aparte"><span class="rotulo">Las cuatro en la búsqueda</span>
+    <p>Pila: \(k = 8\), 324 números de entrada. Recurrente: una GRU de 128 unidades (hojas siguientes). Transformer: no lo probamos. Belief explícito: el filtro de A7a, que aquí se puede calcular porque conocemos \(P_D\) y el prior.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · lo que dice la evidencia</p>
+  <h2>Actor y crítico con memorias separadas; la memoria, solo si hace falta</h2>
   <div class="cols">
+    <div class="callout clave"><span class="tag">Lo que importa según Ni et al.</span>RNN <strong>separadas</strong> para actor y crítico: con un codificador compartido, el gradiente del crítico domina y la política no aprende. La longitud de contexto depende de la tarea (empieza por una media); LSTM o GRU apenas cambian el resultado <a class="cite" data-ref="ni2022"></a>.</div>
+    <div class="callout error"><span class="tag">Matiz sobre DRQN</span>En Pong con fotogramas que desaparecen la mitad de las veces, la versión recurrente sacó 12,1 frente a −9,9; pero en diez juegos con parpadeo «no observamos una mejora sistemática» al usar recurrencia, dicen sus autores <a class="cite" data-ref="hausknecht2015"></a>. La memoria ayuda cuando la tarea la necesita, no por defecto.</div>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué separar actor y crítico</span>
+    <p>Con un codificador compartido, la pérdida total es la del actor más \(c_v\) veces la del crítico, y las dos empujan los mismos pesos de la GRU. El error del valor se mide en retornos al cuadrado (aquí, retornos de decenas de pasos), mientras que el término de PPO usa ventajas normalizadas: el gradiente del crítico puede ser mucho mayor y mandar sobre lo que guarda la memoria. Con dos GRU, cada una aprende lo que necesita su cabeza.</p>
+  </div>
+  <p>En la búsqueda seguimos la primera recomendación: <code>figuras_a7b.py</code> da al actor y al crítico una GRU cada uno.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GRU · 1 · el esquema</p>
+  <h2>Una GRU decide, número a número, qué conservar y qué reescribir</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 860 300" style="max-height:310px" role="img" aria-label="Diagrama de una GRU: la entrada y el estado anterior alimentan tres bloques, la puerta de reinicio, el candidato y la puerta de actualización; la mezcla combina el estado anterior y el candidato para dar el estado nuevo">
+      <defs><marker id="a7bg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="20" y="40" width="160" height="56" rx="6" class="box"/>
+      <text x="100" y="64" text-anchor="middle" class="t-mono t-bold" font-size="15">x<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <text x="100" y="84" text-anchor="middle" class="t-muted" font-size="13">casilla actual (36)</text>
+      <rect x="20" y="180" width="160" height="56" rx="6" class="box"/>
+      <text x="100" y="204" text-anchor="middle" class="t-mono t-bold" font-size="15">h<tspan baseline-shift="sub" font-size="75%">t−1</tspan></text>
+      <text x="100" y="224" text-anchor="middle" class="t-muted" font-size="13">resumen anterior (128)</text>
+      <path d="M180 68 H215 M180 208 H215 M215 46 V250" fill="none" class="ln"/>
+      <rect x="255" y="20" width="200" height="60" rx="6" class="box-soft"/>
+      <text x="355" y="45" text-anchor="middle" class="t-mono" font-size="15">r<tspan baseline-shift="sub" font-size="75%">t</tspan> = σ(…)</text>
+      <text x="355" y="66" text-anchor="middle" class="t-muted" font-size="13">puerta de reinicio</text>
+      <rect x="255" y="120" width="200" height="60" rx="6" class="box-accent"/>
+      <text x="355" y="145" text-anchor="middle" class="t-mono" font-size="15">h̃<tspan baseline-shift="sub" font-size="75%">t</tspan> = tanh(…)</text>
+      <text x="355" y="166" text-anchor="middle" class="t-muted" font-size="13">candidato</text>
+      <rect x="255" y="220" width="200" height="60" rx="6" class="box-soft"/>
+      <text x="355" y="245" text-anchor="middle" class="t-mono" font-size="15">z<tspan baseline-shift="sub" font-size="75%">t</tspan> = σ(…)</text>
+      <text x="355" y="266" text-anchor="middle" class="t-muted" font-size="13">puerta de actualización</text>
+      <path d="M215 50 H251" class="ln" marker-end="url(#a7bg)"/>
+      <path d="M215 150 H251" class="ln" marker-end="url(#a7bg)"/>
+      <path d="M215 250 H251" class="ln" marker-end="url(#a7bg)"/>
+      <path d="M355 80 V116" class="ln-accent" marker-end="url(#a7bg)"/>
+      <text x="364" y="104" class="t-accent t-mono" font-size="12">r<tspan baseline-shift="sub" font-size="75%">t</tspan> ⊙ h<tspan baseline-shift="sub" font-size="75%">t−1</tspan></text>
+      <rect x="540" y="110" width="200" height="80" rx="6" class="box-accent"/>
+      <text x="640" y="138" text-anchor="middle" class="t-bold" font-size="15">mezcla</text>
+      <text x="640" y="160" text-anchor="middle" class="t-mono" font-size="13">(1−z)⊙h<tspan baseline-shift="sub" font-size="75%">t−1</tspan></text>
+      <text x="640" y="178" text-anchor="middle" class="t-mono" font-size="13">+ z⊙h̃<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <path d="M455 150 H536" class="ln" marker-end="url(#a7bg)"/>
+      <path d="M455 250 H600 V194" fill="none" class="ln" marker-end="url(#a7bg)"/>
+      <text x="470" y="242" class="t-muted t-mono" font-size="12">z<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <path d="M100 236 V292 H690 V194" fill="none" class="ln-dash" marker-end="url(#a7bg)"/>
+      <text x="470" y="288" class="t-muted" font-size="12">h<tspan baseline-shift="sub" font-size="75%">t−1</tspan> tal cual: lo que se conserva</text>
+      <path d="M740 150 H800" class="ln" marker-end="url(#a7bg)"/>
+      <text x="812" y="155" class="t-mono t-bold" font-size="15">h<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <text x="800" y="182" text-anchor="middle" class="t-faint" font-size="12">→ MLP → π</text>
+    </svg>
+    <figcaption>Una GRU, en el orden en que se calcula. \(h_t\) pasa a ser \(h_{t-1}\) en el paso siguiente. Ecuaciones en la hoja siguiente.</figcaption>
+  </figure>
+  <div class="cols c3">
+    <p><strong>Candidato.</strong> Un resumen nuevo propuesto con la entrada y con la parte del resumen viejo que deja pasar la puerta de reinicio.</p>
+    <p><strong>Puerta de actualización.</strong> Para cada uno de los 128 números, cuánto se sustituye por el candidato: 0, nada; 1, todo.</p>
+    <p><strong>Ejemplo.</strong> Una unidad que se enciende al pasar por una casilla y se queda encendida: \(z\) se abre al verla y luego se cierra (dos hojas más adelante, con números).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GRU · 2 · las ecuaciones</p>
+  <h2>Cuatro líneas, en la convención de <code>figuras_a7b.py</code></h2>
+  <div class="cols w40">
+    <div class="stack">
+      \[ \begin{aligned} z_t &= \sigma\big(W_z\,[x_t;\,h_{t-1}] + b_z\big)\\ r_t &= \sigma\big(W_r\,[x_t;\,h_{t-1}] + b_r\big)\\ \tilde h_t &= \tanh\big(W_h\,[x_t;\,r_t\odot h_{t-1}] + b_h\big)\\ h_t &= (1 - z_t)\odot h_{t-1} + z_t\odot\tilde h_t \end{aligned} \]
+      <p>La última línea es una <strong>media ponderada</strong> por componentes: si \(z_t\) vale 0,05 en una componente, esa componente conserva el 95 % de lo que tenía.</p>
+      <p class="small muted">Avisos: aquí \(r_t\) es la puerta de reinicio, no la recompensa, y no tiene nada que ver con el reinicio del estado al acabar un episodio (hoja 19). PyTorch intercambia \(z_t\) y \(1 - z_t\) en la última línea: es la misma familia con la puerta al revés.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:24%">Símbolo</th><th>Qué es</th><th style="width:22%">Tamaño aquí</th></tr>
+        <tr><td>\(x_t\)</td><td>Entrada del paso \(t\): la observación \(o_t\)</td><td class="n">36</td></tr>
+        <tr><td>\(h_{t-1}\), \(h_t\)</td><td>Estado oculto antes y después del paso</td><td class="n">128</td></tr>
+        <tr><td>\([x_t;\,h_{t-1}]\)</td><td>Los dos vectores, uno detrás de otro</td><td class="n">164</td></tr>
+        <tr><td>\(W_z, W_r, W_h\)</td><td>Matrices de pesos de cada bloque (en el código, guardadas traspuestas)</td><td class="n">128 × 164</td></tr>
+        <tr><td>\(b_z, b_r, b_h\)</td><td>Sesgos</td><td class="n">128</td></tr>
+        <tr><td>\(\sigma(u) = 1/(1+e^{-u})\)</td><td>Sigmoide: lleva cualquier número a \((0, 1)\), como una llave de paso</td><td>—</td></tr>
+        <tr><td>\(\tanh\)</td><td>Tangente hiperbólica: lleva a \((-1, 1)\) y mantiene el estado acotado</td><td>—</td></tr>
+        <tr><td>\(\odot\)</td><td>Producto componente a componente</td><td>—</td></tr>
+        <tr><td>\(z_t\), \(r_t\)</td><td>Puertas de actualización y de reinicio, cada componente en \((0, 1)\)</td><td class="n">128</td></tr>
+        <tr><td>\(\tilde h_t\)</td><td>Candidato a nuevo estado</td><td class="n">128</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="small">Parámetros: \(3\,(164\cdot128 + 128) = 63\,360\), dos tercios del actor recurrente de la hoja 11. <span class="muted">Ejemplo 2.</span></p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GRU · 3 · una unidad a mano</p>
+  <h2>Una unidad que recuerda que el dron pasó por una casilla</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Una sola componente (\(h\) es un número). Entrada \(x_t = 1\) si el dron está en la casilla que vigila esta unidad, 0 si no. Pesos elegidos a mano:</p>
+      <ul>
+        <li>\(z_t = \sigma(4x_t - 3)\): se abre al ver la casilla (\(\sigma(1) = 0{,}731\)) y casi se cierra si no (\(\sigma(-3) = 0{,}047\)).</li>
+        <li>\(r_t = \sigma(0) = 0{,}5\) siempre.</li>
+        <li>\(\tilde h_t = \tanh(3x_t + r_t\,h_{t-1})\).</li>
+      </ul>
+      <p>La ve en \(t = 1\) y no vuelve. Desde \(h_0 = 0\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>\(x_t\)</th><th>\(z_t\)</th><th>\(\tilde h_t\)</th><th>\(h_t\)</th></tr>
+          <tr><td>1</td><td class="n">1</td><td class="n">0,731</td><td class="n">0,995</td><td class="n">0,727</td></tr>
+          <tr><td>2</td><td class="n">0</td><td class="n">0,047</td><td class="n">0,348</td><td class="n">0,709</td></tr>
+          <tr><td>3</td><td class="n">0</td><td class="n">0,047</td><td class="n">0,341</td><td class="n">0,692</td></tr>
+          <tr><td>20</td><td class="n">0</td><td class="n">0,047</td><td class="n">0,229</td><td class="n">0,455</td></tr>
+        </table>
+      </div>
+    </div>
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Opción</th><th>Qué recuerda</th><th>Coste y riesgo</th></tr></thead>
-          <tbody>
-            <tr><td>Pila de \(k\) observaciones</td><td>exactamente los \(k\) últimos pasos</td><td>entrada \(k\) veces mayor; nada más allá de \(k\)</td></tr>
-            <tr><td>Red recurrente (GRU, LSTM)</td><td>un resumen aprendido de toda la historia</td><td>entrenamiento por secuencias; estados ocultos que gestionar</td></tr>
-            <tr><td>Transformer</td><td>una ventana de contexto con atención</td><td>coste cuadrático en la ventana; delicado de optimizar en RL <a class="cite" data-ref="parisotto2020"></a></td></tr>
-            <tr><td>Belief explícito</td><td>lo que diga el filtro (A4a, A7a)</td><td>necesita un modelo o aprenderlo (parte 3)</td></tr>
-          </tbody>
+          <tr><th style="width:6%">#</th><th style="width:50%">Cuenta</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(t=1\): \(z_1 = \sigma(4 - 3) = 0{,}731\)</td><td>La casilla está a la vista: la puerta se abre</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\tilde h_1 = \tanh(3 + 0{,}5\cdot 0) = 0{,}995\)</td><td>El candidato dice «la he visto»</td></tr>
+          <tr><td><strong>3</strong></td><td>\(h_1 = 0{,}269\cdot 0 + 0{,}731\cdot 0{,}995 = 0{,}727\)</td><td>Media ponderada: casi todo es el candidato</td></tr>
+          <tr><td><strong>4</strong></td><td>\(t=2\): \(z_2 = \sigma(-3) = 0{,}047\)</td><td>Ya no la ve: la puerta casi se cierra</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\tilde h_2 = \tanh(0{,}5\cdot 0{,}727) = 0{,}348\)</td><td>Sin la casilla, el candidato es más bajo</td></tr>
+          <tr><td><strong>6</strong></td><td>\(h_2 = 0{,}953\cdot 0{,}727 + 0{,}047\cdot 0{,}348 = 0{,}709\)</td><td>Conserva el 95 %: el recuerdo apenas baja</td></tr>
         </table>
       </div>
-      <p class="small"><strong>Qué entra:</strong> la observación, y también la acción y la recompensa anteriores. Añadir las recompensas pasadas aumentó el retorno hasta un 30 % en Ni et al. <a class="cite" data-ref="ni2022"></a>; la acción anterior ya la usabas en A6a.</p>
-    </div>
-    <div class="stack">
-      <div class="callout clave"><span class="tag">Lo que importa según Ni et al.</span>RNN <strong>separadas</strong> para actor y crítico: con un codificador compartido, el gradiente del crítico domina y la política no aprende. La longitud de contexto depende de la tarea (empieza por una media); LSTM o GRU apenas cambian el resultado <a class="cite" data-ref="ni2022"></a>.</div>
-      <div class="callout error"><span class="tag">Matiz sobre DRQN</span>En Pong con fotogramas que desaparecen la mitad de las veces, la versión recurrente sacó 12,1 frente a −9,9; pero en diez juegos con parpadeo «no observamos una mejora sistemática» al usar recurrencia, dicen sus autores <a class="cite" data-ref="hausknecht2015"></a>. La memoria ayuda cuando la tarea la necesita, no por defecto.</div>
+      <p class="small muted"><code>ejemplos_a7b.py</code>, ejemplo 3. Una GRU entrenada tiene 128 unidades así, cada una con sus pesos.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Memoria · implementación</p>
-  <h2>PPO recurrente: tres cosas que suelen salir mal</h2>
+  <p class="kicker">GRU · 4 · por qué recuerda</p>
+  <h2>La puerta cerrada deja un camino casi directo hacia el pasado</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
-        <li><strong>Reinicios.</strong> El estado oculto se pone a cero cuando termina un episodio, en el despliegue <em>y</em> al recalcular en la pérdida. Si no, la red arrastra información de otro episodio.</li>
-        <li><strong>Minilotes por secuencias.</strong> Se barajan entornos, no pasos sueltos: cada minilote recorre sus secuencias completas desde el estado oculto guardado al inicio del tramo.</li>
-        <li><strong>Estado guardado desfasado.</strong> El estado al inicio del tramo se calculó con los parámetros de antes; tras varias épocas, ya no es el que daría la red actual. Con PPO y tramos cortos el efecto es pequeño; con datos viejos de un búfer (fuera de política) hay que reconstruirlo recorriendo unos pasos previos antes de empezar a calcular la pérdida.</li>
-      </ol>
+      <figure class="fig">
+        <svg viewBox="0 0 560 230" style="max-height:260px" role="img" aria-label="Valor del estado durante 20 pasos tras ver la casilla en el primero: la GRU baja despacio de 0,73 a 0,46; la red de Elman cae casi a cero en cinco pasos">
+          <line x1="50" y1="190" x2="520" y2="190" class="ln-rule"/>
+          <line x1="50" y1="30" x2="50" y2="190" class="ln-rule"/>
+          <text x="42" y="194" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="42" y="114" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="42" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <path d="M50.0,73.6 L74.7,76.5 L99.5,79.3 L124.2,82.0 L148.9,84.7 L173.7,87.2 L198.4,89.8 L223.2,92.2 L247.9,94.6 L272.6,96.9 L297.4,99.2 L322.1,101.4 L346.8,103.6 L371.6,105.7 L396.3,107.7 L421.1,109.7 L445.8,111.6 L470.5,113.5 L495.3,115.4 L520.0,117.2" fill="none" class="ln-accent" stroke-width="2.4"/>
+          <path d="M50.0,30.8 L74.7,116.4 L99.5,153.8 L124.2,172.0 L148.9,181.0 L173.7,185.5 L198.4,187.8 L223.2,188.9 L247.9,189.4 L272.6,189.7 L297.4,189.9 L322.1,189.9 L346.8,190.0 L371.6,190.0 L396.3,190.0 L421.1,190.0 L445.8,190.0 L470.5,190.0 L495.3,190.0 L520.0,190.0" fill="none" class="ln" stroke-width="2"/>
+          <text x="515" y="90" text-anchor="end" class="t-accent" font-size="13">GRU: 0,455 en t = 20</text>
+          <text x="140" y="140" class="t-muted" font-size="13">Elman: 0,46 · 0,23 · 0,11 …</text>
+          <text x="50" y="208" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+          <text x="520" y="208" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+          <text x="285" y="224" text-anchor="middle" class="t-muted" font-size="13">paso t (la casilla se ve solo en t = 1)</text>
+        </svg>
+        <figcaption>\(h_t\) de la unidad de la hoja anterior y de una red de Elman \(h_t = \tanh(3x_t + 0{,}5\,h_{t-1})\), sin puertas. Ejemplo 3.</figcaption>
+      </figure>
+      <div class="aparte"><span class="rotulo">Por qué el término \(1 - z_t\)</span>
+        <p>Sale de derivar \((1 - z_t)\,h_{t-1}\) respecto a \(h_{t-1}\): la parte que se copia tal cual pasa el gradiente multiplicado por \(1 - z_t\), sin atravesar ninguna no linealidad. El segundo término sale de \(z_t\,\tilde h_t\) con la regla de la cadena a través de \(\tanh\) (su derivada es \(1 - \tanh^2\)) y del producto \(r_t\,h_{t-1}\).</p>
+      </div>
     </div>
     <div class="stack">
-<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:13px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere;"><code># en la pérdida: recorrer el tramo desde h0
+      <p>Lo que deja pasar el gradiente de un paso al anterior es la derivada local. Con las puertas y el peso del candidato del ejemplo (las puertas no dependen de \(h\)):</p>
+      \[ \frac{\partial h_t}{\partial h_{t-1}} = \underbrace{(1 - z_t)}_{\text{camino directo}} + \; z_t\,(1 - \tilde h_t^{\,2})\, r_t \]
+      <ul>
+        <li><strong>GRU</strong>, con \(z_t = 0{,}047\): la derivada vale 0,974; multiplicada de \(t = 2\) a 20, queda <strong>0,61</strong>. El paso 1 sigue influyendo en el 20.</li>
+        <li><strong>Elman</strong>: \(\partial h_t/\partial h_{t-1} = 0{,}5\,(1 - h_t^2) \le 0{,}5\); el producto queda en \(1{,}4\cdot10^{-6}\). El gradiente se desvanece y la red no puede aprender a recordar.</li>
+      </ul>
+
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 1 · el esquema</p>
+  <h2>Un tramo de 32 pasos por entorno: qué se guarda, qué se reinicia, hasta dónde llega el gradiente</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 310" style="max-height:310px" role="img" aria-label="Tres entornos en un tramo de 32 pasos. Cada fila empieza en un estado oculto guardado. En el entorno 1 el episodio termina en el paso 12 y el estado se pone a cero; en el entorno 3, en los pasos 6 y 27. Las flechas del gradiente vuelven hacia atrás y se paran en el estado guardado o en cada reinicio">
+      <defs><marker id="a7bt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      <marker id="a7bta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+      <text x="20" y="84" class="t-muted" font-size="14">entorno 1</text>
+      <text x="20" y="164" class="t-muted" font-size="14">entorno 2</text>
+      <text x="20" y="244" class="t-muted" font-size="14">entorno 3</text>
+      <path d="M140 80 H1000 M140 160 H1000 M140 240 H1000" class="ln" stroke-width="3"/>
+      <path d="M1000 80 H1090 M1000 160 H1090 M1000 240 H1090" class="ln-dash"/>
+      <text x="1045" y="68" text-anchor="middle" class="t-faint" font-size="12">tramo siguiente</text>
+      <circle cx="140" cy="80" r="7" class="fill-accent"/><circle cx="140" cy="160" r="7" class="fill-accent"/><circle cx="140" cy="240" r="7" class="fill-accent"/>
+      <text x="140" y="300" text-anchor="middle" class="t-accent t-mono" font-size="13">h<tspan baseline-shift="sub" font-size="75%">0</tspan> guardado</text>
+      <circle cx="1000" cy="80" r="6" class="fill-ink3"/><circle cx="1000" cy="160" r="6" class="fill-ink3"/><circle cx="1000" cy="240" r="6" class="fill-ink3"/>
+      <text x="1000" y="300" text-anchor="middle" class="t-mono t-muted" font-size="13">h final → h<tspan baseline-shift="sub" font-size="75%">0</tspan> del siguiente</text>
+      <line x1="462.5" y1="64" x2="462.5" y2="96" class="ln-time" stroke-width="4"/>
+      <text x="470" y="104" class="t-time t-mono" font-size="12">d = 1 → h ← 0</text>
+      <line x1="301.3" y1="224" x2="301.3" y2="256" class="ln-time" stroke-width="4"/>
+      <text x="309" y="264" class="t-time t-mono" font-size="12">d = 1 → h ← 0</text>
+      <line x1="865.6" y1="224" x2="865.6" y2="256" class="ln-time" stroke-width="4"/>
+      <text x="873" y="264" class="t-time t-mono" font-size="12">d = 1</text>
+      <path d="M990 52 C 800 32, 600 32, 472 52" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <path d="M452 52 C 360 36, 240 36, 150 52" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <path d="M990 132 C 700 108, 400 108, 150 132" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <path d="M990 212 C 950 200, 910 200, 875 212" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <path d="M856 212 C 700 192, 480 192, 311 212" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <path d="M292 212 C 250 200, 190 200, 150 212" fill="none" class="ln-accent" marker-end="url(#a7bta)"/>
+      <text x="570" y="24" text-anchor="middle" class="t-accent" font-size="13">gradiente hacia atrás (retropropagación en el tiempo): se para en h<tspan baseline-shift="sub" font-size="75%">0</tspan> y en cada reinicio</text>
+      <text x="140" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 1</text>
+      <text x="1000" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 32</text>
+    </svg>
+    <figcaption>Tres de los \(N = 1024\) entornos durante un tramo de \(L = 32\) pasos. Finales de episodio dibujados como ejemplo.</figcaption>
+  </figure>
+  <div class="cols c3">
+    <p><strong>Reinicios.</strong> Donde acaba un episodio, el estado vuelve a cero, al recoger datos y al recalcular la pérdida (hoja 19).</p>
+    <p><strong>Minilotes de filas.</strong> Un minilote son filas enteras: todos los pasos de unos entornos (hoja 20).</p>
+    <p><strong>Gradiente truncado.</strong> Recorre como mucho el tramo; \(h_0\) entra como un dato fijo (hoja 21).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 2 · reinicios</p>
+  <h2>Al acabar un episodio, el estado oculto vuelve a cero</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Reinicios.</strong> El estado oculto se pone a cero cuando termina un episodio, en el despliegue <em>y</em> al recalcular en la pérdida. Si no, la red arrastra información de otro episodio.</p>
+      <p>En una línea, con \(f_\theta\) el paso de la GRU y \(d_{t-1}\) el fin de episodio del paso anterior:</p>
+      \[ h_t = f_\theta\big((1 - d_{t-1})\,h_{t-1},\; o_t\big) \]
+      <p>Multiplicar por \(1 - d_{t-1}\) deja \(h_{t-1}\) igual dentro de un episodio y lo anula justo después de un final. Es la línea <code>where(termino_antes, 0, h)</code> del código.</p>
+      <div class="callout realidad"><span class="tag">No es un caso raro</span>Los episodios duran unos 35 pasos al final del entrenamiento y los tramos, 32: en media hay \(32/35 \approx 0{,}9\) finales por tramo y por entorno. Es lo normal, no la excepción.</div>
+    </div>
+    <div class="stack">
+      <p>La unidad de la hoja 16: el episodio 1 pasa por la casilla en el paso 2 y termina en el 4; el episodio 2 no la ve nunca.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>Episodio</th><th>\(x_t\)</th><th>\(d_{t-1}\)</th><th>\(h_t\) con reinicio</th><th>\(h_t\) sin reinicio</th></tr>
+          <tr><td>1</td><td>1</td><td class="n">0</td><td class="n">0</td><td class="n">0,000</td><td class="n">0,000</td></tr>
+          <tr><td>2</td><td>1</td><td class="n">1</td><td class="n">0</td><td class="n">0,727</td><td class="n">0,727</td></tr>
+          <tr><td>3</td><td>1</td><td class="n">0</td><td class="n">0</td><td class="n">0,709</td><td class="n">0,709</td></tr>
+          <tr><td>4</td><td>1</td><td class="n">0</td><td class="n">0</td><td class="n">0,692</td><td class="n">0,692</td></tr>
+          <tr><td>5</td><td>2</td><td class="n">0</td><td class="n">1</td><td class="n">0,000</td><td class="n">0,675</td></tr>
+          <tr><td>8</td><td>2</td><td class="n">0</td><td class="n">0</td><td class="n">0,000</td><td class="n">0,626</td></tr>
+        </table>
+      </div>
+      <p>Sin reinicio, en el episodio 2 la unidad «recuerda» haber mirado una casilla que en ese episodio nadie miró: la política la tacharía del mapa. <span class="small muted">Ejemplo 5.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 3 · minilotes por secuencias</p>
+  <h2>Se barajan entornos, no pasos sueltos</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1000 220" style="max-height:230px" role="img" aria-label="Dos rejillas de entornos por pasos. A la izquierda, un minilote de PPO normal: celdas sueltas al azar. A la derecha, un minilote de PPO recurrente: tres filas completas, una con un final de episodio dentro">
+      <text x="240" y="30" text-anchor="middle" class="t-bold" font-size="15">PPO de A6a: pasos sueltos al azar</text>
+      <text x="760" y="30" text-anchor="middle" class="t-bold" font-size="15">PPO recurrente: filas enteras</text>
+      <rect x="90" y="72" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="270" y="72" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="150" y="94" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="360" y="94" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="210" y="116" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="330" y="116" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="60" y="138" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="300" y="138" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="120" y="160" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="390" y="160" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="180" y="182" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="240" y="182" width="30" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <path d="M60 50 H420 M60 72 H420 M60 94 H420 M60 116 H420 M60 138 H420 M60 160 H420 M60 182 H420 M60 204 H420 M60 50 V204 M90 50 V204 M120 50 V204 M150 50 V204 M180 50 V204 M210 50 V204 M240 50 V204 M270 50 V204 M300 50 V204 M330 50 V204 M360 50 V204 M390 50 V204 M420 50 V204" fill="none" class="ln-rule"/>
+      <rect x="580" y="50" width="360" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="580" y="116" width="360" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <rect x="580" y="160" width="360" height="22" class="fill-accent" fill-opacity="0.55"/>
+      <path d="M580 50 H940 M580 72 H940 M580 94 H940 M580 116 H940 M580 138 H940 M580 160 H940 M580 182 H940 M580 204 H940 M580 50 V204 M610 50 V204 M640 50 V204 M670 50 V204 M700 50 V204 M730 50 V204 M760 50 V204 M790 50 V204 M820 50 V204 M850 50 V204 M880 50 V204 M910 50 V204 M940 50 V204" fill="none" class="ln-rule"/>
+      <line x1="730" y1="112" x2="730" y2="142" class="ln-time" stroke-width="4"/>
+      <circle cx="572" cy="61" r="5" class="fill-accent"/><circle cx="572" cy="127" r="5" class="fill-accent"/><circle cx="572" cy="171" r="5" class="fill-accent"/>
+      <text x="40" y="132" text-anchor="middle" class="t-faint" font-size="12" transform="rotate(-90 40 128)">entorno</text>
+      <text x="240" y="218" text-anchor="middle" class="t-faint" font-size="12">paso del tramo →</text>
+      <text x="760" y="218" text-anchor="middle" class="t-faint" font-size="12">paso del tramo → (en naranja, un final de episodio)</text>
+    </svg>
+    <figcaption>Esquema con 8 entornos y 12 pasos. Punto azul: el \(h_0\) guardado de cada fila. En el código las matrices son paso × entorno, así que el minilote son columnas.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Minilotes por secuencias.</strong> Se barajan entornos, no pasos sueltos: cada minilote recorre sus secuencias completas desde el estado oculto guardado al inicio del tramo.</p>
+      <p class="small">Las cuentas del script: \(N L = 1024\cdot32 = 32\,768\) transiciones por actualización; 4 minilotes de 256 entornos × 32 pasos = 8192; 4 épocas → 16 pasos de gradiente; 500 actualizaciones → 16,4 M pasos. <span class="muted">Ejemplo 4.</span></p>
+    </div>
+    <div class="callout error"><span class="tag">Si se barajan pasos, ya falla antes de aprender</span>Sea \(\pi(a{=}0\mid h) = \sigma(2h)\) con la unidad de la hoja 16. En el paso 2 del episodio, \(h = 0{,}709\) y \(\pi = 0{,}805\). Si ese paso se recalcula suelto desde \(h = 0\): \(\pi = 0{,}5\). El cociente de PPO vale \(0{,}5/0{,}805 = 0{,}62\) <em>con los mismos parámetros</em>, fuera del recorte \([0{,}8;\ 1{,}2]\). Ejemplo 6.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 4 · gradiente truncado</p>
+  <h2>El gradiente recorre el tramo y se para en el estado guardado</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>En la pérdida se recalcula \(h_1, \dots, h_L\) con los parámetros actuales, desde el \(h_0\) guardado. ¿Cómo depende \(h_t\) de \(\theta\)?</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(h_t = f_\theta(h_{t-1}, o_t)\), \(t = 1, \dots, L\)</td><td>El recorrido de la pérdida (con los reinicios de la hoja 19)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{dh_t}{d\theta} = \dfrac{\partial f_\theta}{\partial\theta}\Big|_t + \dfrac{\partial f_\theta}{\partial h}\Big|_t\,\dfrac{dh_{t-1}}{d\theta}\)</td><td>Regla de la cadena: \(\theta\) actúa en el paso \(t\) y, además, a través del estado anterior</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dfrac{dh_0}{d\theta} = 0\)</td><td>\(h_0\) se guardó al recoger los datos: es un dato, no una función de \(\theta\). Aquí se trunca</td></tr>
+          <tr><td><strong>4</strong></td><td>Lo que el paso \(j\) aporta al \(t\) va multiplicado por \(\prod_{i=j+1}^{t}\partial f_\theta/\partial h\,\big|_i\)</td><td>Desplegar el paso 2; en la GRU cada factor es el de la hoja 17</td></tr>
+          <tr><td><strong>5</strong></td><td>Tras un reinicio, el factor vale 0</td><td>\(h_{t-1}\) entra multiplicado por \(1 - d_{t-1} = 0\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué significa</span>Hacia delante, el estado puede arrastrar información de muchos tramos atrás. Hacia atrás, el gradiente solo ve 32 pasos: la red no puede <em>aprender</em> a guardar algo cuya utilidad aparece más de 32 pasos después. Es la retropropagación en el tiempo truncada.</div>
+      <div class="aparte"><span class="rotulo">Y el estado guardado envejece</span>
+        <p><strong>Estado guardado desfasado.</strong> El estado al inicio del tramo se calculó con los parámetros de antes; tras varias épocas, ya no es el que daría la red actual. Con PPO y tramos cortos el efecto es pequeño; con datos viejos de un búfer (fuera de política) hay que reconstruirlo recorriendo unos pasos previos antes de empezar a calcular la pérdida.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 5 · la pérdida</p>
+  <h2>La pérdida de PPO de A6a: lo único nuevo es que \(\pi\) y \(V\) leen \(h_t\)</h2>
+  \[ \mathcal L(\theta) = -\frac{1}{|\mathcal M|}\sum_{(i,t)\in\mathcal M}\Big[\min\big(\rho_{it}\hat A_{it},\ \mathrm{clip}(\rho_{it}, 1-\epsilon, 1+\epsilon)\,\hat A_{it}\big) - c_v\,\tfrac12\big(V(h^V_{it}) - \hat R_{it}\big)^2 + c_{\text{ent}}\,\mathcal H\big[\pi_\theta(\cdot\mid h_{it})\big]\Big] \]
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:26%">Símbolo</th><th>Qué es</th><th style="width:20%">En el script</th></tr>
+        <tr><td>\(\mathcal M\), \((i, t)\)</td><td>Minilote; entorno \(i\), paso \(t\) del tramo</td><td class="n">256 × 32</td></tr>
+        <tr><td>\(h_{it}\), \(h^V_{it}\)</td><td>Estados de la GRU del actor y de la del crítico, <strong>recalculados</strong> desde \(h_0\) con los \(\theta\) actuales</td><td>dos GRU</td></tr>
+        <tr><td>\(\rho_{it} = \dfrac{\pi_\theta(a_{it}\mid h_{it})}{\pi_{\text{viejo}}(a_{it}\mid h^{\text{viejo}}_{it})}\)</td><td>Cociente de probabilidades; el denominador se guardó al actuar</td><td>vale 1 al empezar</td></tr>
+        <tr><td>\(\hat A_{it}\)</td><td>Ventaja GAE (A6a), normalizada en el minilote</td><td class="n">γ 0,99 · λ 0,95</td></tr>
+        <tr><td>\(\hat R_{it} = \hat A_{it} + V_{it}\)</td><td>Retorno objetivo del crítico</td><td>—</td></tr>
+        <tr><td>\(\epsilon\), \(c_v\), \(c_{\text{ent}}\)</td><td>Recorte; pesos del valor y de la entropía \(\mathcal H\)</td><td class="n">0,2 · 0,5 · 0,01</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>La GAE también respeta los finales: \(\delta_t = r_t + \gamma\,(1 - d_t)\,V_{t+1} - V_t\). Tras un final, no se mira el valor del episodio siguiente.</p>
+      <p><strong>La prueba de que todo está bien</strong> (laboratorio, paso 1): en el primer minilote de la primera época, \(\rho_{it} = 1\) en todos los pasos. Si no, los estados recalculados no son los del despliegue (hoja 20).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO recurrente · 6 · el código</p>
+  <h2>Las tres reglas, en seis líneas de JAX</h2>
+  <div class="cols">
+    <div class="stack">
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:15px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere;"><code># en la pérdida: recorrer el tramo desde h0
 def paso(h, x):
     o, termino_antes = x
     h = where(termino_antes, 0, h)   # reinicio
@@ -158,53 +687,68 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
       <p class="xsmall muted">Esquema de <code>figuras_a7b.py</code>: actor y crítico con GRU separadas, tramos de 32 pasos, 4 minilotes de 256 entornos.</p>
       <div class="callout error"><span class="tag">Error frecuente</span>Barajar pasos individuales como en el PPO de A6a. Rompe las secuencias: la GRU recibe historias que no existieron.</div>
     </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:38%">Línea</th><th>Qué hace</th></tr>
+        <tr><td><code>termino_antes</code></td><td>\(d_{t-1}\): <code>D_prev</code> es \(d\) desplazado un paso, con ceros en \(t = 1\)</td></tr>
+        <tr><td><code>where(…, 0, h)</code></td><td>El reinicio \((1 - d_{t-1})\,h_{t-1}\) (hoja 19)</td></tr>
+        <tr><td><code>actor(params, h, o)</code></td><td>Un paso de la GRU y la cabeza de la política: \(h_t\) y los logits de \(\pi_\theta(\cdot\mid h_t)\)</td></tr>
+        <tr><td><code>scan(paso, h0[idx], …)</code></td><td>Recorre los 32 pasos en orden desde los \(h_0\) guardados; la autodiferenciación atraviesa el bucle (hoja 21)</td></tr>
+        <tr><td><code>O[:, idx]</code></td><td>Todas las filas de tiempo, solo los entornos del minilote: secuencias enteras (hoja 20)</td></tr>
+      </table>
+    </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Memoria · experimento</p>
+  <p class="kicker">Memoria · experimento · 1</p>
   <h2>Cuatro entradas para buscar: la memoria ayuda, el belief un poco más</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Entrada de la política (PPO)</th><th>Pasos hasta detectar</th><th>Mediana</th><th>Sin encontrar en 80</th></tr></thead>
+      <tbody>
+        <tr><td>Solo la casilla actual</td><td class="n">35,0 (34,5–35,7)</td><td class="n">24–25</td><td class="n">19–21 %</td></tr>
+        <tr><td>Las 8 últimas casillas</td><td class="n">32,9 (32,6–33,6)</td><td class="n">22–24</td><td class="n">16–17 %</td></tr>
+        <tr><td>GRU (actor y crítico separados)</td><td class="n">32,3 (31,4–32,9)</td><td class="n">24–25</td><td class="n">14–17 %</td></tr>
+        <tr><td>Belief exacto y casilla</td><td class="n">31,9 (31,5–32,3)</td><td class="n">22–23</td><td class="n">12–17 %</td></tr>
+        <tr><td class="muted">A7a: barrido · máximo del belief · ganancia</td><td class="n muted">37,9 · 34,0 · 32,4</td><td class="n muted">30 · 27 · 24</td><td class="n muted">12,5 · 14,0 · 12,5 %</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="xsmall muted">Media de 3 semillas (entre paréntesis, el rango; cada semilla con un error típico de ≈ 1,1 pasos); 16,4 M pasos de entrenamiento por semilla, de 20 a 56 s en una RTX 4060 Ti. Evaluación con los 600 objetivos y la semilla de detección de A7a. <code>figuras_a7b.py</code>, sección 1.</p>
   <div class="cols">
-    <div class="stack">
-      <div class="table-wrap">
-        <table class="t">
-          <thead><tr><th>Entrada de la política (PPO)</th><th>Pasos hasta detectar</th><th>Mediana</th><th>Sin encontrar en 80</th></tr></thead>
-          <tbody>
-            <tr><td>Solo la casilla actual</td><td class="n">35,0 (34,5–35,7)</td><td class="n">24–25</td><td class="n">19–21 %</td></tr>
-            <tr><td>Las 8 últimas casillas</td><td class="n">32,9 (32,6–33,6)</td><td class="n">22–24</td><td class="n">16–17 %</td></tr>
-            <tr><td>GRU (actor y crítico separados)</td><td class="n">32,3 (31,4–32,9)</td><td class="n">24–25</td><td class="n">14–17 %</td></tr>
-            <tr><td>Belief exacto y casilla</td><td class="n">31,9 (31,5–32,3)</td><td class="n">22–23</td><td class="n">12–17 %</td></tr>
-            <tr><td class="muted">A7a: barrido · máximo del belief · ganancia</td><td class="n muted">37,9 · 34,0 · 32,4</td><td class="n muted">30 · 27 · 24</td><td class="n muted">12,5 · 14,0 · 12,5 %</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="xsmall muted">Media de 3 semillas (entre paréntesis, el rango; cada semilla con un error típico de ≈ 1,1 pasos); 16,4 M pasos de entrenamiento por semilla, de 20 a 56 s en una RTX 4060 Ti. Evaluación con los 600 objetivos y la semilla de detección de A7a. <code>figuras_a7b.py</code>, sección 1.</p>
-    </div>
-    <div class="stack">
-      <figure class="fig">
-        <svg viewBox="0 0 560 290" role="img" aria-label="Longitud media de los episodios durante el entrenamiento para las cuatro entradas">
-          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
-          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
-          <text x="52" y="211.7" text-anchor="end" class="t-mono t-faint" font-size="12">35</text>
-          <text x="52" y="127.1" text-anchor="end" class="t-mono t-faint" font-size="12">45</text>
-          <text x="52" y="42.5" text-anchor="end" class="t-mono t-faint" font-size="12">55</text>
-          <path d="M69.2,63.0 L78.4,93.2 L87.6,101.5 L96.8,145.7 L106.0,161.6 L115.2,164.0 L124.4,169.9 L133.6,158.6 L142.8,175.8 L152.0,178.0 L161.2,173.7 L170.4,169.1 L179.6,183.4 L188.8,188.8 L198.0,190.1 L207.2,188.5 L216.4,200.1 L225.6,178.8 L234.8,192.5 L244.0,200.9 L253.2,198.5 L262.4,195.0 L271.6,203.0 L280.8,175.8 L290.0,196.6 L299.2,193.1 L308.4,188.5 L317.6,194.7 L326.8,177.7 L336.0,195.5 L345.2,187.4 L354.4,183.4 L363.6,170.2 L372.8,202.8 L382.0,183.9 L391.2,193.3 L400.4,193.3 L409.6,182.3 L418.8,181.8 L428.0,183.7 L437.2,192.5 L446.4,197.4 L455.6,181.8 L464.8,180.7 L474.0,183.4 L483.2,185.5 L492.4,197.9 L501.6,194.4 L510.8,187.7 L519.1,196.0" fill="none" class="ln" stroke-width="1.6"/>
-          <path d="M69.2,89.4 L78.4,152.4 L87.6,154.6 L96.8,182.6 L106.0,162.4 L115.2,162.4 L124.4,160.2 L133.6,176.1 L142.8,190.7 L152.0,180.7 L161.2,190.1 L170.4,173.7 L179.6,201.2 L188.8,186.6 L198.0,193.6 L207.2,187.4 L216.4,211.9 L225.6,208.2 L234.8,208.7 L244.0,211.9 L253.2,200.9 L262.4,207.6 L271.6,218.1 L280.8,205.5 L290.0,196.8 L299.2,220.3 L308.4,213.5 L317.6,213.3 L326.8,211.4 L336.0,198.2 L345.2,206.3 L354.4,213.3 L363.6,206.0 L372.8,212.2 L382.0,211.9 L391.2,214.6 L400.4,198.5 L409.6,223.0 L418.8,204.4 L428.0,217.0 L437.2,204.1 L446.4,200.6 L455.6,182.6 L464.8,211.9 L474.0,194.4 L483.2,203.8 L492.4,200.9 L501.6,206.0 L510.8,201.4 L519.1,193.6" fill="none" class="ln-tesis" stroke-width="1.6"/>
-          <path d="M69.2,118.8 L78.4,148.9 L87.6,138.4 L96.8,158.9 L106.0,147.0 L115.2,167.2 L124.4,175.8 L133.6,189.0 L142.8,188.8 L152.0,170.5 L161.2,160.2 L170.4,200.1 L179.6,176.9 L188.8,203.0 L198.0,180.7 L207.2,203.8 L216.4,209.0 L225.6,194.4 L234.8,189.8 L244.0,208.7 L253.2,213.8 L262.4,200.9 L271.6,187.4 L280.8,198.2 L290.0,210.3 L299.2,213.8 L308.4,196.0 L317.6,204.7 L326.8,201.2 L336.0,211.9 L345.2,213.5 L354.4,222.2 L363.6,205.5 L372.8,209.5 L382.0,218.1 L391.2,214.6 L400.4,228.6 L409.6,202.5 L418.8,218.4 L428.0,214.6 L437.2,213.5 L446.4,224.8 L455.6,196.6 L464.8,220.0 L474.0,220.5 L483.2,216.0 L492.4,209.5 L501.6,214.6 L510.8,193.3 L519.1,202.5" fill="none" class="ln-accent" stroke-width="2"/>
-          <path d="M69.2,73.3 L78.4,105.6 L87.6,142.5 L96.8,184.5 L106.0,171.8 L115.2,162.4 L124.4,168.6 L133.6,171.3 L142.8,190.7 L152.0,174.2 L161.2,189.0 L170.4,185.5 L179.6,172.9 L188.8,182.3 L198.0,188.8 L207.2,199.5 L216.4,188.0 L225.6,202.5 L234.8,183.4 L244.0,201.7 L253.2,226.2 L262.4,213.5 L271.6,208.7 L280.8,204.7 L290.0,209.0 L299.2,200.1 L308.4,205.5 L317.6,230.0 L326.8,218.9 L336.0,193.1 L345.2,207.6 L354.4,216.8 L363.6,200.6 L372.8,206.3 L382.0,194.2 L391.2,218.7 L400.4,213.0 L409.6,209.5 L418.8,213.3 L428.0,200.9 L437.2,197.1 L446.4,216.2 L455.6,205.5 L464.8,220.8 L474.0,218.7 L483.2,208.2 L492.4,215.2 L501.6,200.1 L510.8,212.2 L519.1,211.9" fill="none" class="ln-time" stroke-width="2"/>
-          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
-          <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">16,4 M</text>
-          <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">pasos de entrenamiento</text>
-          <text x="510" y="50" text-anchor="end" class="t-muted" font-size="12">gris: casilla · morado: pila</text>
-          <text x="510" y="66" text-anchor="end" class="t-muted" font-size="12">azul: GRU · naranja: belief</text>
-        </svg>
-        <figcaption>Longitud media de los episodios durante el entrenamiento (semilla 0), en el entorno de entrenamiento.</figcaption>
-      </figure>
-      <ul class="small">
-        <li>Sin memoria, la política recorre la rejilla de forma aleatoria sesgada hacia la zona caliente: no sabe dónde ha mirado. Cualquier memoria recupera unos 2–3 pasos.</li>
-        <li>GRU y belief exacto quedan a menos de medio paso, dentro de la dispersión entre semillas: en una rejilla de 6 × 6 la memoria necesaria es pequeña. En 10 × 10 la diferencia debería crecer (laboratorio).</li>
-      </ul>
-    </div>
+    <p><strong>Cómo se lee.</strong> «Pasos hasta detectar» es la media sobre los 600 episodios de evaluación; los que no encuentran el objetivo cuentan 80. Menos es mejor.</p>
+    <p><strong>Contra A7a.</strong> Las tres políticas con memoria superan al barrido y al máximo del belief, y quedan a la altura de la mejor heurística, la ganancia por distancia.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Memoria · experimento · 2</p>
+  <h2>Sin memoria, aleatoria sesgada; con cualquier memoria, 2–3 pasos mejor</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Longitud media de los episodios durante el entrenamiento para las cuatro entradas">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="211.7" text-anchor="end" class="t-mono t-faint" font-size="12">35</text>
+        <text x="52" y="127.1" text-anchor="end" class="t-mono t-faint" font-size="12">45</text>
+        <text x="52" y="42.5" text-anchor="end" class="t-mono t-faint" font-size="12">55</text>
+        <path d="M69.2,63.0 L78.4,93.2 L87.6,101.5 L96.8,145.7 L106.0,161.6 L115.2,164.0 L124.4,169.9 L133.6,158.6 L142.8,175.8 L152.0,178.0 L161.2,173.7 L170.4,169.1 L179.6,183.4 L188.8,188.8 L198.0,190.1 L207.2,188.5 L216.4,200.1 L225.6,178.8 L234.8,192.5 L244.0,200.9 L253.2,198.5 L262.4,195.0 L271.6,203.0 L280.8,175.8 L290.0,196.6 L299.2,193.1 L308.4,188.5 L317.6,194.7 L326.8,177.7 L336.0,195.5 L345.2,187.4 L354.4,183.4 L363.6,170.2 L372.8,202.8 L382.0,183.9 L391.2,193.3 L400.4,193.3 L409.6,182.3 L418.8,181.8 L428.0,183.7 L437.2,192.5 L446.4,197.4 L455.6,181.8 L464.8,180.7 L474.0,183.4 L483.2,185.5 L492.4,197.9 L501.6,194.4 L510.8,187.7 L519.1,196.0" fill="none" class="ln" stroke-width="1.6"/>
+        <path d="M69.2,89.4 L78.4,152.4 L87.6,154.6 L96.8,182.6 L106.0,162.4 L115.2,162.4 L124.4,160.2 L133.6,176.1 L142.8,190.7 L152.0,180.7 L161.2,190.1 L170.4,173.7 L179.6,201.2 L188.8,186.6 L198.0,193.6 L207.2,187.4 L216.4,211.9 L225.6,208.2 L234.8,208.7 L244.0,211.9 L253.2,200.9 L262.4,207.6 L271.6,218.1 L280.8,205.5 L290.0,196.8 L299.2,220.3 L308.4,213.5 L317.6,213.3 L326.8,211.4 L336.0,198.2 L345.2,206.3 L354.4,213.3 L363.6,206.0 L372.8,212.2 L382.0,211.9 L391.2,214.6 L400.4,198.5 L409.6,223.0 L418.8,204.4 L428.0,217.0 L437.2,204.1 L446.4,200.6 L455.6,182.6 L464.8,211.9 L474.0,194.4 L483.2,203.8 L492.4,200.9 L501.6,206.0 L510.8,201.4 L519.1,193.6" fill="none" class="ln-tesis" stroke-width="1.6"/>
+        <path d="M69.2,118.8 L78.4,148.9 L87.6,138.4 L96.8,158.9 L106.0,147.0 L115.2,167.2 L124.4,175.8 L133.6,189.0 L142.8,188.8 L152.0,170.5 L161.2,160.2 L170.4,200.1 L179.6,176.9 L188.8,203.0 L198.0,180.7 L207.2,203.8 L216.4,209.0 L225.6,194.4 L234.8,189.8 L244.0,208.7 L253.2,213.8 L262.4,200.9 L271.6,187.4 L280.8,198.2 L290.0,210.3 L299.2,213.8 L308.4,196.0 L317.6,204.7 L326.8,201.2 L336.0,211.9 L345.2,213.5 L354.4,222.2 L363.6,205.5 L372.8,209.5 L382.0,218.1 L391.2,214.6 L400.4,228.6 L409.6,202.5 L418.8,218.4 L428.0,214.6 L437.2,213.5 L446.4,224.8 L455.6,196.6 L464.8,220.0 L474.0,220.5 L483.2,216.0 L492.4,209.5 L501.6,214.6 L510.8,193.3 L519.1,202.5" fill="none" class="ln-accent" stroke-width="2"/>
+        <path d="M69.2,73.3 L78.4,105.6 L87.6,142.5 L96.8,184.5 L106.0,171.8 L115.2,162.4 L124.4,168.6 L133.6,171.3 L142.8,190.7 L152.0,174.2 L161.2,189.0 L170.4,185.5 L179.6,172.9 L188.8,182.3 L198.0,188.8 L207.2,199.5 L216.4,188.0 L225.6,202.5 L234.8,183.4 L244.0,201.7 L253.2,226.2 L262.4,213.5 L271.6,208.7 L280.8,204.7 L290.0,209.0 L299.2,200.1 L308.4,205.5 L317.6,230.0 L326.8,218.9 L336.0,193.1 L345.2,207.6 L354.4,216.8 L363.6,200.6 L372.8,206.3 L382.0,194.2 L391.2,218.7 L400.4,213.0 L409.6,209.5 L418.8,213.3 L428.0,200.9 L437.2,197.1 L446.4,216.2 L455.6,205.5 L464.8,220.8 L474.0,218.7 L483.2,208.2 L492.4,215.2 L501.6,200.1 L510.8,212.2 L519.1,211.9" fill="none" class="ln-time" stroke-width="2"/>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">16,4 M</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">pasos de entrenamiento</text>
+        <text x="510" y="50" text-anchor="end" class="t-muted" font-size="12">gris: casilla · morado: pila</text>
+        <text x="510" y="66" text-anchor="end" class="t-muted" font-size="12">azul: GRU · naranja: belief</text>
+      </svg>
+      <figcaption>Longitud media de los episodios durante el entrenamiento (semilla 0), en el entorno de entrenamiento.</figcaption>
+    </figure>
+    <ul>
+      <li>Sin memoria, la política recorre la rejilla de forma aleatoria sesgada hacia la zona caliente: no sabe dónde ha mirado. Cualquier memoria recupera unos 2–3 pasos.</li>
+      <li>GRU y belief exacto quedan a menos de medio paso, dentro de la dispersión entre semillas: en una rejilla de 6 × 6 la memoria necesaria es pequeña. En 10 × 10 la diferencia debería crecer (laboratorio).</li>
+    </ul>
   </div>
 </section>
 
@@ -216,11 +760,111 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 <section class="slide">
+  <p class="kicker">Arquitecturas · qué guarda cada una</p>
+  <h2>Cada memoria es una regla para pasar de un paso al siguiente</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Memoria</th><th style="width:20%">Qué pasa de un paso al siguiente</th><th>Regla de actualización</th><th style="width:15%">Parámetros (36 → 128)</th></tr>
+      <tr><td>MLP sin memoria</td><td>nada</td><td>\(\pi(a\mid o_t)\)</td><td>—</td></tr>
+      <tr><td>Pila de \(k\)</td><td>las \(k\) últimas observaciones</td><td>\(x_t = [o_{t-k+1};\ \dots;\ o_t]\)</td><td>entrada × \(k\)</td></tr>
+      <tr><td>Elman</td><td>un vector \(h_t\)</td><td>\(h_t = \tanh(W[x_t;\,h_{t-1}] + b)\)</td><td class="n">21 120</td></tr>
+      <tr><td>GRU</td><td>un vector \(h_t\)</td><td>dos puertas y un candidato (hoja 15)</td><td class="n">63 360</td></tr>
+      <tr><td>LSTM</td><td>\(h_t\) y una celda \(C_t\)</td><td>tres puertas y un candidato (hoja siguiente)</td><td class="n">84 480</td></tr>
+      <tr><td>Atención lineal (FART, FWP)</td><td>una matriz \(M_t\)</td><td>\(M_t = M_{t-1} + \phi(k_t)\,v_t^\top\) en su forma básica; las variantes cambian cómo se escribe</td><td>—</td></tr>
+      <tr><td>S4D</td><td>un estado lineal \(m_t\)</td><td>\(m_t = \bar A\,m_{t-1} + \bar B\,x_t\), con \(\bar A\) diagonal</td><td>—</td></tr>
+      <tr><td>Transformer</td><td>las \(K\) últimas entradas</td><td>atención sobre la ventana (dos hojas más adelante)</td><td>—</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Símbolos nuevos</span>
+    <p>\(W\), \(b\): pesos y sesgo de la red de Elman, la recurrencia sin puertas de la hoja 17. \(k_t\), \(v_t\): «clave» y «valor», dos proyecciones lineales de la entrada (esta \(k_t\) no es la \(k\) de la pila); \(\phi\), una función que las hace positivas. \(\bar A\), \(\bar B\): matrices fijas de una recurrencia lineal. Parámetros de las recurrencias: ejemplo 7.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitecturas · LSTM</p>
+  <h2>La LSTM: una celda aparte y tres puertas</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ \begin{aligned} i_t,\ f_t,\ u_t &= \sigma\big(W_{i,f,u}\,[x_t;\,h_{t-1}] + b_{i,f,u}\big)\\ \tilde C_t &= \tanh\big(W_C\,[x_t;\,h_{t-1}] + b_C\big)\\ C_t &= f_t\odot C_{t-1} + i_t\odot\tilde C_t\\ h_t &= u_t\odot\tanh(C_t) \end{aligned} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:22%">Símbolo</th><th>Qué es</th></tr>
+          <tr><td>\(C_t\)</td><td><strong>Celda</strong>: la memoria de largo plazo, que solo se toca con productos y sumas</td></tr>
+          <tr><td>\(f_t\)</td><td>Puerta de olvido: cuánto de \(C_{t-1}\) se conserva</td></tr>
+          <tr><td>\(i_t\), \(\tilde C_t\)</td><td>Puerta de entrada y candidato: cuánto se escribe y qué</td></tr>
+          <tr><td>\(u_t\)</td><td>Puerta de salida: qué parte de la celda se enseña como \(h_t\)</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Aviso: la puerta de salida se suele llamar \(o_t\); aquí \(u_t\), para no confundirla con la observación. \(C_t\) no es la casilla \(c_t\).</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th></th><th>GRU</th><th>LSTM</th></tr>
+          <tr><td>Qué pasa al paso siguiente</td><td>\(h_t\)</td><td>\(h_t\) y \(C_t\)</td></tr>
+          <tr><td>Camino directo hacia atrás</td><td>\(1 - z_t\)</td><td>\(f_t\)</td></tr>
+          <tr><td>Matrices de pesos</td><td class="n">3</td><td class="n">4</td></tr>
+          <tr><td>Parámetros, 36 → 128</td><td class="n">63 360</td><td class="n">84 480</td></tr>
+          <tr><td>POPGym (hoja 30)</td><td class="n">0,349</td><td class="n">0,255</td></tr>
+        </table>
+      </div>
+      <p>La idea es la misma: un estado que se actualiza como media ponderada y deja un camino casi directo para el gradiente (\(f_t\) hace aquí el papel de \(1 - z_t\)). La GRU funde celda y salida en un solo vector y ahorra una cuarta parte de los parámetros.</p>
+      <div class="callout clave"><span class="tag">Lo que dice la evidencia</span>LSTM o GRU apenas cambian el resultado en el RL recurrente de Ni et al. <a class="cite" data-ref="ni2022"></a>; en POPGym, la GRU queda arriba <a class="cite" data-ref="morad2023"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitecturas · atención</p>
+  <h2>Un transformer no resume: vuelve a mirar las \(K\) últimas entradas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 240" style="max-height:250px" role="img" aria-label="Arriba, una cadena recurrente que pasa un vector de paso en paso. Abajo, el paso actual conectado directamente con las ocho entradas anteriores de la ventana, con pesos de distinta intensidad">
+      <defs><marker id="a7bat" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="20" y="54" class="t-bold" font-size="15">recurrente</text>
+      <rect x="150" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="260" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="370" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="480" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="590" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="700" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="810" y="34" width="70" height="34" rx="6" class="box-accent"/><rect x="920" y="34" width="70" height="34" rx="6" class="box-accent"/>
+      <path d="M220 51 H256" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M330 51 H366" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M440 51 H476" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M550 51 H586" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M660 51 H696" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M770 51 H806" class="ln" marker-end="url(#a7bat)"/>
+      <path d="M880 51 H916" class="ln" marker-end="url(#a7bat)"/>
+      <text x="955" y="88" text-anchor="middle" class="t-accent t-mono" font-size="13">h<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <text x="570" y="96" text-anchor="middle" class="t-muted" font-size="13">un vector de 128 números lleva todo el pasado; lo viejo llega a través de cada paso intermedio</text>
+      <text x="20" y="194" class="t-bold" font-size="15">atención</text>
+      <rect x="150" y="174" width="70" height="34" rx="6" class="box"/><rect x="260" y="174" width="70" height="34" rx="6" class="box"/><rect x="370" y="174" width="70" height="34" rx="6" class="box"/><rect x="480" y="174" width="70" height="34" rx="6" class="box"/><rect x="590" y="174" width="70" height="34" rx="6" class="box"/><rect x="700" y="174" width="70" height="34" rx="6" class="box"/><rect x="810" y="174" width="70" height="34" rx="6" class="box"/><rect x="920" y="174" width="70" height="34" rx="6" class="box-time"/>
+      <text x="185" y="196" text-anchor="middle" class="t-mono t-faint" font-size="12">t−7</text>
+      <text x="845" y="196" text-anchor="middle" class="t-mono t-faint" font-size="12">t−1</text>
+      <text x="955" y="196" text-anchor="middle" class="t-mono" font-size="12">t</text>
+      <path d="M955 174 C 955 120, 185 120, 185 170" fill="none" class="ln-time" stroke-opacity="0.85" stroke-width="2.5"/>
+      <path d="M955 174 C 955 130, 295 130, 295 170" fill="none" class="ln-time" stroke-opacity="0.25"/>
+      <path d="M955 174 C 955 138, 405 138, 405 170" fill="none" class="ln-time" stroke-opacity="0.25"/>
+      <path d="M955 174 C 955 144, 515 144, 515 170" fill="none" class="ln-time" stroke-opacity="0.5" stroke-width="1.8"/>
+      <path d="M955 174 C 955 150, 625 150, 625 170" fill="none" class="ln-time" stroke-opacity="0.25"/>
+      <path d="M955 174 C 955 156, 735 156, 735 170" fill="none" class="ln-time" stroke-opacity="0.25"/>
+      <path d="M955 174 C 955 162, 845 162, 845 170" fill="none" class="ln-time" stroke-opacity="0.6" stroke-width="1.8"/>
+      <text x="570" y="232" text-anchor="middle" class="t-muted" font-size="13">el paso t mira directamente cada entrada de la ventana, con un peso que calcula en ese momento (más grueso, más peso)</text>
+    </svg>
+    <figcaption>Esquema con una ventana de \(K = 8\) pasos.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      \[ y_t = \sum_{j=t-K+1}^{t} \beta_{tj}\,v_j,\qquad \beta_{tj} = \frac{\exp(q_t\cdot k_j/\sqrt{d})}{\sum_{j'}\exp(q_t\cdot k_{j'}/\sqrt{d})} \]
+      <p class="small">\(q_t\): «consulta» del paso actual; \(k_j\), \(v_j\): clave y valor de la entrada \(j\) (proyecciones lineales de cada entrada); \(d\): su dimensión; \(\beta_{tj}\): pesos que suman 1.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Coste.</strong> \(K\) productos \(q\cdot k\) por paso, \(K^2\) en una ventana completa: con \(K = 32\), 1024; con \(K = 1500\) (el T-Maze de la hoja 32), 2,25 millones. Es el «coste cuadrático» de la hoja 12. <span class="small muted">Ejemplo 7.</span></p>
+      <p><strong>A cambio,</strong> algo de hace 1000 pasos llega en un solo salto, sin atravesar 1000 puertas.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Arquitecturas · POPGym</p>
   <h2>En el banco de pruebas más amplio, gana la GRU</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">POPGym: 15 entornos parcialmente observables, 13 modelos de memoria, todos con PPO, más de 1700 ejecuciones <a class="cite" data-ref="morad2023"></a>.</p>
+      <p>POPGym: 15 entornos parcialmente observables, 13 modelos de memoria, todos con PPO, más de 1700 ejecuciones <a class="cite" data-ref="morad2023"></a>.</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Memoria</th><th>Recompensa media normalizada</th></tr></thead>
@@ -239,7 +883,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
       <p class="xsmall muted">Media de la máxima recompensa media por episodio, en todos los entornos (figura 3 de Morad et al.).</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>«Las RNN clásicas superaron a los métodos de memoria modernos»; «usa GRU para rendimiento y redes de Elman para eficiencia» <a class="cite" data-ref="morad2023"></a>.</li>
         <li>S4D fue inestable y a menudo divergió.</li>
       </ul>
@@ -249,19 +893,53 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 <section class="slide">
+  <p class="kicker">Arquitecturas · memoria y crédito</p>
+  <h2>Recordar y asignar el crédito son dos distancias distintas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 250" style="max-height:260px" role="img" aria-label="Dos líneas temporales. Memoria: una señal vista en el paso cero se necesita para decidir en el paso ele. Crédito: una acción en el paso cero causa una recompensa que llega en el paso ele">
+      <defs><marker id="a7bmc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+      <marker id="a7bmt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+      <text x="20" y="28" class="t-bold" font-size="16">memoria</text>
+      <path d="M150 80 H950" class="ln" stroke-width="3"/>
+      <circle cx="150" cy="80" r="9" class="fill-accent"/>
+      <text x="150" y="112" text-anchor="middle" font-size="14">t = 0: ve la señal</text>
+      <text x="150" y="130" text-anchor="middle" class="t-muted" font-size="13">(«la meta está a la izquierda»)</text>
+      <rect x="935" y="65" width="30" height="30" rx="4" class="box-accent"/>
+      <text x="950" y="112" text-anchor="middle" font-size="14">t = ℓ: decide en el cruce</text>
+      <text x="950" y="130" text-anchor="middle" class="t-muted" font-size="13">necesita la señal</text>
+      <path d="M165 50 H930" class="ln-accent" stroke-width="2" marker-end="url(#a7bmc)"/>
+      <text x="550" y="42" text-anchor="middle" class="t-accent" font-size="14">la información tiene que viajar hacia delante ℓ pasos</text>
+      <text x="20" y="170" class="t-bold" font-size="16">crédito</text>
+      <path d="M150 210 H950" class="ln" stroke-width="3"/>
+      <rect x="135" y="195" width="30" height="30" rx="4" class="box-time"/>
+      <text x="150" y="244" text-anchor="middle" font-size="14">t = 0: una acción</text>
+      <circle cx="950" cy="210" r="9" class="fill-time"/>
+      <text x="950" y="244" text-anchor="middle" font-size="14">t = ℓ: llega la recompensa</text>
+      <path d="M935 182 H170" class="ln-time" stroke-width="2" marker-end="url(#a7bmt)"/>
+      <text x="550" y="174" text-anchor="middle" class="t-time" font-size="14">hay que averiguar hacia atrás qué acción la causó</text>
+    </svg>
+    <figcaption>Esquema de las dos longitudes que separan Ni et al. <a class="cite" data-ref="ni2023"></a>: la de memoria (cuánto atrás está lo que hay que recordar) y la de crédito (cuánto tarda en llegar la recompensa de una acción).</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Memoria</strong> es un problema de representación: que algo de hace \(\ell\) pasos siga en la entrada de la política. La atención lo resuelve con un salto directo.</p>
+    <p><strong>Crédito</strong> es un problema del aprendizaje por refuerzo: el retorno mezcla todo lo que pasó en \(\ell\) pasos, y la ventaja (GAE, \(\gamma\), \(\lambda\)) tiene que repartirlo. Según Ni et al., más memoria no lo arregla.</p>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Arquitecturas · transformers</p>
   <h2>Los transformers recuerdan mucho, pero no asignan mejor el crédito</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Ni et al. separan dos cosas que se mezclan al hablar de «memoria» <a class="cite" data-ref="ni2023"></a>:</p>
-      <ul class="small">
+      <p>Ni et al. separan dos cosas que se mezclan al hablar de «memoria» <a class="cite" data-ref="ni2023"></a>:</p>
+      <ul>
         <li><strong>Memoria:</strong> recordar una observación lejana para usarla después. Los transformers llegan a dependencias de 1500 pasos (T-Maze pasivo).</li>
         <li><strong>Asignación de crédito:</strong> saber qué acción lejana causó una recompensa. Ahí los transformers «no mejoran».</li>
         <li>En tareas de PyBullet con oclusión, cambiar la LSTM del RL recurrente de Ni 2022 por un transformer dio, en la mayoría de tareas, peor eficiencia en muestras.</li>
       </ul>
-      <p class="small">GTrXL (un Transformer-XL con compuertas) hizo entrenables los transformers en RL: superó a las LSTM en entornos de memoria difíciles y logró el mejor resultado en DMLab-30 <a class="cite" data-ref="parisotto2020"></a>.</p>
     </div>
     <div class="stack">
+      <p>GTrXL (un Transformer-XL con compuertas) hizo entrenables los transformers en RL: superó a las LSTM en entornos de memoria difíciles y logró el mejor resultado en DMLab-30 <a class="cite" data-ref="parisotto2020"></a>.</p>
       <div class="callout clave"><span class="tag">Regla práctica</span>Empieza con una GRU separada en actor y crítico. Prueba un transformer si la tarea exige recordar algo de hace cientos de pasos y tienes datos de sobra.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>En una búsqueda, la memoria necesaria es «dónde he mirado ya»: crece con el área, no con el tiempo. Un belief explícito (un mapa) la representa sin pedirle a la red que la reconstruya; es la comparación de la parte 3.</div>
     </div>
@@ -276,6 +954,27 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Lo que aparece en el belief de la búsqueda y en el sondeo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:34%">En el sondeo de este tema</th></tr>
+      <tr><td>\(b_t(c)\), \(b_0\)</td><td>Belief exacto: probabilidad de que el objetivo esté en la casilla \(c\); \(b_0\), el prior</td><td>36 números que suman 1</td></tr>
+      <tr><td>\(P_D\)</td><td>Probabilidad de detectar el objetivo si está en la casilla mirada</td><td class="n">0,6</td></tr>
+      <tr><td>\(n_t(c)\)</td><td>Cuántas veces se ha mirado la casilla \(c\) hasta \(t\)</td><td>36 contadores</td></tr>
+      <tr><td>\(Z_t\)</td><td>Constante de normalización: lo que hace que \(b_t\) sume 1</td><td>—</td></tr>
+      <tr><td>\(X\)</td><td>Rasgos: una fila por estado guardado, con \(h_t\) y un 1 al final (para el término constante)</td><td>8643 × 129 en el ajuste</td></tr>
+      <tr><td>\(Y\)</td><td>Objetivos: una fila por estado, el belief exacto \(b_t\)</td><td>8643 × 36</td></tr>
+      <tr><td>\(W\), \(\alpha\)</td><td>Pesos del sondeo lineal; fuerza de la regularización</td><td>129 × 36; \(\alpha = 0{,}01\)</td></tr>
+      <tr><td>\(\hat b_t\)</td><td>Belief <strong>leído</strong> del estado: \(W^\top[h_t; 1]\), recortado y normalizado</td><td>se compara con \(b_t\)</td></tr>
+      <tr><td>\(\mathrm{TV}(b, \hat b)\)</td><td>Variación total entre dos distribuciones (de 0 a 1)</td><td>0,064 con la GRU entrenada</td></tr>
+      <tr><td>\(R^2\)</td><td>Fracción de la variación del belief que explica el sondeo</td><td>0,74 con la GRU entrenada</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Los 13 287 estados son de 400 episodios de prueba de la GRU entrenada; el ajuste usa los 280 primeros episodios (8643 estados) y la prueba, los 120 restantes (4644).</p>
+</section>
+
+<section class="slide">
   <p class="kicker">Belief · tres familias</p>
   <h2>Implícito, estructurado o moldeado</h2>
   <div class="cols c3 body cards-sm">
@@ -287,11 +986,171 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 <section class="slide">
-  <p class="kicker">Belief · sondeo</p>
+  <p class="kicker">Belief · qué hay que recordar en la búsqueda</p>
+  <h2>El belief exacto solo depende de cuántas veces se ha mirado cada casilla</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Parte de la actualización de A7a (hojas 50–51): mirar la casilla \(c_t\) y no detectar multiplica esa casilla por \(1 - P_D\) y normaliza. Aplicada \(t\) veces:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(b_{t}(c) \propto b_{t-1}(c)\,\big(1 - P_D\,[c = c_t]\big)\)</td><td>Bayes de A7a; \([\cdot]\) vale 1 si es verdad. El denominador solo normaliza</td></tr>
+          <tr><td><strong>2</strong></td><td>\(b_t(c) \propto b_0(c)\,\prod_{\tau=1}^{t}\big(1 - P_D\,[c = c_\tau]\big)\)</td><td>Encadenar el paso 1; las normalizaciones se juntan en una sola al final</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\prod_\tau(\cdots) = (1 - P_D)^{n_t(c)}\)</td><td>Cada factor vale 0,4 si en ese paso se miró \(c\) y 1 si no</td></tr>
+          <tr><td><strong>4</strong></td><td>\(b_t(c) = \dfrac{b_0(c)\,(1 - P_D)^{n_t(c)}}{Z_t}\), \(Z_t = \sum_{c'} b_0(c')\,(1-P_D)^{n_t(c')}\)</td><td>Normalizar</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\log b_t(c) = \log b_0(c) + n_t(c)\log(1 - P_D) - \log Z_t\)</td><td>Logaritmo: <strong>lineal en los contadores</strong>, salvo la constante \(\log Z_t\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">A mano, tres casillas</span>\(b_0 = (0{,}5;\ 0{,}3;\ 0{,}2)\), \(P_D = 0{,}6\); se miran la 1, la 2 y otra vez la 1, así que \(n = (2, 1, 0)\). Numeradores: \(0{,}5\cdot0{,}16\), \(0{,}3\cdot0{,}4\), \(0{,}2\) = \((0{,}08;\ 0{,}12;\ 0{,}2)\); \(Z = 0{,}4\); \(b = (0{,}2;\ 0{,}3;\ 0{,}5)\). Actualizando paso a paso sale lo mismo: \((0{,}286;\ 0{,}429;\ 0{,}286)\), \((0{,}385;\ 0{,}231;\ 0{,}385)\), \((0{,}2;\ 0{,}3;\ 0{,}5)\). Ejemplo 8.</div>
+      <div class="callout clave"><span class="tag">Qué tiene que guardar una memoria aquí</span>Un contador por casilla: el orden de las miradas no importa. Es el «dónde he mirado ya» de la hoja 32, y lo que un sondeo debería encontrar en la GRU.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Sondeo · 1 · el esquema</p>
+  <h2>Un sondeo es un ajuste lineal desde el estado oculto hasta el belief</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 260" style="max-height:270px" role="img" aria-label="Flujo del sondeo: la política entrenada juega 400 episodios; se guardan pares de estado oculto y belief exacto; se ajusta un mapa lineal con el 70 por ciento de los episodios; se lee el belief en el resto y se compara con el exacto. Debajo, la misma lectura con una GRU sin entrenar">
+      <defs><marker id="a7bs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="10" y="30" width="200" height="90" rx="6" class="box-accent"/>
+      <text x="110" y="58" text-anchor="middle" class="t-bold" font-size="15">política GRU</text>
+      <text x="110" y="80" text-anchor="middle" class="t-muted" font-size="13">entrenada y congelada:</text>
+      <text x="110" y="98" text-anchor="middle" class="t-muted" font-size="13">400 episodios</text>
+      <rect x="260" y="30" width="210" height="90" rx="6" class="box"/>
+      <text x="365" y="58" text-anchor="middle" class="t-bold" font-size="15">en cada paso guarda</text>
+      <text x="365" y="80" text-anchor="middle" class="t-mono" font-size="14">(h<tspan baseline-shift="sub" font-size="75%">t</tspan>, b<tspan baseline-shift="sub" font-size="75%">t</tspan>)</text>
+      <text x="365" y="100" text-anchor="middle" class="t-muted" font-size="13">13 287 pares</text>
+      <rect x="520" y="30" width="200" height="90" rx="6" class="box"/>
+      <text x="620" y="58" text-anchor="middle" class="t-bold" font-size="15">ajuste</text>
+      <text x="620" y="80" text-anchor="middle" class="t-muted" font-size="13">280 episodios (70 %)</text>
+      <text x="620" y="100" text-anchor="middle" class="t-mono" font-size="14">→ W</text>
+      <rect x="770" y="30" width="190" height="90" rx="6" class="box"/>
+      <text x="865" y="58" text-anchor="middle" class="t-bold" font-size="15">prueba</text>
+      <text x="865" y="80" text-anchor="middle" class="t-muted" font-size="13">los otros 120</text>
+      <text x="865" y="100" text-anchor="middle" class="t-mono" font-size="14">b̂<tspan baseline-shift="sub" font-size="75%">t</tspan> = Wᵀ[h<tspan baseline-shift="sub" font-size="75%">t</tspan>; 1]</text>
+      <rect x="1010" y="30" width="160" height="90" rx="6" class="box-time"/>
+      <text x="1090" y="58" text-anchor="middle" class="t-bold" font-size="15">comparar</text>
+      <text x="1090" y="80" text-anchor="middle" class="t-mono" font-size="14">b̂<tspan baseline-shift="sub" font-size="75%">t</tspan> con b<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+      <text x="1090" y="100" text-anchor="middle" class="t-muted" font-size="13">TV y R²</text>
+      <path d="M210 75 H256" class="ln" marker-end="url(#a7bs)"/>
+      <path d="M470 75 H516" class="ln" marker-end="url(#a7bs)"/>
+      <path d="M720 75 H766" class="ln" marker-end="url(#a7bs)"/>
+      <path d="M960 75 H1006" class="ln" marker-end="url(#a7bs)"/>
+      <rect x="260" y="170" width="460" height="64" rx="6" class="box-soft"/>
+      <text x="490" y="196" text-anchor="middle" class="t-bold" font-size="14">referencias, con las mismas casillas recorridas</text>
+      <text x="490" y="218" text-anchor="middle" class="t-muted" font-size="13">GRU sin entrenar · solo la casilla actual · el prior fijo</text>
+      <path d="M365 120 V166" class="ln-dash"/>
+      <path d="M720 202 H865 V124" fill="none" class="ln-dash" marker-end="url(#a7bs)"/>
+      <text x="880" y="160" class="t-muted" font-size="13">mismo sondeo</text>
+    </svg>
+    <figcaption>El sondeo de <code>figuras_a7b.py</code>, sección 2. Los episodios de ajuste y de prueba son distintos: el sondeo no puede memorizar un episodio concreto.</figcaption>
+  </figure>
+  <div class="cols c3">
+    <p><strong>Qué entra:</strong> el estado oculto \(h_t\) (128 números), que la política ya calculó al jugar. El entrenamiento de la política no se toca.</p>
+    <p><strong>Qué sale:</strong> un belief leído \(\hat b_t\) para cada estado de prueba.</p>
+    <p><strong>La pregunta:</strong> ¿se puede escribir el belief como una función lineal del estado? Si sí, la información está ahí.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Sondeo · 2 · la fórmula</p>
+  <h2>Mínimos cuadrados con regularización: de dónde sale \(W\)</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Buscamos los pesos que mejor reproducen el belief en los estados de ajuste, sin pesos enormes:</p>
+      \[ J(W) = \|XW - Y\|^2 + \alpha\,\|W\|^2 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J = \sum_{n,c}\big((XW)_{nc} - Y_{nc}\big)^2 + \alpha\sum_{jc}W_{jc}^2\)</td><td>Error cuadrático en cada estado \(n\) y casilla \(c\), más una penalización sobre los 129 × 36 pesos</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\nabla_W J = 2X^\top(XW - Y) + 2\alpha W\)</td><td>Derivada de un cuadrado; \(X^\top\) reparte el error de cada fila entre los pesos que lo produjeron</td></tr>
+          <tr><td><strong>3</strong></td><td>\((X^\top X + \alpha I)\,W = X^\top Y\)</td><td>Igualar a cero: \(J\) es convexa, así que es el mínimo</td></tr>
+          <tr><td><strong>4</strong></td><td>\(W = (X^\top X + \alpha I)^{-1}X^\top Y\)</td><td>Con \(\alpha > 0\) la matriz siempre se puede invertir, aunque dos rasgos se repitan</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Cada columna de \(W\) es una regresión aparte:</strong> la 1 predice \(b(\text{casilla }1)\) a partir de \(h\), la 2 la casilla 2, y así 36. Comparten \(X\), por eso se resuelven de una vez.</p>
+      <p><strong>Leer el belief.</strong> \(W^\top[h_t;\,1]\) es un vector de 36 números que no tiene por qué ser una distribución. El script recorta lo negativo (a \(10^{-6}\)) y divide por la suma: eso es \(\hat b_t\).</p>
+      <div class="aparte"><span class="rotulo">Por qué regularizar</span>
+        <p>Con 129 rasgos muy correlacionados, \(X^\top X\) está cerca de ser singular y los pesos sin regularizar se disparan para ajustar ruido. \(\alpha = 0{,}01\) es pequeño frente a los miles de estados: casi no cambia el ajuste, pero lo hace estable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Sondeo · 3 · a mano</p>
+  <h2>Un sondeo con una unidad y dos casillas, cuenta por cuenta</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cuatro estados; una sola unidad del estado oculto, \(h = (-1,\ 0,\ 1,\ 2)\); belief exacto de dos casillas:</p>
+      \[ X = \begin{bmatrix}-1&1\\0&1\\1&1\\2&1\end{bmatrix},\quad Y = \begin{bmatrix}0{,}9&0{,}1\\0{,}6&0{,}4\\0{,}4&0{,}6\\0{,}1&0{,}9\end{bmatrix} \]
+      \[ X^\top X = \begin{bmatrix}6&2\\2&4\end{bmatrix},\quad X^\top Y = \begin{bmatrix}-0{,}3&2{,}3\\2&2\end{bmatrix} \]
+      <p class="small">\(X^\top X\): suma de \(h^2\) (6), suma de \(h\) (2) y número de estados (4). \(X^\top Y\): suma de \(h\,b\) y suma de \(b\) para cada casilla.</p>
+      <p class="small muted">Lo que significa cada columna: por cada unidad que sube \(h\), la casilla 1 pierde 0,26 y la 2 gana 0,26. <code>ejemplos_a7b.py</code>, ejemplo 9.</p>
+    </div>
+    <div class="stack">
+      <p>Sin regularizar, \((X^\top X)^{-1} = \tfrac{1}{20}\left[\begin{smallmatrix}4&-2\\-2&6\end{smallmatrix}\right]\) y</p>
+      \[ \begin{aligned} W_{\cdot1} &= \tfrac{1}{20}\big(4\cdot(-0{,}3) - 2\cdot 2;\ \ -2\cdot(-0{,}3) + 6\cdot 2\big)\\ &= \tfrac{1}{20}(-5{,}2;\ 12{,}6) = (-0{,}26;\ 0{,}63)\\ W_{\cdot2} &= \tfrac{1}{20}\big(4\cdot2{,}3 - 2\cdot2;\ \ -2\cdot2{,}3 + 6\cdot2\big)\\ &= \tfrac{1}{20}(5{,}2;\ 7{,}4) = (0{,}26;\ 0{,}37) \end{aligned} \]
+      <p>\(W_{\cdot c}\): columna de la casilla \(c\); su primer número multiplica a \(h\) y el segundo, al 1. Con \(\alpha = 0{,}01\): \(W = \left[\begin{smallmatrix}-0{,}259&0{,}260\\0{,}628&0{,}369\end{smallmatrix}\right]\), casi igual.</p>
+      <p><strong>Lectura</strong> del primer estado (\(h = -1\)): \((0{,}259 + 0{,}628;\ -0{,}260 + 0{,}369) = (0{,}887;\ 0{,}109)\). Suma 0,996: se normaliza a \((0{,}890;\ 0{,}110)\), frente al exacto \((0{,}9;\ 0{,}1)\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Sondeo · 4 · variación total</p>
+  <h2>La variación total es la mayor diferencia de probabilidad sobre una zona</h2>
+  <div class="cols w60">
+    <div class="stack">
+      \[ \mathrm{TV}(b, \hat b) = \tfrac12\sum_c \big|b(c) - \hat b(c)\big| = \max_{A}\,\big|\,b(A) - \hat b(A)\,\big| \]
+      <p>\(A\) es cualquier conjunto de casillas («la mitad norte», «estas tres») y \(b(A)\), la probabilidad que le da \(b\). La segunda igualdad es la que da significado al número:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(A^+ = \{c : b(c) > \hat b(c)\}\) maximiza \(b(A) - \hat b(A)\)</td><td>Meter una casilla con \(b > \hat b\) suma; una con \(b \lt \hat b\) resta</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\sum_{A^+}(b - \hat b) = \sum_{\text{resto}}(\hat b - b)\)</td><td>Las dos distribuciones suman 1: lo que sobra en un lado falta en el otro</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\sum_c|b - \hat b| = 2\sum_{A^+}(b - \hat b)\)</td><td>La suma de valores absolutos cuenta las dos mitades, que son iguales</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>\(b = (0{,}2;\ 0{,}3;\ 0{,}5)\), \(\hat b = (0{,}25;\ 0{,}25;\ 0{,}5)\): \(\tfrac12(0{,}05 + 0{,}05 + 0) = 0{,}05\). Con \(A = \{2, 3\}\): \(0{,}8 - 0{,}75 = 0{,}05\). Ejemplo 10.</div>
+      <p><strong>Escala:</strong> 0 si son iguales; 1 si no comparten ninguna casilla. Entre \(b\) y la uniforme, 0,167; entre \(b\) y la certeza en la casilla 3, 0,5.</p>
+      <p><strong>Las cifras del tema:</strong> con la GRU entrenada, 0,064 de media sobre los estados de prueba: para cualquier zona de la rejilla, la probabilidad leída del estado y la exacta difieren como mucho en 0,064, en media. Quedarse con el prior, sin mirar la historia, da 0,25.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Sondeo · 5 · R²</p>
+  <h2>\(R^2\): qué parte de la variación del belief explica el sondeo</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ R^2 = 1 - \frac{\sum_{n,c}\big(\hat y_{nc} - y_{nc}\big)^2}{\sum_{n,c}\big(y_{nc} - \bar y_c\big)^2} \]
+      <ul>
+        <li>\(y_{nc}\): belief exacto del estado de prueba \(n\) en la casilla \(c\); \(\hat y_{nc}\): la salida lineal \((XW)_{nc}\), antes de recortar y normalizar.</li>
+        <li>\(\bar y_c\): media de la casilla \(c\) en los estados de <em>ajuste</em>. El denominador es lo que se equivoca quien predice siempre esa media.</li>
+        <li>1: perfecto; 0: no mejora a la media; en prueba puede salir negativo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">El ejemplo de la hoja 39</span>Medias \(\bar y = (0{,}5;\ 0{,}5)\); denominador \(2\,(0{,}16 + 0{,}01 + 0{,}01 + 0{,}16) = 0{,}68\). Error del sondeo: 0,0040. \(R^2 = 1 - 0{,}004/0{,}68 = 0{,}994\) (en los mismos estados del ajuste: en prueba sería menor). Ejemplo 9.</div>
+      <p><strong>TV o \(R^2\).</strong> La TV está en unidades de probabilidad y mira la distribución ya normalizada. \(R^2\) es relativo: pesa más las casillas cuyo belief cambia mucho de un estado a otro. Con la GRU entrenada, \(R^2 = 0{,}74\): explica tres cuartas partes de lo que el belief se mueve alrededor de su media.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · sondeo · resultados</p>
   <h2>¿Hay un belief en la GRU? Sí, pero ya estaba antes de entrenar</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Sondeo lineal (mínimos cuadrados con regularización) del belief exacto a partir del estado de 128 unidades, ajustado con el 70 % de 400 episodios de la GRU entrenada y evaluado en el resto:</p>
+      <p>Sondeo lineal (mínimos cuadrados con regularización) del belief exacto a partir del estado de 128 unidades, ajustado con el 70 % de 400 episodios de la GRU entrenada y evaluado en el resto:</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Qué se sondea</th><th>Variación total al belief</th><th>R²</th></tr></thead>
@@ -385,7 +1244,54 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
         </svg>
         <figcaption>Belief exacto y el leído del estado de la GRU entrenada en un episodio de prueba (paso 7; variación total 0,003). Misma escala de color en los dos mapas.</figcaption>
       </figure>
-      <div class="callout error"><span class="tag">La trampa del sondeo</span>Una red recurrente <em>sin entrenar</em> ya guarda la historia de forma que un sondeo lineal la lee casi igual de bien: el belief es una función de las casillas visitadas, y un estado recurrente aleatorio las mezcla sin olvidarlas. El sondeo dice que la información está; no que la red la haya aprendido ni que la política la use.</div>
+      <p>Las dos primeras filas casi empatan: entrenar la GRU solo mejora la lectura de 0,073 a 0,064. Las dos hojas siguientes explican por qué.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · la trampa del sondeo · 1</p>
+  <h2>Una GRU sin entrenar lee bien el belief si los recorridos se parecen</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un ejemplo nuestro con numpy: el mismo entorno, el mismo sondeo, dos políticas de juguete en lugar de la entrenada. <strong>Paseo</strong>: acción al azar en cada paso. <strong>Serpentina</strong>: siempre el mismo recorrido (el barrido de A7a).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Qué se sondea</th><th>TV, paseo</th><th>TV, serpentina</th></tr>
+          <tr><td>El prior fijo</td><td class="n">0,186</td><td class="n">0,152</td></tr>
+          <tr><td>Solo la casilla actual</td><td class="n">0,158</td><td class="n">0,082</td></tr>
+          <tr><td>Las 8 últimas casillas y la actual</td><td class="n">0,130</td><td class="n">0,044</td></tr>
+          <tr><td>GRU sin entrenar, 128 unidades</td><td class="n">0,129</td><td class="n">0,031</td></tr>
+          <tr><td>Los 36 contadores \(n_t(c)\)</td><td class="n">0,073</td><td class="n">0,018</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">400 episodios por política, ajuste con el 70 %; GRU iniciada como en <code>figuras_a7b.py</code> (dos semillas, mismo resultado). <code>ejemplos_a7b.py</code>, ejemplo 11.</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Serpentina:</strong> todos los episodios pasan por las mismas casillas en el mismo orden, así que el belief del paso \(t\) depende casi solo de \(t\). Cualquier estado que distinga «cuánto llevo» y «por dónde voy» lo lee: la GRU sin entrenar se acerca a los contadores.</li>
+        <li><strong>Paseo:</strong> las revisitas lejanas importan y la GRU sin entrenar no las guarda. Sus puertas valen 0,50 de media, así que pesa sobre todo lo reciente: queda como la pila de 8, lejos de los contadores.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La política entrenada, en medio</span>En sus trayectorias, la casilla actual sola ya explica \(R^2 = 0{,}26\), frente a 0,10 en el paseo y 0,43 en la serpentina: recorre caminos bastante repetidos. Eso sugiere por qué allí la GRU sin entrenar (0,073) casi empata con la entrenada (0,064).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Belief · la trampa del sondeo · 2</p>
+  <h2>Un sondeo responde a una pregunta, no a tres</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:30%">Pregunta</th><th>Qué la responde</th><th style="width:30%">En este tema</th></tr>
+        <tr><td>¿Está la información en el estado?</td><td>El sondeo frente a referencias sin memoria: el prior, la casilla actual</td><td>Sí: 0,064 frente a 0,151 y 0,25</td></tr>
+        <tr><td>¿La ha aprendido el entrenamiento?</td><td>El mismo sondeo en una red <em>sin entrenar</em> que recorre <strong>las mismas observaciones</strong></td><td>Poco: 0,064 frente a 0,073</td></tr>
+        <tr><td>¿La usa la política para decidir?</td><td>Ningún sondeo: hace falta otra prueba (pregunta 6 de la autoevaluación)</td><td>No medido</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">La trampa del sondeo</span>Una red recurrente <em>sin entrenar</em> ya guarda la historia de forma que un sondeo lineal la lee casi igual de bien: el belief es una función de las casillas visitadas, y un estado recurrente aleatorio guarda el paso de tiempo y las casillas recientes, que en los recorridos repetidos de la política bastan para leerlo. El sondeo dice que la información está; no que la red la haya aprendido ni que la política la use.</div>
+      <p>Y lo contrario: un sondeo lineal pobre no prueba que la información no esté, porque puede estar codificada de forma no lineal (laboratorio, paso 3).</p>
     </div>
   </div>
 </section>
@@ -398,20 +1304,69 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 <section class="slide">
+  <p class="kicker">Percepción activa · el esquema</p>
+  <h2>La acción decide qué se observará después</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 330" style="max-height:340px" role="img" aria-label="Ciclo: el belief entra en la política, que elige a qué casilla ir; el dron mira esa casilla; detecta o no; el filtro actualiza el belief">
+        <defs><marker id="a7bp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="190" y="20" width="180" height="60" rx="6" class="box-time"/>
+        <text x="280" y="46" text-anchor="middle" class="t-bold" font-size="15">belief b<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+        <text x="280" y="66" text-anchor="middle" class="t-muted" font-size="13">o estado h<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+        <rect x="370" y="135" width="180" height="60" rx="6" class="box-accent"/>
+        <text x="460" y="161" text-anchor="middle" class="t-bold" font-size="15">política</text>
+        <text x="460" y="181" text-anchor="middle" class="t-muted" font-size="13">elige el movimiento</text>
+        <rect x="190" y="250" width="180" height="60" rx="6" class="box"/>
+        <text x="280" y="276" text-anchor="middle" class="t-bold" font-size="15">el dron mira</text>
+        <text x="280" y="296" text-anchor="middle" class="t-muted" font-size="13">la casilla a la que llega</text>
+        <rect x="10" y="135" width="180" height="60" rx="6" class="box"/>
+        <text x="100" y="161" text-anchor="middle" class="t-bold" font-size="15">observación</text>
+        <text x="100" y="181" text-anchor="middle" class="t-muted" font-size="13">detecta o no</text>
+        <path d="M370 60 C 440 60, 460 90, 460 131" fill="none" class="ln" marker-end="url(#a7bp)"/>
+        <path d="M460 195 C 460 250, 420 280, 374 280" fill="none" class="ln-accent" stroke-width="2.4" marker-end="url(#a7bp)"/>
+        <text x="476" y="250" class="t-accent" font-size="13">la acción elige</text>
+        <text x="476" y="266" class="t-accent" font-size="13">qué se observa</text>
+        <path d="M190 280 C 140 280, 100 250, 100 199" fill="none" class="ln" marker-end="url(#a7bp)"/>
+        <path d="M100 135 C 100 90, 130 60, 186 60" fill="none" class="ln" marker-end="url(#a7bp)"/>
+        <text x="8" y="96" class="t-muted" font-size="13">filtro (A7a)</text>
+        <text x="8" y="112" class="t-muted" font-size="13">o la memoria</text>
+      </svg>
+      <figcaption>En un MDP la acción cambia el estado; aquí, además, cambia la información que llega. Esquema nuestro.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>En la búsqueda, moverse <em>es</em> elegir qué mirar. La regla de ganancia de A7a mide cuánto rinde cada casilla: probabilidad de detectar al llegar, \(b(c)\,P_D\), por paso de viaje.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Casilla</th><th>\(b(c)\)</th><th>Distancia</th><th>\(b\,P_D\)</th><th>\(b\,P_D/(1 + \text{dist})\)</th></tr>
+          <tr><td>cercana</td><td class="n">0,30</td><td class="n">1</td><td class="n">0,18</td><td class="n">0,090</td></tr>
+          <tr><td>lejana</td><td class="n">0,50</td><td class="n">3</td><td class="n">0,30</td><td class="n">0,075</td></tr>
+        </table>
+      </div>
+      <p>Conviene la cercana, aunque sea menos probable. Si se mira y no está, su belief baja de 0,30 a \(0{,}3\cdot0{,}4/(1 - 0{,}6\cdot0{,}3) = 0{,}146\) y la lejana pasa a ser la mejor. <span class="small muted">Ejemplo 12.</span></p>
+      <div class="callout clave"><span class="tag">Qué aprende la política</span>Con el belief como entrada, PPO puede aprender compromisos así sin que nadie los programe: la fila «belief» del experimento (31,9) queda a la altura de la regla de ganancia (32,4).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Percepción activa · ejemplos</p>
   <h2>La búsqueda de información aparece sola, si la tarea la premia</h2>
+  <ul class="body" style="gap:14px;">
+    <li><strong>Persecución con un cuadrúpedo:</strong> una política con estado completo supervisa a otra con cámara RGB-D, y el robot «aprende a reunir información cuando no está seguro, a predecir la intención a partir de medidas ruidosas y a anticiparse para interceptar» <a class="cite" data-ref="bajcsy2024"></a>.</li>
+    <li><strong>Carreras de drones desde píxeles con un world model:</strong> aparece un comportamiento que orienta la cámara hacia las zonas con textura de las puertas, sin términos de recompensa hechos a mano; hasta 9 m/s en hardware-in-the-loop con imágenes renderizadas (preprint) <a class="cite" data-ref="romero2025"></a>.</li>
+    <li><strong>Búsqueda de malas hierbas con un UAV:</strong> la política recibe un mapa local de detecciones y las posiciones probables según el conocimiento previo. Con imágenes reales y sin reentrenar, un camino un 66 % más corto que el recorrido por filas, a cambio de encontrar un 10 % menos de malas hierbas <a class="cite" data-ref="vanessen2025"></a>.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · dar el mapa</p>
+  <h2>Si el belief tiene forma conocida, dáselo a la política</h2>
   <div class="cols">
-    <div class="stack">
-      <ul class="small">
-        <li><strong>Persecución con un cuadrúpedo:</strong> una política con estado completo supervisa a otra con cámara RGB-D, y el robot «aprende a reunir información cuando no está seguro, a predecir la intención a partir de medidas ruidosas y a anticiparse para interceptar» <a class="cite" data-ref="bajcsy2024"></a>.</li>
-        <li><strong>Carreras de drones desde píxeles con un world model:</strong> aparece un comportamiento que orienta la cámara hacia las zonas con textura de las puertas, sin términos de recompensa hechos a mano; hasta 9 m/s en hardware-in-the-loop con imágenes renderizadas (preprint) <a class="cite" data-ref="romero2025"></a>.</li>
-        <li><strong>Búsqueda de malas hierbas con un UAV:</strong> la política recibe un mapa local de detecciones y las posiciones probables según el conocimiento previo. Con imágenes reales y sin reentrenar, un camino un 66 % más corto que el recorrido por filas, a cambio de encontrar un 10 % menos de malas hierbas <a class="cite" data-ref="vanessen2025"></a>.</li>
-      </ul>
-    </div>
-    <div class="stack">
-      <div class="callout clave"><span class="tag">Dar el mapa o dejar que lo aprenda</span>Cuando el belief tiene una forma conocida (un mapa de probabilidad del objetivo), dárselo a la política convierte el problema en un MDP sobre beliefs, como en A7a. Si no hay modelo para calcularlo, la memoria tiene que construirlo.</div>
-      <div class="callout error"><span class="tag">Lo que no encontramos</span>Un trabajo de búsqueda de objetivos con RL y mapa de belief como entrada validado en vuelo real en bucle cerrado. Los ejemplos de búsqueda con UAV son en simulación o sobre imágenes reales sin vuelo <a class="cite" data-ref="vanessen2025,ewers2024"></a>. Es un hueco que tu tesis puede ocupar.</div>
-    </div>
+    <div class="callout clave"><span class="tag">Dar el mapa o dejar que lo aprenda</span>Cuando el belief tiene una forma conocida (un mapa de probabilidad del objetivo), dárselo a la política convierte el problema en un MDP sobre beliefs, como en A7a. Si no hay modelo para calcularlo, la memoria tiene que construirlo.</div>
+    <div class="callout error"><span class="tag">Lo que no encontramos</span>Un trabajo de búsqueda de objetivos con RL y mapa de belief como entrada validado en vuelo real en bucle cerrado. Los ejemplos de búsqueda con UAV son en simulación o sobre imágenes reales sin vuelo <a class="cite" data-ref="vanessen2025,ewers2024"></a>. Es un hueco que tu tesis puede ocupar.</div>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué un MDP sobre beliefs</span>
+    <p>El belief es un estado suficiente (A7a, hojas 16–17): con \(b_t\) y la casilla del dron, lo que pasa después no depende de nada más de la historia. Una MLP sobre \((b_t, c_t)\) es entonces una política de un MDP corriente, y PPO no necesita memoria. Es la fila naranja del experimento.</p>
   </div>
 </section>
 
@@ -421,7 +1376,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
   <div class="cols">
     <div class="stack">
       <h3 style="margin:0;">Volar sin odometría (2025)</h3>
-      <ul class="small">
+      <ul>
         <li>Una red convolucional recurrente (GRU) sobre profundidad invertida y reducida a 16 × 12, que da aceleración y una estimación de la velocidad actual <a class="cite" data-ref="zhang2025"></a>.</li>
         <li>«Mantiene una estimación interna del estado» y vuela «sin odometría explícita»: el belief sobre la velocidad está en la memoria.</li>
         <li>90 % de éxito frente al 60 % del estado del arte previo; hasta 20 m/s en bosque real; ordenador de 21 dólares, según sus autores. Entrenada con física diferenciable (B6).</li>
@@ -429,7 +1384,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
     </div>
     <div class="stack">
       <h3 style="margin:0;">La memoria como adaptación</h3>
-      <ul class="small">
+      <ul>
         <li>En la mano de OpenAI, en el robot real: LSTM en política y valor, 18,8 rotaciones seguidas de media (mediana 13); política sin memoria, 4,7 y 4,6 (medianas 3,5 y 3) <a class="cite" data-ref="openai2020"></a>.</li>
         <li>Sin aleatorización de dominio, política con y sin memoria rinden igual: la memoria hace falta para <em>identificar</em> la física de cada episodio, no por la tarea.</li>
       </ul>
@@ -453,6 +1408,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
       </tbody>
     </table>
   </div>
+  <p class="small muted">\(O(z\mid s)\): modelo de observación de A7a, la probabilidad de ver \(z\) desde el estado \(s\) (aquí \(z\) es una observación, no la puerta de la GRU).</p>
   <div class="callout tesis"><span class="tag">Tu tesis</span>Probablemente, una mezcla: un mapa de belief del objetivo calculado con un modelo de detector (lo que sabes modelar) y una memoria aprendida para lo demás (oclusiones, dinámica, viento). Comparar contra el belief exacto en simulación es lo que hará creíble cualquier belief aprendido.</div>
 </section>
 
@@ -473,7 +1429,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
   <h2>Del belief exacto al aprendido, en tu propia tarea</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Referencia:</strong> en la búsqueda de A7a puedes calcular el belief exacto. Úsalo para medir cuánto pierde una política con memoria aprendida frente a una con el belief, y para sondear su estado oculto.</li>
         <li><strong>Arquitectura:</strong> GRU separada para actor y crítico; crítico asimétrico (A6b) con el estado verdadero o, si lo oculto solo se descubre buscando, con el belief además del estado.</li>
         <li><strong>Pérdidas auxiliares:</strong> predecir la recompensa y la siguiente observación (o el siguiente belief) para moldear el estado, como sugiere el AIS.</li>
@@ -621,7 +1577,7 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>La ordenación de las cuatro entradas y su comparación con las heurísticas y POMCP de A7a; y si el estado de la GRU contiene más información sobre el belief que una GRU sin entrenar con las mismas observaciones.</div>
       <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo (unos minutos para todo el script); en CPU, con menos entornos y más tiempo.</div>
-      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a7b.py</code>.</p>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a7b.py</code>; los ejemplos a mano, en <code>figuras/ejemplos_a7b.py</code>.</p>
     </div>
   </div>
 </section>
@@ -661,44 +1617,118 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(o\) observación, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor. Aquí además \(h\) es el estado oculto de la red recurrente (no la historia \(h_t\) de A6b) y \(b\) es el belief.</p>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(o\) observación, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor. Aquí además \(h\) es el estado oculto de la red recurrente (no la historia \(h_t\) de A6b y A7a, que aquí se escribe \(o_{1:t}\)) y \(b\) es el belief. En la GRU, \(z_t\) y \(r_t\) son además puertas: una entrada por significado.</p>
 <dl>
-<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento. En el ejemplo de la moneda vale 0,9; fija el horizonte efectivo \(1/(1-\gamma)=10\).</dd>
-<dt>\(\tfrac12\)</dt><dd data-hojas="6">Probabilidad un medio: arranque en A o B, o acierto al azar con probabilidad ½ por paso.</dd>
-<dt>\(\tfrac12/(1-\gamma)\)</dt><dd data-hojas="6">Valor de la política estocástica sin memoria: ½ por paso acumulado con descuento, es decir, 5.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6,7,8">Factor de descuento. En el ejemplo de la moneda vale 0,9; fija el horizonte efectivo \(1/(1-\gamma)=10\). En el PPO de la búsqueda, 0,99.</dd>
+<dt>\(\tfrac12\)</dt><dd data-hojas="7,8">Probabilidad un medio: arranque en A o B, o acierto al azar con probabilidad ½ por paso.</dd>
+<dt>\(\dfrac{1/2}{1-\gamma}\)</dt><dd data-hojas="8">Valor de la política estocástica sin memoria: ½ por paso acumulado con descuento, es decir, 5.</dd>
 </dl>
 
 <h3>Memoria en la política (parte 1)</h3>
 <dl>
-<dt>A, B</dt><dd data-hojas="6">Los dos estados del ejemplo de aliasing: dan la misma observación, así que sin memoria no se distinguen. «Izquierda» da +1 desde A y lleva a B.</dd>
-<dt>\(k\)</dt><dd data-hojas="7">Tamaño de la pila de observaciones: se le dan a la red las \(k\) últimas, y la entrada es \(k\) veces mayor.</dd>
-<dt>h0</dt><dd data-hojas="8">Estado oculto de la GRU guardado al inicio del tramo; el minilote recorre la secuencia desde él.</dd>
-<dt>\(h\)</dt><dd data-hojas="8">Estado oculto de la red recurrente (en el fragmento de código, el que se pone a cero al terminar un episodio).</dd>
-<dt>o</dt><dd data-hojas="8">Observación en el paso actual; entrada de la red junto con la acción y la recompensa anteriores.</dd>
-<dt>x</dt><dd data-hojas="8">Elemento de la secuencia en el recorrido del código: la observación y el indicador de fin de episodio.</dd>
-<dt>D_prev</dt><dd data-hojas="8">Indicadores de que el episodio terminó en el paso anterior; se usan para reiniciar el estado oculto.</dd>
-<dt>idx</dt><dd data-hojas="8">Entornos del minilote: se barajan entornos completos, no pasos sueltos.</dd>
+<dt>A, B</dt><dd data-hojas="7">Los dos estados del ejemplo de aliasing: dan la misma observación, así que sin memoria no se distinguen. «Izquierda» da +1 desde A y lleva a B.</dd>
+<dt>\(s_t\)</dt><dd data-hojas="6">Estado verdadero en el paso \(t\) (en la búsqueda, casillas del dron y del objetivo); la política no lo ve entero.</dd>
+<dt>\(o_t\)</dt><dd data-hojas="6">Observación del paso \(t\): lo que recibe la política. En la búsqueda, la casilla del dron en one-hot (36 números).</dd>
+<dt>\(c_t\)</dt><dd data-hojas="6,11">Casilla del dron en el paso \(t\) (la que mira). No es la celda \(C_t\) de la LSTM.</dd>
+<dt>\(a_t\), \(r_t\)</dt><dd data-hojas="6,10">Acción y recompensa del paso \(t\); en la búsqueda, cuatro movimientos y \(-1\) por paso.</dd>
+<dt>\(a_{t-1}\)</dt><dd data-hojas="10">Acción del paso anterior; con \(r_{t-1}\), basta para saber el estado en el ejemplo de aliasing.</dd>
+<dt>\(r_{t-1}\)</dt><dd data-hojas="10">Recompensa del paso anterior: desambigua el estado en el ejemplo de aliasing.</dd>
+<dt>\(o_{1:t}\)</dt><dd data-hojas="6">Historia: todas las observaciones (y acciones) hasta \(t\). En A6b y A7a se llamaba \(h_t\).</dd>
+<dt>\(h_t\)</dt><dd data-hojas="6,15">Estado oculto de la red recurrente después del paso \(t\): vector de 128 números que resume \(o_{1:t}\).</dd>
+<dt>\(b_t\)</dt><dd data-hojas="6,11">Belief exacto \(P(s_t\mid o_{1:t})\) del filtro de A7a: un mapa de 36 casillas que suma 1.</dd>
+<dt>\(36\,b_t\)</dt><dd data-hojas="11">Belief escalado que recibe la política «belief»: una casilla con la probabilidad media vale 1, como en el one-hot.</dd>
+<dt>\(\pi_\theta(a\mid\cdot)\)</dt><dd data-hojas="6,11">Política con parámetros \(\theta\); lo que va tras la barra es su entrada (\(o_t\), \(h_t\) o \(b_t, c_t\)).</dd>
+<dt>\(V\)</dt><dd data-hojas="6,22">Crítico (función de valor); en la variante recurrente, con su propia GRU.</dd>
+<dt>\(d_t\)</dt><dd data-hojas="6,19">Fin de episodio: 1 si el episodio termina en el paso \(t\) (detecta o llega a 80 pasos), 0 si no.</dd>
+<dt>\(d_{t-1}\)</dt><dd data-hojas="19,23">Fin de episodio del paso anterior: si vale 1, el estado oculto se pone a cero antes del paso \(t\). En el código, <code>D_prev</code>.</dd>
+<dt>\(N\), \(L\)</dt><dd data-hojas="6,18">Número de entornos en paralelo (1024) y longitud del tramo que se recoge antes de cada actualización (32 pasos).</dd>
+<dt>\(V_A\), \(V_B\)</dt><dd data-hojas="7,8">Retorno descontado esperado empezando en A o en B; cada política se mide por su media.</dd>
+<dt>\(p\)</dt><dd data-hojas="8">Probabilidad de «izquierda» de la política sin memoria (la misma en A y en B). El valor medio es máximo, 5, con \(p = \tfrac12\).</dd>
+</dl>
+
+<h3>GRU y PPO recurrente (parte 1)</h3>
+<dl>
+<dt>\(x_t\)</dt><dd data-hojas="15">Entrada de la GRU en el paso \(t\): la observación \(o_t\) (36 números).</dd>
+<dt>\([x_t;\,h_{t-1}]\)</dt><dd data-hojas="15">Entrada y estado anterior concatenados: 164 números.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="15,16">Puerta de actualización de la GRU (128 componentes en \((0,1)\)): cuánto de cada componente se sustituye por el candidato. No es la observación \(z\) de \(O(z\mid s)\).</dd>
+<dt>\(r_t\)</dt><dd data-hojas="15">Puerta de reinicio de la GRU: qué parte de \(h_{t-1}\) entra en el candidato. No es la recompensa ni el reinicio por fin de episodio.</dd>
+<dt>\(\tilde h_t\)</dt><dd data-hojas="15,16">Candidato a nuevo estado de la GRU, en \((-1, 1)\).</dd>
+<dt>\(W_z, W_r, W_h\)</dt><dd data-hojas="15">Matrices de pesos de las puertas y del candidato, 128 × 164 cada una (guardadas traspuestas en el código).</dd>
+<dt>\(b_z, b_r, b_h\)</dt><dd data-hojas="15">Sesgos de las puertas y del candidato (128 cada uno).</dd>
+<dt>\(\sigma(u) = 1/(1+e^{-u})\)</dt><dd data-hojas="15">Sigmoide: lleva cualquier número a \((0, 1)\); da las puertas.</dd>
+<dt>\(\tanh\)</dt><dd data-hojas="15,17">Tangente hiperbólica: lleva a \((-1, 1)\); su derivada es \(1 - \tanh^2\).</dd>
+<dt>\(\odot\)</dt><dd data-hojas="15">Producto componente a componente.</dd>
+<dt>\(\frac{\partial h_t}{\partial h_{t-1}}\)</dt><dd data-hojas="17">Derivada local de un paso de la recurrencia: lo que pasa el gradiente al paso anterior. En la GRU contiene el camino directo \(1 - z_t\).</dd>
+<dt>\(f_\theta\)</dt><dd data-hojas="19,21">Un paso de la red recurrente con parámetros \(\theta\): \(h_t = f_\theta(h_{t-1}, o_t)\).</dd>
+<dt>\(h_0\)</dt><dd data-hojas="18,21">Estado oculto guardado al empezar el tramo; en la pérdida es un dato fijo, y ahí se trunca el gradiente.</dd>
+<dt>\(\mathcal L(\theta)\)</dt><dd data-hojas="22">Pérdida de PPO del minilote: término recortado, error del crítico y bonificación de entropía.</dd>
+<dt>\(\mathcal M\)</dt><dd data-hojas="22">Minilote: 256 entornos completos por 32 pasos; \((i, t)\) recorre sus entornos y pasos.</dd>
+<dt>\(\rho_{it}\)</dt><dd data-hojas="22">Cociente de PPO entre la probabilidad de la acción con los parámetros actuales y la que tenía al actuar; vale 1 al empezar si los estados se recalculan bien.</dd>
+<dt>\(\hat A_{it}\)</dt><dd data-hojas="22">Ventaja GAE (A6a), normalizada en el minilote.</dd>
+<dt>\(\hat R_{it}\)</dt><dd data-hojas="22">Retorno objetivo del crítico, \(\hat A_{it} + V_{it}\).</dd>
+<dt>\(h_{it}\), \(h^V_{it}\)</dt><dd data-hojas="22">Estados de las GRU del actor y del crítico, recalculados en la pérdida desde \(h_0\).</dd>
+<dt>\(\epsilon\), \(c_v\), \(c_{\text{ent}}\)</dt><dd data-hojas="22">Recorte de PPO (0,2) y pesos del error del valor (0,5) y de la entropía (0,01).</dd>
+<dt>\(\mathcal H\)</dt><dd data-hojas="22">Entropía de la política: premia que no se vuelva determinista demasiado pronto.</dd>
+<dt>\(\delta_t\)</dt><dd data-hojas="22">Error temporal de la GAE, \(r_t + \gamma(1 - d_t)V_{t+1} - V_t\): tras un final no mira el valor del episodio siguiente.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="31">Parámetro de la GAE (0,95), que reparte el crédito entre horizontes (A6a).</dd>
+<dt>\(k\)</dt><dd data-hojas="6,12">Tamaño de la pila de observaciones: se le dan a la red las \(k\) últimas, y la entrada es \(k\) veces mayor.</dd>
+<dt>h0</dt><dd data-hojas="23">Estado oculto de la GRU guardado al inicio del tramo; el minilote recorre la secuencia desde él.</dd>
+<dt>\(h\)</dt><dd data-hojas="23">Estado oculto de la red recurrente (en el fragmento de código, el que se pone a cero al terminar un episodio).</dd>
+<dt>o</dt><dd data-hojas="23">En el código, la observación en el paso actual; entrada de la red junto con la acción y la recompensa anteriores.</dd>
+<dt>x</dt><dd data-hojas="23">Elemento de la secuencia en el recorrido del código: la observación y el indicador de fin de episodio.</dd>
+<dt>D_prev</dt><dd data-hojas="23">Indicadores de que el episodio terminó en el paso anterior; se usan para reiniciar el estado oculto.</dd>
+<dt>idx</dt><dd data-hojas="23">Entornos del minilote: se barajan entornos completos, no pasos sueltos.</dd>
 </dl>
 
 <h3>Qué memoria elegir (parte 2)</h3>
 <dl>
-<dt>\(O(z\mid s)\)</dt><dd data-hojas="19">Modelo de observación: probabilidad de la observación \(z\) dado el estado \(s\). Con imágenes o profundidad no se conoce, por eso no se puede filtrar con Bayes.</dd>
+<dt>\(O(z\mid s)\)</dt><dd data-hojas="50">Modelo de observación: probabilidad de la observación \(z\) dado el estado \(s\) (esta \(z\) no es la puerta de la GRU). Con imágenes o profundidad no se conoce, por eso no se puede filtrar con Bayes.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="31">Distancia en pasos entre lo que hay que recordar (o la acción) y el momento en que se usa (o llega su recompensa). No es la longitud del tramo \(L\).</dd>
+<dt>\(W\), \(b\)</dt><dd data-hojas="27">Pesos y sesgo de la red de Elman. En la parte 3, \(W\) son los pesos del sondeo.</dd>
+<dt>\(M_t\)</dt><dd data-hojas="27">Memoria de la atención lineal: una matriz que acumula productos de claves y valores.</dd>
+<dt>\(k_t\), \(v_t\)</dt><dd data-hojas="27">Clave y valor: dos proyecciones lineales de la entrada. Esta \(k_t\) no es la \(k\) de la pila.</dd>
+<dt>\(\phi\)</dt><dd data-hojas="27">Función que hace positivas las claves en la atención lineal.</dd>
+<dt>\(m_t\), \(\bar A\), \(\bar B\)</dt><dd data-hojas="27">Estado de un modelo de espacio de estados (S4D) y sus matrices fijas; \(\bar A\) es diagonal.</dd>
+<dt>\(K\)</dt><dd data-hojas="27,29">Tamaño de la ventana de un transformer: cuántas entradas pasadas mira cada paso.</dd>
+<dt>\(C_t\)</dt><dd data-hojas="28">Celda de la LSTM: su memoria de largo plazo. No es la casilla \(c_t\).</dd>
+<dt>\(\tilde C_t\)</dt><dd data-hojas="28">Candidato a escribir en la celda de la LSTM.</dd>
+<dt>\(f_t\)</dt><dd data-hojas="28">Puerta de olvido de la LSTM: cuánto de \(C_{t-1}\) se conserva; hace el papel de \(1 - z_t\).</dd>
+<dt>\(i_t\)</dt><dd data-hojas="28">Puerta de entrada de la LSTM: cuánto del candidato se escribe.</dd>
+<dt>\(u_t\)</dt><dd data-hojas="28">Puerta de salida de la LSTM (habitualmente \(o_t\)): qué parte de la celda se enseña como \(h_t\).</dd>
+<dt>\(q_t\)</dt><dd data-hojas="29">Consulta del paso actual en la atención.</dd>
+<dt>\(k_j\), \(v_j\)</dt><dd data-hojas="29">Clave y valor de la entrada \(j\) de la ventana.</dd>
+<dt>\(d\)</dt><dd data-hojas="29">Dimensión de consultas y claves; \(\sqrt d\) escala el producto escalar.</dd>
+<dt>\(\beta_{tj}\)</dt><dd data-hojas="29">Peso de atención del paso \(t\) sobre la entrada \(j\): un softmax que suma 1 sobre la ventana.</dd>
+<dt>\(y_t\)</dt><dd data-hojas="29">Salida de la atención: media de los valores con los pesos \(\beta_{tj}\). En la hoja de \(R^2\), \(y_{nc}\) es otra cosa.</dd>
 <dt>\(T\), \(O\)</dt><dd data-hojas="3">Modelo de transición y de observación conocidos de A7a, con los que el belief salía exactamente de Bayes.</dd>
-<dt>\(z\)</dt><dd data-hojas="19">Observación en el modelo \(O(z\mid s)\).</dd>
+<dt>\(z\)</dt><dd data-hojas="50">Observación en el modelo \(O(z\mid s)\).</dd>
 </dl>
 
 <h3>Beliefs aprendidos (parte 3)</h3>
 <dl>
-<dt>R²</dt><dd data-hojas="15">Coeficiente de determinación del sondeo lineal: qué fracción de la variación del belief explica lo que se lee del estado oculto (1 es perfecto).</dd>
-<dt>variación total</dt><dd data-hojas="15">Distancia entre el belief exacto y el leído del estado oculto (entre 0 y 1); menor es mejor. El prior fijo da 0,25.</dd>
-<dt>prior</dt><dd data-hojas="15">Distribución inicial fija sobre dónde está el objetivo; referencia del sondeo.</dd>
-<dt>AIS</dt><dd data-hojas="21">Approximate information state: estado de información aproximado, un resumen que predice la recompensa y su propio futuro.</dd>
+<dt>\(b_t(c)\), \(b_0\)</dt><dd data-hojas="34,36">Belief exacto de que el objetivo esté en la casilla \(c\) tras \(t\) pasos; \(b_0\), el prior.</dd>
+<dt>\(P_D\)</dt><dd data-hojas="34,36">Probabilidad de detectar el objetivo si está en la casilla mirada (0,6).</dd>
+<dt>\([c = c_t]\)</dt><dd data-hojas="36">Indicador: 1 si la casilla \(c\) es la mirada en el paso \(t\), 0 si no.</dd>
+<dt>\(n_t(c)\)</dt><dd data-hojas="34,36">Cuántas veces se ha mirado la casilla \(c\) hasta \(t\). El belief exacto solo depende de estos 36 contadores.</dd>
+<dt>\(Z_t\)</dt><dd data-hojas="34,36">Constante de normalización del belief: \(\sum_{c'} b_0(c')(1-P_D)^{n_t(c')}\).</dd>
+<dt>\(X\)</dt><dd data-hojas="34,38">Matriz de rasgos del sondeo: una fila por estado, \(h_t\) y un 1 (8643 × 129 en el ajuste).</dd>
+<dt>\(Y\)</dt><dd data-hojas="34,38">Matriz de objetivos del sondeo: una fila por estado, el belief exacto (8643 × 36).</dd>
+<dt>\(W\), \(\alpha\)</dt><dd data-hojas="34,38">Pesos del sondeo lineal (129 × 36) y fuerza de la regularización (0,01).</dd>
+<dt>\(J(W)\)</dt><dd data-hojas="38">Función que minimiza el sondeo: error cuadrático más \(\alpha\|W\|^2\).</dd>
+<dt>\(\hat b_t\)</dt><dd data-hojas="34,38">Belief leído del estado: \(W^\top[h_t; 1]\), recortado a \(10^{-6}\) y normalizado.</dd>
+<dt>\(\mathrm{TV}(b, \hat b)\)</dt><dd data-hojas="34,40">Variación total: \(\tfrac12\sum_c|b(c) - \hat b(c)|\), la mayor diferencia de probabilidad que dan a una misma zona (de 0 a 1).</dd>
+<dt>\(A\), \(A^+\)</dt><dd data-hojas="40">Un conjunto de casillas, y el de las casillas donde \(b > \hat b\). No es el estado A del ejemplo de aliasing.</dd>
+<dt>\(y_{nc}\), \(\hat y_{nc}\), \(\bar y_c\)</dt><dd data-hojas="41">En \(R^2\): belief exacto del estado \(n\) en la casilla \(c\), salida lineal del sondeo y media de la casilla en el ajuste.</dd>
+<dt>R²</dt><dd data-hojas="41,42">Coeficiente de determinación del sondeo lineal: qué fracción de la variación del belief explica lo que se lee del estado oculto (1 es perfecto).</dd>
+<dt>variación total</dt><dd data-hojas="40,42">Distancia entre el belief exacto y el leído del estado oculto (entre 0 y 1); menor es mejor. El prior fijo da 0,25.</dd>
+<dt>prior</dt><dd data-hojas="34,42">Distribución inicial fija sobre dónde está el objetivo; referencia del sondeo.</dd>
+<dt>AIS</dt><dd data-hojas="52">Approximate information state: estado de información aproximado, un resumen que predice la recompensa y su propio futuro.</dd>
 </dl>
 
 <h3>Aprender a mirar (parte 4)</h3>
 <dl>
-<dt>16 × 12</dt><dd data-hojas="18">Resolución en píxeles de la imagen de profundidad que usa la red recurrente del vuelo sin odometría.</dd>
-<dt>MDP sobre beliefs</dt><dd data-hojas="17">Si el belief se da como entrada, el problema es un proceso de decisión de Markov cuyo estado es el belief (A7a).</dd>
+<dt>16 × 12</dt><dd data-hojas="49">Resolución en píxeles de la imagen de profundidad que usa la red recurrente del vuelo sin odometría.</dd>
+<dt>MDP sobre beliefs</dt><dd data-hojas="48">Si el belief se da como entrada, el problema es un proceso de decisión de Markov cuyo estado es el belief (A7a).</dd>
 </dl>
 
 <h3>Siglas</h3>
@@ -706,30 +1736,32 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 <dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; aquí, bajo observabilidad parcial.</dd>
 <dt>JAX</dt><dd data-hojas="1">Biblioteca de cálculo numérico con diferenciación automática; el tema entrena PPO en JAX sobre la búsqueda de A7a.</dd>
 <dt>POMDP</dt><dd data-hojas="3">Partially observable Markov decision process: proceso de decisión de Markov parcialmente observable.</dd>
+<dt>GAE</dt><dd data-hojas="22">Generalized advantage estimation (A6a): ventaja como media exponencial de ventajas a varios pasos.</dd>
 <dt>POMCP</dt><dd data-hojas="3">Partially observable Monte Carlo planning: búsqueda de A7a con la que se compara la política recurrente.</dd>
-<dt>GRU</dt><dd data-hojas="7">Gated recurrent unit: red recurrente con compuertas; la memoria de referencia del tema.</dd>
-<dt>LSTM</dt><dd data-hojas="7">Long short-term memory: red recurrente con celda de memoria.</dd>
-<dt>RNN</dt><dd data-hojas="7">Recurrent neural network: red neuronal recurrente.</dd>
-<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization (A6a), aquí en versión recurrente.</dd>
-<dt>DRQN</dt><dd data-hojas="7">Deep recurrent Q-network: DQN con una LSTM en lugar de apilar fotogramas.</dd>
+<dt>GRU</dt><dd data-hojas="12,14">Gated recurrent unit: red recurrente con compuertas; la memoria de referencia del tema.</dd>
+<dt>LSTM</dt><dd data-hojas="12,28">Long short-term memory: red recurrente con celda de memoria.</dd>
+<dt>RNN</dt><dd data-hojas="13">Recurrent neural network: red neuronal recurrente.</dd>
+<dt>PPO</dt><dd data-hojas="18,22">Proximal policy optimization (A6a), aquí en versión recurrente.</dd>
+<dt>DRQN</dt><dd data-hojas="13">Deep recurrent Q-network: DQN con una LSTM en lugar de apilar fotogramas.</dd>
 <dt>DQN</dt><dd data-hojas="4">Deep Q-network.</dd>
 <dt>QMDP-net</dt><dd data-hojas="4">Red que incrusta un planificador QMDP diferenciable para planificar con observabilidad parcial.</dd>
-<dt>PF-net</dt><dd data-hojas="14">Particle filter network: filtro de partículas diferenciable dentro de la red.</dd>
-<dt>DVRL</dt><dd data-hojas="14">Deep variational reinforcement learning: conjunto de partículas ponderadas en un espacio latente con un modelo generativo entrenado junto a la política.</dd>
-<dt>POPGym</dt><dd data-hojas="11">Banco de pruebas de 15 entornos parcialmente observables y 13 modelos de memoria.</dd>
-<dt>GTrXL</dt><dd data-hojas="12">Gated Transformer-XL: transformer con compuertas que hizo entrenables los transformers en RL.</dd>
-<dt>S4D</dt><dd data-hojas="11">Modelo de espacio de estados diagonal; en POPGym fue inestable.</dd>
-<dt>IndRNN</dt><dd data-hojas="11">Red recurrente independiente, una de las memorias de POPGym.</dd>
-<dt>FART</dt><dd data-hojas="11">Fast autoregressive transformer, una atención lineal de POPGym.</dd>
-<dt>FWP</dt><dd data-hojas="11">Fast weight programmer, una atención lineal de POPGym.</dd>
-<dt>MLP</dt><dd data-hojas="11">Perceptrón multicapa; aquí, la política sin memoria.</dd>
-<dt>RGB-D</dt><dd data-hojas="17">Imagen de color más profundidad, usada por la cámara del cuadrúpedo.</dd>
-<dt>UAV</dt><dd data-hojas="17">Unmanned aerial vehicle: vehículo aéreo no tripulado, en la búsqueda de malas hierbas.</dd>
-<dt>T-Maze</dt><dd data-hojas="12">Tarea de memoria en la que hay que recordar una señal vista al principio; los transformers llegan a 1500 pasos.</dd>
-<dt>DMLab-30</dt><dd data-hojas="12">Banco de pruebas donde GTrXL obtuvo el mejor resultado.</dd>
-<dt>TD3, SAC</dt><dd data-hojas="20">Twin delayed DDPG y soft actor-critic: algoritmos de RL fuera de política; con PPO o con ellos, una GRU separada en actor y crítico es una referencia difícil de batir.</dd>
-<dt>GPU</dt><dd data-hojas="27">Graphics processing unit: hardware del laboratorio (GPU NVIDIA de consumo).</dd>
-<dt>CPU</dt><dd data-hojas="27">Central processing unit: el laboratorio puede correr en CPU, con menos entornos y más tiempo.</dd>
+<dt>PF-net</dt><dd data-hojas="35">Particle filter network: filtro de partículas diferenciable dentro de la red.</dd>
+<dt>DVRL</dt><dd data-hojas="35">Deep variational reinforcement learning: conjunto de partículas ponderadas en un espacio latente con un modelo generativo entrenado junto a la política.</dd>
+<dt>POPGym</dt><dd data-hojas="30">Banco de pruebas de 15 entornos parcialmente observables y 13 modelos de memoria.</dd>
+<dt>GTrXL</dt><dd data-hojas="32">Gated Transformer-XL: transformer con compuertas que hizo entrenables los transformers en RL.</dd>
+<dt>S4D</dt><dd data-hojas="27,30">Modelo de espacio de estados diagonal: una recurrencia lineal \(m_t = \bar A\,m_{t-1} + \bar B\,x_t\) con \(\bar A\) diagonal; en POPGym fue inestable.</dd>
+<dt>Elman</dt><dd data-hojas="17,27">Red recurrente sin puertas, \(h_t = \tanh(W[x_t;\,h_{t-1}] + b)\): olvida deprisa y su gradiente se desvanece; en POPGym, la recomendada por eficiencia.</dd>
+<dt>IndRNN</dt><dd data-hojas="30">Red recurrente independiente, una de las memorias de POPGym.</dd>
+<dt>FART</dt><dd data-hojas="27,30">Fast autoregressive transformer, una atención lineal de POPGym.</dd>
+<dt>FWP</dt><dd data-hojas="27,30">Fast weight programmer, una atención lineal de POPGym.</dd>
+<dt>MLP</dt><dd data-hojas="11,30">Perceptrón multicapa; aquí, la política sin memoria.</dd>
+<dt>RGB-D</dt><dd data-hojas="47">Imagen de color más profundidad, usada por la cámara del cuadrúpedo.</dd>
+<dt>UAV</dt><dd data-hojas="47">Unmanned aerial vehicle: vehículo aéreo no tripulado, en la búsqueda de malas hierbas.</dd>
+<dt>T-Maze</dt><dd data-hojas="32">Tarea de memoria en la que hay que recordar una señal vista al principio; los transformers llegan a 1500 pasos.</dd>
+<dt>DMLab-30</dt><dd data-hojas="32">Banco de pruebas donde GTrXL obtuvo el mejor resultado.</dd>
+<dt>TD3, SAC</dt><dd data-hojas="51">Twin delayed DDPG y soft actor-critic: algoritmos de RL fuera de política; con PPO o con ellos, una GRU separada en actor y crítico es una referencia difícil de batir.</dd>
+<dt>GPU</dt><dd data-hojas="58">Graphics processing unit: hardware del laboratorio (GPU NVIDIA de consumo).</dd>
+<dt>CPU</dt><dd data-hojas="58">Central processing unit: el laboratorio puede correr en CPU, con menos entornos y más tiempo.</dd>
 </dl>
 </aside>
 
