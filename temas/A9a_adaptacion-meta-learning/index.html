@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -756,6 +756,159 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Un punto sobre una letra (\(\dot x\)) es su derivada temporal; un sombrero (\(\hat x\)), una estimación; una tilde (\(\tilde k\)), un error de estimación; una estrella (\(k^*\)), el valor ideal.</p>
+<dl>
+<dt>\(\dot{\ }\)</dt><dd data-hojas="6">Derivada respecto al tiempo: \(\dot x\), \(\dot\theta\), \(\dot k\), \(\dot P\), \(\dot{\hat a}\).</dd>
+<dt>\(\hat{\ }\)</dt><dd data-hojas="11">Estimación de una cantidad que no se conoce: \(\hat a\), \(\hat m\), \(\hat f\), \(\hat z_t\).</dd>
+<dt>\(\tilde{\ }\)</dt><dd data-hojas="6">Error entre un parámetro y su valor ideal, p. ej. \(\tilde k = k - k^*\).</dd>
+<dt>\(^\top\)</dt><dd data-hojas="6">Traspuesta de un vector o una matriz.</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="6,16">Gradiente respecto a las variables del subíndice: en la regla del MIT, \(\nabla_\theta e\); en MAML, respecto a los parámetros \(\theta\) de la red.</dd>
+<dt>\(\nabla^2_\theta\)</dt><dd data-hojas="16">Hessiano (matriz de segundas derivadas) respecto a \(\theta\); aparece en el gradiente de MAML.</dd>
+<dt>\(\mathbb R^8\)</dt><dd data-hojas="13">Espacio de vectores reales de 8 componentes; aquí, el del latente \(z_t\) de RMA.</dd>
+<dt>\(\succeq\)</dt><dd data-hojas="7">Desigualdad entre matrices simétricas: \(A\succeq B\) significa que \(A-B\) es semidefinida positiva.</dd>
+<dt>\(\int\)</dt><dd data-hojas="7">Integral sobre una ventana de tiempo, usada en la condición de excitación persistente.</dd>
+<dt>\(\propto\)</dt><dd data-hojas="17">«Proporcional a»: igual salvo la constante de normalización, en la actualización bayesiana del belief.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="17">«Dado que»: en \(p(s'\mid s, a, \theta)\), la probabilidad de \(s'\) condicionada a lo que sigue a la barra.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="11">«Aproximadamente igual»; p. ej. \(f \approx \phi(q, \dot q)\,a\).</dd>
+<dt>\(\le\)</dt><dd data-hojas="6">Menor o igual; \(\dot V \le 0\) indica que la función de Lyapunov no crece.</dd>
+<dt>\(\to\)</dt><dd data-hojas="6">Tiende a: \(e \to 0\) es que el error tiende a cero con el tiempo.</dd>
+<dt>\(\forall t\)</dt><dd data-hojas="7">«Para todo instante \(t\)».</dd>
+<dt>\(\underbrace{\ }\)</dt><dd data-hojas="19">Llave que agrupa y nombra un factor de una fórmula; aquí marca la matriz \(\Phi\).</dd>
+
+</dl>
+<h3>Control adaptativo clásico (MRAC)</h3>
+<p>Parte 1. La planta, el modelo de referencia y la ley adaptativa son del ejemplo de Lyapunov de la hoja 6.</p>
+<dl>
+<dt>\(\theta\) (regla del MIT)</dt><dd data-hojas="6">Parámetro ajustable del controlador, vector que la regla del MIT actualiza bajando por el gradiente del error: \(\dot\theta = -k\, e\, \nabla_\theta e\). En la parte de meta-learning pasa a ser el vector de parámetros de la red.</dd>
+<dt>\(k\) (regla del MIT)</dt><dd data-hojas="6">Escalar positivo: ganancia de adaptación de la regla del MIT. Con otro significado, \(k\) es abajo el vector de ganancias del controlador.</dd>
+<dt>\(e\)</dt><dd data-hojas="6">Error de seguimiento \(e = x - x_m\): diferencia entre el estado de la planta y el del modelo de referencia, vector.</dd>
+<dt>\(x\)</dt><dd data-hojas="6">Estado de la planta, vector que cumple \(\dot x = Ax + bu\).</dd>
+<dt>\(x_m\)</dt><dd data-hojas="6">Estado del modelo de referencia, el comportamiento que se quiere imitar: \(\dot x_m = A_m x_m + b r\).</dd>
+<dt>\(A\)</dt><dd data-hojas="6">Matriz de dinámica de la planta, desconocida para la ley adaptativa.</dd>
+<dt>\(b\)</dt><dd data-hojas="6">Vector de entrada de la planta (y del modelo de referencia): cómo actúa \(u\) o \(r\) sobre el estado.</dd>
+<dt>\(u\)</dt><dd data-hojas="6">Entrada de control, dada por la ley \(u = k^\top x + r\).</dd>
+<dt>\(r\)</dt><dd data-hojas="6">Señal de referencia que sigue el modelo de referencia y que se suma a la ley de control.</dd>
+<dt>\(A_m\)</dt><dd data-hojas="6">Matriz de dinámica del modelo de referencia, \(A_m = A + bk^{*\top}\). Es Hurwitz (todos sus valores propios tienen parte real negativa).</dd>
+<dt>\(k\) (ganancias)</dt><dd data-hojas="6">Vector de ganancias del controlador que la ley adaptativa ajusta en línea: \(\dot k = -\gamma\,(e^\top P b)\, x\).</dd>
+<dt>\(k^*\)</dt><dd data-hojas="6">Ganancia ideal, desconocida: la que igualaría la planta al modelo. Solo hace falta que exista.</dd>
+<dt>\(\tilde k\)</dt><dd data-hojas="6">Error de ganancia \(\tilde k = k - k^*\). El error cumple \(\dot e = A_m e + b\,\tilde k^\top x\).</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6">Ganancia de adaptación, escalar positivo: cuánto de rápido se ajusta \(k\). Aparece en \(\dot k\) y en \(V\).</dd>
+<dt>\(P\) (Lyapunov)</dt><dd data-hojas="6">Matriz simétrica definida positiva que resuelve \(A_m^\top P + P A_m = -Q\). En la parte de Neural-Fly, \(P\) es en cambio la covarianza de \(\hat a\).</dd>
+<dt>\(Q\) (Lyapunov)</dt><dd data-hojas="6">Matriz simétrica definida positiva elegida para la ecuación de Lyapunov. En Neural-Fly, \(Q\) es el ruido de proceso.</dd>
+<dt>\(V\)</dt><dd data-hojas="6">Función de Lyapunov \(V = e^\top P e + \tfrac{1}{\gamma}\tilde k^\top \tilde k\); \(\dot V = -e^\top Q e \le 0\) prueba que el error está acotado y tiende a cero.</dd>
+<dt>\(\varphi\)</dt><dd data-hojas="7">Regresor de la parametrización lineal: señal que multiplica los parámetros. Si «excita» todas las direcciones, los parámetros pueden converger (excitación persistente).</dd>
+<dt>\(T\) (ventana)</dt><dd data-hojas="7">Longitud de la ventana de tiempo en la condición de excitación persistente.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="7">Variable de integración (tiempo) dentro de la condición de excitación persistente.</dd>
+<dt>\(\alpha I\)</dt><dd data-hojas="7">Cota inferior de la condición de excitación persistente: \(\alpha\gt 0\) por la identidad \(I\).</dd>
+<dt>\(h(e, x, k)\)</dt><dd data-hojas="7">Término añadido a la ley adaptativa que tira de los parámetros hacia un valor para evitar su deriva. Equivale a regularizar con la norma de \(k\) (modificación σ, proyección).</dd>
+<dt>\(y = m\,s - f\)</dt><dd data-hojas="7,19">Medida del x500 de la parte 4: empuje conocido igual a masa por fuerza específica menos la fuerza externa. Flotando, con \(s\) casi constante, cualquier pareja \((m, f)\) con la misma \(m s - f\) explica los datos.</dd>
+<dt>\(m\)</dt><dd data-hojas="7,19">Masa del dron en kg, a estimar en la parte 4; \(\hat m\) es la que el controlador cree conocer.</dd>
+<dt>\(s\)</dt><dd data-hojas="7,19">En la parte 4, fuerza específica medida por el acelerómetro, \(s = \ddot p + g e_3\), vector de \(\mathbb R^3\) en m/s². En la parte de Neural-Fly, \(s\) es el error de seguimiento compuesto.</dd>
+<dt>\(f\)</dt><dd data-hojas="7,11">Fuerza externa/residual. En la parte 4, fuerza del viento sobre el dron, vector de \(\mathbb R^3\) en N; en Neural-Fly, fuerza aerodinámica residual \(f \approx \phi\,a\).</dd>
+<dt>\((m, f)\)</dt><dd data-hojas="7">Pareja de parámetros desconocidos (masa y fuerza externa) que se estiman juntos en el Kalman \((m, f)\).</dd>
+<dt>\(f_z\)</dt><dd data-hojas="22">Componente vertical de la fuerza externa. Suponer \(f_z \approx 0\) es la estructura que hace identificable la masa.</dd>
+<dt>\(\hat f_z\)</dt><dd data-hojas="23">Estimación de la componente vertical de la fuerza externa; para flotar el controlador solo necesita la combinación \(\hat m g - \hat f_z\).</dd>
+<dt>\(g\)</dt><dd data-hojas="19">Aceleración de la gravedad, escalar en m/s².</dd>
+<dt>\(\hat m g - \hat f_z\)</dt><dd data-hojas="23">Combinación que basta para mantener el vuelo estacionario, aunque se reparta mal entre masa y fuerza.</dd>
+<dt>\(\sigma\) (modificación σ)</dt><dd data-hojas="7">Nombre de la modificación robusta que añade a la ley adaptativa un término que tira de los parámetros hacia cero; introduce un sesgo.</dd>
+<dt>\(M_0\)</dt><dd data-hojas="22">Masa nominal del dron (la de la ficha); el error de masa se da en % de \(M_0\). En el episodio de la figura, con carga 1,39 \(M_0\) y sin ella 0,95 \(M_0\).</dd>
+
+</dl>
+<h3>Adaptación aprendida: Neural-Fly y RMA</h3>
+<p>Parte 2. En Neural-Fly, \(\phi\) es la base aprendida, \(a\) los coeficientes lineales y las ecuaciones son las de la hoja 11.</p>
+<dl>
+<dt>\(\phi\)</dt><dd data-hojas="11">Base aprendida fuera de línea, \(\phi(q, \dot q)\): función de la posición y la velocidad que da la forma de la fuerza aerodinámica residual. Con \(\phi = I\) se tiene Neural-Fly-Constant.</dd>
+<dt>\(q\), \(\dot q\)</dt><dd data-hojas="11">Coordenadas generalizadas del dron y su derivada; entradas de la base \(\phi\).</dd>
+<dt>\(a\)</dt><dd data-hojas="11">Vector de coeficientes lineales que se adapta en vuelo; recoge todo lo que depende del viento. \(\hat a\) es su estimación.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="11">Coeficiente de regularización (olvido) de la ley de adaptación; hace que la estabilidad no dependa de la excitación persistente.</dd>
+<dt>\(R\) (Neural-Fly)</dt><dd data-hojas="11">Matriz de covarianza del ruido de medida del filtro, que pondera el error de predicción \(\phi\hat a - y\).</dd>
+<dt>\(y\) (Neural-Fly)</dt><dd data-hojas="11">Fuerza residual medida, a la que \(\phi\hat a\) debe parecerse.</dd>
+<dt>\(s\) (Neural-Fly)</dt><dd data-hojas="11">Error de seguimiento compuesto, que alimenta la adaptación con el término \(P\phi^\top s\).</dd>
+<dt>\(\phi\hat a - y\)</dt><dd data-hojas="11">Error de predicción: lo que la fuerza predicha difiere de la medida.</dd>
+<dt>\(P\) (Neural-Fly)</dt><dd data-hojas="11">Matriz de covarianza de la estimación \(\hat a\), con la ecuación de Riccati que da \(\dot P\). Es la «incertidumbre» del belief de los coeficientes.</dd>
+<dt>\(Q\) (Neural-Fly)</dt><dd data-hojas="11">Matriz de ruido de proceso de la ecuación de \(\dot P\): cuánto se permite que cambien los coeficientes.</dd>
+<dt>\(\phi^\top\)</dt><dd data-hojas="11">Traspuesta de la base; transporta los errores del espacio de la fuerza al de los coeficientes.</dd>
+<dt>\(e_t\)</dt><dd data-hojas="13">Parámetros privilegiados del entorno en la fase 1 de RMA (fricción, carga, fuerza de los motores…), solo disponibles en simulación.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="13">Latente de \(\mathbb R^8\) que comprime \(e_t\); la política base lo recibe como entrada.</dd>
+<dt>\(\hat z_t\)</dt><dd data-hojas="13">Estimación del latente que el módulo de adaptación de RMA predice por regresión desde los últimos 50 estados y acciones (0,5 s).</dd>
+
+</dl>
+<h3>Meta-learning y meta-RL</h3>
+<p>Parte 3. En MAML, las tareas \(\mathcal T_i\) tienen datos de soporte (para adaptar) y de consulta (para evaluar).</p>
+<dl>
+<dt>\(\mathcal T_i\)</dt><dd data-hojas="16">Tarea \(i\) del conjunto de tareas de meta-entrenamiento.</dd>
+<dt>\(\theta\) (MAML)</dt><dd data-hojas="16">Parámetros iniciales de la red que MAML optimiza para que pocos pasos de gradiente basten en cada tarea. En VariBAD y la hoja 17, \(\theta\) es en cambio la tarea que fija la dinámica.</dd>
+<dt>\(\theta_i'\)</dt><dd data-hojas="16">Parámetros tras el paso interno de adaptación a la tarea \(i\): \(\theta_i' = \theta - \alpha\,\nabla_\theta \mathcal L_{\mathcal T_i}^{\text{sop}}(\theta)\).</dd>
+<dt>\(\alpha\) (MAML)</dt><dd data-hojas="16">Tasa de aprendizaje del paso interno de MAML.</dd>
+<dt>\(\mathcal L_{\mathcal T_i}^{\text{sop}}\)</dt><dd data-hojas="16">Pérdida de la tarea \(i\) sobre sus datos de soporte, la que se usa en el paso interno.</dd>
+<dt>\(\mathcal L_{\mathcal T_i}^{\text{cons}}\)</dt><dd data-hojas="16">Pérdida de la tarea \(i\) sobre sus datos de consulta, evaluada en \(\theta_i'\); es el objetivo externo.</dd>
+<dt>\(\nabla_{\theta'}\)</dt><dd data-hojas="16">Gradiente respecto a los parámetros adaptados \(\theta'\).</dd>
+<dt>\(\min_\theta\)</dt><dd data-hojas="16">Minimización respecto a los parámetros iniciales; es el nivel externo del objetivo.</dd>
+<dt>\(I - \alpha \nabla^2_\theta \mathcal L^{\text{sop}}_{\mathcal T_i}\)</dt><dd data-hojas="16">Factor de la regla de la cadena de MAML (identidad menos \(\alpha\) por el hessiano). La versión de primer orden lo ignora.</dd>
+<dt>\(p(s'\mid s, a, \theta)\)</dt><dd data-hojas="17">Dinámica de la tarea \(\theta\): probabilidad de pasar al estado \(s'\) desde \(s\) con la acción \(a\).</dd>
+<dt>\(s\), \(s'\), \(a\) (meta-RL)</dt><dd data-hojas="17">Estado, estado siguiente y acción del proceso de decisión de la tarea.</dd>
+<dt>\(b_t(\theta)\)</dt><dd data-hojas="17">Belief sobre la tarea en el instante \(t\): distribución sobre \(\theta\), que se actualiza con Bayes como \(b_{t+1}(\theta) \propto p(s_{t+1}\mid s_t, a_t, \theta)\, b_t(\theta)\).</dd>
+<dt>\((s_t, b_t)\)</dt><dd data-hojas="17">Par estado y belief de la tarea: estado suficiente del MDP adaptativo de Bayes.</dd>
+<dt>\(z\) (PEARL)</dt><dd data-hojas="17">Variable latente probabilística inferida de la experiencia, de la que se muestrea el posterior.</dd>
+
+</dl>
+<h3>El x500 con carga y viento</h3>
+<p>Parte 4. Posición \(p\), rotación \(R\), empuje \(T\); \(e_3\) es el eje vertical.</p>
+<dl>
+<dt>\(f = k_l v_r + k_q |v_r| v_r\)</dt><dd data-hojas="19">Modelo supuesto de resistencia del viento: términos lineal y cuadrático en la velocidad relativa.</dd>
+<dt>\(k_l\), \(k_q\)</dt><dd data-hojas="19">Coeficientes de resistencia lineal y cuadrático del modelo del viento.</dd>
+<dt>\(v_r\)</dt><dd data-hojas="19">Velocidad del dron relativa al aire, vector de \(\mathbb R^3\).</dd>
+<dt>\(p\)</dt><dd data-hojas="19">Posición del dron en el mundo; \(\ddot p\) es su aceleración.</dd>
+<dt>\(\ddot p\)</dt><dd data-hojas="19">Aceleración del dron, vector de \(\mathbb R^3\) en m/s².</dd>
+<dt>\(e_3\)</dt><dd data-hojas="19">Vector unitario del eje vertical \(z\).</dd>
+<dt>\(T\)</dt><dd data-hojas="19">Empuje total de los rotores (escalar, en N), que actúa a lo largo de \(R e_3\).</dd>
+<dt>\(R\) (x500)</dt><dd data-hojas="19">Matriz de rotación del dron, \(3\times 3\); \(R e_3\) es su eje de empuje.</dd>
+<dt>\(T R e_3\)</dt><dd data-hojas="19">Vector de empuje en el mundo, conocido por el modelo del motor.</dd>
+<dt>\(y = T R e_3\)</dt><dd data-hojas="19">Medida del modelo lineal en los parámetros: el empuje conocido, igual a \(m s - f\).</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="19">Matriz de regresión \(\begin{bmatrix} s &amp; -I_3 \end{bmatrix}\) que multiplica el vector de parámetros \((m, f)\): \(y=\Phi\,(m,f)\).</dd>
+<dt>\(I_3\)</dt><dd data-hojas="19">Matriz identidad \(3\times 3\).</dd>
+<dt>\(\begin{bmatrix} m \\ f\end{bmatrix}\)</dt><dd data-hojas="19">Vector de parámetros desconocidos (masa y fuerza externa), de 4 componentes.</dd>
+<dt>\(\phi(v)\)</dt><dd data-hojas="19,24">Base meta-aprendida de la fuerza en función de la velocidad en el modelo \(f = c + \phi(v)\,a\) del x500.</dd>
+<dt>\(c\)</dt><dd data-hojas="19">Término constante del modelo de la base aprendida, \(f = c + \phi(v)\,a\).</dd>
+<dt>\(v\)</dt><dd data-hojas="19">Velocidad del dron, argumento de la base \(\phi(v)\).</dd>
+<dt>N²</dt><dd data-hojas="24">Unidad del error cuadrático medio de la fuerza (newtons al cuadrado).</dd>
+<dt>RMS</dt><dd data-hojas="20">Root mean square: raíz del error cuadrático medio; la medida de error de las tablas (cm).</dd>
+<dt>\(\phi = I\)</dt><dd data-hojas="11,12">Caso Neural-Fly-Constant: la base es la identidad y solo se adapta una fuerza constante.</dd>
+</dl>
+
+<h3>Siglas</h3>
+<dl>
+<dt>MRAC</dt><dd data-hojas="6">Model reference adaptive control: control adaptativo que hace que la planta siga a un modelo de referencia ajustando las ganancias en línea.</dd>
+<dt>MIT</dt><dd data-hojas="6">Regla del MIT (1958): ley adaptativa que baja por el gradiente del error de seguimiento.</dd>
+<dt>L1</dt><dd data-hojas="8">Control adaptativo L1: adaptación rápida con un filtro paso bajo en la acción que da garantías de robustez.</dd>
+<dt>L1Quad</dt><dd data-hojas="8">Aumento L1 de un controlador geométrico de cuadricóptero.</dd>
+<dt>PID</dt><dd data-hojas="8">Proporcional-integral-derivativo: control con términos proporcional, integral y derivativo del error.</dd>
+<dt>RMSE</dt><dd data-hojas="8">Root mean square error: raíz del error cuadrático medio; en la tabla del peso añadido, en metros.</dd>
+<dt>PD</dt><dd data-hojas="19">Proporcional-derivativo: el controlador nominal sin integral.</dd>
+<dt>INDI</dt><dd data-hojas="12">Incremental nonlinear dynamic inversion: control incremental que usa medidas de aceleración; línea base en la tabla del túnel.</dd>
+<dt>DAIML</dt><dd data-hojas="11">Domain adversarially invariant meta-learning: meta-aprendizaje de Neural-Fly con discriminador para que la base no contenga información del viento.</dd>
+<dt>RMA</dt><dd data-hojas="13">Rapid motor adaptation: política base con parámetros privilegiados y módulo que los estima desde el historial.</dd>
+<dt>RAPTOR</dt><dd data-hojas="14">Política de fundación recurrente de 2084 parámetros, destilada de 1000 maestros, que vuela cuadricópteros muy distintos.</dd>
+<dt>MAML</dt><dd data-hojas="16">Model-agnostic meta-learning: entrenar los parámetros para que unos pasos de gradiente basten en una tarea nueva.</dd>
+<dt>GrBAL</dt><dd data-hojas="16">Adaptación con modelo mediante un paso de gradiente (con MAML).</dd>
+<dt>ReBAL</dt><dd data-hojas="16">Adaptación con modelo mediante una red recurrente.</dd>
+<dt>RL²</dt><dd data-hojas="17">RL rápido mediante RL lento: el estado de una red recurrente conserva su memoria entre episodios de la misma tarea.</dd>
+<dt>PEARL</dt><dd data-hojas="17">Meta-RL off-policy con variables de contexto probabilísticas (variable latente \(z\)).</dd>
+<dt>VariBAD</dt><dd data-hojas="17">Meta-RL bayesiano con un posterior sobre un embedding de la tarea.</dd>
+<dt>POMDP</dt><dd data-hojas="2">Partially observable Markov decision process: proceso de decisión con estado oculto; aquí, la tarea.</dd>
+<dt>MDP</dt><dd data-hojas="17">Markov decision process: el MDP adaptativo de Bayes es el caso especial de POMDP con la tarea como estado oculto.</dd>
+<dt>GRU</dt><dd data-hojas="19">Gated recurrent unit: red recurrente que estima masa y fuerza desde el historial.</dd>
+<dt>PX4</dt><dd data-hojas="11">Autopiloto de código abierto; recibe consignas en modo offboard y trae un estimador del empuje de vuelo estacionario.</dd>
+<dt>MPC_THR_HOVER</dt><dd data-hojas="32">Parámetro de PX4: empuje de vuelo estacionario.</dd>
+<dt>HTE_HT_NOISE</dt><dd data-hojas="32">Parámetro de PX4: ruido de proceso del estimador de empuje de vuelo estacionario.</dd>
+<dt>HTE</dt><dd data-hojas="32">Hover thrust estimator: estimador de un estado del empuje de vuelo estacionario de PX4.</dd>
+<dt>GPS</dt><dd data-hojas="12">Sistema de posicionamiento global; en los vuelos de Neural-Fly al aire libre es el único sensor de posición.</dd>
+<dt>ICRA</dt><dd data-hojas="14">Conferencia IEEE de robótica y automática donde se publicó RMA en cuadricópteros.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

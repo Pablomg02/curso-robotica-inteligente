@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -809,6 +809,120 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Misma notación que A3a para estado \(x\), mando \(u\), costes y horizonte, salvo dos letras que cambian de sentido y se avisan en su entrada: \(H\) (aquí horizonte, allí hessiana) y \(K\) (aquí número de muestras, allí ganancia). Mayúscula: secuencia o matriz.</p>
+<dl>
+<dt>\(\sim\)</dt><dd data-hojas="7">«Se distribuye según», p. ej. \(v_t\sim\mathcal N(u_t,\Sigma)\).</dd>
+<dt>\(\mathcal N(\mu,\operatorname{diag}\sigma^2)\)</dt><dd data-hojas="6">Gaussiana de media \(\mu\) y covarianza diagonal con varianzas \(\sigma^2\): la distribución de las secuencias de mandos en CEM.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza de una variable aleatoria; \(\mathbb E_p\) es la media con respecto a la distribución \(p\).</dd>
+<dt>\(\mathbb 1_{S\le\gamma}\)</dt><dd data-hojas="6">Indicador: vale 1 si el coste \(S\) de la secuencia es \(\le\gamma\) y 0 en otro caso.</dd>
+<dt>\(\mathbb R^{H\times m}\)</dt><dd data-hojas="6">Matrices reales de \(H\) filas y \(m\) columnas: una secuencia de \(H\) mandos de \(m\) componentes.</dd>
+<dt>\(\max\), \(\min\)</dt><dd data-hojas="7,19">Maximizar o minimizar; \(\rho = \min_k S_k\) es el menor coste de las muestras.</dd>
+<dt>\(\log\)</dt><dd data-hojas="6">Logaritmo, en la log-verosimilitud y en la energía libre.</dd>
+<dt>\(\mathrm{KL}\)</dt><dd data-hojas="6">Divergencia de Kullback-Leibler entre dos distribuciones, \(\mathrm{KL}(a\,\|\,b)\).</dd>
+<dt>\(^\top\)</dt><dd data-hojas="11">Traspuesta, p. ej. en \(\gamma\,u^\top\Sigma^{-1}v\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="16">Derivada parcial, en la derivada de la solución respecto a los parámetros.</dd>
+<dt>\(\star\) (superíndice)</dt><dd data-hojas="7">Valor óptimo: \(q^\star\), \(z^\star\), \(u^\star(\theta)\).</dd>
+<dt>\(\dot{\mathbf v}\)</dt><dd data-hojas="15">Derivada temporal de la velocidad: la aceleración del dron.</dd>
+</dl>
+<h3>MPC por muestreo: CEM y MPPI</h3>
+<dl>
+<dt>\(U\)</dt><dd data-hojas="6">Secuencia de mandos del horizonte, matriz de \(\mathbb R^{H\times m}\); en MPPI, la secuencia nominal que se actualiza.</dd>
+<dt>\(H\) (horizonte)</dt><dd data-hojas="6">Longitud del horizonte de planificación en pasos. En A3a, \(H\) era la hessiana del QP condensado.</dd>
+<dt>\(m\)</dt><dd data-hojas="6">Número de componentes del mando (4 en el x500).</dd>
+<dt>\(\mu\), \(\sigma\)</dt><dd data-hojas="6">Media y desviación típica de la gaussiana de CEM sobre las secuencias de mandos; se reajustan a las élites.</dd>
+<dt>\(\mu_0\)</dt><dd data-hojas="6">Primer elemento de la media: el mando que se aplica tras las iteraciones.</dd>
+<dt>\(n\), \(n_e\)</dt><dd data-hojas="6">En CEM, número de secuencias muestreadas por iteración y número de élites que se conservan.</dd>
+<dt>\(S_i\), \(S_k\)</dt><dd data-hojas="6">Coste de la muestra \(i\) (o \(k\)): se simula la secuencia con el modelo y se acumula el coste.</dd>
+<dt>\(S(U)\)</dt><dd data-hojas="6">Coste de una secuencia \(U\), usado como función objetivo.</dd>
+<dt>\(\gamma\) (cuantil)</dt><dd data-hojas="6">En CEM, umbral de coste que define las buenas secuencias \(\{U: S(U)\le\gamma\}\) (cuantil de las élites). En otras hojas \(\gamma\) tiene otros sentidos.</dd>
+<dt>\(q_\phi\)</dt><dd data-hojas="6">Distribución paramétrica (gaussiana) de las secuencias, con parámetros \(\phi\) que CEM ajusta a las élites.</dd>
+<dt>\(Z\)</dt><dd data-hojas="6">Constante de normalización de la distribución uniforme sobre las buenas secuencias.</dd>
+<dt>\(K\) (muestras)</dt><dd data-hojas="8">Número de trayectorias muestreadas por paso de MPPI (256, 1024, …). En A3a, \(K\) era la ganancia de realimentación.</dd>
+<dt>\(v_t\)</dt><dd data-hojas="7">Mando ruidoso aplicado en la simulación de una muestra: \(v_t\sim\mathcal N(u_t,\Sigma)\).</dd>
+<dt>\(u_t\)</dt><dd data-hojas="7">Mando nominal en el instante \(t\) del horizonte (la media del ruido).</dd>
+<dt>\(\Sigma\)</dt><dd data-hojas="7">Covarianza del ruido de los mandos en MPPI.</dd>
+<dt>\(E^k\)</dt><dd data-hojas="7">Secuencia de ruido de la muestra \(k\); la muestra es \(U + E^k\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="7">Menor coste entre las muestras, \(\rho=\min_kS_k\): se resta antes de exponenciar para evitar desbordamiento, sin cambiar los pesos normalizados.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="7">Temperatura de MPPI, en las mismas unidades que el coste: controla cuánto se concentran los pesos en las mejores muestras (hoja 8).</dd>
+<dt>\(w_k\)</dt><dd data-hojas="7">Peso normalizado de la muestra \(k\): \(e^{-(S_k-\rho)/\lambda}\) dividido por su suma sobre todas las muestras. La actualización es \(U\leftarrow U+\sum_kw_kE^k\).</dd>
+<dt>\(\mathcal F\)</dt><dd data-hojas="7">Energía libre \(-\lambda\log\mathbb E_p[e^{-S/\lambda}]\), cuya cota inferior da la distribución óptima de MPPI.</dd>
+<dt>\(p\)</dt><dd data-hojas="7">Distribución de las trayectorias con el ruido de los mandos (distribución de partida, de la que se muestrea).</dd>
+<dt>\(q\), \(q^\star\)</dt><dd data-hojas="7">\(q\) es cualquier otra distribución de trayectorias; \(q^\star(V)=\tfrac1\eta e^{-S(V)/\lambda}p(V)\) es la que alcanza la cota.</dd>
+<dt>\(V\)</dt><dd data-hojas="7">Trayectoria de mandos ruidosos, argumento de \(q^\star\) y \(p\).</dd>
+<dt>\(\eta\)</dt><dd data-hojas="7">Constante de normalización de \(q^\star\).</dd>
+<dt>\(1/\sum_kw_k^2\)</dt><dd data-hojas="8">Tamaño efectivo de muestra: 1 si todo el peso cae en una muestra, \(K\) si todas pesan igual.</dd>
+<dt>\(\gamma\,u^\top\Sigma^{-1}v\)</dt><dd data-hojas="11">Término que MPPI añade al coste de cada muestra, derivado de la teoría, que penaliza alejarse de la media. \(\gamma\) es aquí un peso.</dd>
+<dt>\(H\times m\)</dt><dd data-hojas="10">Dimensión del espacio de búsqueda del muestreo (30×2 = 60 en el escenario 2D).</dd>
+<dt>\(\beta\)</dt><dd data-hojas="11">Exponente del espectro de ruido coloreado \(1/f^\beta\) que usa iCEM en lugar de ruido blanco.</dd>
+<dt>\(\Delta S\)</dt><dd data-hojas="32">Diferencia de coste entre una muestra y la mejor; el peso \(e^{-\Delta S/\lambda}\) es despreciable salvo para la mejor cuando las diferencias son de cientos y \(\lambda=0{,}1\).</dd>
+</dl>
+<h3>MPC con aprendizaje</h3>
+<dl>
+<dt>\(f_{\text{nom}}(\mathbf x,\mathbf u)\)</dt><dd data-hojas="15">Dinámica nominal de la física (aceleración) en el NMPC con residuo.</dd>
+<dt>\(\mathbf g_\phi(\mathbf x)\)</dt><dd data-hojas="15">Residuo aprendido (proceso gaussiano o red) con parámetros \(\phi\), sumado a la aceleración nominal.</dd>
+<dt>\(\theta\) (parámetros)</dt><dd data-hojas="16">Parámetros del problema de control óptimo (coste y dinámica) que se aprenden en el MPC diferenciable.</dd>
+<dt>\(u^\star(\theta)\)</dt><dd data-hojas="16">Mando óptimo del problema parametrizado por \(\theta\).</dd>
+<dt>\(z^\star\)</dt><dd data-hojas="16">Solución óptima (variables primales y duales) del problema de la hoja 16. No confundir con el latente \(z\) de TD-MPC2.</dd>
+<dt>\(\mathcal K(z^\star,\theta)\)</dt><dd data-hojas="16">Condiciones KKT en el óptimo: igualan a cero y definen \(z^\star\) implícitamente.</dd>
+<dt>\(\partial z^\star/\partial\theta\)</dt><dd data-hojas="16">Derivada de la solución respecto a los parámetros, por el teorema de la función implícita.</dd>
+<dt>\(N\) (pasos del MPC diferenciable)</dt><dd data-hojas="24">En AC-MPC, número de pasos del MPC diferenciable de la cabeza del actor (\(N=2\)).</dd>
+<dt>\(B\), \(b\)</dt><dd data-hojas="18">En PETS, \(B=5\) es el número de redes del conjunto y \(b\) el índice de una red.</dd>
+<dt>\(s\), \(a\)</dt><dd data-hojas="18">Estado y acción de las redes de PETS, entradas de \(\mu_b(s,a)\) y \(\Sigma_b(s,a)\).</dd>
+<dt>\(\mu_b\), \(\Sigma_b\)</dt><dd data-hojas="18">Media y covarianza de la salida gaussiana de la red \(b\); \(\Sigma_b\) es la incertidumbre aleatoria.</dd>
+<dt>\(P\)</dt><dd data-hojas="18">Número de partículas (20) con que PETS propaga la incertidumbre.</dd>
+</dl>
+<h3>TD-MPC2</h3>
+<dl>
+<dt>\(o\)</dt><dd data-hojas="19">Observación que recibe el codificador.</dd>
+<dt>\(h\)</dt><dd data-hojas="19">Codificador \(z=h(o)\); no confundir con la restricción \(h\) de A3a.</dd>
+<dt>\(z\), \(z'\)</dt><dd data-hojas="19">Estado latente y su siguiente: \(z'=d(z,a)\).</dd>
+<dt>\(d(z,a)\)</dt><dd data-hojas="19">Dinámica en el espacio latente.</dd>
+<dt>\(a\)</dt><dd data-hojas="19">Acción en el latente (equivale al mando \(u\)).</dd>
+<dt>\(R(z,a)\)</dt><dd data-hojas="19">Recompensa predicha por el modelo. No es la matriz de pesos \(R\) de A3a.</dd>
+<dt>\(Q\)</dt><dd data-hojas="19">Función de valor aprendida (cinco copias); aporta el valor terminal. No es la matriz de pesos \(Q\) de A3a.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="19">Política previa que propone parte de las muestras (24 de las 512).</dd>
+<dt>\(\gamma\) (descuento)</dt><dd data-hojas="19">Factor de descuento; pesa por \(\gamma^h\) la recompensa del paso \(h\) y por \(\gamma^H\) el valor terminal.</dd>
+<dt>\(z_h\), \(a_h\)</dt><dd data-hojas="19">Latente y acción en el paso \(h\) del horizonte; \(z_H\), \(a_H\) son los del último paso, donde se evalúa \(Q\).</dd>
+<dt>\(H = 3\)</dt><dd data-hojas="19">Horizonte corto de TD-MPC2, en pasos.</dd>
+<dt>\(\max_{\mu,\sigma}\)</dt><dd data-hojas="19">Maximización sobre la media y desviación de la distribución de acciones, hecha con MPPI.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>MPC</dt><dd data-hojas="1">Model predictive control: optimizar con un modelo y re-planificar en cada paso.</dd>
+<dt>RTI</dt><dd data-hojas="1">Real-time iteration: una sola iteración de SQP por muestra; el NMPC con residuo aprendido conserva su estructura, restricciones y RTI.</dd>
+<dt>NMPC</dt><dd data-hojas="3">MPC con modelo no lineal (A3a).</dd>
+<dt>MPPI</dt><dd data-hojas="1">Model predictive path integral: control por integrales de camino; promedia las muestras pesadas por la exponencial del coste.</dd>
+<dt>RTK</dt><dd data-hojas="3">Real-time kinematic: posicionamiento por satélite diferencial; con la captura de movimiento y PX4, fuente del estado completo que usan los MPPI de drones revisados.</dd>
+<dt>CEM</dt><dd data-hojas="6">Cross-entropy method: muestrear, quedarse con las élites y reajustar la distribución.</dd>
+<dt>iCEM</dt><dd data-hojas="4">Improved CEM: ruido coloreado, élites guardadas entre pasos y menos muestras para el mismo rendimiento.</dd>
+<dt>DIAL-MPC</dt><dd data-hojas="3">MPC por muestreo con recocido de la varianza al estilo de la difusión.</dd>
+<dt>PETS</dt><dd data-hojas="3">Probabilistic ensembles with trajectory sampling: conjunto de redes probabilísticas y CEM.</dd>
+<dt>PlaNet</dt><dd data-hojas="3">Agente que planifica con CEM en un latente aprendido de píxeles.</dd>
+<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="3">Agentes con MPPI sobre un latente y un valor terminal aprendido.</dd>
+<dt>RSSM</dt><dd data-hojas="17">Recurrent state-space model: modelo latente recurrente de PlaNet y Dreamer, un filtro latente.</dd>
+<dt>DARE</dt><dd data-hojas="19">Discrete algebraic Riccati equation: su solución es el coste terminal \(x^\top Px\); el coste terminal aprendido con horizonte corto juega el mismo papel.</dd>
+<dt>Dreamer, DreamerV3</dt><dd data-hojas="26">Agente que aprende la política dentro de un world model, en imaginación.</dd>
+<dt>AC-MPC</dt><dd data-hojas="24">Actor-critic MPC: MPC diferenciable como cabeza de un actor entrenado con RL.</dd>
+<dt>iLQR</dt><dd data-hojas="24">Iterative LQR, el método de control óptimo con que se construye el MPC diferenciable de AC-MPC.</dd>
+<dt>GP</dt><dd data-hojas="15">Gaussian process: en GP-MPC, el residuo aprendido es un proceso gaussiano.</dd>
+<dt>KKT</dt><dd data-hojas="16">Karush-Kuhn-Tucker: condiciones de optimalidad de un problema con restricciones.</dd>
+<dt>KL</dt><dd data-hojas="6">Kullback-Leibler: divergencia entre distribuciones.</dd>
+<dt>TS1, TS∞</dt><dd data-hojas="18">Variantes de propagación por partículas de PETS: reasignar la red en cada paso o mantenerla durante toda la trayectoria.</dd>
+<dt>RL</dt><dd data-hojas="3">Reinforcement learning, aprendizaje por refuerzo.</dd>
+<dt>PPO, SAC</dt><dd data-hojas="18">Algoritmos de RL sin modelo con los que se compara el número de muestras.</dd>
+<dt>CTBR</dt><dd data-hojas="22">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
+<dt>GPU</dt><dd data-hojas="3">Unidad de procesamiento gráfico, donde se paralelizan miles de trayectorias.</dd>
+<dt>CUDA</dt><dd data-hojas="12">Plataforma de cómputo en GPU; MPPI-Generic es una biblioteca CUDA.</dd>
+<dt>MLP</dt><dd data-hojas="24">Multilayer perceptron: la política de red simple con que se compara AC-MPC.</dd>
+<dt>PID</dt><dd data-hojas="28">Proportional-integral-derivative: línea base débil cuando está mal ajustado; la comparación honesta es con un NMPC o un controlador geométrico.</dd>
+<dt>JAX</dt><dd data-hojas="36">Biblioteca con vmap y jit con que se escribe el laboratorio.</dd>
+<dt>PX4</dt><dd data-hojas="12">Piloto automático al que se le manda CTBR.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

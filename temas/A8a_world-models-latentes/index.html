@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -637,6 +637,111 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Sombrero: estimación o salida del modelo aprendido (\(\hat T\), \(\hat r_t\), \(\hat o_t\)). Subíndice \(\theta\), \(\phi\): parámetros de la red. En este tema \(z\) es el estado latente estocástico; en el tema de POMDPs (A7a) la misma letra era una observación.</p>
+<dl>
+<dt>\(\sim\)</dt><dd data-hojas="10">«Se muestrea de»: \(z_t\sim q_\phi(\cdot)\) es una muestra de esa distribución.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="7">«Dado que», en probabilidades condicionales.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza matemática; \(\mathbb E_q\) es la esperanza cuando las muestras salen del posterior \(q\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="17">Norma euclídea; \(\|\cdot\|^2\) es el error cuadrático de las pérdidas de TD-MPC.</dd>
+<dt>\(\max\)</dt><dd data-hojas="7">Máximo; en la cota de error, sobre todos los estados y acciones.</dd>
+<dt>\(\mathrm{KL}(q\,\|\,p)\)</dt><dd data-hojas="10">Divergencia de Kullback-Leibler de \(q\) respecto a \(p\): mide cuánto se aleja el posterior del prior. Se mide en nats.</dd>
+<dt>\(\operatorname{sign}\), \(\ln\)</dt><dd data-hojas="11">Signo y logaritmo natural, que forman la transformación symlog.</dd>
+</dl>
+<h3>Modelos y error compuesto</h3>
+<dl>
+<dt>\(T\), \(\hat T\)</dt><dd data-hojas="7">Transición verdadera \(T(\cdot\mid s,a)\) y modelo aprendido \(\hat T(\cdot\mid s,a)\), distribuciones del siguiente estado.</dd>
+<dt>\(s\), \(a\)</dt><dd data-hojas="7">Estado y acción del entorno.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="7">Error por paso del modelo en variación total, acotado para todo estado y acción.</dd>
+<dt>\(\mathrm{TV}\)</dt><dd data-hojas="7">Distancia en variación total entre dos distribuciones de probabilidad.</dd>
+<dt>\(k\)</dt><dd data-hojas="6,7">Longitud (en pasos) de un despliegue en el modelo, p. ej. los despliegues de MBPO. Fijar \(k = 1\) conserva buena parte del beneficio.</dd>
+<dt>\(J_k\), \(\hat J_k\)</dt><dd data-hojas="7">Retorno de un despliegue de \(k\) pasos en el entorno real y en el modelo; su diferencia está acotada por la fórmula de la hoja.</dd>
+<dt>\(R_{\max}\)</dt><dd data-hojas="7">Cota de la recompensa en valor absoluto.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="7,16">Factor de descuento. En Dreamer, \(\gamma = 0{,}99\).</dd>
+<dt>\(d_t\), \(\hat d_t\)</dt><dd data-hojas="7">Distribución de estados en el paso \(t\) del entorno real y del modelo, con la misma política e inicio.</dd>
+<dt>\(t\)</dt><dd data-hojas="7">Índice de paso de tiempo.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="8">«Temperatura» de World Models que controla la incertidumbre del modelo del que se sueña; temperatura baja da un modelo demasiado seguro.</dd>
+</dl>
+<h3>El RSSM</h3>
+<dl>
+<dt>\(h_t\)</dt><dd data-hojas="10">Estado determinista (memoria) del RSSM, calculado por una GRU: \(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\).</dd>
+<dt>\(f_\theta\)</dt><dd data-hojas="10">Red recurrente (GRU) del camino determinista, con parámetros \(\theta\).</dd>
+<dt>\(z_t\)</dt><dd data-hojas="10">Estado estocástico (latente) en \(t\); junto con \(h_t\) forma el estado del modelo. Se obtiene con el posterior al filtrar.</dd>
+<dt>\(\hat z_t\)</dt><dd data-hojas="10">Latente imaginado, muestreado del prior sin usar la observación.</dd>
+<dt>\(a_t\), \(a_{t-1}\)</dt><dd data-hojas="10">Acción en \(t\) (y en el paso anterior).</dd>
+<dt>\(o_t\)</dt><dd data-hojas="10">Observación en \(t\) (en el x500: posición, actitud y giróscopo, sin velocidad).</dd>
+<dt>\(\hat o_t\)</dt><dd data-hojas="10">Observación reconstruida por el decodificador.</dd>
+<dt>\(\hat r_t\)</dt><dd data-hojas="10">Recompensa predicha por el decodificador en Dreamer.</dd>
+<dt>\(p_\theta(z_t\mid h_t)\)</dt><dd data-hojas="10">Prior: predice el latente solo con la memoria \(h_t\); sirve para imaginar.</dd>
+<dt>\(q_\phi(z_t\mid h_t, o_t)\)</dt><dd data-hojas="10">Posterior: infiere el latente con la memoria y la observación; sirve para filtrar. Es el belief aprendido.</dd>
+<dt>\(p_\theta(o_t\mid h_t, z_t)\)</dt><dd data-hojas="10">Decodificador: distribución de la observación dado el estado del modelo.</dd>
+<dt>\(\theta\), \(\phi\)</dt><dd data-hojas="10">Parámetros del modelo generativo (prior, decodificador, GRU) y del posterior (codificador).</dd>
+<dt>\(\log p(o_{1:T}\mid a)\)</dt><dd data-hojas="10">Log-verosimilitud (evidencia) de la secuencia de observaciones dadas las acciones: lo que acota la pérdida.</dd>
+<dt>\(q(z_{1:T}\mid o_{1:T}, a)\)</dt><dd data-hojas="10">Posterior sobre toda la secuencia de latentes, factorizado en un posterior por paso.</dd>
+<dt>\(T\) (longitud de secuencia)</dt><dd data-hojas="10">Longitud de la secuencia de observaciones en la cota de evidencia. No confundir con la transición \(T\).</dd>
+<dt>\(\beta_{\text{pred}}\), \(\beta_{\text{dyn}}\), \(\beta_{\text{rep}}\)</dt><dd data-hojas="10,11">Pesos de la pérdida de DreamerV3: predicción, dinámica (entrena el prior hacia el posterior) y representación (entrena el posterior hacia el prior). Valores \(1\), \(1\), \(0{,}1\). La versión v1 de arXiv usaba \(\beta_{\text{dyn}} = 0{,}5\).</dd>
+<dt>\(\alpha = 0{,}8\)</dt><dd data-hojas="11">Equilibrio del KL de DreamerV2: el prior se mueve hacia el posterior más deprisa que al revés.</dd>
+<dt>\(32\times32\)</dt><dd data-hojas="11">Latente discreto de DreamerV2: 32 variables categóricas de 32 clases (vector binario de 1024 con 32 bits activos).</dd>
+<dt>\(\mu_q\)</dt><dd data-hojas="13">Media del posterior; junto con \(h\) es el estado del RSSM del que se sondean velocidad y masa.</dd>
+<dt>\(R^2\)</dt><dd data-hojas="13">Coeficiente de determinación del sondeo lineal: 1 es predicción perfecta, 0 equivale a predecir la media.</dd>
+<dt>\(x\)</dt><dd data-hojas="14">Posición horizontal del dron en el episodio de la figura de imaginación, en metros.</dd>
+</dl>
+<h3>Actuar con el modelo</h3>
+<dl>
+<dt>\(H\)</dt><dd data-hojas="16">Horizonte de imaginación: 15 pasos en Dreamer; 5 pasos de planificación en TD-MPC.</dd>
+<dt>\(v_\psi\)</dt><dd data-hojas="16">Crítico de Dreamer con parámetros \(\psi\): estima el valor de un estado latente.</dd>
+<dt>\(\psi\)</dt><dd data-hojas="16">Parámetros del crítico.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="16">Parámetro del retorno \(\lambda\) que mezcla horizontes; en Dreamer, \(\lambda = 0{,}95\).</dd>
+<dt>\(V^k_N(s_\tau)\)</dt><dd data-hojas="16">Retorno de \(k\) pasos desde \(s_\tau\) en la trayectoria imaginada, cerrado con el crítico en el último estado.</dd>
+<dt>\(V_\lambda(s_\tau)\)</dt><dd data-hojas="16">Retorno \(\lambda\): mezcla ponderada de los retornos de todos los horizontes, como GAE.</dd>
+<dt>\(s_\tau\), \(s_h\)</dt><dd data-hojas="16">Estados (latentes) de la trayectoria imaginada: de partida y el último, cuando se cierra con el crítico.</dd>
+<dt>\(r_n\)</dt><dd data-hojas="16">Recompensa predicha en el paso imaginado \(n\).</dd>
+<dt>\(h\) (horizonte truncado)</dt><dd data-hojas="16">Índice \(h=\min(\tau+k,\ t+H)\) del último estado de un retorno de \(k\) pasos. No es el estado determinista \(h_t\).</dd>
+<dt>\(n\)</dt><dd data-hojas="16">Índice del horizonte y de los pasos en los retornos \(V^n_N\).</dd>
+<dt>\(c_1\), \(c_2\), \(c_3\)</dt><dd data-hojas="17">Coeficientes de las tres pérdidas de TD-MPC: recompensa, valor por diferencias temporales y consistencia del latente.</dd>
+<dt>\(z_i\)</dt><dd data-hojas="17">Latente codificado en el paso \(i\) de la secuencia de entrenamiento de TD-MPC.</dd>
+<dt>\(a_i\), \(r_i\)</dt><dd data-hojas="17">Acción y recompensa del paso \(i\).</dd>
+<dt>\(\hat r_i\)</dt><dd data-hojas="17">Recompensa predicha por el modelo en TD-MPC.</dd>
+<dt>\(d(z_i, a_i)\)</dt><dd data-hojas="17">Modelo de dinámica latente: predice el siguiente latente.</dd>
+<dt>\(h^-(s_{i+1})\)</dt><dd data-hojas="17">Latente codificado del siguiente estado con el codificador objetivo (sin gradiente), al que debe parecerse el predicho.</dd>
+<dt>\(Q(z_i,a_i)\)</dt><dd data-hojas="17">Función de valor-acción en el latente.</dd>
+<dt>\(Q^-\)</dt><dd data-hojas="17">Copia objetivo de \(Q\) para el objetivo de diferencias temporales.</dd>
+<dt>\(\pi(z_{i+1})\)</dt><dd data-hojas="17">Política aprendida que propone la acción siguiente en el objetivo de valor.</dd>
+<dt>\(\gamma^H Q(z_H, a_H)\)</dt><dd data-hojas="17">Valor terminal con el que TD-MPC cierra la planificación MPPI a \(H\) pasos.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; aquí, basado en modelo.</dd>
+<dt>RSSM</dt><dd data-hojas="10">Recurrent state-space model: modelo de espacio de estados con una parte determinista (GRU) y otra estocástica.</dd>
+<dt>GRU</dt><dd data-hojas="10">Gated recurrent unit: la red recurrente del camino determinista.</dd>
+<dt>KL</dt><dd data-hojas="10">Kullback-Leibler: divergencia entre el posterior y el prior en la pérdida.</dd>
+<dt>Dyna</dt><dd data-hojas="6">Arquitectura que aprende un modelo y entrena con transiciones imaginadas; caso de despliegues de un paso.</dd>
+<dt>MBPO</dt><dd data-hojas="6">Model-based policy optimization: despliegues cortos desde estados reales con un conjunto de redes y SAC.</dd>
+<dt>SAC</dt><dd data-hojas="6">Soft actor-critic, método sin modelo.</dd>
+<dt>PPO</dt><dd data-hojas="6">Proximal policy optimization, método sin modelo con el que se compara PETS.</dd>
+<dt>PETS</dt><dd data-hojas="6">Probabilistic ensembles with trajectory sampling: planifica con CEM sobre un conjunto de redes probabilísticas.</dd>
+<dt>PlaNet</dt><dd data-hojas="6">Planifica con CEM en el latente de un RSSM.</dd>
+<dt>CEM</dt><dd data-hojas="6">Cross-entropy method: método de optimización de acciones por muestreo.</dd>
+<dt>MPC</dt><dd data-hojas="6">Model predictive control: optimizar acciones en línea con el modelo.</dd>
+<dt>D4PG</dt><dd data-hojas="16">Distributed distributional deep deterministic policy gradient: algoritmo sin modelo con el que se compara Dreamer en tareas visuales de DeepMind Control.</dd>
+<dt>MPPI</dt><dd data-hojas="17">Model predictive path integral: planificador por muestreo que usa TD-MPC.</dd>
+<dt>PILCO</dt><dd data-hojas="3">Método con procesos gaussianos y gradientes analíticos; aprendió un péndulo real con poca interacción.</dd>
+<dt>Dreamer, DreamerV2, DreamerV3</dt><dd data-hojas="11">Agentes que aprenden actor y crítico en imaginación dentro de un RSSM; V2 usa latentes discretos y V3 una sola configuración.</dd>
+<dt>DayDreamer</dt><dd data-hojas="20">Dreamer aplicado a robots reales, con actor y aprendiz asíncronos.</dd>
+<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="17">Planificación MPC en un latente entrenado con diferencias temporales y sin reconstruir la observación.</dd>
+<dt>MuZero</dt><dd data-hojas="18">Modelo que predice solo recompensa, política y valor, con búsqueda en árbol.</dd>
+<dt>SimNorm</dt><dd data-hojas="17">Proyección del latente en símplices con softmax, de TD-MPC2.</dd>
+<dt>NeuroBEM</dt><dd data-hojas="20">Modelo híbrido de dinámica de un dron: teoría de elementos de pala más red para lo residual.</dd>
+<dt>GAE</dt><dd data-hojas="16">Generalized advantage estimation (A6a), análogo al retorno \(\lambda\).</dd>
+<dt>VAE</dt><dd data-hojas="4">Variational autoencoder, componente de World Models.</dd>
+<dt>VPT</dt><dd data-hojas="11">Agente de Minecraft con datos humanos con el que DreamerV3 compara su coste.</dd>
+<dt>MLP</dt><dd data-hojas="12">Perceptrón multicapa; aquí, el modelo de un paso sin memoria.</dd>
+<dt>x500</dt><dd data-hojas="3">Cuadricóptero del laboratorio, con observación parcial y masa aleatoria.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

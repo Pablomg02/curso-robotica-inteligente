@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -936,6 +936,133 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Letras caligráficas (\(\mathcal S\), \(\mathcal A\), \(\mathcal Z\)): conjuntos. Prima (\(s'\), \(b'\)): el valor en el paso siguiente. Sombrero: estimación o aproximación.</p>
+<dl>
+<dt>\(\mid\)</dt><dd data-hojas="6">«Dado que», en probabilidades condicionales: \(P(s'\mid s,a)\) es la probabilidad de \(s'\) sabiendo \(s\) y \(a\).</dd>
+<dt>\(\propto\)</dt><dd data-hojas="7">«Proporcional a»: igual salvo una constante de normalización, que aquí es el denominador de Bayes.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="8">Esperanza matemática, p. ej. \(\mathbb E[R\mid h_t,a_t]\) es la recompensa esperada dada la historia y la acción.</dd>
+<dt>\(\arg\max\)</dt><dd data-hojas="16">Valor del argumento que maximiza la expresión que sigue (aquí, la acción).</dd>
+<dt>\(\|\cdot\|_\infty\)</dt><dd data-hojas="17">Norma del máximo: la mayor diferencia en valor absoluto entre dos funciones sobre todos los beliefs.</dd>
+<dt>\(|\mathcal S|\), \(|\mathcal A|\), \(|\mathcal Z|\), \(|\Gamma|\)</dt><dd data-hojas="6,11">Número de elementos (cardinal) de un conjunto: de estados, acciones, observaciones o vectores \(\alpha\).</dd>
+<dt>\([c = c_{\text{dron}}]\)</dt><dd data-hojas="24">Corchete de Iverson: vale 1 si la casilla \(c\) es la que mira el dron y 0 en caso contrario.</dd>
+<dt>\(\log_2\)</dt><dd data-hojas="22">Logaritmo en base 2, usado en la entropía del belief (en bits).</dd>
+</dl>
+<h3>El modelo POMDP</h3>
+<dl>
+<dt>\(\mathcal S\)</dt><dd data-hojas="6">Conjunto de estados (ocultos) del problema. En el tigre son dos: tigre tras la puerta izquierda o la derecha.</dd>
+<dt>\(\mathcal A\)</dt><dd data-hojas="6">Conjunto de acciones. En el tigre: escuchar, abrir izquierda, abrir derecha.</dd>
+<dt>\(\mathcal Z\)</dt><dd data-hojas="6">Conjunto de observaciones: lo único que ve el agente.</dd>
+<dt>\(s\), \(s'\), \(s_t\)</dt><dd data-hojas="6">Estado actual, siguiente y en el instante \(t\). El agente no lo conoce.</dd>
+<dt>\(a\), \(a_t\)</dt><dd data-hojas="6">Acción elegida por el agente (en el instante \(t\)).</dd>
+<dt>\(z\), \(z_t\)</dt><dd data-hojas="6">Observación recibida tras actuar (en el instante \(t\)). Ojo: en este tema \(z\) es siempre observación; en el tema de world models latentes la misma letra es un latente.</dd>
+<dt>\(T(s,a,s')\)</dt><dd data-hojas="6">Modelo de transición \(P(s'\mid s,a)\): probabilidad de pasar a \(s'\) al hacer \(a\) en \(s\). En robótica, tu simulador de dinámica.</dd>
+<dt>\(O(s',a,z)\)</dt><dd data-hojas="6">Modelo de observación \(P(z\mid s',a)\): probabilidad de observar \(z\) tras llegar a \(s'\) con la acción \(a\). En robótica, tu modelo de sensores.</dd>
+<dt>\(R(s,a)\)</dt><dd data-hojas="6">Recompensa por hacer \(a\) en el estado \(s\), como en un MDP.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento de las recompensas futuras. En los cálculos de este tema, \(\gamma = 0{,}95\) (elección del curso).</dd>
+<dt>\(b_0\)</dt><dd data-hojas="6">Belief inicial: distribución sobre \(\mathcal S\) antes de actuar.</dd>
+<dt>\(h_t\)</dt><dd data-hojas="6">Historia hasta \(t\): \((a_0, z_1, a_1, \dots, z_t)\). Es lo que conoce el agente; las políticas son funciones de ella.</dd>
+<dt>número de historias</dt><dd data-hojas="6,14">Número de historias de longitud \(t\), \((|\mathcal A||\mathcal Z|)^t\); crece exponencialmente (maldición de la historia).</dd>
+<dt>\(p = b(\text{izquierda})\)</dt><dd data-hojas="6,12">En el tigre, probabilidad de que el tigre esté tras la puerta izquierda: el belief entero es este único número.</dd>
+<dt>\(b(\text{tigre a la izquierda})\)</dt><dd data-hojas="7">Lo mismo que \(p\): belief de que el tigre está a la izquierda, usado en las figuras y la autoevaluación.</dd>
+</dl>
+<h3>Belief y estado suficiente</h3>
+<dl>
+<dt>\(b\), \(b(s)\)</dt><dd data-hojas="6,7">Belief: distribución de probabilidad sobre \(\mathcal S\); \(b(s)\) es la probabilidad de estar en \(s\) dada la historia. Vector del símplex.</dd>
+<dt>\(b'(s')\)</dt><dd data-hojas="7">Belief actualizado tras hacer \(a\) y observar \(z\) (regla de Bayes de la hoja).</dd>
+<dt>\(\bar b(s')\)</dt><dd data-hojas="7">Belief predicho, antes de corregir con la observación: \(\sum_s T(s,a,s')\,b(s)\).</dd>
+<dt>\(P(z\mid a,b)\)</dt><dd data-hojas="7">Probabilidad de observar \(z\) tras hacer \(a\) con belief \(b\). Es el denominador de Bayes y la probabilidad de cada rama del árbol de decisión.</dd>
+<dt>\(P(s'\mid h,a)\)</dt><dd data-hojas="7">Probabilidad del estado siguiente dada la historia y la acción; coincide con \(\bar b(s')\).</dd>
+<dt>\(b^{a,z}\)</dt><dd data-hojas="8,11">Belief resultante de hacer \(a\) y observar \(z\) desde \(b\); mismo objeto que \(b'\), con la acción y la observación explícitas.</dd>
+<dt>\(\mathrm{SE}(b_t, a_t, z)\)</dt><dd data-hojas="8">Estimador de estado (state estimator): función que actualiza el belief; \(b_{t+1}=\mathrm{SE}(b_t,a_t,z)\).</dd>
+<dt>\(\Delta(\mathcal S)\)</dt><dd data-hojas="8">Símplex de distribuciones sobre \(\mathcal S\), de dimensión \(|\mathcal S|-1\). Es el espacio de estados del belief MDP.</dd>
+<dt>\(\rho(b,a)\)</dt><dd data-hojas="8">Recompensa esperada sobre el belief: \(\sum_s b(s)R(s,a)\). En la hoja de ρ-POMDP se generaliza a una recompensa cualquiera del belief.</dd>
+<dt>\(P(s_t\mid h_t)\)</dt><dd data-hojas="8">Probabilidad del estado actual dada la historia; es el belief \(b_t\).</dd>
+</dl>
+<h3>Estados de información</h3>
+<dl>
+<dt>\(z_t = \sigma_t(h_t)\)</dt><dd data-hojas="9">Estado de información: resumen de la historia producido por una función \(\sigma_t\). En esta hoja \(z_t\) es el resumen, no una observación.</dd>
+<dt>(P1), (P2)</dt><dd data-hojas="9">Las dos propiedades de un estado de información: suficiente para evaluar la recompensa esperada (P1) y para predecir su propio siguiente valor (P2).</dd>
+<dt>\(\varepsilon_t\)</dt><dd data-hojas="9">Error de predicción de la recompensa de un resumen aproximado en el instante \(t\).</dd>
+<dt>\(\delta_t\)</dt><dd data-hojas="9">Error al predecir la distribución del siguiente resumen, medido en una métrica de probabilidades.</dd>
+<dt>\(\alpha_t\)</dt><dd data-hojas="9">Cota del error de valor al calcular sobre el resumen: \(\varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}\). En el resto del tema, \(\alpha\) es un vector (ver más abajo).</dd>
+<dt>\(\rho(\hat V_{t+1})\)</dt><dd data-hojas="9">Factor que depende del valor aproximado \(\hat V_{t+1}\) y multiplica a \(\delta_t\) en la cota. No confundir con \(\rho(b,a)\).</dd>
+<dt>\(\hat V_{t+1}\)</dt><dd data-hojas="9">Función de valor calculada sobre el resumen aproximado en el paso \(t+1\).</dd>
+<dt>\(2\alpha_t\)</dt><dd data-hojas="9">Pérdida máxima de la política voraz respecto a la óptima.</dd>
+</dl>
+<h3>Valor lineal a trozos y convexo</h3>
+<dl>
+<dt>\(V_t(b)\)</dt><dd data-hojas="11">Valor óptimo con horizonte \(t\) desde el belief \(b\): máximo de funciones lineales de \(b\). \(V_0=0\).</dd>
+<dt>\(V_{t-1}\)</dt><dd data-hojas="11">Valor con un paso menos de horizonte, usado en la inducción.</dd>
+<dt>\(V^*\), \(V_\infty\)</dt><dd data-hojas="17,12">Valor óptimo en horizonte infinito (el límite de las iteraciones; en el tigre, 400 iteraciones). \(V_\infty\) es la etiqueta de la figura.</dd>
+<dt>\(V^B\)</dt><dd data-hojas="17">Valor calculado solo en el conjunto de puntos de belief \(B\) (método por puntos).</dd>
+<dt>\(\Gamma_t\)</dt><dd data-hojas="11">Conjunto de vectores \(\alpha\) cuya envolvente superior es \(V_t\).</dd>
+<dt>\(\alpha\), \(\alpha(s)\)</dt><dd data-hojas="11">Vector \(\alpha\): función lineal del belief, \(\alpha\cdot b=\sum_s\alpha(s)b(s)\). Es el valor de un plan condicional (árbol de política) empezando en cada estado.</dd>
+<dt>\(\alpha_{\text{nuevo}}\)</dt><dd data-hojas="11">Vector construido en la iteración exacta: \(R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\).</dd>
+<dt>\(g^{a,z}_\alpha(s)\)</dt><dd data-hojas="11">Vector auxiliar: \(\sum_{s'}T(s,a,s')O(s',a,z)\alpha(s')\). Hace lineal en \(b\) el término \(P(z\mid a,b)\,\alpha\cdot b^{a,z}\).</dd>
+<dt>\(\alpha_z\)</dt><dd data-hojas="11">Vector de \(\Gamma_{t-1}\) elegido para la observación \(z\) al construir \(\alpha_{\text{nuevo}}\).</dd>
+<dt>candidatos por iteración</dt><dd data-hojas="11,30">Candidatos de una iteración exacta antes de podar, \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\): un vector de \(\Gamma_{t-1}\) por observación y por acción. En el tigre, \(3\,|\Gamma_{t-1}|^2\).</dd>
+<dt>\(\alpha\cdot b\)</dt><dd data-hojas="11">Producto escalar entre el vector \(\alpha\) y el belief \(b\).</dd>
+<dt>\(\gamma = 0{,}95\)</dt><dd data-hojas="12">Descuento de los valores del tigre (figuras y tabla de vectores).</dd>
+<dt>0,040 y 0,960</dt><dd data-hojas="12,13">Umbrales en \(p\) del tigre: fuera de \((0{,}040;\,0{,}960)\) la política óptima deja de escuchar y abre una puerta.</dd>
+<dt>\(\sum_z P(z\mid a,b)\,b^{a,z} = b\)</dt><dd data-hojas="13">Propiedad de martingala del belief cuando la acción no cambia el estado (escuchar): la media de los beliefs posteriores es el belief previo.</dd>
+</dl>
+<h3>Complejidad</h3>
+<dl>
+<dt>\(R_{\max}\), \(R_{\min}\)</dt><dd data-hojas="17">Mayor y menor recompensa posibles; su diferencia entra en la cota de error de PBVI.</dd>
+</dl>
+<h3>QMDP y métodos por puntos</h3>
+<dl>
+<dt>\(Q_{\text{MDP}}(s,a)\)</dt><dd data-hojas="16">Valor-acción del MDP con estado visible. QMDP actúa con \(\arg\max_a\sum_s b(s)Q_{\text{MDP}}(s,a)\), y por eso da valor cero a la información.</dd>
+<dt>\(b = \tfrac12\)</dt><dd data-hojas="16">Belief uniforme entre los dos lados de la bifurcación del pasillo: punto de partida de la tabla de valores.</dd>
+<dt>\(B\)</dt><dd data-hojas="17">Conjunto de beliefs representativos que usan los métodos por puntos; cada uno tiene su vector \(\alpha\).</dd>
+<dt>\(\varepsilon_B\)</dt><dd data-hojas="17">Densidad con la que los puntos de \(B\) cubren el símplex; el error de PBVI es proporcional a ella.</dd>
+<dt>\(\alpha_{a,z}\)</dt><dd data-hojas="17">Vector de \(\Gamma\) que maximiza \(g^{a,z}_\alpha\cdot b\) en el punto \(b\), para cada acción y observación.</dd>
+<dt>\(\dfrac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2}\)</dt><dd data-hojas="17">Cota del error de PBVI: \(\|V^B-V^*\|_\infty\) crece con la separación de los puntos y con el horizonte efectivo \(1/(1-\gamma)\).</dd>
+</dl>
+<h3>Planificación en línea</h3>
+<dl>
+<dt>\(N\)</dt><dd data-hojas="19">Número de simulaciones de POMCP; el sesgo del valor estimado es \(O(\log N/N)\).</dd>
+<dt>\(K\)</dt><dd data-hojas="21">Número de escenarios de DESPOT (secuencias de números aleatorios que fijan el simulador). A menudo bastan \(K=500\).</dd>
+<dt>\(D\)</dt><dd data-hojas="21">Profundidad del árbol de búsqueda de DESPOT.</dd>
+<dt>tamaño del árbol (DESPOT)</dt><dd data-hojas="21">Tamaño del árbol completo, \(O(|\mathcal A|^D|\mathcal Z|^D)\), frente al de DESPOT, \(O(|\mathcal A|^D K)\).</dd>
+<dt>\(O(z\mid s,a,s')\)</dt><dd data-hojas="21,31">Verosimilitud de la observación; POMCPOW la usa para dar pesos a las partículas de cada nodo. Es el mismo modelo \(O\) del POMDP.</dd>
+<dt>\(\rho_{\text{ent}}(b)\)</dt><dd data-hojas="22">Recompensa por entropía negativa: \(\log_2|\mathcal S| + \sum_s b(s)\log_2 b(s)\). Vale 0 con el belief uniforme y es convexa.</dd>
+<dt>\(f(x) = x\log x\)</dt><dd data-hojas="22">Función por coordenada de la entropía negativa; su segunda derivada es \(1/x \gt 0\), luego es convexa.</dd>
+<dt>\(V_n\), \(V_0\) (hoja ρ-POMDP)</dt><dd data-hojas="22">Valor con horizonte \(n\) y valor inicial; el teorema 3.1 asegura que \(V_n\) es convexo si \(\rho\) y \(V_0\) lo son.</dd>
+</dl>
+<h3>Búsqueda con el dron</h3>
+<dl>
+<dt>\(c\)</dt><dd data-hojas="24">Casilla de la rejilla de 6 × 6; \(b(c)\) es la probabilidad de que el objetivo esté en ella.</dd>
+<dt>\(c_{\text{dron}}\)</dt><dd data-hojas="24">Casilla que mira el dron en este paso.</dd>
+<dt>\(P_D\)</dt><dd data-hojas="24">Probabilidad de detección del objetivo si está en la casilla mirada: \(P_D = 0{,}6\); no hay falsas alarmas.</dd>
+<dt>\(b'(c)\)</dt><dd data-hojas="24">Belief de cada casilla tras mirar y no detectar: la casilla mirada baja a un 40 % y las demás suben.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>POMDP</dt><dd data-hojas="6">Partially observable Markov decision process: un MDP en el que el agente solo recibe observaciones del estado.</dd>
+<dt>MDP</dt><dd data-hojas="6">Markov decision process: problema de decisión con estado visible.</dd>
+<dt>PWLC</dt><dd data-hojas="11">Piecewise linear and convex: lineal a trozos y convexa, la forma del valor en el belief.</dd>
+<dt>AIS</dt><dd data-hojas="9">Approximate information state: estado de información aproximado, con errores \(\varepsilon_t\) y \(\delta_t\).</dd>
+<dt>PSPACE</dt><dd data-hojas="14">Clase de problemas resolubles con memoria polinómica; la versión parcialmente observada del MDP es PSPACE-completa.</dd>
+<dt>QMDP</dt><dd data-hojas="16">Aproximación que resuelve el MDP con estado visible y actúa con el belief; supone que mañana lo sabrá todo, así que nunca va a mirar.</dd>
+<dt>PBVI</dt><dd data-hojas="17">Point-based value iteration: un conjunto de beliefs representativos y un vector \(\alpha\) por punto.</dd>
+<dt>Perseus</dt><dd data-hojas="17">Variante aleatoria de PBVI que actualiza solo un subconjunto de puntos que mejore todos.</dd>
+<dt>HSVI</dt><dd data-hojas="17">Heuristic search value iteration: cotas inferior y superior del valor y búsqueda heurística desde \(b_0\).</dd>
+<dt>SARSOP</dt><dd data-hojas="17">Muestrea cerca de los beliefs alcanzables con acciones óptimas.</dd>
+<dt>POMCP</dt><dd data-hojas="19">Partially observable Monte-Carlo planning: árbol de Monte Carlo sobre historias con belief de partículas.</dd>
+<dt>UCB</dt><dd data-hojas="19">Upper confidence bound: regla que POMCP usa para elegir acciones al bajar por el árbol.</dd>
+<dt>DESPOT</dt><dd data-hojas="21">Determinized sparse partially observable tree: planificación en línea con \(K\) escenarios fijos.</dd>
+<dt>POMCPOW</dt><dd data-hojas="21">POMCP con ensanchamiento progresivo y partículas ponderadas, para observaciones continuas.</dd>
+<dt>PFT-DPW</dt><dd data-hojas="31">Planificador con ensanchamiento progresivo en acciones y observaciones y belief de partículas; alternativa a POMCPOW citada en la respuesta de la autoevaluación.</dd>
+<dt>\(\rho\)-POMDP</dt><dd data-hojas="22">POMDP cuya recompensa \(\rho(b,a)\) depende del belief, útil cuando la tarea es reducir la incertidumbre.</dd>
+<dt>BetaZero</dt><dd data-hojas="26">Planificación en belief guiada por redes de valor y política entrenadas fuera de línea.</dd>
+<dt>RL</dt><dd data-hojas="26">Reinforcement learning, aprendizaje por refuerzo.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

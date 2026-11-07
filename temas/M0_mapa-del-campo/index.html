@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -38,7 +38,7 @@
     <div class="stack small">
       <p><strong>Modo presentación</strong>: una hoja cada vez. Flechas, espacio o RePág/AvPág para moverte; Inicio y Fin para saltar.</p>
       <p><strong>Modo lectura</strong> (tecla <code>L</code>): todas las hojas en scroll. Se activa solo en pantallas estrechas.</p>
-      <p><strong>Índice</strong> (tecla <code>I</code>) y <strong>tema claro/oscuro</strong> (tecla <code>T</code>).</p>
+      <p><strong>Índice</strong> (tecla <code>I</code>), <strong>glosario</strong> de símbolos y siglas (tecla <code>G</code>) y <strong>tema claro/oscuro</strong> (tecla <code>T</code>).</p>
       <p>Las <span class="hz">frecuencias y latencias</span> van siempre en este color: son el hilo del curso.</p>
       <p>Los números entre corchetes <a class="cite" data-ref="swift"></a> llevan a la referencia completa, al final.</p>
     </div>
@@ -1344,6 +1344,143 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Aquí hay poca matemática: casi todo el tema son nombres de sistemas y siglas, que están en el grupo «Siglas». Para las fórmulas, el tiempo se mide en segundos y la frecuencia en hercios.</p>
+<dl>
+<dt>\(\Rightarrow\), \('\)</dt><dd data-hojas="29">En la hoja del retardo, \(\Rightarrow\) significa «por tanto»; la prima en \(\mathrm{PM}'\) marca el valor con retardo, distinto del original.</dd>
+<dt>\(\approx\), \(\gtrsim\)</dt><dd data-hojas="29">«Aproximadamente igual» y «algo mayor o igual que», en las cuentas del retardo admisible.</dd>
+<dt>\(|\cdot|\)</dt><dd data-hojas="29">Módulo (valor absoluto) de un número complejo, como en \(|L(j\omega_c)|=1\).</dd>
+<dt>\(\angle\)</dt><dd data-hojas="29">Fase (argumento) de un número complejo: \(\angle L(j\omega_c)\) es la fase de la ganancia de lazo.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="29">Constante 3,14159…; \(2\pi f_c\) pasa de hercios a rad/s y \(\pi\) rad son 180°.</dd>
+</dl>
+<h3>Parte 1: el robot como lazo cerrado</h3>
+<dl>
+<dt>\(s(t)\)</dt><dd data-hojas="6">Estado oculto del mundo físico en el instante \(t\), en el esquema del lazo (figura). Lo que el robot no ve directamente.</dd>
+<dt>\(b(s)\)</dt><dd data-hojas="6">Belief: distribución sobre el estado oculto \(s\) que mantiene el bloque de estimación (figura del lazo).</dd>
+<dt>\(\tau_s\), \(\tau_e\), \(\tau_d\), \(\tau_a\)</dt><dd data-hojas="6">Retardos de cada tramo del lazo: sensores, estimación, decisión y actuadores. Su suma es \(\tau = \tau_s + \tau_e + \tau_d + \tau_a\), el tiempo que el mundo evoluciona durante una vuelta del lazo.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="6,29">Retardo total del lazo (hoja 6) o retardo puro en la hoja de la latencia (escalar, en segundos).</dd>
+</dl>
+<h3>Parte 4: la trampa de la latencia</h3>
+<dl>
+<dt>\(s\) (Laplace)</dt><dd data-hojas="29">Variable compleja de Laplace de las funciones de transferencia. No es el estado \(s\) de la hoja 6.</dd>
+<dt>\(j\)</dt><dd data-hojas="29">Unidad imaginaria, en \(L(j\omega)\): evaluar la ganancia de lazo en una frecuencia real.</dd>
+<dt>\(e^{-s\tau}\)</dt><dd data-hojas="29">Función de transferencia de un retardo puro \(\tau\): no cambia la ganancia (\(|e^{-j\omega\tau}|=1\)) y resta una fase \(\omega\tau\) a cada frecuencia.</dd>
+<dt>\(L(s)\)</dt><dd data-hojas="29">Ganancia de lazo del sistema sin retardo, función de transferencia en lazo abierto.</dd>
+<dt>\(L_\tau(s)\)</dt><dd data-hojas="29">Ganancia de lazo con retardo: \(L_\tau(s)=L(s)\,e^{-s\tau}\).</dd>
+<dt>\(\omega\)</dt><dd data-hojas="29">Frecuencia angular en rad/s (\(\omega = 2\pi f\)). El retardo resta la fase \(\omega\tau\).</dd>
+<dt>\(\omega_c\)</dt><dd data-hojas="29">Frecuencia angular de cruce: aquella en la que \(|L(j\omega_c)|=1\).</dd>
+<dt>\(f_c\)</dt><dd data-hojas="29">Frecuencia de cruce en hercios, \(f_c = \omega_c/2\pi\).</dd>
+<dt>\(\mathrm{PM}\)</dt><dd data-hojas="29">Margen de fase del lazo: \(\mathrm{PM}=\pi+\angle L(j\omega_c)\). Cuánta fase sobra antes de perder la estabilidad.</dd>
+<dt>\(\mathrm{PM}'\)</dt><dd data-hojas="29">Margen de fase con retardo: \(\mathrm{PM}'=\mathrm{PM}-\omega_c\tau\). El lazo cerrado pierde la estabilidad cuando \(\mathrm{PM}'\le 0\).</dd>
+<dt>\(\tau_{\max}\)</dt><dd data-hojas="29">Retardo máximo admisible, \(\mathrm{PM}/(2\pi f_c)\); con \(\mathrm{PM}=45^\circ\), \(\approx 0{,}125/f_c\).</dd>
+<dt>\(t+\tau\)</dt><dd data-hojas="30">Instante futuro en el que actuará el dron; un world model puede imaginar el estado en \(t+\tau\) antes de decidir.</dd>
+<dt>\(k\) (pasos de retardo)</dt><dd data-hojas="50">Número de pasos de retardo del lazo de prueba del laboratorio 0 (un integrador con un P).</dd>
+</dl>
+<h3>Parte 8 y autoevaluación: belief y RSSM</h3>
+<dl>
+<dt>\(b_t(s)\)</dt><dd data-hojas="48">Belief en el instante \(t\): \(b_t(s)=p(s_t\mid o_{1:t},a_{1:t-1})\), la distribución a posteriori del estado oculto dada la historia.</dd>
+<dt>\(s_t\)</dt><dd data-hojas="48">Estado oculto en el instante \(t\).</dd>
+<dt>\(o_{1:t}\)</dt><dd data-hojas="48">Observaciones desde el instante 1 hasta \(t\).</dd>
+<dt>\(a_{1:t-1}\)</dt><dd data-hojas="48">Acciones desde el instante 1 hasta \(t-1\).</dd>
+<dt>\(h_t\)</dt><dd data-hojas="48">Estado determinista recurrente del RSSM que resume la historia.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="48">Latente estocástico del RSSM en el instante \(t\).</dd>
+<dt>\(q(z_t\mid h_t,o_t)\)</dt><dd data-hojas="48">Posterior del latente dado \(h_t\) y la observación \(o_t\); se entrena con un objetivo variacional (ELBO).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>POMDP</dt><dd data-hojas="7">Partially observable Markov decision process: el modelo formal de decidir cuando solo se observa una parte del estado.</dd>
+<dt>ML</dt><dd data-hojas="7">Machine learning: aprendizaje automático.</dd>
+<dt>LLM</dt><dd data-hojas="8">Large language model: modelo de lenguaje grande.</dd>
+<dt>VLM</dt><dd data-hojas="8">Vision-language model: modelo que une imagen y lenguaje.</dd>
+<dt>VLA</dt><dd data-hojas="8">Vision-language-action model: modelo que va de imagen y lenguaje a acciones del robot.</dd>
+<dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>MARL</dt><dd data-hojas="4">Multi-agent reinforcement learning: refuerzo con varios agentes.</dd>
+<dt>JAX</dt><dd data-hojas="4">Biblioteca de cálculo numérico con diferenciación automática y compilación para GPU; el proyecto hilo del curso está escrito en ella.</dd>
+<dt>PID</dt><dd data-hojas="9">Controlador proporcional-integral-derivativo; en Betaflight, el lazo de velocidad angular.</dd>
+<dt>P</dt><dd data-hojas="50">Controlador proporcional, el del lazo con retardo del laboratorio 0.</dd>
+<dt>INDI</dt><dd data-hojas="27">Incremental nonlinear dynamic inversion: control por inversión de dinámica incremental, solución clásica del lazo de rate.</dd>
+<dt>LQR</dt><dd data-hojas="27">Linear-quadratic regulator: control óptimo lineal-cuadrático.</dd>
+<dt>NMPC</dt><dd data-hojas="27">Nonlinear model predictive control: control predictivo con modelo no lineal.</dd>
+<dt>MPC</dt><dd data-hojas="15">Model predictive control: control que optimiza sobre un horizonte con un modelo.</dd>
+<dt>MPCC</dt><dd data-hojas="27">Model predictive contouring control: MPC de seguimiento de contorno, listado como planificación clásica.</dd>
+<dt>TD-MPC2</dt><dd data-hojas="15">World model con MPC por muestreo dentro de su espacio latente.</dd>
+<dt>EKF</dt><dd data-hojas="8">Extended Kalman filter: filtro de Kalman aplicado al modelo linealizado; estimador de estado en la pila del dron.</dd>
+<dt>VIO</dt><dd data-hojas="8">Visual-inertial odometry: estimación del movimiento con cámara e IMU.</dd>
+<dt>SLAM</dt><dd data-hojas="14">Simultaneous localization and mapping: localizarse y construir el mapa a la vez.</dd>
+<dt>IMU</dt><dd data-hojas="8">Inertial measurement unit: acelerómetro y giróscopo.</dd>
+<dt>PnP</dt><dd data-hojas="22">Perspective-n-point: cálculo de la pose de la cámara a partir de puntos conocidos, aquí las esquinas de puerta.</dd>
+<dt>RSSM</dt><dd data-hojas="18">Recurrent state-space model: el modelo latente de Dreamer, con parte determinista y parte estocástica; mantiene un belief aprendido.</dd>
+<dt>ELBO</dt><dd data-hojas="48">Evidence lower bound: objetivo variacional con el que se entrena el posterior del latente.</dd>
+<dt>PPO</dt><dd data-hojas="21">Proximal policy optimization: algoritmo de RL con el que se entrenó la política de Swift.</dd>
+<dt>MLP</dt><dd data-hojas="21">Multilayer perceptron: red neuronal densa, como la 2×128 de Swift.</dd>
+<dt>G&amp;CNet</dt><dd data-hojas="22">Red de guiado y control de MonoRace (3×64) que corre en la controladora y manda los motores.</dd>
+<dt>U-Net</dt><dd data-hojas="21">Red convolucional de segmentación; el detector de puertas de Swift.</dd>
+<dt>GPU, CPU</dt><dd data-hojas="21">Unidad de procesamiento gráfico y unidad central de proceso; en la hoja 21 se indica dónde corre cada red de Swift.</dd>
+<dt>MCU</dt><dd data-hojas="27">Microcontrolador: la capa de la controladora de vuelo.</dd>
+<dt>RTOS</dt><dd data-hojas="34">Real-time operating system: sistema operativo de tiempo real (NuttX, ChibiOS).</dd>
+<dt>PREEMPT_RT</dt><dd data-hojas="26">Conjunto de parches de tiempo real de Linux, incluido en el kernel principal desde la versión 6.12.</dd>
+<dt>STM32, STM32H7, STM32H743</dt><dd data-hojas="21,22">Familia de microcontroladores de las controladoras de vuelo; el H743 va a 480 MHz en MonoRace.</dd>
+<dt>Jetson TX2, Orin NX, AGX Thor</dt><dd data-hojas="21,22,34">Ordenadores de a bordo con GPU de NVIDIA: TX2 en Swift, Orin NX en MonoRace, AGX Thor para humanoides.</dd>
+<dt>RTX 3090</dt><dd data-hojas="16">GPU de consumo con la que se entrenó Swift.</dd>
+<dt>NED/ENU, FRD/FLU</dt><dd data-hojas="33">Convenciones de ejes (norte-este-abajo, este-norte-arriba; delante-derecha-abajo, delante-izquierda-arriba) que causan fallos al cambiar de software.</dd>
+<dt>SE(3)</dt><dd data-hojas="15">Grupo de movimientos rígidos en 3D (rotación y traslación); el control geométrico y el cuerpo rígido se formulan en él.</dd>
+<dt>ESC</dt><dd data-hojas="6">Electronic speed controller: electrónica que regula cada motor.</dd>
+<dt>DShot</dt><dd data-hojas="26">Protocolo digital entre controladora y ESC, con telemetría de RPM.</dd>
+<dt>SPI, UART, MIPI CSI</dt><dd data-hojas="26">Buses de la pila: SPI para la IMU, UART (o Ethernet) con el ordenador de a bordo, MIPI CSI o USB para las cámaras.</dd>
+<dt>MAVLink</dt><dd data-hojas="26">Protocolo de mensajes entre el ordenador de a bordo y la controladora.</dd>
+<dt>uXRCE-DDS</dt><dd data-hojas="26">Puente de PX4 hacia ROS 2 para comunicarse con el ordenador de a bordo.</dd>
+<dt>ROS, ROS 2</dt><dd data-hojas="15">Robot Operating System: software de investigación y, en su segunda versión, estándar de producción.</dd>
+<dt>PX4</dt><dd data-hojas="9">Autopiloto abierto de arquitectura de nodos; publica el giróscopo para control a IMU_GYRO_RATEMAX.</dd>
+<dt>IMU_GYRO_RATEMAX</dt><dd data-hojas="9">Parámetro de PX4 con la tasa de publicación del giróscopo para control (400 Hz por defecto).</dd>
+<dt>ArduPilot</dt><dd data-hojas="26">Autopiloto abierto alternativo, con ChibiOS.</dd>
+<dt>NuttX, ChibiOS</dt><dd data-hojas="26">Sistemas operativos de tiempo real de PX4 y de ArduPilot.</dd>
+<dt>Betaflight</dt><dd data-hojas="9">Firmware de controladora de carreras; fija el giróscopo a su tasa nativa y corre el PID a esa tasa.</dd>
+<dt>BLHeli32</dt><dd data-hojas="21">Firmware de los ESC en Swift.</dd>
+<dt>MPU6000, BMI270</dt><dd data-hojas="9">IMUs citadas con sus tasas de giróscopo (8 kHz y 3,2 kHz).</dd>
+<dt>SITL, HIL</dt><dd data-hojas="32">Software-in-the-loop (firmware real en simulación) y hardware-in-the-loop (con su hardware).</dd>
+<dt>Gazebo, Isaac Sim, Isaac Lab, MuJoCo MJX, Genesis</dt><dd data-hojas="32">Simuladores citados como ejemplos de entrenamiento o de validación.</dd>
+<dt>Aerial Gym, OmniDrones, Flightmare, AirSim</dt><dd data-hojas="32">Simuladores y entornos de drones citados en la hoja de simulación.</dd>
+<dt>A2RL</dt><dd data-hojas="20">Competición de carreras autónomas de drones de Abu Dabi, ganada por MonoRace.</dd>
+<dt>FPV</dt><dd data-hojas="20">First-person view: pilotaje desde la cámara del dron.</dd>
+<dt>STARMAC</dt><dd data-hojas="20">Plataforma de cuadricópteros de laboratorio (2007).</dd>
+<dt>PIXHAWK</dt><dd data-hojas="20">Diseño de dron con visión a bordo y origen de la controladora y de PX4.</dd>
+<dt>CAD2RL</dt><dd data-hojas="16">Política de vuelo entrenada solo en simulación con domain randomization.</dd>
+<dt>Swift</dt><dd data-hojas="16">Sistema de UZH que gana a campeones humanos de carreras de drones.</dd>
+<dt>MonoRace</dt><dd data-hojas="20">Sistema de TU Delft con una sola cámara y una red en la controladora a 500 Hz.</dd>
+<dt>RAPTOR</dt><dd data-hojas="20">Política fundacional diminuta para cuadricópteros, en PX4 como módulo experimental.</dd>
+<dt>Neural-Fly</dt><dd data-hojas="20">Método de adaptación rápida en viento fuerte.</dd>
+<dt>ANYmal</dt><dd data-hojas="16">Robot cuadrúpedo cuya locomoción se aprendió en GPU.</dd>
+<dt>Shakey</dt><dd data-hojas="12">Primer robot móvil que razona sobre sus acciones (SRI).</dd>
+<dt>STRIPS</dt><dd data-hojas="12">Planificación simbólica con precondiciones y efectos.</dd>
+<dt>A*</dt><dd data-hojas="12">Búsqueda heurística de caminos de coste mínimo, nacida en Shakey.</dd>
+<dt>SayCan, Code as Policies</dt><dd data-hojas="12,17">LLMs como planificadores de robots (2022).</dd>
+<dt>RT-1, RT-2</dt><dd data-hojas="17">Primeros VLAs a escala.</dd>
+<dt>ACT</dt><dd data-hojas="17">Action chunking with transformers: política que predice secuencias de acciones.</dd>
+<dt>Diffusion Policy</dt><dd data-hojas="17">Política generativa por difusión.</dd>
+<dt>OpenVLA</dt><dd data-hojas="17">VLA abierto.</dd>
+<dt>\(\pi_0\), \(\pi_{0.7}\)</dt><dd data-hojas="17,37">Modelos VLA de Physical Intelligence; en la hoja 37 se dan sus tamaños, como afirmación de la empresa.</dd>
+<dt>Helix</dt><dd data-hojas="8">VLA de Figure con System 2 lento (7–9 Hz) y System 1 rápido (200 Hz).</dd>
+<dt>GR00T N1</dt><dd data-hojas="8">Modelo de NVIDIA con System 2 y System 1; tarda 63,9 ms en generar 16 acciones.</dd>
+<dt>Gemini Robotics, Gemini Robotics 2, ER 2</dt><dd data-hojas="8,17,37">Modelos de Google DeepMind; el backbone corre en la nube y entregan chunks de acciones.</dd>
+<dt>Dreamer, DreamerV3, Dreamer 4, DayDreamer</dt><dd data-hojas="17">Familia de world models que aprenden imaginando en un espacio latente.</dd>
+<dt>V-JEPA 2, Genie 3</dt><dd data-hojas="17">World models de 2025.</dd>
+<dt>System 1 / System 2</dt><dd data-hojas="8">Capa rápida que actúa y capa lenta que razona en las arquitecturas jerárquicas.</dd>
+<dt>S1, S2</dt><dd data-hojas="24">Abreviaturas de System 1 y System 2 en la figura de tamaño frente a frecuencia.</dd>
+<dt>DARPA</dt><dd data-hojas="14">Agencia que organizó el Grand Challenge ganado por Stanley en 2005.</dd>
+<dt>UZH, TU Delft, UPenn GRASP, ETH, CMU, MIT, UC Berkeley</dt><dd data-hojas="40">Grupos y universidades citados en la hoja de quién hace qué.</dd>
+<dt>ICRA, IROS, RSS, CoRL</dt><dd data-hojas="40">Conferencias de robótica.</dd>
+<dt>NeurIPS, ICML, ICLR</dt><dd data-hojas="40">Conferencias de aprendizaje automático.</dd>
+<dt>T-RO, RA-L, IJRR</dt><dd data-hojas="40">Revistas de robótica; también Science Robotics.</dd>
+<dt>cs.RO, cs.LG</dt><dd data-hojas="40">Categorías de arXiv para robótica y aprendizaje automático.</dd>
+<dt>UAV</dt><dd data-hojas="37">Unmanned aerial vehicle: vehículo aéreo no tripulado.</dd>
+<dt>uv</dt><dd data-hojas="50">Gestor de proyectos y paquetes de Python con el que se crea el entorno del laboratorio 0.</dd>
+<dt>RK4</dt><dd data-hojas="50">Integrador Runge-Kutta de cuarto orden del laboratorio 0.</dd>
+<dt>vmap</dt><dd data-hojas="50">Función de JAX que vectoriza un cálculo sobre muchos entornos a la vez.</dd>
+<dt>CUDA</dt><dd data-hojas="50">Plataforma de cálculo en GPU NVIDIA que usa JAX.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

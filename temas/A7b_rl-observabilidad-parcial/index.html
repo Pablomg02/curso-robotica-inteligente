@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -658,6 +658,81 @@ _, L = scan(paso, h0[idx], (O[:, idx], D_prev[:, idx]))
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(o\) observación, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor. Aquí además \(h\) es el estado oculto de la red recurrente (no la historia \(h_t\) de A6b) y \(b\) es el belief.</p>
+<dl>
+<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento. En el ejemplo de la moneda vale 0,9; fija el horizonte efectivo \(1/(1-\gamma)=10\).</dd>
+<dt>\(\tfrac12\)</dt><dd data-hojas="6">Probabilidad un medio: arranque en A o B, o acierto al azar con probabilidad ½ por paso.</dd>
+<dt>\(\tfrac12/(1-\gamma)\)</dt><dd data-hojas="6">Valor de la política estocástica sin memoria: ½ por paso acumulado con descuento, es decir, 5.</dd>
+</dl>
+
+<h3>Memoria en la política (parte 1)</h3>
+<dl>
+<dt>A, B</dt><dd data-hojas="6">Los dos estados del ejemplo de aliasing: dan la misma observación, así que sin memoria no se distinguen. «Izquierda» da +1 desde A y lleva a B.</dd>
+<dt>\(k\)</dt><dd data-hojas="7">Tamaño de la pila de observaciones: se le dan a la red las \(k\) últimas, y la entrada es \(k\) veces mayor.</dd>
+<dt>h0</dt><dd data-hojas="8">Estado oculto de la GRU guardado al inicio del tramo; el minilote recorre la secuencia desde él.</dd>
+<dt>\(h\)</dt><dd data-hojas="8">Estado oculto de la red recurrente (en el fragmento de código, el que se pone a cero al terminar un episodio).</dd>
+<dt>o</dt><dd data-hojas="8">Observación en el paso actual; entrada de la red junto con la acción y la recompensa anteriores.</dd>
+<dt>x</dt><dd data-hojas="8">Elemento de la secuencia en el recorrido del código: la observación y el indicador de fin de episodio.</dd>
+<dt>D_prev</dt><dd data-hojas="8">Indicadores de que el episodio terminó en el paso anterior; se usan para reiniciar el estado oculto.</dd>
+<dt>idx</dt><dd data-hojas="8">Entornos del minilote: se barajan entornos completos, no pasos sueltos.</dd>
+</dl>
+
+<h3>Qué memoria elegir (parte 2)</h3>
+<dl>
+<dt>\(O(z\mid s)\)</dt><dd data-hojas="19">Modelo de observación: probabilidad de la observación \(z\) dado el estado \(s\). Con imágenes o profundidad no se conoce, por eso no se puede filtrar con Bayes.</dd>
+<dt>\(T\), \(O\)</dt><dd data-hojas="3">Modelo de transición y de observación conocidos de A7a, con los que el belief salía exactamente de Bayes.</dd>
+<dt>\(z\)</dt><dd data-hojas="19">Observación en el modelo \(O(z\mid s)\).</dd>
+</dl>
+
+<h3>Beliefs aprendidos (parte 3)</h3>
+<dl>
+<dt>R²</dt><dd data-hojas="15">Coeficiente de determinación del sondeo lineal: qué fracción de la variación del belief explica lo que se lee del estado oculto (1 es perfecto).</dd>
+<dt>variación total</dt><dd data-hojas="15">Distancia entre el belief exacto y el leído del estado oculto (entre 0 y 1); menor es mejor. El prior fijo da 0,25.</dd>
+<dt>prior</dt><dd data-hojas="15">Distribución inicial fija sobre dónde está el objetivo; referencia del sondeo.</dd>
+<dt>AIS</dt><dd data-hojas="21">Approximate information state: estado de información aproximado, un resumen que predice la recompensa y su propio futuro.</dd>
+</dl>
+
+<h3>Aprender a mirar (parte 4)</h3>
+<dl>
+<dt>16 × 12</dt><dd data-hojas="18">Resolución en píxeles de la imagen de profundidad que usa la red recurrente del vuelo sin odometría.</dd>
+<dt>MDP sobre beliefs</dt><dd data-hojas="17">Si el belief se da como entrada, el problema es un proceso de decisión de Markov cuyo estado es el belief (A7a).</dd>
+</dl>
+
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; aquí, bajo observabilidad parcial.</dd>
+<dt>JAX</dt><dd data-hojas="1">Biblioteca de cálculo numérico con diferenciación automática; el tema entrena PPO en JAX sobre la búsqueda de A7a.</dd>
+<dt>POMDP</dt><dd data-hojas="3">Partially observable Markov decision process: proceso de decisión de Markov parcialmente observable.</dd>
+<dt>POMCP</dt><dd data-hojas="3">Partially observable Monte Carlo planning: búsqueda de A7a con la que se compara la política recurrente.</dd>
+<dt>GRU</dt><dd data-hojas="7">Gated recurrent unit: red recurrente con compuertas; la memoria de referencia del tema.</dd>
+<dt>LSTM</dt><dd data-hojas="7">Long short-term memory: red recurrente con celda de memoria.</dd>
+<dt>RNN</dt><dd data-hojas="7">Recurrent neural network: red neuronal recurrente.</dd>
+<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization (A6a), aquí en versión recurrente.</dd>
+<dt>DRQN</dt><dd data-hojas="7">Deep recurrent Q-network: DQN con una LSTM en lugar de apilar fotogramas.</dd>
+<dt>DQN</dt><dd data-hojas="4">Deep Q-network.</dd>
+<dt>QMDP-net</dt><dd data-hojas="4">Red que incrusta un planificador QMDP diferenciable para planificar con observabilidad parcial.</dd>
+<dt>PF-net</dt><dd data-hojas="14">Particle filter network: filtro de partículas diferenciable dentro de la red.</dd>
+<dt>DVRL</dt><dd data-hojas="14">Deep variational reinforcement learning: conjunto de partículas ponderadas en un espacio latente con un modelo generativo entrenado junto a la política.</dd>
+<dt>POPGym</dt><dd data-hojas="11">Banco de pruebas de 15 entornos parcialmente observables y 13 modelos de memoria.</dd>
+<dt>GTrXL</dt><dd data-hojas="12">Gated Transformer-XL: transformer con compuertas que hizo entrenables los transformers en RL.</dd>
+<dt>S4D</dt><dd data-hojas="11">Modelo de espacio de estados diagonal; en POPGym fue inestable.</dd>
+<dt>IndRNN</dt><dd data-hojas="11">Red recurrente independiente, una de las memorias de POPGym.</dd>
+<dt>FART</dt><dd data-hojas="11">Fast autoregressive transformer, una atención lineal de POPGym.</dd>
+<dt>FWP</dt><dd data-hojas="11">Fast weight programmer, una atención lineal de POPGym.</dd>
+<dt>MLP</dt><dd data-hojas="11">Perceptrón multicapa; aquí, la política sin memoria.</dd>
+<dt>RGB-D</dt><dd data-hojas="17">Imagen de color más profundidad, usada por la cámara del cuadrúpedo.</dd>
+<dt>UAV</dt><dd data-hojas="17">Unmanned aerial vehicle: vehículo aéreo no tripulado, en la búsqueda de malas hierbas.</dd>
+<dt>T-Maze</dt><dd data-hojas="12">Tarea de memoria en la que hay que recordar una señal vista al principio; los transformers llegan a 1500 pasos.</dd>
+<dt>DMLab-30</dt><dd data-hojas="12">Banco de pruebas donde GTrXL obtuvo el mejor resultado.</dd>
+<dt>TD3, SAC</dt><dd data-hojas="20">Twin delayed DDPG y soft actor-critic: algoritmos de RL fuera de política; con PPO o con ellos, una GRU separada en actor y crítico es una referencia difícil de batir.</dd>
+<dt>GPU</dt><dd data-hojas="27">Graphics processing unit: hardware del laboratorio (GPU NVIDIA de consumo).</dd>
+<dt>CPU</dt><dd data-hojas="27">Central processing unit: el laboratorio puede correr en CPU, con menos entornos y más tiempo.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

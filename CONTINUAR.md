@@ -78,14 +78,15 @@ En HTML, el signo «menor que» dentro de una fórmula se escribe `\lt` (o `&lt;
 9. **Lecturas guiadas**: 3 esenciales (qué leer, qué buscar, qué responder) y una línea de profundización.
 10. **Laboratorio**: resumen en una hoja; el enunciado completo, en `lab/README.md`.
 11. **Referencias**: varias hojas, unas 14–17 por hoja, con `start` correlativo.
+12. **Glosario** (petición de Pablo del 2026-11-07): bloque `<aside id="glosario" hidden>` después de `</main>`, que el motor muestra con la tecla `G` o el botón «Glosario». Recoge **todos** los símbolos del tema (letras con sus subíndices y decoraciones, operadores, constantes con nombre) y, al final, las siglas. Formato: un `<h3>` por grupo (las partes del tema, en orden), un `<p>` opcional con convenciones y un `<dl>` de pares `<dt>\(símbolo\)</dt><dd data-hojas="12,30">qué es</dd>`. El `<dt>` copia el TeX tal como sale en las hojas; el `<dd>` dice qué es, tipo y dimensión, unidades si es físico y con qué se relaciona, sin datos que no estén en el tema; `data-hojas` es la hoja donde se define (y una o dos donde se usa mucho). Si una letra cambia de significado entre partes, una entrada por significado. **Si se añaden o quitan hojas, se renumeran los `data-hojas`.** M1 es el modelo.
 
 Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.hz`), observabilidad parcial, sim-to-real y cómputo limitado.
 
 ## 5. El motor de presentaciones
 
-Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `T` tema) y modo lectura automático en pantallas estrechas.
+Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `G` glosario, `T` tema) y modo lectura automático en pantallas estrechas.
 
-**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=8`, `curso.js?v=3`.
+**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=9`, `curso.js?v=4`.
 
 Componentes disponibles:
 
@@ -107,6 +108,7 @@ Componentes disponibles:
 | `ol.refs[start=N] > li#ref-clave` | Referencias. Cada clave citada debe existir y cada referencia debe citarse al menos una vez. |
 | `span.hz` | Frecuencias, latencias y cifras de tiempo, en el color del hilo temporal. |
 | `.small`, `.xsmall`, `.muted`, `.lead` | Tamaños y tonos de texto. |
+| `aside#glosario[hidden] > h3 + p? + dl > dt + dd[data-hojas]` | Glosario del tema (tecla `G`, desde `curso.js?v=4`): panel con buscador (busca también por el código TeX, p. ej. `theta`) y enlaces a las hojas. Ver §4, punto 12. |
 
 Matemáticas con MathJax: `\( … \)` en línea y `\[ … \]` en bloque. Las fórmulas muy largas se parten con `aligned`.
 
@@ -136,6 +138,7 @@ Matemáticas con MathJax: `\( … \)` en línea y `\[ … \]` en bloque. Las fó
    ```
 
 5. Mirar las figuras en tema claro y oscuro: etiquetas que no se pisen y que todo quede dentro del dibujo.
+6. Glosario: `uv run --with playwright python 00_plan/verificar_glosario.py <carpeta> [--shots]` (con el servidor del paso 1 en marcha) comprueba que el panel abre con `G`, que no hay errores de MathJax ni desbordes, que cada `data-hojas` está en rango y lista las entradas cuyo TeX no aparece literal en la hoja citada, para revisarlas a mano. También repite `checkOverflow()` y la prueba de móvil.
 
 Si no hay ningún navegador disponible, decirlo en la siguiente parada y pedir a Pablo que ejecute `curso.checkOverflow()`.
 

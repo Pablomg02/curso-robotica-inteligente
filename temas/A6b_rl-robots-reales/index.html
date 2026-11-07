@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -798,6 +798,134 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado verdadero, \(o\) observación, \(h_t\) historia de observaciones y acciones, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\) valor, \(\hat A_t\) ventaja estimada con GAE.</p>
+<dl>
+<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza (media). El subíndice o la condición indican sobre qué se promedia, p. ej. \(\mathbb E_{s\mid h}\).</dd>
+<dt>\(\mid\)</dt><dd data-hojas="7">Condicionado a: \(\pi_\theta(a\mid o)\) es la probabilidad de \(a\) dada la observación \(o\).</dd>
+<dt>\(\sim\)</dt><dd data-hojas="7">«Se distribuye según», p. ej. \(a_t\sim\pi_\theta(\cdot\mid h_t)\).</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="7">Gradiente respecto a los parámetros de la política.</dd>
+<dt>\(\hat{\ }\)</dt><dd data-hojas="7">Sombrero: valor estimado (\(\hat A_t\)) o política aprendida por el alumno (\(\hat\pi\)).</dd>
+<dt>\(\bar{\ }\)</dt><dd data-hojas="21">Barra: valor perturbado, p. ej. \(\bar s\) es el estado con ruido añadido.</dd>
+<dt>\(^*\), \(^\star\)</dt><dd data-hojas="11,15">Asterisco: política óptima o del maestro, \(\pi^*\); \(\pi^\star(o)\) es el óptimo del alumno.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="19">Norma euclídea de un vector, p. ej. \(\|\Delta a\|^2\).</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="15">Argumento que minimiza la expresión; da el óptimo del alumno.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="15">Aproximadamente igual.</dd>
+<dt>\(\mathcal N\)</dt><dd data-hojas="21">Distribución gaussiana: \(\bar s\sim\mathcal N(s,\sigma)\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="20">Derivada parcial; aparece en la jacobiana de la política respecto a la acción anterior.</dd>
+<dt>\(O(1)\)</dt><dd data-hojas="11">Término acotado por una constante, en la cota de DAgger.</dd>
+<dt>\(\int\)</dt><dd data-hojas="7">Integral sobre acciones.</dd>
+<dt>\(\sum\)</dt><dd data-hojas="11">Suma sobre pasos de tiempo.</dd>
+</dl>
+
+<h3>Información privilegiada (parte 1)</h3>
+<dl>
+<dt>\(s\)</dt><dd data-hojas="9">Estado verdadero del simulador (posición, velocidad, actitud y parámetros físicos). El actor no lo verá en vuelo.</dd>
+<dt>\(o\)</dt><dd data-hojas="7">Observación realista del actor: con ruido, retardo y sin masa ni velocidad exactas.</dd>
+<dt>\(h_t\)</dt><dd data-hojas="7">Historia de observaciones (y acciones) hasta el paso \(t\), que el actor puede usar.</dd>
+<dt>\(h\)</dt><dd data-hojas="9">Historia, en las funciones de valor \(V^\pi(h)\) y \(V^\pi(h,s)\).</dd>
+<dt>\(a\), \(a_t\)</dt><dd data-hojas="7">Acción de la política en el paso \(t\).</dd>
+<dt>\(\pi_\theta(a\mid o)\)</dt><dd data-hojas="7">El actor: política con parámetros \(\theta\) que decide a partir de la observación. Es lo que se despliega.</dd>
+<dt>\(\pi_\theta(a_t\mid h_t)\)</dt><dd data-hojas="7">El actor condicionado a la historia de observaciones.</dd>
+<dt>\(\hat A_t\)</dt><dd data-hojas="7">Ventaja estimada con GAE (A6a). El crítico solo interviene aquí.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="7">Parámetro de GAE. Con 1, el crítico es solo línea base; con menos de 1, predice el futuro y puede sesgar.</dd>
+<dt>\(b(s_t,h_t)\)</dt><dd data-hojas="7">Línea base cualquiera, función del estado y la historia pero no de la acción: su término del gradiente vale cero. (En la tesis, \(b\) también es el belief, ver más abajo.)</dd>
+<dt>\(V(s)\)</dt><dd data-hojas="4">Crítico que solo ve el estado verdadero. Está sesgado si lo oculto solo se descubre actuando.</dd>
+<dt>\(V^\pi(s)\)</dt><dd data-hojas="9">Valor del estado \(s\) bajo la política \(\pi\), invariante en el tiempo.</dd>
+<dt>\(V^\pi(h)\)</dt><dd data-hojas="9">Valor de la historia \(h\): lo que realmente se espera obtener sabiendo lo que el agente sabe.</dd>
+<dt>\(V^\pi(h,s)\)</dt><dd data-hojas="9">Crítico con historia y estado: insesgado para cualquier problema y política (teorema 5.1 de Baisero y Amato).</dd>
+<dt>\(V(b,s)\)</dt><dd data-hojas="26">Crítico con belief además del estado, propuesto para tareas de búsqueda (con historia: \(V(h,s)\), hoja 9).</dd>
+<dt>\(b\)</dt><dd data-hojas="26">Belief: distribución sobre el estado oculto dado lo que el agente sabe. En la tesis, entrada del crítico \(V(b,s)\).</dd>
+<dt>\(V(s{=}\text{izq})\)</dt><dd data-hojas="9">Valor del estado «objetivo a la izquierda» en el ejemplo de las dos puertas; con \(V(s{=}\text{der})\) vale 0,75.</dd>
+<dt>\(V(o)\)</dt><dd data-hojas="28">Crítico que solo ve la última observación (opción de la autoevaluación).</dd>
+</dl>
+
+<h3>Maestro y alumno (parte 2)</h3>
+<dl>
+<dt>\(\pi^*\)</dt><dd data-hojas="11">Política del maestro, que ve el estado y los parámetros verdaderos.</dd>
+<dt>\(\hat\pi\), \(\hat\pi_i\)</dt><dd data-hojas="11">Política del alumno, que solo ve la observación realista; \(\hat\pi_i\) es la de la iteración \(i\) de DAgger.</dd>
+<dt>\(J(\pi)\)</dt><dd data-hojas="11">Coste acumulado de la política \(\pi\) en el horizonte \(T\) (menor es mejor, en la cota de clonación).</dd>
+<dt>\(T\)</dt><dd data-hojas="11">Horizonte del episodio en pasos.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="11">Error por paso del alumno respecto al maestro, medido en la distribución de estados de entrenamiento. (En A6a, \(\varepsilon\) era el recorte de PPO.)</dd>
+<dt>\(\varepsilon_N\)</dt><dd data-hojas="11">Error por paso tras \(N\) iteraciones de DAgger, medido en los estados del alumno.</dd>
+<dt>\(N\)</dt><dd data-hojas="11">Número de iteraciones de DAgger.</dd>
+<dt>\(u\)</dt><dd data-hojas="11">Cuánto puede empeorar el coste futuro del maestro tras una acción equivocada; aparece como factor en \(uT\varepsilon\).</dd>
+<dt>\(T^2\varepsilon\)</dt><dd data-hojas="11">Cota de la clonación de comportamiento: los errores se acumulan cuadráticamente con el horizonte.</dd>
+<dt>\(uT\varepsilon_N\)</dt><dd data-hojas="11">Cota de DAgger: crece solo linealmente con el horizonte.</dd>
+<dt>\(\beta_i\)</dt><dd data-hojas="11">Mezcla de DAgger: probabilidad de usar al maestro en la iteración \(i\); \(\pi_i=\beta_i\pi^*+(1-\beta_i)\hat\pi_i\), con \(\beta_1=1\) y después 0.</dd>
+<dt>\(i\)</dt><dd data-hojas="11">Índice de iteración de DAgger (o del peldaño \(i\) de los cuatro rotores, en la hoja 19).</dd>
+<dt>\(d^t_\pi\)</dt><dd data-hojas="11">Distribución de estados visitados en el paso \(t\) por la política \(\pi\).</dd>
+<dt>\(Q^*_t(s,a)\)</dt><dd data-hojas="11">Valor de acción del maestro desde el paso \(t\) al final.</dd>
+<dt>\(V^*_t(s)\)</dt><dd data-hojas="11">Valor del maestro en el estado \(s\) desde el paso \(t\).</dd>
+<dt>\(\pi^\star(o)\)</dt><dd data-hojas="15">Política óptima del alumno con pérdida cuadrática: la esperanza de la acción del maestro dada la observación.</dd>
+<dt>\(\mathbb E\big[\pi^*(s)\mid o\big]\)</dt><dd data-hojas="15">Acción media del maestro entre los estados compatibles con \(o\). Si el maestro usa algo que \(o\) no revela, aparece la brecha de imitación.</dd>
+<dt>\(\pm1\)</dt><dd data-hojas="15">Acción del maestro (izquierda o derecha) en el ejemplo de la brecha: el alumno aprende la media, 0.</dd>
+</dl>
+
+<h3>Qué manda la red (parte 3)</h3>
+<dl>
+<dt>\(\Delta a\)</dt><dd data-hojas="19">Cambio de la acción entre pasos; \(0{,}1\|\Delta a\|^2\) es el término de suavidad del coste.</dd>
+<dt>\(\Delta f_i\)</dt><dd data-hojas="19">Cambio del empuje del rotor \(i\) entre pasos; la actividad es \(\sum_i|\Delta f_i|\), en pesos del dron.</dd>
+<dt>\(a_{t-1}\)</dt><dd data-hojas="20">Acción anterior, que forma parte de la observación de la política.</dd>
+<dt>\(a_t\)</dt><dd data-hojas="20">Acción actual; en la política linealizada, \(a_t=\kappa a_{t-1}+Kx_t\).</dd>
+<dt>\(\partial\pi/\partial a_{t-1}\)</dt><dd data-hojas="20">Jacobiana de la política respecto a la acción anterior (submatriz \(4\times4\)); sus autovalores dicen si la red se apoya en su acción pasada.</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="20">Autovalor (escalar) del modo de la acción anterior en la política linealizada. Cerca de 1, acción integral; cerca de −1, alternancia a la frecuencia de Nyquist.</dd>
+<dt>\(K\)</dt><dd data-hojas="20">Ganancia de la política linealizada sobre el estado \(x_t\). (No es el número de épocas de A6a.)</dd>
+<dt>\(x_t\)</dt><dd data-hojas="20">Estado (o desviación del equilibrio) del bucle cerrado, en la política linealizada.</dd>
+</dl>
+
+<h3>Suavidad: CAPS y filtros</h3>
+<dl>
+<dt>\(J^{\text{CAPS}}\)</dt><dd data-hojas="21">Objetivo de RL con regularización de suavidad: \(J-\lambda_TL_T-\lambda_SL_S\).</dd>
+<dt>\(L_T\)</dt><dd data-hojas="21">Término temporal de CAPS: diferencia entre las acciones de pasos consecutivos.</dd>
+<dt>\(L_S\)</dt><dd data-hojas="21">Término espacial de CAPS: diferencia entre las acciones en un estado y en uno cercano perturbado.</dd>
+<dt>\(\lambda_T\), \(\lambda_S\)</dt><dd data-hojas="21">Pesos de los dos términos de CAPS.</dd>
+<dt>\(\bar s\)</dt><dd data-hojas="21">Estado perturbado con ruido gaussiano de desviación \(\sigma\).</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="21">Desviación del ruido de medida esperado, con el que CAPS perturba el estado.</dd>
+<dt>\(H(j\omega)\)</dt><dd data-hojas="21">Respuesta en frecuencia del filtro paso bajo de primer orden: \(1/(1+j\omega\tau)\).</dd>
+<dt>\(\omega\) (filtro)</dt><dd data-hojas="21">Frecuencia angular de la señal que atraviesa el filtro. (En el dron, \(\omega\) es velocidad angular.)</dd>
+<dt>\(\tau\)</dt><dd data-hojas="21">Constante de tiempo del filtro paso bajo (5, 10, 20 ms). Retrasa la señal \(\arctan(\omega\tau)/\omega\), que tiende a \(\tau\).</dd>
+<dt>\(j\)</dt><dd data-hojas="21">Unidad imaginaria en la respuesta en frecuencia.</dd>
+<dt>\(\arctan\)</dt><dd data-hojas="21">Arcotangente, para el desfase del filtro.</dd>
+<dt>\(\omega\tau\ll1\)</dt><dd data-hojas="21">Régimen de bajas frecuencias, donde el filtro retrasa casi exactamente \(\tau\).</dd>
+</dl>
+
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="1">Reinforcement learning, aprendizaje por refuerzo; tema de la hoja: RL en robots reales.</dd>
+<dt>DARPA</dt><dd data-hojas="13">Defense Advanced Research Projects Agency; en el tema, DARPA SubT, el reto subterráneo donde el cuadrúpedo ANYmal hizo cuatro misiones de 60 min sin una caída.</dd>
+<dt>CARLA</dt><dd data-hojas="13">Simulador de conducción donde un agente que ve el mapa y el tráfico enseña a un agente que solo ve la cámara.</dd>
+<dt>CTBR</dt><dd data-hojas="17">Collective thrust and body rates: la red manda empuje colectivo y velocidades angulares, y el autopiloto cierra el lazo de velocidad angular.</dd>
+<dt>SRT</dt><dd data-hojas="17">Single-rotor thrust: la red manda el empuje de cada rotor.</dd>
+<dt>LV</dt><dd data-hojas="17">Linear velocity: la red manda una velocidad lineal.</dd>
+<dt>BC</dt><dd data-hojas="11">Behavior cloning: clonación de comportamiento, regresión supervisada de las acciones del maestro.</dd>
+<dt>DAgger</dt><dd data-hojas="11">Dataset aggregation: el maestro etiqueta los estados que visita el alumno y se reentrena con todo lo acumulado.</dd>
+<dt>RMA</dt><dd data-hojas="13">Rapid motor adaptation: política con factores del entorno en un vector latente y módulo que lo estima de la historia.</dd>
+<dt>CAPS</dt><dd data-hojas="21">Regularización de suavidad temporal y espacial de la política.</dd>
+<dt>PID</dt><dd data-hojas="21">Proportional-integral-derivative: controlador clásico que aparece como línea base en la tabla de comparación.</dd>
+<dt>PX4</dt><dd data-hojas="23">Autopiloto de código abierto al que se manda la salida de la red.</dd>
+<dt>NED</dt><dd data-hojas="23">North-east-down: marco de PX4 con z hacia abajo.</dd>
+<dt>FRD</dt><dd data-hojas="23">Forward-right-down: ejes del cuerpo en PX4.</dd>
+<dt>ROS</dt><dd data-hojas="23">Robot Operating System: en modo offboard, el ordenador de a bordo manda consignas por MAVLink o ROS 2.</dd>
+<dt>SITL</dt><dd data-hojas="24">Software-in-the-loop: el autopiloto real corriendo contra un simulador.</dd>
+<dt>HIL</dt><dd data-hojas="24">Hardware-in-the-loop: una Pixhawk real conectada a un simulador.</dd>
+<dt>MAVLink</dt><dd data-hojas="23">Protocolo de mensajes con el que un ordenador de a bordo manda consignas a PX4.</dd>
+<dt>EKF2</dt><dd data-hojas="23">Filtro de Kalman extendido del estimador de PX4.</dd>
+<dt>INDI</dt><dd data-hojas="18">Incremental nonlinear dynamic inversion: lazo de control de bajo nivel usado como comparación.</dd>
+<dt>MPC</dt><dd data-hojas="14">Model predictive control: el maestro de Deep Drone Acrobatics.</dd>
+<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization (A6a); aquí se usa con crítico asimétrico.</dd>
+<dt>DDPG</dt><dd data-hojas="7">Deep deterministic policy gradient: base del método de Pinto et al.</dd>
+<dt>HER</dt><dd data-hojas="7">Hindsight experience replay, usado con DDPG por Pinto et al.</dd>
+<dt>RGBD</dt><dd data-hojas="7">Imagen de color más profundidad.</dd>
+<dt>PD</dt><dd data-hojas="17">Controlador proporcional-derivativo que sigue una consigna de ángulo.</dd>
+<dt>COM_OF_LOSS_T, COM_OBL_RC_ACT</dt><dd data-hojas="23">Parámetros de PX4: tiempo de pérdida del flujo offboard y acción de fallo configurada.</dd>
+<dt>MLP</dt><dd data-hojas="24">Multilayer perceptron: red neuronal densa; una MLP pequeña cuesta microsegundos por paso.</dd>
+<dt>POMDP</dt><dd data-hojas="26">Partially observable Markov decision process: el actor del tema ya es un POMDP pequeño que deduce velocidad y masa de cuatro observaciones.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

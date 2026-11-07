@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -806,6 +806,160 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector (\(\mathbf p\), \(\mathbf c\), \(\mathbf d\)); mayúscula: matriz. Los puntos sobre una letra son derivadas respecto al tiempo; \(p^{(k)}\) es la derivada de orden \(k\).</p>
+<dl>
+<dt>\(\dot{\ }\), \(\ddot{\mathbf p}\), \(\dddot{\mathbf p}\), \(\mathbf p^{(4)}\)</dt><dd data-hojas="10">Derivadas de la posición respecto al tiempo: velocidad, aceleración, jerk y snap (cuarta derivada). Vectores de \(\mathbb{R}^3\).</dd>
+<dt>\(^\top\)</dt><dd data-hojas="11">Traspuesta de una matriz o vector.</dd>
+<dt>\(^\star\)</dt><dd data-hojas="6">Valor óptimo o verdadero, como en \(h^\star\), \(C^\star\) o \(\mathbf d_P^\star\).</dd>
+<dt>\(\lVert\cdot\rVert\)</dt><dd data-hojas="10">Norma euclídea de un vector (su longitud).</dd>
+<dt>\(\mathrm{blkdiag}\)</dt><dd data-hojas="12">Matriz diagonal por bloques, formada con las matrices de cada tramo.</dd>
+<dt>\(\propto\)</dt><dd data-hojas="32">«Proporcional a».</dd>
+<dt>\(\binom nk\)</dt><dd data-hojas="14">Coeficiente binomial «\(n\) sobre \(k\)».</dd>
+<dt>\(\mathbb{R}^3\)</dt><dd data-hojas="10">Espacio de vectores reales de tres componentes (posición, velocidad, aceleración).</dd>
+<dt>\(\mathbf e_3\)</dt><dd data-hojas="10">Vector unitario del eje vertical del mundo; aparece en el empuje \(f = m\lVert\ddot{\mathbf p} + g\mathbf e_3\rVert\).</dd>
+<dt>\(g\)</dt><dd data-hojas="10">Aceleración de la gravedad (escalar, m/s²).</dd>
+<dt>\(m\)</dt><dd data-hojas="10">Masa del vehículo (escalar, kg).</dd>
+</dl>
+<h3>Parte 1: búsqueda y muestreo</h3>
+<dl>
+<dt>\(n\), \(n'\)</dt><dd data-hojas="6">Nodos del grafo en el que busca A*; \(n'\) es un vecino de \(n\).</dd>
+<dt>\(f(n)\)</dt><dd data-hojas="6">Prioridad de A* para el nodo \(n\): \(f(n) = g(n) + h(n)\). A* expande el nodo con menor \(f\).</dd>
+<dt>\(g(n)\)</dt><dd data-hojas="6">Coste acumulado del camino desde el inicio hasta \(n\). No confundir con la gravedad \(g\) de las otras partes.</dd>
+<dt>\(h(n)\)</dt><dd data-hojas="6">Heurística: estimación del coste que falta desde \(n\) hasta la meta.</dd>
+<dt>\(h^\star(n)\)</dt><dd data-hojas="6">Coste óptimo real que falta desde \(n\) hasta la meta. Una heurística es admisible si \(h(n) \le h^\star(n)\).</dd>
+<dt>\(c(n, n')\)</dt><dd data-hojas="6">Coste de la arista que une \(n\) con \(n'\). Una heurística es consistente si \(h(n) \le c(n, n') + h(n')\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="6">Factor de inflado de la heurística (\(\varepsilon h\)): A* va más rápido y el camino es \(\varepsilon\)-subóptimo.</dd>
+<dt>\(C\), \(C^\star\)</dt><dd data-hojas="6">En la demostración de optimalidad, coste del camino que devuelve A* y coste óptimo; se supone \(C \gt C^\star\) para llegar a una contradicción.</dd>
+<dt>\(r_n\)</dt><dd data-hojas="8">Radio de la bola de vecinos al insertar el nodo \(n\)-ésimo en RRT*: \(r_n = \gamma\,(\log n/n)^{1/d}\).</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="8">Constante del radio de vecinos de RRT*, positiva.</dd>
+<dt>\(d\)</dt><dd data-hojas="8">Dimensión del espacio de búsqueda de RRT*.</dd>
+<dt>\(\Delta x\), \(\Delta y\)</dt><dd data-hojas="8">Desplazamiento en una rejilla 8-conexa. Con \(|\Delta x| \ge |\Delta y|\) el coste es \(|\Delta x| + (\sqrt2 - 1)|\Delta y|\).</dd>
+<dt>\(\theta\) (parte 1)</dt><dd data-hojas="8">Dirección del desplazamiento en la rejilla 8-conexa. El cociente frente a la recta es máximo en 22,5° (1,082).</dd>
+</dl>
+<h3>Parte 2: del camino a la trayectoria</h3>
+<dl>
+<dt>\(\boldsymbol\sigma\)</dt><dd data-hojas="10">Salidas planas del cuadricóptero, \(\boldsymbol\sigma = (x, y, z, \psi)\): con ellas y sus derivadas se recupera estado y mando.</dd>
+<dt>\(x\), \(y\), \(z\)</dt><dd data-hojas="10">Coordenadas de posición del dron en el mundo, en metros.</dd>
+<dt>\(\psi\)</dt><dd data-hojas="10">Guiñada (yaw) del cuadricóptero. En la parte 5, rumbo del ala fija.</dd>
+<dt>\(\mathbf p\), \(\mathbf p(t)\)</dt><dd data-hojas="10">Posición del dron en el tiempo, vector de \(\mathbb{R}^3\). En minimum snap, \(p(t)\) es una coordenada (un eje).</dd>
+<dt>\(f\)</dt><dd data-hojas="10">Empuje total del cuadricóptero (escalar, N): \(f = m\lVert\ddot{\mathbf p} + g\mathbf e_3\rVert\). \(\dot f\) es su derivada.</dd>
+<dt>\(\mathbf x_B\), \(\mathbf y_B\), \(\mathbf z_B\)</dt><dd data-hojas="10">Ejes del sistema de ejes del cuerpo expresados en el mundo; \(\mathbf z_B\) es la dirección del empuje y \(R = [\mathbf x_B\ \mathbf y_B\ \mathbf z_B]\) la rotación.</dd>
+<dt>\(R\) (planitud)</dt><dd data-hojas="10">Matriz de rotación del cuerpo, formada con los tres ejes \(\mathbf x_B\), \(\mathbf y_B\), \(\mathbf z_B\). No confundir con la matriz \(R\) de Richter (hoja 12).</dd>
+<dt>\(\boldsymbol\omega\), \(\omega_x\), \(\omega_y\), \(\omega_z\)</dt><dd data-hojas="10">Velocidad angular del cuerpo y sus componentes. \(\omega_y\) y \(\omega_x\) salen del jerk; \(\omega_z\) sale de \(\dot\psi\).</dd>
+<dt>\(\dot{\boldsymbol\omega}\)</dt><dd data-hojas="10">Aceleración angular del cuerpo; la fija el snap.</dd>
+<dt>\(\boldsymbol\tau\)</dt><dd data-hojas="10">Par sobre el cuerpo: \(\boldsymbol\tau = J\dot{\boldsymbol\omega} + \boldsymbol\omega\times J\boldsymbol\omega\).</dd>
+<dt>\(J\) (inercia)</dt><dd data-hojas="10">Matriz de inercia del cuerpo, en la ecuación del par.</dd>
+<dt>\(w_0, \dots, w_M\)</dt><dd data-hojas="11">Waypoints (puntos de paso) de un eje; hay \(M\) tramos entre ellos.</dd>
+<dt>\(M\)</dt><dd data-hojas="11">Número de tramos de la trayectoria.</dd>
+<dt>\(T_i\)</dt><dd data-hojas="11">Duración del tramo \(i\), en segundos. \(T\) es el tiempo total en las hojas 13 y 32.</dd>
+<dt>\(p_i(t)\), \(c_{ij}\)</dt><dd data-hojas="11">Polinomio de grado 7 del tramo \(i\), \(p_i(t) = \sum_{j=0}^{7}c_{ij}t^j\), y sus coeficientes.</dd>
+<dt>\(\mathbf c\)</dt><dd data-hojas="11">Vector con todos los coeficientes polinómicos de un eje; es la incógnita de minimum snap.</dd>
+<dt>\(Q\)</dt><dd data-hojas="11">Matriz simétrica del coste de snap, \(J = \mathbf c^\top Q\,\mathbf c\). Cada tramo aporta un bloque con \(Q_{jk}\) conocido.</dd>
+<dt>\(Q_{jk}\)</dt><dd data-hojas="11">Elemento \((j,k)\) de \(Q\) de un tramo: \(\frac{j!}{(j-4)!}\,\frac{k!}{(k-4)!}\,\frac{T^{\,j+k-7}}{j+k-7}\) para \(j, k \ge 4\), y cero si no.</dd>
+<dt>\(A\), \(\mathbf b\)</dt><dd data-hojas="11">Matriz y vector de las restricciones de igualdad \(A\mathbf c = \mathbf b\): paso por waypoints, continuidad de derivadas y reposo en los extremos.</dd>
+<dt>\(\boldsymbol\lambda\)</dt><dd data-hojas="11">Multiplicadores de Lagrange de las igualdades, en el sistema KKT.</dd>
+<dt>\(s\)</dt><dd data-hojas="11">Orden de la derivada que se minimiza (\(s = 4\) para el snap). El óptimo es un polinomio de grado \(2s-1\), continuo hasta la derivada \(2s-2\).</dd>
+<dt>\(\delta J\), \(\delta p\)</dt><dd data-hojas="11">Variación del coste y variación de la trayectoria en la derivación del grado 7.</dd>
+<dt>\(A_i\)</dt><dd data-hojas="12">Matriz del tramo \(i\) que relaciona coeficientes y derivadas en los extremos: \(\mathbf c_i = A_i^{-1}\mathbf d_i\).</dd>
+<dt>\(\mathbf d_i\)</dt><dd data-hojas="12">Derivadas del tramo \(i\) en sus dos extremos (posición, velocidad, aceleración…).</dd>
+<dt>\(\mathbf d_F\), \(\mathbf d_P\)</dt><dd data-hojas="12">Derivadas fijadas (waypoints, reposo) y libres (en waypoints interiores). \(\mathbf d_P\) es lo que se optimiza.</dd>
+<dt>\(R_{FF}\), \(R_{FP}\), \(R_{PF}\), \(R_{PP}\)</dt><dd data-hojas="12">Bloques de la matriz de coste \(R\) de Richter según fijadas (F) y libres (P): \(\mathbf d_P^\star = -R_{PP}^{-1}R_{FP}^\top\,\mathbf d_F\).</dd>
+<dt>\(R\) (Richter)</dt><dd data-hojas="12">Matriz de coste en las derivadas: \(R = C\,\mathrm{blkdiag}(A_i^{-\top}Q_iA_i^{-1})\,C^\top\).</dd>
+<dt>\(C\)</dt><dd data-hojas="12">Matriz de selección de ceros y unos que arma las \(\mathbf d_i\) a partir de \([\mathbf d_F; \mathbf d_P]\) sin repetir; por eso la continuidad se cumple sola.</dd>
+<dt>\(J\) (coste)</dt><dd data-hojas="11">Coste de snap, integral del cuadrado de la derivada. Con \(k_T\) se añade \(k_T\sum_iT_i\) para refinar los tiempos (hoja 12).</dd>
+<dt>\(k_T\)</dt><dd data-hojas="12">Peso del término de tiempo total en \(J + k_T\sum_iT_i\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="13">Factor de escala temporal: \(\tilde p(t) = p(t/\alpha)\) recorre lo mismo en \(\alpha T\). La derivada \(k\) escala como \(\alpha^{-k}\) y el coste como \(\alpha^{-7}\).</dd>
+<dt>\(\tilde p\)</dt><dd data-hojas="13">Trayectoria reescalada en el tiempo.</dd>
+<dt>\(v_\max\), \(a_\max\)</dt><dd data-hojas="13">Velocidad y aceleración máximas a lo largo de la trayectoria (tabla de la hoja 13): \(v \propto 1/T\), \(a \propto 1/T^2\).</dd>
+<dt>\(H\), \(\mathbf h\)</dt><dd data-hojas="14">Matriz y vector que definen un poliedro convexo \(H\mathbf p \le \mathbf h\) del corredor de vuelo.</dd>
+<dt>\(\mathbf q_k\)</dt><dd data-hojas="14">Puntos de control de la curva de Bernstein. En MINCO (hoja 15), \(\mathbf q\) son los puntos intermedios de la trayectoria.</dd>
+<dt>\(b_{k,n}(\tau)\)</dt><dd data-hojas="14">Polinomio de base de Bernstein, \(\binom nk\tau^k(1-\tau)^{n-k} \ge 0\), con suma 1 para \(\tau\in[0,1]\).</dd>
+<dt>\(\tau\) (Bernstein)</dt><dd data-hojas="14">Parámetro de la curva en \([0,1]\). En MINCO, \(\tau_i\) es la variable libre con \(T_i = e^{\tau_i}\).</dd>
+<dt>\(n\) (Bernstein)</dt><dd data-hojas="14">Grado de la curva de Bernstein; sus derivadas tienen puntos de control \(n(\mathbf q_{k+1}-\mathbf q_k)\).</dd>
+<dt>\(\mathbf T\)</dt><dd data-hojas="15">Vector de duraciones de los tramos en MINCO. Junto con \(\mathbf q\) determina la trayectoria única \((\mathbf q, \mathbf T)\mapsto\mathbf c\).</dd>
+<dt>\(O(M)\)</dt><dd data-hojas="15">Coste lineal en el número de tramos del cálculo de MINCO y sus gradientes.</dd>
+</dl>
+<h3>Parte 3: mapas y planificación local</h3>
+<dl>
+<dt>\(m\) (celda)</dt><dd data-hojas="18">Celda del mapa de ocupación, ocupada o libre. No confundir con la masa \(m\).</dd>
+<dt>\(z_t\), \(z_{1:t}\)</dt><dd data-hojas="18">Medida de profundidad en el instante \(t\) y todas las medidas hasta \(t\), independientes dado \(m\).</dd>
+<dt>\(p(m\mid z_{1:t})\)</dt><dd data-hojas="18">Probabilidad de que la celda esté ocupada dadas las medidas hasta \(t\). \(p(m)\) es la a priori.</dd>
+<dt>\(\ell\), \(\ell_t\), \(\ell_0\)</dt><dd data-hojas="18">Log-odds, \(\ell = \log\frac{p}{1-p}\). Actualización: \(\ell_t = \ell_{t-1} + \ell(m\mid z_t) - \ell_0\), con \(\ell_0\) el valor a priori.</dd>
+<dt>\(\mathbf P\), \(\mathbf p_i\)</dt><dd data-hojas="19">Conjunto de puntos de la trayectoria discretizada que se optimiza (40 en la figura) y el punto \(i\)-ésimo.</dd>
+<dt>\(J(\mathbf P)\)</dt><dd data-hojas="19">Coste de la optimización local: suavidad (segundas diferencias) más penalización de colisión.</dd>
+<dt>\(w\)</dt><dd data-hojas="19">Peso de la penalización de colisión frente a la suavidad.</dd>
+<dt>\(d_s\)</dt><dd data-hojas="19">Distancia de seguridad a los obstáculos (0,6 m en la figura).</dd>
+<dt>\(d(\mathbf p)\)</dt><dd data-hojas="19">Distancia al obstáculo más cercano, dada por el ESDF.</dd>
+<dt>\(\nabla d\)</dt><dd data-hojas="19">Gradiente del ESDF: apunta hacia fuera del obstáculo más cercano; empuja los puntos en esa dirección.</dd>
+<dt>\(t_\ell\)</dt><dd data-hojas="21">Latencia total (sensor, mapa y plan), en segundos.</dd>
+<dt>\(v\)</dt><dd data-hojas="21">Velocidad del dron en la distancia de parada. En la parte 5, \(V\) es la velocidad del ala fija.</dd>
+<dt>\(a\)</dt><dd data-hojas="21">Deceleración disponible para frenar (m/s²). En la tabla, \(a = g\tan30°\).</dd>
+<dt>\(d_\text{parada}\)</dt><dd data-hojas="21">Distancia de parada, \(v\,t_\ell + v^2/(2a)\): hasta dónde hay que ver espacio libre para poder frenar.</dd>
+</dl>
+<h3>Parte 5: ala fija</h3>
+<dl>
+<dt>\(L\)</dt><dd data-hojas="27">Sustentación del ala (N). En un giro coordinado: \(L\cos\phi = mg\), \(L\sin\phi = mV^2/R\).</dd>
+<dt>\(\phi\)</dt><dd data-hojas="27">Ángulo de alabeo (roll) del ala fija.</dd>
+<dt>\(V\)</dt><dd data-hojas="27">Velocidad del ala fija respecto al aire (m/s).</dd>
+<dt>\(R\) (ala fija)</dt><dd data-hojas="27">Radio de giro, \(R = V^2/(g\tan\phi)\). Con el alabeo máximo se obtiene el mínimo.</dd>
+<dt>\(R_\min\)</dt><dd data-hojas="27">Radio mínimo de giro, con curvatura máxima \(1/R_\min\). Es el radio de los arcos C de Dubins.</dd>
+<dt>\(\dot\psi\)</dt><dd data-hojas="27">Tasa de giro del rumbo, \(V/R = g\tan\phi/V\).</dd>
+<dt>\(n\) (factor de carga)</dt><dd data-hojas="27">Factor de carga en el giro, \(n = 1/\cos\phi\).</dd>
+<dt>\(\mathbf c_0\), \(\mathbf c_1\)</dt><dd data-hojas="28">Centros de los círculos de giro a la izquierda en el inicio y en la meta. \(\mathbf c_0 = \mathbf p_0 + R(-\sin\psi_0, \cos\psi_0)\).</dd>
+<dt>\(\mathbf p_0\), \(\psi_0\), \(\psi_1\)</dt><dd data-hojas="28">Posición y rumbo iniciales, y rumbo final.</dd>
+<dt>\(\theta\) (Dubins)</dt><dd data-hojas="28">Rumbo del vector \(\mathbf c_1-\mathbf c_0\). Arcos: \((\theta - \psi_0)\bmod 2\pi\) y \((\psi_1 - \theta)\bmod 2\pi\).</dd>
+<dt>\(\ell\) (Dubins)</dt><dd data-hojas="28">Distancia entre centros en las tangentes cruzadas; el ángulo añadido es \(\arctan(2R/\ell)\) y exige \(\ell \gt 2R\).</dd>
+<dt>\(\mathbf W\)</dt><dd data-hojas="29">Velocidad del viento constante; \(W\) es su módulo.</dd>
+<dt>\(\mathbf v_g\)</dt><dd data-hojas="29">Velocidad sobre el suelo, \(V(\cos\psi, \sin\psi) + \mathbf W\).</dd>
+<dt>\(\mathbf a\) (viento)</dt><dd data-hojas="29">Aceleración del ala fija, \(V\dot\psi(-\sin\psi, \cos\psi)\), perpendicular al rumbo.</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="29">Curvatura de la trayectoria sobre el suelo, \(\lVert\mathbf a\rVert/\lVert\mathbf v_g\rVert^2\).</dd>
+<dt>LSL, RSR, LSR, RSL, RLR, LRL</dt><dd data-hojas="28">Los seis candidatos de Dubins: L y R son arcos a izquierda y derecha, S una recta. Los tipos CSC tienen recta, los CCC (RLR, LRL) tres arcos.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>A*</dt><dd data-hojas="6">Búsqueda heurística en grafos que expande el nodo de menor \(f = g + h\); óptima con heurística admisible.</dd>
+<dt>PRM</dt><dd data-hojas="7">Probabilistic roadmap: muestrea el espacio libre, une vecinos y busca en el grafo; reutilizable para muchas consultas.</dd>
+<dt>RRT</dt><dd data-hojas="7">Rapidly-exploring random tree: hace crecer un árbol hacia muestras aleatorias; rápido pero su coste converge a un valor subóptimo.</dd>
+<dt>RRT*, PRM*</dt><dd data-hojas="7">Variantes asintóticamente óptimas: RRT* elige el mejor padre entre los vecinos y recablea.</dd>
+<dt>QP</dt><dd data-hojas="11">Quadratic program: optimización con coste cuadrático y restricciones lineales.</dd>
+<dt>KKT</dt><dd data-hojas="11">Condiciones de Karush-Kuhn-Tucker; con solo igualdades dan un sistema lineal.</dd>
+<dt>MINCO</dt><dd data-hojas="15">Representación de trayectoria de Wang et al. optimizada sobre puntos y tiempos sin restricciones, con sistema de banda lineal en los tramos.</dd>
+<dt>GCOPTER</dt><dd data-hojas="15">Código de los autores de MINCO para optimizar trayectorias de multicópteros.</dd>
+<dt>FIRI</dt><dd data-hojas="14">Fast iterative region inflation: inflado iterativo rápido de regiones convexas en el espacio libre, en GCOPTER.</dd>
+<dt>CPC</dt><dd data-hojas="16">Complementary progress constraints: restricciones de progreso complementarias que deciden cuándo se pasa por cada waypoint en el tiempo mínimo.</dd>
+<dt>MPC</dt><dd data-hojas="3">Model predictive control (A3): control que optimiza en horizonte deslizante.</dd>
+<dt>MPCC</dt><dd data-hojas="16">Model predictive contouring control: seguimiento de contorno que decide la velocidad de avance en línea.</dd>
+<dt>OctoMap</dt><dd data-hojas="18">Mapa de ocupación en octree que agrupa espacio vacío y desconocido en celdas grandes.</dd>
+<dt>TSDF</dt><dd data-hojas="18">Truncated signed distance field: distancia con signo a la superficie más cercana, truncada cerca de ella.</dd>
+<dt>ESDF</dt><dd data-hojas="18">Euclidean signed distance field: campo de distancias euclídeo a cualquier obstáculo, con su gradiente.</dd>
+<dt>Voxblox</dt><dd data-hojas="18">Sistema que construye la TSDF y de ella el ESDF de forma incremental.</dd>
+<dt>CPU</dt><dd data-hojas="18">Central processing unit: procesador; en el laboratorio todo corre en CPU.</dd>
+<dt>Fast-Planner</dt><dd data-hojas="20">Búsqueda cinodinámica y optimización de una B-spline con gradientes del ESDF y reajuste de tiempos.</dd>
+<dt>EGO-Planner</dt><dd data-hojas="20">Planificador local sin ESDF: saca pares (punto, dirección) de la superficie del obstáculo para el gradiente de colisión.</dd>
+<dt>PX4</dt><dd data-hojas="22">Autopiloto de código abierto; suaviza waypoints con jerk limitado y ofrece prevención de colisiones básica.</dd>
+<dt>CP_DELAY</dt><dd data-hojas="21">Parámetro de PX4: retardo medio de sensor y control (0,4 s por defecto).</dd>
+<dt>MPC_ACC_HOR</dt><dd data-hojas="21">Parámetro de PX4: aceleración horizontal (3 m/s² por defecto).</dd>
+<dt>MPC_JERK_AUTO</dt><dd data-hojas="22">Parámetro de PX4: jerk en modos automáticos (4 m/s³ por defecto).</dd>
+<dt>MPC_XY_CRUISE</dt><dd data-hojas="22">Parámetro de PX4: velocidad de crucero horizontal (5 m/s por defecto).</dd>
+<dt>CP_DIST</dt><dd data-hojas="22">Parámetro de PX4: distancia a los obstáculos que mantiene la prevención de colisiones.</dd>
+<dt>CP_GO_NO_DATA</dt><dd data-hojas="22">Parámetro de PX4: si vale 0 (por defecto), no deja moverse hacia direcciones sin datos del sensor.</dd>
+<dt>FlightTaskAuto</dt><dd data-hojas="22">Tarea de PX4 de los modos automáticos; pasa los waypoints por PositionSmoothing.</dd>
+<dt>PositionSmoothing, VelocitySmoothing</dt><dd data-hojas="22">Módulos de PX4 con perfiles por fases de jerk constante.</dd>
+<dt>ARM</dt><dd data-hojas="25">Arquitectura de procesador de bajo consumo; el tema cita el ordenador ARM de a bordo del dron de la planificación aprendida.</dd>
+<dt>ESKF</dt><dd data-hojas="31">Error-state Kalman filter de A4, el estimador sobre el que correrá el simulador de H1.</dd>
+<dt>VIO</dt><dd data-hojas="35">Visual-inertial odometry: odometría con cámara e IMU, cuya covarianza se usa para inflar márgenes.</dd>
+<dt>GRU</dt><dd data-hojas="25">Gated recurrent unit: red recurrente con memoria usada en la política de Zhang et al.</dd>
+<dt>PPO</dt><dd data-hojas="25">Proximal policy optimization: algoritmo de RL con el que se compara el número de muestras.</dd>
+<dt>POMDP, MDP</dt><dd data-hojas="24">Proceso de decisión de Markov (parcialmente) observable: el experto resuelve el MDP con el estado, el alumno el POMDP con observaciones.</dd>
+<dt>L1, NPFG</dt><dd data-hojas="29">Guiados de ala fija (A2) que siguen el camino y saturan si el radio no es realizable.</dd>
+<dt>CSC, CCC</dt><dd data-hojas="28">Tipos de camino de Dubins: arco-recta-arco y tres arcos.</dd>
+<dt>GPU</dt><dd data-hojas="35">Graphics processing unit: procesador gráfico; en el laboratorio solo ayuda al vectorizar muchas semillas o planes con vmap.</dd>
+<dt>JAX</dt><dd data-hojas="37">Biblioteca de cálculo numérico con diferenciación automática; en el laboratorio, la implementación de minimum snap.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

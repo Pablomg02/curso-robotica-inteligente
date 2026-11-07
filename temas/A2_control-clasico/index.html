@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -1034,6 +1034,210 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector (\(\mathbf e_\omega\), \(\mathbf z_d\)). Subíndice «sp» (setpoint): consigna; subíndice \(d\): valor deseado. Un punto encima es derivada temporal.</p>
+<dl>
+<dt>\(\dot{\ }\) (punto)</dt><dd data-hojas="7">Derivada respecto al tiempo: \(\dot e\), \(\dot y\), \(\dot\theta\), \(\dot{\boldsymbol\omega}\) (aceleración angular).</dd>
+<dt>\(\int\)</dt><dd data-hojas="7">Integral en el tiempo del error, que da el término integral del PID.</dd>
+<dt>\(s\)</dt><dd data-hojas="7">Variable de Laplace. Multiplicar por \(s\) equivale a derivar; \(1/s\) es un integrador; \(s=j\omega\) da la respuesta en frecuencia.</dd>
+<dt>\(j\)</dt><dd data-hojas="10">Unidad imaginaria, en \(L(j\omega)\).</dd>
+<dt>\(\omega\) (frecuencia)</dt><dd data-hojas="10">En las partes de lazos y márgenes, frecuencia angular en rad/s. No confundir con la velocidad angular \(\boldsymbol\omega\) en negrita de la actitud.</dd>
+<dt>\(f\)</dt><dd data-hojas="8">Frecuencia en Hz, con \(\omega = 2\pi f\). Aparece como \(f_c\), \(f_s\), \(f_f\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="17">Norma euclídea de un vector, p. ej. \(\|\mathbf T_{\text{sp}}\|\).</dd>
+<dt>\(^\top\)</dt><dd data-hojas="17">Traspuesta de una matriz o vector. Para una rotación, \(R^\top = R^{-1}\).</dd>
+<dt>\(\times\) (vectores)</dt><dd data-hojas="17">Producto vectorial de dos vectores de \(\mathbb R^3\), p. ej. \(\mathbf z_d\times\mathbf x_c\).</dd>
+<dt>\(\circ\)</dt><dd data-hojas="19">Producto componente a componente: \(\boldsymbol\omega_{\text{sp}} = K\circ 2\,\mathbf q_{e,v}\) aplica una ganancia por eje.</dd>
+<dt>\(\otimes\)</dt><dd data-hojas="19">Producto de Hamilton de cuaterniones, el que compone giros.</dd>
+<dt>\(\operatorname{tr}\)</dt><dd data-hojas="19">Traza de una matriz cuadrada: suma de su diagonal.</dd>
+<dt>\(\operatorname{Re}\)</dt><dd data-hojas="10">Parte real de un número complejo, aplicada a los polos \(p_k\).</dd>
+<dt>\(\arg\)</dt><dd data-hojas="10">Argumento (fase) de un número complejo, en \(\varphi_m = 180^\circ + \arg L(j\omega_c)\).</dd>
+<dt>\(\operatorname{sat}\)</dt><dd data-hojas="9">Función de saturación: devuelve el mando recortado a los límites del actuador.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="8">Aproximadamente igual; se usa en las aproximaciones de baja frecuencia.</dd>
+<dt>\(\mathbb R^3\)</dt><dd data-hojas="17">Espacio de vectores reales de tres componentes.</dd>
+<dt>\(\wedge\), \(\vee\)</dt><dd data-hojas="19">Hat y vee: \(\mathbf n^\wedge\) convierte un vector de \(\mathbb R^3\) en matriz antisimétrica y \((\cdot)^\vee\) deshace la operación (de M1).</dd>
+<dt>\(\operatorname{Exp}\)</dt><dd data-hojas="19">Exponencial de SO(3): da la rotación de ángulo \(\theta\) alrededor del eje \(\mathbf n\), \(\operatorname{Exp}(\theta\mathbf n)\) (fórmula de Rodrigues, de M1).</dd>
+<dt>\(\mathbf e_3\)</dt><dd data-hojas="17">Vector unitario del eje vertical \((0,0,1)\); \(R\mathbf e_3\) es el eje de empuje del dron.</dd>
+<dt>\(g\)</dt><dd data-hojas="17">Aceleración de la gravedad (m/s²).</dd>
+</dl>
+
+<h3>Parte 1: PID, discretización y márgenes</h3>
+<p>\(e = r - y\): consigna menos medida.</p>
+<dl>
+<dt>\(r\) (consigna)</dt><dd data-hojas="7">Referencia del lazo. En la parte 2 la misma letra es una relación de anchos de banda (entrada propia más abajo).</dd>
+<dt>\(y\)</dt><dd data-hojas="7">Salida medida de la planta.</dd>
+<dt>\(e\)</dt><dd data-hojas="7">Error del lazo, \(e = r - y\).</dd>
+<dt>\(u\)</dt><dd data-hojas="7">Mando que sale del controlador. En PX4 es un par normalizado en \([-1,1]\). En la parte INDI, \(\mathbf u\) es el vector de estados reales de los actuadores.</dd>
+<dt>\(K\)</dt><dd data-hojas="7">Ganancia global de la forma ideal (ISA) del PID. En la hoja de INDI y de actitud, \(K\) es además una ganancia por eje (entradas propias).</dd>
+<dt>\(T_i\)</dt><dd data-hojas="7">Tiempo integral de la forma ideal, en segundos.</dd>
+<dt>\(T_d\)</dt><dd data-hojas="7">Tiempo derivativo de la forma ideal, en segundos.</dd>
+<dt>\(K_p\), \(K_i\), \(K_d\)</dt><dd data-hojas="7">Ganancias proporcional, integral y derivativa de la forma paralela.</dd>
+<dt>\(\omega_d\)</dt><dd data-hojas="7">Frecuencia de corte del filtro de la derivada, en rad/s. El término derivativo filtrado satura en \(K_d\omega_d\).</dd>
+<dt>\(K_{ff}\)</dt><dd data-hojas="7">Ganancia de prealimentación de la consigna.</dd>
+<dt>\(\boldsymbol\tau_{\text{sp}}\)</dt><dd data-hojas="7">Consigna de par normalizada (adimensional, en \([-1,1]\)) que sale del lazo de rate de PX4 y recibe el asignador.</dd>
+<dt>\(P\), \(I\), \(D\), \(FF\)</dt><dd data-hojas="7">Ganancias del lazo de rate de PX4: proporcional, integral, derivativa (sobre la aceleración angular filtrada) y prealimentación de la consigna de rate.</dd>
+<dt>\(\mathbf e_\omega\)</dt><dd data-hojas="7">Error de velocidad angular: consigna menos \(\boldsymbol\omega\) filtrada del giróscopo, en el lazo de rate.</dd>
+<dt>\(\boldsymbol\omega\), \(\boldsymbol\omega_{\text{sp}}\)</dt><dd data-hojas="7">Velocidad angular medida (giróscopo filtrado) y su consigna, vectores de \(\mathbb R^3\) en rad/s.</dd>
+<dt>\(T\) (periodo)</dt><dd data-hojas="8">Periodo de muestreo del lazo discreto, en segundos. En la parte 1, \(f = 1/T\). Ojo: en la hoja 10 \(T\) es también la sensibilidad complementaria, y en la 17 el empuje \(T\).</dd>
+<dt>\(k\) (subíndice)</dt><dd data-hojas="8">Índice de muestra en \(I_k\), \(D_k\), \(e_k\), \(y_k\). En la parte 2 la letra \(k\) es una ganancia de ángulo (entrada propia).</dd>
+<dt>\(I_k\)</dt><dd data-hojas="8">Estado del integrador en la muestra \(k\), con Euler hacia atrás: \(I_k = I_{k-1} + K_iTe_k\).</dd>
+<dt>\(D_k\)</dt><dd data-hojas="8">Salida del término derivativo filtrado, calculada sobre la medida \(y_k - y_{k-1}\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="8">Coeficiente del filtro discreto de la derivada, \(\alpha = 1/(\omega_dT)\).</dd>
+<dt>\(D(s)\), \(Y(s)\)</dt><dd data-hojas="8">Transformadas de Laplace de la derivada filtrada y de la medida.</dd>
+<dt>\(z\)</dt><dd data-hojas="8">Variable de la transformada Z, en la sustitución de Tustin \(s\to\tfrac2T\tfrac{z-1}{z+1}\).</dd>
+<dt>\(e^{-sT/2}\)</dt><dd data-hojas="8">Retardo puro de \(T/2\) con el que se aproxima el retenedor de orden cero en baja frecuencia.</dd>
+<dt>\(T_s\)</dt><dd data-hojas="8">Periodo de publicación del sensor; el muestreo asíncrono añade en media \(T_s/2\).</dd>
+<dt>\(f_s\)</dt><dd data-hojas="8">Frecuencia de muestreo del lazo. Regla: \(f_s \ge 18\,f_c\) para que el retenedor reste a lo sumo 10° de fase.</dd>
+<dt>\(f_c\), \(\omega_c\)</dt><dd data-hojas="8">Cruce de ganancia (donde \(|L|=1\)), en Hz y en rad/s; aproxima el ancho de banda del lazo cerrado.</dd>
+<dt>\(T_t\)</dt><dd data-hojas="9">Constante de tiempo de seguimiento del anti-windup por cálculo hacia atrás, en segundos.</dd>
+<dt>\(\dot I\)</dt><dd data-hojas="9">Derivada del integrador en continuo: \(K_ie\) más el término de corrección \((\operatorname{sat}(u)-u)/T_t\).</dd>
+<dt>\(L = CP\)</dt><dd data-hojas="10">Ganancia de lazo abierto: producto del controlador \(C\) por la planta \(P\).</dd>
+<dt>\(C\), \(P\) (transferencias)</dt><dd data-hojas="10">Funciones de transferencia del controlador y de la planta. No confundir \(P\) con la ganancia proporcional de PX4.</dd>
+<dt>\(S\)</dt><dd data-hojas="10">Sensibilidad, \(S = 1/(1+L)\): cuánto pasa de las perturbaciones a la salida y del consigna al error.</dd>
+<dt>\(T\) (sensibilidad)</dt><dd data-hojas="10">Sensibilidad complementaria, \(T = L/(1+L)\), con \(S+T=1\): cuánto ruido del sensor llega a la salida.</dd>
+<dt>\(\varphi_m\)</dt><dd data-hojas="10">Margen de fase, \(180^\circ + \arg L(j\omega_c)\): desfase o retardo extra que aguanta el lazo antes de oscilar.</dd>
+<dt>\(\zeta\)</dt><dd data-hojas="10">Coeficiente de amortiguamiento de un segundo orden. \(\varphi_m = 45^\circ\) da \(\zeta=0{,}42\) y \(60^\circ\) da \(\zeta=0{,}61\).</dd>
+<dt>\(p_k\)</dt><dd data-hojas="10">Polos de \(L\) en el semiplano derecho (inestables) en la integral de Bode.</dd>
+<dt>\(\tau\) (retardo)</dt><dd data-hojas="11">Retardo puro total del lazo, en segundos; resta fase \(\omega\tau\) en el cruce. En la parte de actitud, \(\tau\) no se usa así (el par es \(\boldsymbol\tau_{\text{sp}}\)).</dd>
+<dt>\(e^{-s\tau}\)</dt><dd data-hojas="11">Función de transferencia de un retardo puro: ganancia 1 y fase \(-\omega\tau\).</dd>
+<dt>\(f_c^{\max}\)</dt><dd data-hojas="11">Cruce máximo que permite un retardo \(\tau\) con un margen de fase dado: \((90^\circ-\varphi_m)/(360^\circ\tau)\).</dd>
+<dt>\(f_f\)</dt><dd data-hojas="33,12">Frecuencia de corte de un filtro del giróscopo. Un Butterworth de 2.º orden retrasa \(\sqrt2/(2\pi f_f)\) y un PT1, \(1/(2\pi f_f)\).</dd>
+<dt>\(\omega(s)/u(s)\)</dt><dd data-hojas="13">Planta de alabeo linealizada del x500: un integrador con un motor de primer orden, \(b/(s(1+\tau_ms))\).</dd>
+<dt>\(b\)</dt><dd data-hojas="13">Ganancia de la planta de alabeo del x500: 230 rad/s² por unidad de par normalizado.</dd>
+<dt>\(\tau_m\)</dt><dd data-hojas="13">Constante de tiempo del motor de primer orden (12,5 ms en Gazebo; 39 ms en la fila de motor real).</dd>
+<dt>\(\ell\)</dt><dd data-hojas="13">Brazo del x500 (0,174 m).</dd>
+<dt>\(J_x\)</dt><dd data-hojas="13">Momento de inercia en alabeo del x500 (0,0239 kg m²).</dd>
+<dt>\(\partial T/\partial u\)</dt><dd data-hojas="13">Variación del empuje de un motor por unidad de mando, en N (11,2 N en el punto de trabajo).</dd>
+<dt>\(k_T\)</dt><dd data-hojas="13">Coeficiente de empuje del rotor, con \(T = k_T\Omega^2\).</dd>
+<dt>\(\Omega\), \(\Omega_0\)</dt><dd data-hojas="13">Velocidad del rotor en rad/s y su valor en estacionario (770 rad/s).</dd>
+<dt>MF, MG</dt><dd data-hojas="13">Margen de fase y margen de ganancia, en las columnas de la tabla del lazo del x500.</dd>
+<dt>\(k_Q\)</dt><dd data-hojas="20">Coeficiente de par de reacción del rotor; \(k_Q/k_T = 0{,}016\) m en el x500.</dd>
+</dl>
+
+<h3>Parte 2: cascada y separación de escalas</h3>
+<dl>
+<dt>\(\theta\) (ángulo)</dt><dd data-hojas="16">Ángulo del eje controlado por el lazo externo, con \(\dot\theta=\omega\). En la hoja 19 es el ángulo del error de actitud.</dd>
+<dt>\(\theta_{\text{sp}}\)</dt><dd data-hojas="16">Consigna de ángulo del lazo externo.</dd>
+<dt>\(k\) (ganancia de ángulo)</dt><dd data-hojas="16">Ganancia del lazo P de ángulo, en rad/s por rad (4 en la actitud de PX4); su inversa es la constante de tiempo.</dd>
+<dt>\(\omega_i\)</dt><dd data-hojas="16">Ancho de banda del lazo interno de primer orden, en rad/s.</dd>
+<dt>\(\omega_n\)</dt><dd data-hojas="16">Frecuencia natural del segundo orden resultante, \(\omega_n^2 = k\omega_i\).</dd>
+<dt>\(r = \omega_i/k\)</dt><dd data-hojas="16">Relación entre el ancho de banda del lazo interno y el del externo. Con interno de primer orden, \(\zeta = \tfrac12\sqrt r\); \(r=2\) da \(\zeta=0{,}71\) y \(r=4\) amortiguamiento crítico.</dd>
+<dt>\(\theta/\theta_{\text{sp}}\)</dt><dd data-hojas="16">Transferencia del ángulo ante la consigna con interno de primer orden: \(k\omega_i/(s^2+\omega_is+k\omega_i)\).</dd>
+<dt>\(\zeta_i\)</dt><dd data-hojas="16">Amortiguamiento del lazo interno de segundo orden en la tabla de sobrepaso (0,7).</dd>
+<dt>\(\mathbf a_{\text{sp}}\)</dt><dd data-hojas="17">Consigna de aceleración que sale del lazo de velocidad, vector de \(\mathbb R^3\) en m/s².</dd>
+<dt>\(m\)</dt><dd data-hojas="17">Masa del dron.</dd>
+<dt>\(\mathbf T_{\text{sp}}\)</dt><dd data-hojas="17">Empuje deseado como vector, \(m(\mathbf a_{\text{sp}} + g\mathbf e_3)\), en N.</dd>
+<dt>\(\mathbf z_d\)</dt><dd data-hojas="17">Dirección deseada del empuje: \(\mathbf T_{\text{sp}}/\|\mathbf T_{\text{sp}}\|\), vector unitario.</dd>
+<dt>\(\psi_d\)</dt><dd data-hojas="17">Rumbo (guiñada) deseado.</dd>
+<dt>\(\mathbf x_c\)</dt><dd data-hojas="17">Vector intermedio de rumbo, \((\cos\psi_d,\sin\psi_d,0)\).</dd>
+<dt>\(\mathbf x_d\), \(\mathbf y_d\)</dt><dd data-hojas="17">Ejes \(x\) e \(y\) deseados del cuerpo, que completan con \(\mathbf z_d\) la matriz \(R_d\).</dd>
+<dt>\(R_d\)</dt><dd data-hojas="17">Actitud deseada, matriz de rotación \(3\times3\) con columnas \([\mathbf x_d\ \mathbf y_d\ \mathbf z_d]\).</dd>
+<dt>\(R\)</dt><dd data-hojas="17">Actitud actual, matriz de rotación \(3\times3\) del cuerpo al mundo.</dd>
+<dt>\(T\) (empuje colectivo)</dt><dd data-hojas="17">Empuje colectivo, escalar: la proyección \(\mathbf T_{\text{sp}}^\top R\mathbf e_3\) sobre el eje actual del dron.</dd>
+</dl>
+
+<h3>Parte 3: actitud en SO(3)</h3>
+<dl>
+<dt>SO(3)</dt><dd data-hojas="1">Grupo de las rotaciones de \(\mathbb R^3\); la actitud de un dron es un elemento suyo (de M1).</dd>
+<dt>SE(3)</dt><dd data-hojas="4">Grupo de movimientos rígidos (rotación más traslación), donde Lee, Leok y McClamroch formulan el control geométrico.</dd>
+<dt>\(\Psi\)</dt><dd data-hojas="19">Función de error de actitud, \(\tfrac12\operatorname{tr}(I-R_d^\top R) = 1-\cos\theta\), escalar entre 0 y 2.</dd>
+<dt>\(I\) (identidad)</dt><dd data-hojas="19">Matriz identidad \(3\times3\). En la parte 1, \(I\) es la ganancia integral de PX4.</dd>
+<dt>\(\mathbf e_R\)</dt><dd data-hojas="19">Error de actitud geométrico, vector de \(\mathbb R^3\): parte antisimétrica de \(R_d^\top R\), con \(\|\mathbf e_R\| = \sin\theta\).</dd>
+<dt>\(\mathbf n\)</dt><dd data-hojas="19">Eje unitario del giro que lleva \(R\) a \(R_d\).</dd>
+<dt>\(\mathbf q\), \(\mathbf q_d\)</dt><dd data-hojas="19">Cuaterniones de la actitud actual y la deseada.</dd>
+<dt>\(\mathbf q_e\)</dt><dd data-hojas="19">Error de cuaternión, \(\mathbf q^{-1}\otimes\mathbf q_d\): giro de la actitud actual a la deseada.</dd>
+<dt>\(q_{e,w}\), \(\mathbf q_{e,v}\)</dt><dd data-hojas="19">Parte escalar y parte vectorial del error de cuaternión. Se elige el hemisferio \(q_{e,w}\ge0\) para evitar el unwinding; \(\|2\mathbf q_{e,v}\| = 2\sin(\theta/2)\).</dd>
+<dt>\(2\sin(\theta/2)\)</dt><dd data-hojas="19">Norma de la consigna de cuaternión: crece hasta el final, a diferencia de \(\sin\theta\).</dd>
+<dt>\(\mathbf q_{d,\text{red}}\)</dt><dd data-hojas="20">Cuaternión de actitud reducida: lleva \(\mathbf z\) a \(\mathbf z_d\) con el giro mínimo, sin cambiar el rumbo.</dd>
+<dt>\(\mathbf z\)</dt><dd data-hojas="20">Eje de empuje actual, \(R\mathbf e_3\).</dd>
+<dt>\(\psi_e\)</dt><dd data-hojas="20">Resto de guiñada: ángulo del giro puro alrededor de \(\mathbf z_d\) que queda tras la actitud reducida.</dd>
+<dt>\(\mathbf q_d'\)</dt><dd data-hojas="20">Cuaternión deseado recompuesto por PX4 con la guiñada ponderada: \(\mathbf q_{d,\text{red}}\otimes(\cos\tfrac{w\psi_e}2,0,0,\sin\tfrac{w\psi_e}2)\).</dd>
+<dt>\(w\)</dt><dd data-hojas="20">Peso de la guiñada (MC_YAW_WEIGHT, 0,4 por defecto).</dd>
+</dl>
+
+<h3>Parte 4: INDI</h3>
+<dl>
+<dt>\(\mathbf f(\mathbf x)\)</dt><dd data-hojas="22">Parte de la dinámica de rotación que no depende del mando (arrastre, giroscópicos, perturbaciones); INDI no necesita modelarla.</dd>
+<dt>\(\mathbf x\), \(\mathbf x_0\)</dt><dd data-hojas="22">Estado de la dinámica de rotación en el instante actual y en el anterior.</dd>
+<dt>\(G\)</dt><dd data-hojas="22">Matriz de eficacia de control: cuánta aceleración angular da cada actuador.</dd>
+<dt>\(\mathbf u_0\)</dt><dd data-hojas="22">Estado de los actuadores en el instante anterior (RPM medidas o modelo del motor).</dd>
+<dt>\(\dot{\boldsymbol\omega}_0\)</dt><dd data-hojas="22">Aceleración angular medida (giróscopo derivado y filtrado) en el instante anterior; contiene todo lo que no se modela.</dd>
+<dt>\(\boldsymbol\nu\)</dt><dd data-hojas="22">Aceleración angular virtual deseada, \(K_\omega(\boldsymbol\omega_{\text{sp}}-\boldsymbol\omega)\).</dd>
+<dt>\(K_\omega\)</dt><dd data-hojas="22">Ganancia del lazo de rate de INDI; fija su ancho de banda (45 rad/s en la figura).</dd>
+</dl>
+
+<h3>Parte 5: ala fija</h3>
+<dl>
+<dt>\(\phi\)</dt><dd data-hojas="25">Ángulo de alabeo del ala fija.</dd>
+<dt>\(\delta_a\)</dt><dd data-hojas="25">Deflexión del alerón, mando del lazo de alabeo.</dd>
+<dt>\(a_{\phi_1}\), \(a_{\phi_2}\)</dt><dd data-hojas="25">Coeficientes del modelo de diseño del alabeo: amortiguamiento (22,6 s⁻¹ en el Aerosonde) y eficacia del alerón (130,9 s⁻²).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="25">Densidad del aire.</dd>
+<dt>\(V_a\)</dt><dd data-hojas="25">Velocidad aerodinámica (25 m/s en la tabla del Aerosonde).</dd>
+<dt>\(S\) (superficie), \(b\) (envergadura)</dt><dd data-hojas="25">Superficie alar y envergadura. En la parte 1, \(S\) es la sensibilidad y \(b\) la ganancia de la planta de alabeo del x500.</dd>
+<dt>\(C_{p_p}\), \(C_{p_{\delta_a}}\)</dt><dd data-hojas="25">Coeficientes aerodinámicos del par de alabeo: por velocidad de alabeo y por deflexión de alerón.</dd>
+<dt>\(k_{p_\phi}\)</dt><dd data-hojas="25">Ganancia proporcional del lazo de alabeo, \(\delta_a^{\max}/e_\phi^{\max}\) (3,0 en la tabla).</dd>
+<dt>\(k_{d_\phi}\)</dt><dd data-hojas="25">Ganancia derivativa del lazo de alabeo, \((2\zeta\omega_{n_\phi}-a_{\phi_1})/a_{\phi_2}\).</dd>
+<dt>\(\delta_a^{\max}\), \(e_\phi^{\max}\)</dt><dd data-hojas="25">Alerón máximo y error de alabeo máximo con los que se fija la ganancia proporcional.</dd>
+<dt>\(\omega_{n_\phi}\)</dt><dd data-hojas="25">Frecuencia natural del lazo de alabeo, \(\sqrt{a_{\phi_2}k_{p_\phi}}\).</dd>
+<dt>\(\chi\)</dt><dd data-hojas="25">Rumbo (ángulo de la trayectoria sobre el suelo); con giro coordinado, \(\dot\chi\approx(g/V_g)\phi\).</dd>
+<dt>\(V_g\)</dt><dd data-hojas="25">Velocidad respecto al suelo.</dd>
+<dt>\(\omega_{n_\chi}\)</dt><dd data-hojas="25">Frecuencia natural del lazo de rumbo, \(\omega_{n_\phi}/W_\chi\).</dd>
+<dt>\(W\), \(W_\chi\)</dt><dd data-hojas="25">Separación de escalas entre el lazo de alabeo y el de rumbo (recomendada de 5 a 10).</dd>
+<dt>\(E_s\)</dt><dd data-hojas="26">Energía específica total, \(h+V^2/2g\), en metros.</dd>
+<dt>\(L_s\)</dt><dd data-hojas="26">Diferencia entre energía potencial y cinética específicas: mide cómo está repartida la energía.</dd>
+<dt>\(h\)</dt><dd data-hojas="26">Altitud.</dd>
+<dt>\(V\)</dt><dd data-hojas="26">Velocidad del avión. En la guía L1 también es la velocidad de avance.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="26">Ángulo de trayectoria (pendiente de vuelo).</dd>
+<dt>\(T\) (empuje del ala fija), \(D\)</dt><dd data-hojas="26">Empuje y resistencia en la ecuación longitudinal \(m\dot V = T-D-mg\sin\gamma\).</dd>
+<dt>\(L_1\)</dt><dd data-hojas="27">Distancia al punto de la trayectoria que persigue el guiado L1.</dd>
+<dt>\(a_{\text{cmd}}\)</dt><dd data-hojas="27">Aceleración lateral pedida por L1, \(2V^2\sin\eta/L_1\).</dd>
+<dt>\(\eta\)</dt><dd data-hojas="27">Ángulo entre la velocidad y la línea al punto de referencia.</dd>
+<dt>\(d\)</dt><dd data-hojas="27">Separación lateral respecto a la trayectoria; con L1 linealizado, \(\eta\approx d/L_1+\dot d/V\).</dd>
+</dl>
+
+<h3>Parte 6: dónde entra una red</h3>
+<dl>
+<dt>\(\Delta\varphi\)</dt><dd data-hojas="30">Fase que añade el retardo de la política en el cruce del lazo que sustituye, \(\omega_c\tau\).</dd>
+</dl>
+
+<h3>Siglas</h3>
+<dl>
+<dt>PID</dt><dd data-hojas="7">Controlador proporcional-integral-derivativo.</dd>
+<dt>ISA</dt><dd data-hojas="7">Forma «ideal» del PID, con una ganancia global y los tiempos \(T_i\), \(T_d\).</dd>
+<dt>PI</dt><dd data-hojas="7">Proportional-integral: el PID de un autopiloto es un PI sobre el error de velocidad angular, con amortiguamiento sobre la medida y prealimentación; también el rumbo con giro coordinado es un PI. No es el número \(\pi\).</dd>
+<dt>PT1</dt><dd data-hojas="12">Filtro de primer orden (paso bajo) de constante de tiempo \(1/(2\pi f_c)\).</dd>
+<dt>FF</dt><dd data-hojas="7">Feed-forward: prealimentación de la consigna.</dd>
+<dt>ESC</dt><dd data-hojas="5">Electronic speed controller: electrónica que mueve el motor según el mando.</dd>
+<dt>PX4</dt><dd data-hojas="3">Autopiloto de código abierto, usado como modelo de la cascada.</dd>
+<dt>EKF2</dt><dd data-hojas="5">Filtro de Kalman extendido de PX4: estima actitud (200 Hz), posición y velocidad (≈ 100 Hz).</dd>
+<dt>SITL</dt><dd data-hojas="13">Software-in-the-loop: el autopiloto real corriendo contra un simulador.</dd>
+<dt>IMU</dt><dd data-hojas="14">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>DShot</dt><dd data-hojas="3">Protocolo digital de mando a los ESC; la variante bidireccional devuelve las RPM.</dd>
+<dt>RPM</dt><dd data-hojas="12">Revoluciones por minuto del motor, usadas para el filtro notch y para INDI.</dd>
+<dt>GPS</dt><dd data-hojas="23">Global positioning system: referencia de posición; en la tabla de INDI se compara la posición a 4 Hz con la de un GPS.</dd>
+<dt>CTBR</dt><dd data-hojas="29">Collective thrust and body rates: empuje colectivo más velocidades angulares como acción de la política.</dd>
+<dt>LV</dt><dd data-hojas="29">Linear velocity: la política da la velocidad lineal.</dd>
+<dt>SRT</dt><dd data-hojas="29">Single-rotor thrust: la política da el empuje de cada motor desde el estado.</dd>
+<dt>NDI</dt><dd data-hojas="22">Nonlinear dynamic inversion: inversión dinámica clásica, que necesita \(\mathbf f\) entera.</dd>
+<dt>INDI</dt><dd data-hojas="22">Incremental NDI: mide la aceleración angular para cancelar lo que no se modela.</dd>
+<dt>NMPC</dt><dd data-hojas="23">Nonlinear model predictive control: control predictivo con el modelo no lineal.</dd>
+<dt>MPC</dt><dd data-hojas="30">Model predictive control.</dd>
+<dt>RAPTOR</dt><dd data-hojas="29">Política de fundación para control de cuadricópteros de Eschmann et al.</dd>
+<dt>Neuroflight</dt><dd data-hojas="29">Firmware de control con una red a 2 kHz en un STM32F7.</dd>
+<dt>TECS</dt><dd data-hojas="26">Total energy control system: motor para la energía total, cabeceo para su reparto.</dd>
+<dt>NPFG</dt><dd data-hojas="27">Nonlinear path following guidance: guiado de trayectoria que sustituyó a L1 en PX4.</dd>
+<dt>L1</dt><dd data-hojas="27">Guiado de trayectoria que persigue un punto a distancia \(L_1\).</dd>
+<dt>RL</dt><dd data-hojas="30">Reinforcement learning.</dd>
+<dt>RMS</dt><dd data-hojas="23">Root mean square: valor cuadrático medio.</dd>
+<dt>ENU</dt><dd data-hojas="17">East-north-up: convenio de ejes con el eje \(z\) hacia arriba.</dd>
+<dt>MC_RR_INT_LIM, MC_YAW_WEIGHT, MC_TILTMAX_AIR</dt><dd data-hojas="9,20,17">Parámetros de PX4: límite del integrador del rate, peso de la guiñada e inclinación máxima.</dd>
+<dt>JAX</dt><dd data-hojas="32">Biblioteca de cálculo numérico con diferenciación automática; en el tema, el simulador multifrecuencia del laboratorio.</dd>
+<dt>CPU</dt><dd data-hojas="38">Central processing unit: procesador; en el laboratorio todo corre en CPU.</dd>
+<dt>GPU</dt><dd data-hojas="38">Graphics processing unit: procesador gráfico; en el laboratorio solo acelera el barrido en frecuencia vectorizado con vmap.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

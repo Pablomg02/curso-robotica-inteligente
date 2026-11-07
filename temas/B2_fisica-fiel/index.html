@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -976,6 +976,185 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector. Sombrero \(\hat{\ }\): valor estimado. \(\delta\): pequeña variación alrededor de un punto de operación. Subíndice 0: valor en estacionario o de referencia. Como en la literatura de cada especialidad, algunas letras se repiten entre partes (se avisa en cada entrada).</p>
+<dl>
+<dt>\(\hat{\boldsymbol\theta}\), \(\hat d\), \(\hat k_h\)</dt><dd data-hojas="24">Estimaciones por mínimos cuadrados de los parámetros \(\boldsymbol\theta\), \(d\) y \(k_h\).</dd>
+<dt>\(\dot{\mathbf x}\), \(\dot\Omega\)</dt><dd data-hojas="12">Derivadas temporales del estado y de la velocidad del rotor.</dd>
+<dt>\(\delta\Omega\), \(\delta d\)</dt><dd data-hojas="12">Pequeñas variaciones de la velocidad del rotor y del mando alrededor del punto \(\Omega_0\), usadas para linealizar.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="7">«Aproximadamente igual».</dd>
+<dt>\(\sim\)</dt><dd data-hojas="19">«Se distribuye según», p. ej. \(w_k \sim \mathcal N(0,1)\).</dd>
+<dt>\(\mathcal N(\mu,\sigma^2)\)</dt><dd data-hojas="19">Distribución gaussiana; \(\mathcal N(0,1)\) es la normal estándar.</dd>
+<dt>\(\mathrm{Cov}\), \(\mathrm{Var}\)</dt><dd data-hojas="24">Covarianza y varianza de un estimador o de una variable.</dd>
+<dt>\(^\top\), \(^{-1}\)</dt><dd data-hojas="24">Traspuesta e inversa de una matriz.</dd>
+<dt>\(I\)</dt><dd data-hojas="24">Matriz identidad.</dd>
+<dt>\(\Rightarrow\)</dt><dd data-hojas="12">«Por tanto» en las derivaciones.</dd>
+<dt>\(\int\)</dt><dd data-hojas="7">Integral; aquí, sobre el radio de la pala.</dd>
+<dt>\(\sum\)</dt><dd data-hojas="24">Suma sobre rotores, p. ej. \(\sum\Omega_i^2\).</dd>
+</dl>
+<h3>Parte 1 · El rotor</h3>
+<dl>
+<dt>\(T\)</dt><dd data-hojas="1">Empuje del rotor (N). En el modelo simple, \(T = k_T\Omega^2\).</dd>
+<dt>\(k_T\)</dt><dd data-hojas="1">Coeficiente de empuje del rotor: empuje por (rad/s)².</dd>
+<dt>\(\Omega\)</dt><dd data-hojas="1">Velocidad de giro del rotor (rad/s).</dd>
+<dt>\(\Omega_0\)</dt><dd data-hojas="12">Punto de operación de la velocidad del rotor alrededor del que se linealiza.</dd>
+<dt>\(\Omega_{1}\), \(\Omega_2\)</dt><dd data-hojas="13">Velocidades inicial (810 rad/s) y final (565 rad/s) de la bajada libre.</dd>
+<dt>\(c_d\)</dt><dd data-hojas="6">Coeficiente de arrastre de rotor de Gazebo, en \(-|\Omega|c_d\mathbf v_\perp\).</dd>
+<dt>\(\mathbf v_\perp\)</dt><dd data-hojas="6">Componente de la velocidad perpendicular al eje del rotor.</dd>
+<dt>\(r\)</dt><dd data-hojas="7">Radio de una sección de pala medido desde el eje (m).</dd>
+<dt>\(R\) (rotor)</dt><dd data-hojas="7">Radio del rotor (0,127 m en el x500). En la parte del motor, \(R\) es la resistencia eléctrica (hoja 12).</dd>
+<dt>\(x\)</dt><dd data-hojas="7">Radio adimensional \(x = r/R\) en la integración.</dd>
+<dt>\(U_T\)</dt><dd data-hojas="7">Velocidad del aire en el plano del disco que ve una sección de pala: \(\Omega r\) (más la componente de avance).</dd>
+<dt>\(U_P\)</dt><dd data-hojas="7">Velocidad del aire perpendicular al disco: subida más flujo inducido.</dd>
+<dt>\(dL\), \(dT\)</dt><dd data-hojas="7">Sustentación y empuje de un elemento de pala de longitud \(dr\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="7">Densidad del aire.</dd>
+<dt>\(c\) (cuerda)</dt><dd data-hojas="7">Cuerda de la pala (2 cm en el ejemplo). En la hoja 8, \(c\) es el empuje relativo del ajuste de Faessler (\(c_{\text{cmd}}\)).</dd>
+<dt>\(a\) (pendiente)</dt><dd data-hojas="7">Pendiente de la curva de sustentación de la pala (5,7). En las hojas 19 y 24, \(a\) es una aceleración.</dd>
+<dt>\(\theta(r)\), \(\theta_0\), \(\theta_{tw}\)</dt><dd data-hojas="7">Ángulo de paso de la pala: lineal en el radio, con paso en la raíz \(\theta_0\) y torsión \(\theta_{tw}\) (−11,5°).</dd>
+<dt>\(N\)</dt><dd data-hojas="7">Número de palas del rotor.</dd>
+<dt>\(\sigma\) (solidez)</dt><dd data-hojas="7">Solidez del rotor \(\sigma = Nc/(\pi R)\) (0,100). En las partes 3 y 4, \(\sigma\) es una desviación típica.</dd>
+<dt>\(\mu\) (avance)</dt><dd data-hojas="7">Relación de avance \(\mu = V\cos\alpha/(\Omega R)\). No confundir con el coeficiente de rozamiento de B1.</dd>
+<dt>\(V\) (rotor)</dt><dd data-hojas="7">Velocidad del dron respecto al aire (m/s). En la parte 2, \(V\) es la tensión de bus (hoja 12) y en Dryden, la velocidad media del viento.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="7">Inclinación del disco del rotor respecto a la velocidad relativa del aire; \(\tan\alpha = dv/g\) en la hoja 8.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="7">Flujo total que atraviesa el disco, en unidades de \(\Omega R\).</dd>
+<dt>\(\lambda_c\)</dt><dd data-hojas="7">Parte del flujo debida a la velocidad de subida: \(V\sin\alpha/(\Omega R)\).</dd>
+<dt>\(\lambda_i\)</dt><dd data-hojas="9">Flujo inducido por el propio rotor, en el término de potencia inducida.</dd>
+<dt>\(C_T\)</dt><dd data-hojas="7">Coeficiente de empuje adimensional del rotor.</dd>
+<dt>\(C_P\)</dt><dd data-hojas="9">Coeficiente de potencia: inducida más subida más perfil.</dd>
+<dt>\(C_{d0}\)</dt><dd data-hojas="7">Coeficiente de arrastre de perfil de la pala (0,02).</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="9">Factor (\(\approx 1{,}15\)) que corrige el flujo no uniforme y las pérdidas de punta en la potencia inducida.</dd>
+<dt>\(FM\)</dt><dd data-hojas="9">Figura de mérito del rotor en estacionario \(= (C_T^{3/2}/\sqrt2)/C_P\) (0,63 en el ejemplo).</dd>
+<dt>\(\psi\)</dt><dd data-hojas="7">Acimut de la pala en su giro, del que depende \(U_T\) en avance.</dd>
+<dt>\(\mathbf V_\infty\), \(\mathbf v_i\)</dt><dd data-hojas="7">Velocidad de la corriente libre y velocidad inducida en la teoría de cantidad de movimiento: \(T = 2\rho A v_i|\mathbf V_\infty+\mathbf v_i|\).</dd>
+<dt>\(A\)</dt><dd data-hojas="7">Área del disco del rotor.</dd>
+<dt>\(v_h\), \(c_{\text{cmd}}\), \(k_h\)</dt><dd data-hojas="8">Ajuste de Faessler: \(c = c_{\text{cmd}} + k_h v_h^2\), con \(v_h\) la velocidad horizontal y \(k_h\) (0,009 m⁻¹) el coeficiente de sustentación de traslación.</dd>
+<dt>\(d\) (arrastre de rotor)</dt><dd data-hojas="8">Coeficiente de arrastre por unidad de masa, 0,465 s⁻¹ en el ejemplo; \(\tan\alpha = dv/g\). En la parte 2, \(d\) es el mando del motor.</dd>
+<dt>\(g\)</dt><dd data-hojas="8">Aceleración de la gravedad.</dd>
+<dt>\(v\)</dt><dd data-hojas="8">Velocidad de vuelo respecto al aire (m/s).</dd>
+<dt>\(T_{\text{IGE}}/T_{\text{OGE}}\)</dt><dd data-hojas="10">Cociente de empuje dentro y fuera del efecto suelo: \(1/(1-(R/4z)^2)\) (Cheeseman y Bennett).</dd>
+<dt>\(z\)</dt><dd data-hojas="10">Altura del rotor sobre el suelo (m) en la fórmula del efecto suelo (\(z=2R\), \(z=R\)).</dd>
+</dl>
+<h3>Parte 2 · Motor, ESC y batería</h3>
+<dl>
+<dt>\(d\) (mando)</dt><dd data-hojas="12">Mando del ESC, \(d \in [0,1]\): fracción de la tensión de bus que recibe el motor.</dd>
+<dt>\(V\) (bus)</dt><dd data-hojas="12">Tensión de bus de la batería (V), p. ej. 16,8 V con la 4S cargada.</dd>
+<dt>\(R\) (motor)</dt><dd data-hojas="12">Resistencia del bobinado (0,12 Ω).</dd>
+<dt>\(L\)</dt><dd data-hojas="12">Inductancia del motor; su constante \(L/R\) es de décimas de milisegundo y se desprecia. En Dryden, \(L_u\), \(L_w\) son escalas de longitud (hoja 19).</dd>
+<dt>\(i\)</dt><dd data-hojas="12">Corriente del motor (A).</dd>
+<dt>\(k_e\), \(k_t\)</dt><dd data-hojas="12">Constantes de fuerza contraelectromotriz y de par del motor, iguales (\(k_e = k_t\); 0,0158 V s/rad).</dd>
+<dt>\(J_r\)</dt><dd data-hojas="12">Inercia del rotor y la hélice (2,5·10⁻⁵ kg m²).</dd>
+<dt>\(k_Q\)</dt><dd data-hojas="12">Coeficiente de par aerodinámico de la hélice: par \(k_Q\Omega^2\). Se relaciona con el empuje: \(k_Q = k_m k_T\).</dd>
+<dt>\(k_m\)</dt><dd data-hojas="12">Relación entre el par y el empuje de la hélice, que da \(k_Q = k_m k_T\).</dd>
+<dt>\(\tau\) (motor)</dt><dd data-hojas="12">Constante de tiempo del motor linealizado: \(\tau = J_r/(k_tk_e/R + 2k_Q\Omega_0)\) (11,0 ms). En Dryden, \(\tau = L_u/V\) es el tiempo de correlación (hoja 19).</dd>
+<dt>\(k_tk_e/R\)</dt><dd data-hojas="12">Amortiguamiento eléctrico (fuerza contraelectromotriz), de 2,07·10⁻³ N m s.</dd>
+<dt>\(2k_Q\Omega_0\)</dt><dd data-hojas="12">Amortiguamiento aerodinámico de la hélice, de 0,21·10⁻³ N m s.</dd>
+<dt>\(t\)</dt><dd data-hojas="13">Tiempo de bajada libre del rotor: \(t = \frac{J_r}{k_Q}(1/\Omega_2 - 1/\Omega_1)\) (98 ms).</dd>
+<dt>\(f\)</dt><dd data-hojas="14">Valor de THR_MDL_FAC: interpola entre curva de empuje lineal (0) y cuadrática (1).</dd>
+<dt>\(u\)</dt><dd data-hojas="14">Mando normalizado del motor en el modelo de curva de empuje de PX4.</dd>
+<dt>\(T/T_{\max}\)</dt><dd data-hojas="14">Empuje relativo al máximo: \((1-f)u + fu^2\).</dd>
+<dt>\(\Omega(d)\)</dt><dd data-hojas="14">Velocidad de estacionario del rotor en función del mando, solución de una cuadrática.</dd>
+<dt>\(V\) (batería)</dt><dd data-hojas="15">Tensión en bornes: \(V = \mathrm{OCV}(\mathrm{SoC}) - R_0 I - V_1\).</dd>
+<dt>\(\mathrm{OCV}\)</dt><dd data-hojas="15">Tensión en circuito abierto, función del estado de carga.</dd>
+<dt>\(\mathrm{SoC}\)</dt><dd data-hojas="15">Estado de carga de la batería; \(\dot{\mathrm{SoC}} = -I/Q\).</dd>
+<dt>\(R_0\)</dt><dd data-hojas="15">Resistencia interna en serie de la batería (5 mΩ por celda al empezar en PX4).</dd>
+<dt>\(I\)</dt><dd data-hojas="15">Corriente que da la batería (A).</dd>
+<dt>\(V_1\)</dt><dd data-hojas="15">Tensión de polarización de la rama RC, con \(\dot V_1 = -V_1/(R_1C_1) + I/C_1\).</dd>
+<dt>\(R_1\), \(C_1\)</dt><dd data-hojas="15">Resistencia y capacidad de la rama RC que modela la dinámica de polarización.</dd>
+<dt>\(Q\)</dt><dd data-hojas="15">Capacidad de la batería (carga total) en el balance de estado de carga.</dd>
+</dl>
+<h3>Parte 3 · Viento y turbulencia</h3>
+<dl>
+<dt>\(\mathbf F\)</dt><dd data-hojas="18">Fuerza del viento sobre cada cuerpo en Gazebo: \(\mathbf F = m\,k\,(\mathbf v_{\text{viento}} - \mathbf v)\).</dd>
+<dt>\(m\)</dt><dd data-hojas="18">Masa del cuerpo (kg).</dd>
+<dt>\(k\)</dt><dd data-hojas="18">Factor de escala configurable del viento en Gazebo.</dd>
+<dt>\(\mathbf v_{\text{viento}}\), \(\mathbf v\)</dt><dd data-hojas="18">Velocidad del viento y velocidad del cuerpo; su diferencia es la velocidad relativa al aire.</dd>
+<dt>\(V\) (Dryden)</dt><dd data-hojas="18">Velocidad con que el vehículo atraviesa la turbulencia congelada (hipótesis de Taylor); en estacionario, el viento medio.</dd>
+<dt>\(h\) (altura)</dt><dd data-hojas="19">Altura sobre el suelo, en pies, en las fórmulas de MIL-F-8785C (\(h \lt 1000\) ft). En la parte 1 de B1, \(h\) era el paso.</dd>
+<dt>\(W_{20}\)</dt><dd data-hojas="19">Viento a 20 ft (15 kt ligera, 30 moderada, 45 severa).</dd>
+<dt>\(L_u\), \(L_v\), \(L_w\)</dt><dd data-hojas="19">Escalas de longitud de la turbulencia longitudinal, lateral y vertical: \(L_w = h\), \(L_u = L_v = h/(0{,}177 + 0{,}000823h)^{1{,}2}\).</dd>
+<dt>\(\sigma_u\), \(\sigma_v\), \(\sigma_w\)</dt><dd data-hojas="19">Intensidades (desviación típica, m/s) de la turbulencia: \(\sigma_w = 0{,}1W_{20}\).</dd>
+<dt>\(H_u(s)\), \(H_w(s)\)</dt><dd data-hojas="19">Funciones de transferencia que convierten ruido blanco en turbulencia longitudinal (orden 1) y vertical (orden 2).</dd>
+<dt>\(s\)</dt><dd data-hojas="19">Variable de Laplace de los filtros de Dryden.</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="19">Paso de la discretización exacta del proceso de Dryden.</dd>
+<dt>\(a\) (discretización)</dt><dd data-hojas="19">Factor \(a = e^{-\Delta t/\tau}\) de la recursión exacta.</dd>
+<dt>\(w_k\)</dt><dd data-hojas="19">Ruido gaussiano estándar del paso \(k\) en la recursión de Dryden.</dd>
+<dt>\(u_k\)</dt><dd data-hojas="19">Ráfaga longitudinal en el paso \(k\): \(u_k = a u_{k-1} + \sigma_u\sqrt{1-a^2}\,w_k\).</dd>
+<dt>\(D\)</dt><dd data-hojas="21">Coeficiente de arrastre lineal (N s/m) con que la ráfaga empuja al dron: \(D(\mathbf v_{\text{viento}}-\mathbf v)\).</dd>
+<dt>\(\Phi(\mathbf x)\)</dt><dd data-hojas="22">Base de funciones aprendida fuera de línea en Neural-Fly, independiente del viento. En identificación, \(\Phi\) es la matriz de regresores (hoja 24).</dd>
+<dt>\(\mathbf a\) (viento)</dt><dd data-hojas="22">Coeficientes que se adaptan en vuelo: resumen del viento actual; \(\mathbf f \approx \Phi(\mathbf x)\mathbf a\).</dd>
+<dt>\(\mathbf f\)</dt><dd data-hojas="22">Fuerza aerodinámica no modelada que se quiere predecir.</dd>
+</dl>
+<h3>Parte 4 · Identificación y modelos híbridos</h3>
+<dl>
+<dt>\(m\), \(J\)</dt><dd data-hojas="24">Masa (con centro de masas) y matriz de inercia del dron, que se miden con báscula y péndulos.</dd>
+<dt>\(k_T/m\)</dt><dd data-hojas="24">Empuje por unidad de masa, identificable en vuelo con \(a_z\) frente a \(\sum\Omega_i^2\).</dd>
+<dt>\(d_x\), \(d_y\)</dt><dd data-hojas="24">Coeficientes de arrastre de rotor en los ejes del cuerpo.</dd>
+<dt>\(a^B_{xy}\), \(v^B_{xy}\)</dt><dd data-hojas="24">Aceleración y velocidad horizontales en ejes del cuerpo: \(a^B_{xy} = -d\,v^B_{xy}\).</dd>
+<dt>\(a_z\)</dt><dd data-hojas="24">Aceleración vertical medida.</dd>
+<dt>\(\mathbf y\)</dt><dd data-hojas="24">Vector de medidas del problema de mínimos cuadrados, \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\).</dd>
+<dt>\(\Phi\) (regresores)</dt><dd data-hojas="24">Matriz de regresores del modelo lineal en los parámetros.</dd>
+<dt>\(\boldsymbol\theta\)</dt><dd data-hojas="24">Vector de parámetros a identificar. En la hoja 7, \(\theta\) es el ángulo de paso de la pala.</dd>
+<dt>\(\boldsymbol\varepsilon\)</dt><dd data-hojas="24">Ruido de medida, \(\boldsymbol\varepsilon \sim \mathcal N(0,\sigma^2I)\).</dd>
+<dt>\(\sigma^2\)</dt><dd data-hojas="24">Varianza del ruido de medida.</dd>
+<dt>\((\Phi^\top\Phi)^{-1}\)</dt><dd data-hojas="24">Matriz cuya inversa da la covarianza del estimador: \(\mathrm{Cov}(\hat{\boldsymbol\theta}) = \sigma^2(\Phi^\top\Phi)^{-1}\).</dd>
+<dt>\(N\) (muestras)</dt><dd data-hojas="24">Número de muestras en la identificación. En la hoja 7, \(N\) es el número de palas.</dd>
+<dt>\(v_{\max}\)</dt><dd data-hojas="24">Velocidad máxima presente en los datos de identificación; la varianza de \(\hat d\) decrece con \(v_{\max}^2\) y la de \(\hat k_h\) con \(v_{\max}^4\).</dd>
+<dt>\(\sigma_v\)</dt><dd data-hojas="24">Ruido de la velocidad usada como regresor (errores en las variables), que sesga el estimador hacia cero.</dd>
+<dt>\(f_{\text{física}}\), \(f_{\text{red}}\)</dt><dd data-hojas="27">Parte física y parte de red (residuo) de un modelo híbrido: \(\dot{\mathbf x} = f_{\text{física}} + f_{\text{red}}\).</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="27">Entrada de mando del modelo.</dd>
+<dt>\(\mathbf h\)</dt><dd data-hojas="27">Historia de estados y mandos que usa el residuo para efectos con memoria.</dd>
+<dt>\(\mathbf w\)</dt><dd data-hojas="27">Pesos de la red del residuo.</dd>
+<dt>\(a = -0{,}45\,v - 0{,}004\,v|v|\)</dt><dd data-hojas="29">Verdad sintética de la deceleración con la que se compara caja gris y polinomio.</dd>
+<dt>\(c\) (hoja 29)</dt><dd data-hojas="29">Coeficiente del término cuadrático \(-c\,v|v|\) del modelo de caja gris.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>BEM</dt><dd data-hojas="4">Blade element method: teoría del elemento de pala.</dd>
+<dt>BEMT</dt><dd data-hojas="4">Blade element momentum theory: elemento de pala combinado con cantidad de movimiento.</dd>
+<dt>ODE</dt><dd data-hojas="4">Ordinary differential equation: ecuación diferencial ordinaria; el neural ODE con conocimiento físico es una de las variantes de modelo aprendido.</dd>
+<dt>IGE, OGE</dt><dd data-hojas="10">In ground effect y out of ground effect: con y sin efecto suelo.</dd>
+<dt>CFD</dt><dd data-hojas="6">Computational fluid dynamics: simulación numérica del flujo.</dd>
+<dt>ESC</dt><dd data-hojas="1">Electronic speed controller: variador que alimenta el motor sin escobillas.</dd>
+<dt>KV</dt><dd data-hojas="12">Constante de velocidad del motor (rpm/V); alto KV significa menor \(k_e\).</dd>
+<dt>OCV, SoC</dt><dd data-hojas="15">Open-circuit voltage y state of charge de la batería.</dd>
+<dt>4S</dt><dd data-hojas="12">Batería de 4 celdas en serie.</dd>
+<dt>PWM</dt><dd data-hojas="14">Pulse-width modulation: señal de mando al ESC.</dd>
+<dt>THR_MDL_FAC</dt><dd data-hojas="14">Parámetro de PX4 que fija la curva mando-empuje (0 lineal, 1 cuadrática).</dd>
+<dt>MC_BAT_SCALE_EN</dt><dd data-hojas="15">Parámetro de PX4 que activa la compensación de batería en el control de rate (desactivado por defecto).</dd>
+<dt>BAT_V_EMPTY, BAT_V_CHARGED</dt><dd data-hojas="15">Parámetros de PX4 con la tensión por celda de batería vacía (3,6 V) y cargada (4,2 V).</dd>
+<dt>RC</dt><dd data-hojas="15">Resistencia-condensador: ramas del modelo de circuito equivalente de la batería que dan la dinámica de polarización.</dd>
+<dt>SIH_WIND_N, SIH_WIND_E</dt><dd data-hojas="18">Parámetros del viento constante de SIH, en norte y este.</dd>
+<dt>PX4, SIH</dt><dd data-hojas="18">Autopiloto y su simulador interno (ver B1).</dd>
+<dt>MIL-F-8785C, MIL-HDBK-1797</dt><dd data-hojas="18">Normas militares de cualidades de vuelo que definen los espectros de Dryden y von Kármán.</dd>
+<dt>Dryden, von Kármán</dt><dd data-hojas="18">Los dos modelos de espectro de turbulencia normalizados; Dryden es racional.</dd>
+<dt>WindEffects</dt><dd data-hojas="18">Sistema de viento de Gazebo.</dd>
+<dt>kt</dt><dd data-hojas="19">Nudos (unidad de velocidad), en \(W_{20}\).</dd>
+<dt>Neural-Fly</dt><dd data-hojas="22">Método de adaptación al viento con base aprendida y coeficientes adaptados en línea.</dd>
+<dt>DAIML</dt><dd data-hojas="22">Domain adversarially invariant meta-learning: método con que Neural-Fly aprende una base independiente del viento.</dd>
+<dt>L1, INDI</dt><dd data-hojas="22">Controladores de referencia (L1 adaptativo e incremental nonlinear dynamic inversion) con los que se compara Neural-Fly.</dd>
+<dt>MPC</dt><dd data-hojas="4">Model predictive control: control predictivo basado en modelo.</dd>
+<dt>CAD</dt><dd data-hojas="24">Computer-aided design: diseño asistido por ordenador, una de las fuentes para obtener la inercia \(J\).</dd>
+<dt>CPU</dt><dd data-hojas="27">Central processing unit: la BEM cuesta unos 100 µs en CPU.</dd>
+<dt>GPU</dt><dd data-hojas="27">Graphics processing unit: la red de NeuroBEM cuesta unos 100 µs en GPU; los simuladores masivos corren en ella.</dd>
+<dt>GP</dt><dd data-hojas="28">Gaussian process: proceso gaussiano.</dd>
+<dt>NeuroBEM</dt><dd data-hojas="4">Modelo híbrido de BEM por rotor más red que aprende el residuo, y su dataset de vuelos.</dd>
+<dt>KNODE</dt><dd data-hojas="27">Knowledge-based neural ODE: neural ODE con conocimiento físico.</dd>
+<dt>Neural Lander</dt><dd data-hojas="10">Red que aprende el efecto suelo y lo compensa en el aterrizaje.</dd>
+<dt>RotorS</dt><dd data-hojas="28">Simulador de multirrotores sobre Gazebo, que solo simula el arrastre de rotor.</dd>
+<dt>Blackbird, AI-IO</dt><dd data-hojas="26">Datasets públicos de vuelo real (Blackbird con tacómetros; AI-IO con IMU y velocidad de rotores).</dd>
+<dt>CTBR</dt><dd data-hojas="14">Collective thrust and body rates: mando de empuje y velocidades angulares.</dd>
+<dt>RMSE, RMS</dt><dd data-hojas="27">Raíz del error cuadrático medio y valor eficaz del error.</dd>
+<dt>PD</dt><dd data-hojas="21">Proporcional-derivativo: controlador de posición de B1.</dd>
+<dt>IMU</dt><dd data-hojas="26">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>POMDP</dt><dd data-hojas="26">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
+<dt>H2</dt><dd data-hojas="1">Hito 2 del curso, en que tu simulador gana las capas de realismo de este tema.</dd>
+<dt>Sym2Real</dt><dd data-hojas="31">Método de dinámica simbólica con residuo aprendido (preprint).</dd>
+<dt>Agilicious</dt><dd data-hojas="12">Clase de dron de carreras cuyo motor se usó en A2 con 39 ms.</dd>
+<dt>JAX</dt><dd data-hojas="38">Biblioteca de cálculo numérico con diferenciación automática; el simulador del laboratorio con capas de realismo está en JAX.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

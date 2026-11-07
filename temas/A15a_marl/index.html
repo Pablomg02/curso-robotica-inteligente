@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -676,6 +676,125 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector conjunto de todos los agentes (\(\mathbf a\), \(\mathbf o\), \(\mathbf u\)). Subíndice o superíndice \(i\), \(a\): agente concreto. \(-i\) o \(-a\): todos los agentes menos ese.</p>
+<dl>
+<dt>\(\mathbb E\)</dt><dd data-hojas="10">Esperanza (media) respecto a la distribución que indica el subíndice.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="10">«Se distribuye según»: \(u^a\sim\pi^a\) es una acción muestreada de la política del agente \(a\).</dd>
+<dt>\(\nabla_{\theta_i}\)</dt><dd data-hojas="10">Gradiente respecto a los parámetros \(\theta_i\) del actor del agente \(i\).</dd>
+<dt>\(\mid\)</dt><dd data-hojas="6,10">«Dado»: \(T(s'\mid s,\mathbf a)\) es la probabilidad de \(s'\) dados \(s\) y \(\mathbf a\).</dd>
+<dt>\(\arg\max\)</dt><dd data-hojas="11">Argumento que maximiza la función que sigue; en IGM, la acción que cada agente elegiría con su \(Q_i\).</dd>
+<dt>\(\sum\), \(\prod\)</dt><dd data-hojas="7,8">Suma y producto sobre el índice del subíndice; en la hoja 8, sobre las acciones y políticas de los demás agentes.</dd>
+<dt>\(\partial Q_{\text{tot}}/\partial Q_i\)</dt><dd data-hojas="11">Derivada de la \(Q\) conjunta respecto al \(Q_i\) de cada agente; la condición \(\ge 0\) (monotonicidad) basta para IGM.</dd>
+<dt>\(\langle\cdot\rangle\)</dt><dd data-hojas="6">Tupla: lista ordenada de los componentes que definen un Dec-POMDP.</dd>
+<dt>\(\dots\)</dt><dd data-hojas="6">Puntos suspensivos: la lista continúa, p. ej. \((a_1, \dots, a_n)\).</dd>
+</dl>
+<h3>Dec-POMDP y complejidad</h3>
+<p>Parte 1.</p>
+<dl>
+<dt>\(\mathcal I\)</dt><dd data-hojas="6">Conjunto de agentes (los drones), de tamaño \(n\).</dd>
+<dt>\(n\)</dt><dd data-hojas="6,7">Número de agentes del equipo.</dd>
+<dt>\(S\), \(s\), \(s'\)</dt><dd data-hojas="6">Espacio de estados, estado actual y estado siguiente. \(|S|\) es el número de estados.</dd>
+<dt>\(A_i\)</dt><dd data-hojas="6">Conjunto de acciones del agente \(i\); \(a_i\in A_i\). \(|A|\) es su tamaño.</dd>
+<dt>\(\mathbf a = (a_1,\dots,a_n)\)</dt><dd data-hojas="6">Acción conjunta: una acción por agente.</dd>
+<dt>\(T(s'\mid s,\mathbf a)\)</dt><dd data-hojas="6">Función de transición: probabilidad del estado siguiente dados el estado y la acción conjunta.</dd>
+<dt>\(R(s,\mathbf a)\)</dt><dd data-hojas="6">Recompensa común a todo el equipo, escalar, función del estado y la acción conjunta.</dd>
+<dt>\(\Omega_i\), \(o_i\)</dt><dd data-hojas="6">Conjunto de observaciones posibles del agente \(i\) y una observación suya; \(|\Omega|\) es su tamaño.</dd>
+<dt>\(\mathbf o\)</dt><dd data-hojas="6">Observación conjunta, una por agente.</dd>
+<dt>\(O(\mathbf o\mid s',\mathbf a)\)</dt><dd data-hojas="6">Modelo de observación: probabilidad de la observación conjunta dados el estado siguiente y la acción conjunta.</dd>
+<dt>\(h\)</dt><dd data-hojas="6,7">Horizonte: número de pasos de decisión del Dec-POMDP (en la hoja 7 se usa también \(T\) para el horizonte finito).</dd>
+<dt>\(\pi_i\)</dt><dd data-hojas="6">Política del agente \(i\): decide con su propia historia de observaciones, \(a_i = \pi_i(o_{i,1},\dots,o_{i,t})\).</dd>
+<dt>\(o_{i,t}\)</dt><dd data-hojas="6">Observación del agente \(i\) en el paso \(t\).</dd>
+<dt>\(b(s)\)</dt><dd data-hojas="6">Belief de un POMDP: distribución sobre estados que es estado suficiente; en un Dec-POMDP no hay uno común.</dd>
+<dt>\(K\)</dt><dd data-hojas="7">Umbral de recompensa total de la pregunta de decisión cuya respuesta es NEXP-completa.</dd>
+<dt>\(T\) (horizonte)</dt><dd data-hojas="7">Horizonte finito del resultado de complejidad: \(T \lt |S|\).</dd>
+<dt>\(10^{4,5}\), \(10^{9,0}\)…</dt><dd data-hojas="7">Entradas de la tabla: número de políticas por agente y conjuntas, escritas como potencias de diez.</dd>
+<dt>\(|A|^{N_h}\)</dt><dd data-hojas="7">Número de políticas deterministas por agente de horizonte \(h\): una acción en cada nodo del árbol de historias, con \(N_h = (|\Omega|^h-1)/(|\Omega|-1)\) nodos.</dd>
+<dt>\(P(s'\mid s,a_i)\)</dt><dd data-hojas="8">Transición que ve el agente \(i\) si ignora a los demás; depende de sus políticas, que cambian al aprender.</dd>
+<dt>\(\mathbf a_{-i}\)</dt><dd data-hojas="8">Acciones de todos los agentes salvo el \(i\).</dd>
+<dt>\(\pi_j(a_j\mid\cdot)\)</dt><dd data-hojas="8">Política del agente \(j\) (distinto del \(i\)) sobre su propia acción.</dd>
+</dl>
+<h3>CTDE, COMA y factorización del valor</h3>
+<p>Parte 2. En COMA, \(a\) (superíndice) es el agente y \(u\) la acción; \(\tau\) es la historia de acción-observación.</p>
+<dl>
+<dt>\(\pi_i(a_i\mid o_i)\)</dt><dd data-hojas="10">Actor del agente \(i\) en MADDPG: usa solo sus observaciones.</dd>
+<dt>\(Q_i(x,a_1,\dots,a_n)\)</dt><dd data-hojas="10">Crítico centralizado del agente \(i\): recibe la información global \(x\) y las acciones de todos.</dd>
+<dt>\(x\)</dt><dd data-hojas="10">Información global que ve el crítico durante el entrenamiento (en el caso sencillo, todas las observaciones).</dd>
+<dt>\(\theta_i\)</dt><dd data-hojas="10">Parámetros del actor del agente \(i\).</dd>
+<dt>\(J\)</dt><dd data-hojas="10">Objetivo de rendimiento del actor cuyo gradiente se escribe con \(\nabla\log\pi_i\,Q_i\).</dd>
+<dt>\(A^a(s,\mathbf u)\)</dt><dd data-hojas="10">Ventaja contrafactual de COMA: cuánto aporta el agente \(a\) comparado con cambiar solo su acción y dejar fijas las de los demás.</dd>
+<dt>\(\mathbf u\), \(u^a\)</dt><dd data-hojas="10">Acción conjunta y acción del agente \(a\) en la notación de COMA.</dd>
+<dt>\(\mathbf u^{-a}\)</dt><dd data-hojas="10">Acciones de todos menos el agente \(a\).</dd>
+<dt>\(u'^a\), \(u'\)</dt><dd data-hojas="10">Acción alternativa del agente \(a\) sobre la que se promedia la línea base.</dd>
+<dt>\(\pi^a(u'^a\mid\tau^a)\)</dt><dd data-hojas="10">Política del agente \(a\) dada su historia \(\tau^a\); pondera la línea base.</dd>
+<dt>\(\tau^a\), \(\tau_i\)</dt><dd data-hojas="10,11">Historia de acciones y observaciones del agente (\(\tau_i\) en VDN); \(\boldsymbol\tau\) es la conjunta.</dd>
+<dt>\(Q(s,\mathbf u)\)</dt><dd data-hojas="10">Valor de la acción conjunta \(\mathbf u\) en el estado \(s\), del crítico centralizado de COMA.</dd>
+<dt>\(b(s,\mathbf u^{-a})\)</dt><dd data-hojas="10">Línea base contrafactual: promedio de \(Q\) sobre las acciones del agente \(a\) con las de los demás fijas. No depende de \(u^a\), así que no sesga el gradiente.</dd>
+<dt>\(Q_{\text{tot}}\)</dt><dd data-hojas="11">Valor del equipo como función de los \(Q_i\) individuales: suma en VDN, mezcla monótona en QMIX.</dd>
+<dt>\(Q_i(\tau_i,a_i)\)</dt><dd data-hojas="11">Valor local del agente \(i\), calculable con lo suyo.</dd>
+<dt>\(a_i^*\)</dt><dd data-hojas="11">Acción que maximiza el \(Q_i\) del agente; en IGM, la conjunta óptima es \((a_1^*,\dots,a_n^*)\).</dd>
+<dt>\(f\)</dt><dd data-hojas="11">Función de mezcla de los \(Q_i\) en \(Q_{\text{tot}}\); no decreciente en cada argumento para que valga IGM.</dd>
+<dt>\(a_1\), \(a_2\) (juego de pagos)</dt><dd data-hojas="12">Acciones de los dos agentes en el juego de un paso, con valores 0, 1 y 2; la tabla da el pago común.</dd>
+<dt>\((1,1)\), \((0,0)\)</dt><dd data-hojas="12">Acciones conjuntas del juego de la hoja 12; \((0,0)\) paga 8 y es el óptimo aislado.</dd>
+</dl>
+<h3>MAPPO y benchmarks</h3>
+<p>Parte 3.</p>
+<dl>
+<dt>\(\varepsilon\) (recorte)</dt><dd data-hojas="14">Parámetro de recorte de PPO para la política y el valor; los autores recomiendan valores por debajo de 0,2.</dd>
+<dt>Resultado, % victorias</dt><dd data-hojas="14">Mediana de victorias en SMAC (6 semillas, hasta 10 millones de pasos) o % de éxito en Google Research Football.</dd>
+</dl>
+<h3>Experimento de búsqueda con tres drones</h3>
+<p>Parte 5: rejilla de 12 × 12 celdas, tres drones, sensor que detecta con probabilidad 0,7.</p>
+<dl>
+<dt>\(c\)</dt><dd data-hojas="20">Celda de la rejilla.</dd>
+<dt>\(m_t(c)\)</dt><dd data-hojas="20">Masa de probabilidad de que el objetivo esté en \(c\) y no se haya detectado antes de \(t\): \(p_0(c)\,q^{n_t(c)}\).</dd>
+<dt>\(p_0(c)\)</dt><dd data-hojas="20">Mapa previo: probabilidad inicial de que el objetivo esté en la celda \(c\).</dd>
+<dt>\(q\)</dt><dd data-hojas="20">Probabilidad de que una mirada falle en detectar al objetivo presente: \(q = 0{,}3\) (detección 0,7).</dd>
+<dt>\(n_t(c)\)</dt><dd data-hojas="20">Número de miradas a la celda \(c\) hasta el paso \(t\).</dd>
+<dt>\(k_t(c)\)</dt><dd data-hojas="20">Número de drones que miran la celda \(c\) en el paso \(t\).</dd>
+<dt>\(r_t\)</dt><dd data-hojas="20">Recompensa del paso \(t\): probabilidad de detectar al objetivo por primera vez en ese paso. Su suma es la probabilidad de encontrarlo.</dd>
+<dt>\(m_{t+1}(c)\)</dt><dd data-hojas="20">Masa de la celda tras el paso \(t\): \(m_t(c)\,q^{k_t(c)}\).</dd>
+<dt>\(P\)</dt><dd data-hojas="21,22">Probabilidad de encontrar el objetivo en 80 pasos (columna de las tablas de resultados).</dd>
+<dt>Pasos esperados, Solapamiento</dt><dd data-hojas="21">Pasos esperados hasta encontrar el objetivo (tope 80) y fracción de celdas vistas que vio más de un dron.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="3">Reinforcement learning, aprendizaje por refuerzo.</dd>
+<dt>Dec-POMDP</dt><dd data-hojas="6">Decentralized partially observable Markov decision process: POMDP con varios agentes que observan por separado y comparten una recompensa.</dd>
+<dt>Dec-MDP</dt><dd data-hojas="6">Dec-POMDP en que las observaciones de todos juntas determinan el estado.</dd>
+<dt>POMDP</dt><dd data-hojas="6">Partially observable Markov decision process: proceso de decisión con estado no observable directamente.</dd>
+<dt>SAD</dt><dd data-hojas="14">Simplified action decoder: método de Hanabi con el que MAPPO se compara; con 4 jugadores, la mejor semilla de SAD supera a la de MAPPO.</dd>
+<dt>MARL</dt><dd data-hojas="15">Multi-agent reinforcement learning, aprendizaje por refuerzo multiagente: el tema; en la hoja, el nombre de JaxMARL.</dd>
+<dt>MDP</dt><dd data-hojas="20">Markov decision process; el belief-MDP es el MDP sobre beliefs.</dd>
+<dt>NEXP</dt><dd data-hojas="7">Clase de complejidad de tiempo exponencial no determinista; decidir si hay una política conjunta buena es NEXP-completo.</dd>
+<dt>PSPACE</dt><dd data-hojas="7">Clase de complejidad de espacio polinómico; un POMDP de horizonte finito es PSPACE-completo.</dd>
+<dt>EXP</dt><dd data-hojas="7">Clase de tiempo exponencial determinista; si EXP \(\ne\) NEXP, los Dec-POMDP necesitan tiempo superexponencial.</dd>
+<dt>CTDE</dt><dd data-hojas="9,10">Centralized training, decentralized execution: se entrena con información global y se ejecuta con lo local.</dd>
+<dt>IPPO</dt><dd data-hojas="8">PPO independiente, con un valor local por agente.</dd>
+<dt>MAPPO</dt><dd data-hojas="14">PPO con parámetros compartidos entre agentes y una función de valor con información global.</dd>
+<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization: algoritmo de policy gradient con recorte.</dd>
+<dt>MADDPG</dt><dd data-hojas="10">Multi-agent DDPG: actores locales y crítico centralizado con acciones de todos.</dd>
+<dt>COMA</dt><dd data-hojas="10">Counterfactual multi-agent policy gradients: asigna crédito con una ventaja contrafactual.</dd>
+<dt>VDN</dt><dd data-hojas="11">Value decomposition network: \(Q_{\text{tot}}\) como suma de los \(Q_i\).</dd>
+<dt>QMIX</dt><dd data-hojas="11">\(Q_{\text{tot}}\) como mezcla monótona de los \(Q_i\) con pesos no negativos generados por hiperredes que ven el estado.</dd>
+<dt>QTRAN</dt><dd data-hojas="11">Factorización que transforma la \(Q\) conjunta en otra fácil de factorizar con las mismas acciones óptimas; define IGM.</dd>
+<dt>QPLEX</dt><dd data-hojas="11">Arquitectura que lleva IGM a la red con una clase IGM completa.</dd>
+<dt>IGM</dt><dd data-hojas="11">Individual-global-max: el máximo conjunto de \(Q_{\text{tot}}\) coincide con los máximos individuales de cada \(Q_i\).</dd>
+<dt>SMAC</dt><dd data-hojas="4,15">StarCraft Multi-Agent Challenge: micro-gestión cooperativa en StarCraft II.</dd>
+<dt>SMACv2</dt><dd data-hojas="15">Versión de SMAC que critica que muchas tareas se ganen sin observar.</dd>
+<dt>JaxMARL</dt><dd data-hojas="15">Entornos y algoritmos multiagente en JAX, vectorizados en GPU.</dd>
+<dt>MPE</dt><dd data-hojas="15">Multi-agent particle environments: entorno donde se mide la velocidad de JaxMARL.</dd>
+<dt>RIAL, DIAL</dt><dd data-hojas="16">Reinforced / Differentiable inter-agent learning: comunicación aprendida con Q-learning, o retropropagando el error por el canal.</dd>
+<dt>CommNet</dt><dd data-hojas="16">Comunicación continua aprendida a la vez que la política.</dd>
+<dt>TarMAC</dt><dd data-hojas="16">Comunicación dirigida: los agentes aprenden qué enviar y a quién.</dd>
+<dt>JAX</dt><dd data-hojas="15">Librería de cálculo vectorizado en GPU en que se escriben los entornos de JaxMARL.</dd>
+<dt>UAV</dt><dd data-hojas="4">Unmanned aerial vehicle: vehículo aéreo no tripulado.</dd>
+<dt>GPU, CPU</dt><dd data-hojas="15">Procesador gráfico y procesador general.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

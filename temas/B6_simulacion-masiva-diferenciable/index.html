@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -693,6 +693,107 @@ def despliegue(params, S):         # S: (n_entornos, 17)
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Subíndice \(t\): paso de tiempo. Superíndice \(i\): entorno \(i\)-ésimo del lote. \(\nabla_\theta\): gradiente respecto a los parámetros de la política.</p>
+<dl>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="13">Gradiente respecto al vector de parámetros \(\theta\).</dd>
+<dt>\(\mathbb E_\xi\), \(\mathbb E_\varepsilon\)</dt><dd data-hojas="13">Esperanza respecto a la aleatoriedad indicada en el subíndice.</dd>
+<dt>\(\mathcal N(u;\theta,\sigma^2 I)\)</dt><dd data-hojas="13">Densidad gaussiana de media \(\theta\) y covarianza \(\sigma^2 I\) evaluada en \(u\).</dd>
+<dt>\(\mathbf 1[\cdot]\)</dt><dd data-hojas="13,27">Función indicadora: vale 1 si se cumple la condición y 0 si no.</dd>
+<dt>\(\top\)</dt><dd data-hojas="14">Traspuesta de una matriz o vector, como en \(A_t^\top\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="14">Derivada parcial, como en \(S_t=\partial x_t/\partial\theta\).</dd>
+</dl>
+<h3>Parte 1 · Simular a escala</h3>
+<dl>
+<dt>\(2^{16}\)</dt><dd data-hojas="8,21">65 536 drones en paralelo (cifra de Aerial Gym con una RTX 3090).</dd>
+<dt>\(10^7\)</dt><dd data-hojas="23">Orden de magnitud de pasos por segundo que una GPU de consumo supera en un dron sencillo.</dd>
+<dt>\(1{,}5\cdot10^8\)</dt><dd data-hojas="3">Pasos totales de entrenamiento de Rudin et al. (1500 actualizaciones de 98 304 muestras).</dd>
+<dt>\(B\)</dt><dd data-hojas="9">Tamaño del lote de PPO, escalar entero: \(B=n_\text{entornos}\cdot n_\text{pasos}\).</dd>
+<dt>\(n_\text{entornos}\)</dt><dd data-hojas="9">Número de entornos simulados en paralelo.</dd>
+<dt>\(n_\text{pasos}\)</dt><dd data-hojas="9">Pasos seguidos que se recogen en cada entorno por actualización.</dd>
+<dt>\(B\approx\) 100–200k</dt><dd data-hojas="9">Rango de lote que Rudin et al. encuentran como mejor compromiso en su tarea.</dd>
+</dl>
+<h3>Parte 2 · Estimadores de gradiente</h3>
+<dl>
+<dt>\(\theta\) (parámetros)</dt><dd data-hojas="13">Vector de parámetros de la política; en la hoja 16, además, la altura de consigna del dron, en metros.</dd>
+<dt>\(\xi\)</dt><dd data-hojas="13">Aleatoriedad del problema (ráfagas, estado inicial, ruido de la política).</dd>
+<dt>\(J(\theta,\xi)\)</dt><dd data-hojas="13">Coste de un despliegue con parámetros \(\theta\) y aleatoriedad \(\xi\); escalar.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="13">Perturbación gaussiana estándar del estimador de orden cero, del mismo tamaño que \(\theta\).</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="13">Escala del suavizado gaussiano del estimador de orden cero.</dd>
+<dt>\(u\)</dt><dd data-hojas="13">Variable de integración \(u=\theta+\sigma\varepsilon\) en la derivación del orden cero. En la parte de despliegues (hoja 14), \(u_t\) es la acción.</dd>
+<dt>\(I\)</dt><dd data-hojas="13">Matriz identidad.</dd>
+<dt>\(z(\theta,\xi)\)</dt><dd data-hojas="13">Magnitud que se compara con un umbral en el ejemplo del salto (en el muro, la altura al cruzarlo).</dd>
+<dt>\(h\) (umbral)</dt><dd data-hojas="13">Umbral de la condición \(z\lt h\). En la hoja 18, \(h\) es en cambio la longitud de la ventana de SHAC.</dd>
+<dt>\(P(z\lt h)\)</dt><dd data-hojas="13">Probabilidad de que se cumpla la condición; su derivada no se ve con el gradiente de cada muestra.</dd>
+<dt>ZoBG, FoBG</dt><dd data-hojas="13">Zeroth-order y first-order batched gradient: estimadores de orden cero y de primer orden de Suh et al.</dd>
+</dl>
+<h3>Parte 2 · Gradiente a través del tiempo</h3>
+<dl>
+<dt>\(x_t\)</dt><dd data-hojas="14">Estado del sistema en el paso \(t\).</dd>
+<dt>\(f\)</dt><dd data-hojas="14">Dinámica: \(x_{t+1}=f(x_t,u_t,w_t)\). \(f_x\) y \(f_u\) son sus jacobianos respecto al estado y a la acción.</dd>
+<dt>\(u_t\)</dt><dd data-hojas="14">Acción en el paso \(t\), \(u_t=\pi_\theta(x_t)\).</dd>
+<dt>\(w_t\)</dt><dd data-hojas="14">Perturbación (ráfaga) en el paso \(t\).</dd>
+<dt>\(\pi_\theta\)</dt><dd data-hojas="14">Política con parámetros \(\theta\). \(\pi_x\) y \(\pi_\theta\) (como jacobiano) son sus derivadas respecto al estado y a los parámetros.</dd>
+<dt>\(c(x_t,u_t)\)</dt><dd data-hojas="14">Coste por paso; \(J=\sum_t c(x_t,u_t)\). \(c_x\) y \(c_u\) son sus derivadas.</dd>
+<dt>\(S_t\)</dt><dd data-hojas="14">Sensibilidad del estado a los parámetros, \(S_t=\partial x_t/\partial\theta\), matriz.</dd>
+<dt>\(A_t\)</dt><dd data-hojas="14">Jacobiano del lazo cerrado \(f_x+f_u\pi_x\), matriz que se multiplica en cada paso.</dd>
+<dt>\(H\)</dt><dd data-hojas="14">Horizonte del despliegue, en pasos; número de jacobianos que multiplica el gradiente. En el texto de la hoja 15, \(H=1000\) es uno de los horizontes probados.</dd>
+<dt>\(k\)</dt><dd data-hojas="14">Índice de suma sobre los pasos anteriores a \(t\) en la sensibilidad.</dd>
+<dt>\(\lambda_t\)</dt><dd data-hojas="14">Adjunto del modo inverso: \(\lambda_t=c_x+A_t^\top\lambda_{t+1}\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="15">Radio espectral del lazo cerrado (0,988 bien amortiguado, 0,9998 poco amortiguado).</dd>
+</dl>
+<h3>Parte 2 · Muro, rigidez y SHAC</h3>
+<dl>
+<dt>\(\mathbb E[J]\)</dt><dd data-hojas="16">Coste esperado del dron que cruza el muro: \(2\theta+100\,P(\text{choque})\).</dd>
+<dt>\(P(\text{choque})\)</dt><dd data-hojas="16">Probabilidad de chocar con el muro, función de la altura de consigna \(\theta\).</dd>
+<dt>\(\alpha\) (orden)</dt><dd data-hojas="17">Parámetro del estimador de orden \(\alpha\) de Suh et al., mezcla de primer orden y orden cero.</dd>
+<dt>\(\mathcal L_\theta\)</dt><dd data-hojas="18">Pérdida de SHAC que se minimiza respecto a la política.</dd>
+<dt>\(N\)</dt><dd data-hojas="18">Número de trayectorias paralelas en la pérdida de SHAC.</dd>
+<dt>\(h\) (ventana)</dt><dd data-hojas="18">Longitud de la ventana corta de retropropagación de SHAC, en pasos.</dd>
+<dt>\(i\)</dt><dd data-hojas="18">Índice de la trayectoria \(1,\dots,N\), como superíndice de estados y acciones.</dd>
+<dt>\(t_0\)</dt><dd data-hojas="18">Paso inicial de la ventana.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="18">Factor de descuento, entre 0 y 1.</dd>
+<dt>\(r(s_t^i,a_t^i)\)</dt><dd data-hojas="18">Recompensa en el paso \(t\) de la trayectoria \(i\), con estado \(s\) y acción \(a\).</dd>
+<dt>\(V_\phi\)</dt><dd data-hojas="18">Crítico aprendido, de parámetros \(\phi\), que valora el estado al final de la ventana.</dd>
+<dt>\(s^i_{t_0+h}\)</dt><dd data-hojas="18">Estado al final de la ventana de la trayectoria \(i\), donde entra el crítico.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>GPU</dt><dd data-hojas="1,6">Graphics processing unit: acelerador donde se ejecutan física y red.</dd>
+<dt>CPU</dt><dd data-hojas="6,8">Central processing unit: procesador general.</dd>
+<dt>PPO</dt><dd data-hojas="3,9">Proximal policy optimization: algoritmo de RL de política que usa lotes grandes.</dd>
+<dt>GAE</dt><dd data-hojas="9">Generalized advantage estimation: estimador de la ventaja que necesita trayectorias coherentes en el tiempo.</dd>
+<dt>KL</dt><dd data-hojas="9">Divergencia de Kullback-Leibler; PPO adapta su tasa de aprendizaje a un objetivo de 0,01.</dd>
+<dt>RL</dt><dd data-hojas="2">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>MLP</dt><dd data-hojas="7">Multilayer perceptron: la red de la política (17-64-64-4).</dd>
+<dt>JIT</dt><dd data-hojas="7">Just-in-time: compilación en tiempo de ejecución (jax.jit).</dd>
+<dt>vmap, scan</dt><dd data-hojas="7">Transformaciones de JAX: vectorizar sobre un eje de lote y repetir un paso con estado.</dd>
+<dt>NaN</dt><dd data-hojas="10">Not a number: valor no definido que contamina un lote.</dd>
+<dt>TPU</dt><dd data-hojas="11">Tensor processing unit: acelerador al que MJX-JAX también puede llevar MuJoCo.</dd>
+<dt>AMD</dt><dd data-hojas="11">Fabricante de GPU; MJX-JAX corre en GPU NVIDIA y AMD.</dd>
+<dt>MTU</dt><dd data-hojas="18">Parte del nombre de la tarea «Humanoid MTU» de la tabla de SHAC; el tema no desarrolla la sigla.</dd>
+<dt>BPTT</dt><dd data-hojas="21,3">Backpropagation through time: retropropagación a través del despliegue del simulador.</dd>
+<dt>SHAC</dt><dd data-hojas="4,18">Short-horizon actor-critic: gradiente por ventanas cortas cerradas por un crítico.</dd>
+<dt>MJX</dt><dd data-hojas="4,11">MuJoCo XLA: MuJoCo reescrito en JAX (MJX-JAX) o en Warp (MJX-Warp).</dd>
+<dt>MuJoCo Warp</dt><dd data-hojas="11">MuJoCo en Warp para GPU NVIDIA; no es diferenciable.</dd>
+<dt>Newton</dt><dd data-hojas="4,11">Motor de física en GPU sobre Warp, proyecto de la Linux Foundation.</dd>
+<dt>Isaac Gym</dt><dd data-hojas="4,6">Simulador de NVIDIA con física y red en la misma GPU.</dd>
+<dt>Isaac Lab</dt><dd data-hojas="10,11">Entornos de aprendizaje sobre Isaac Sim, con PhysX o Newton.</dd>
+<dt>Brax</dt><dd data-hojas="4,6">Motor de física diferenciable en JAX para aceleradores.</dd>
+<dt>Aerial Gym</dt><dd data-hojas="4,8,11">Simulador de multirrotores en GPU sobre Isaac Gym.</dd>
+<dt>PhysX</dt><dd data-hojas="10">Motor de física de NVIDIA que detecta contactos entre robots aunque se ignoren.</dd>
+<dt>rsl_rl</dt><dd data-hojas="10">Biblioteca de RL de ETH Zürich que puede sortear la longitud inicial del episodio.</dd>
+<dt>ANYmal</dt><dd data-hojas="6,18">Robot cuadrúpedo usado en la transferencia de Rudin et al. y de Schwarke et al.</dd>
+<dt>x500</dt><dd data-hojas="3,7">Dron de referencia del curso: 13 estados y 4 motores.</dd>
+<dt>GRaD-Nav</dt><dd data-hojas="21">Navegación visual con dinámica diferenciable y escena de gaussianas (tema B3b).</dd>
+<dt>MPC</dt><dd data-hojas="19">Model predictive control: control predictivo basado en un modelo.</dd>
+<dt>RPM</dt><dd data-hojas="21">Revoluciones por minuto: Learning to Fly in Seconds transfiere con mando directo de RPM.</dd>
+<dt>H2</dt><dd data-hojas="22">Hito 2 del curso: simulador vectorizado y diferenciable.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

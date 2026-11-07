@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -1032,6 +1032,172 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector (\(\mathbf q\), \(\mathbf v\)). Subíndice \(k\): paso de tiempo. Punto sobre una letra: derivada respecto al tiempo.</p>
+<dl>
+<dt>\(\mathbf x\), \(\mathbf q\), \(\mathbf v\)</dt><dd data-hojas="8">Estado del sistema \(\mathbf x = (\mathbf q, \mathbf v)\): posiciones (\(\mathbf q\)) y velocidades (\(\mathbf v\)).</dd>
+<dt>\(h\)</dt><dd data-hojas="8">Paso de integración (escalar, en segundos): el tiempo simulado que avanza cada paso de física.</dd>
+<dt>\(\mathbf a_k\)</dt><dd data-hojas="8">Aceleración en el paso \(k\), calculada a partir del estado y las fuerzas; la usa Euler para actualizar \(\mathbf v\).</dd>
+<dt>\(k\), \(k+1\)</dt><dd data-hojas="8">Índice del paso de tiempo: \(\mathbf q_{k+1}\) es la posición tras avanzar un paso \(h\) desde \(\mathbf q_k\).</dd>
+<dt>\(\dot q\), \(\dot v\)</dt><dd data-hojas="8">Derivadas temporales de posición y velocidad en el oscilador de la derivación: \(\dot q = v\), \(\dot v = -\omega^2 q\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="8">Norma euclídea (longitud) de un vector; aquí mide el error de posición y el módulo de las fuerzas de contacto.</dd>
+<dt>\(\det\)</dt><dd data-hojas="8">Determinante de una matriz; \(\det A = 1\) significa que el paso conserva el área en el plano de fase.</dd>
+<dt>\(\le\), \(\ge\)</dt><dd data-hojas="11">Desigualdades, usadas en la cota del error global y en las condiciones del contacto.</dd>
+<dt>\(\Rightarrow\)</dt><dd data-hojas="14">«Por tanto»: pasa de las ecuaciones de equilibrio a la fórmula de \(\tan\theta\).</dd>
+<dt>\(O(\cdot)\)</dt><dd data-hojas="8">Orden de magnitud del error: \(O(h^p)\) significa que el error se comporta como \(h^p\) cuando \(h\) es pequeño.</dd>
+<dt>\(|\cdot|\)</dt><dd data-hojas="8">Módulo (de un número complejo, en \(|R(iz)|^2\)) o valor absoluto (en \(|\Omega|\)).</dd>
+<dt>\(i\)</dt><dd data-hojas="8">Unidad imaginaria, en los autovalores \(1 \pm iz\) y en \(R(iz)\).</dd>
+<dt>\(\perp\)</dt><dd data-hojas="11">Condición de complementariedad: \(0 \le \lambda_n \perp \phi \ge 0\) significa que al menos uno de los dos es cero (producto nulo).</dd>
+<dt>\(\min\)</dt><dd data-hojas="10">Mínimo de dos valores; en la tabla de pasos, el intervalo de SIH es \(\min(\)IMU_GYRO_RATEMAX, IMU_INTEG_RATE\()\).</dd>
+<dt>\(\mathrm{s^{-1}}\)</dt><dd data-hojas="14">Unidad de arrastre por unidad de masa (1/s): \(D/m\).</dd>
+</dl>
+<h3>Parte 1 · Integración numérica</h3>
+<dl>
+<dt>\(\omega\) (oscilador)</dt><dd data-hojas="8">Frecuencia angular (rad/s) del oscilador \(\dot v = -\omega^2 q\) con que se analiza la estabilidad de los integradores.</dd>
+<dt>\(z\)</dt><dd data-hojas="8">Paso adimensional \(z = h\omega\): producto del paso por la frecuencia del modo. Decide si el método es estable.</dd>
+<dt>\(A_e\)</dt><dd data-hojas="8">Matriz \(2\times 2\) que multiplica el estado \((\omega q, v)\) en cada paso de Euler explícito; \(\det A_e = 1+z^2\), por lo que la energía crece.</dd>
+<dt>\(A_s\)</dt><dd data-hojas="8">Matriz \(2\times 2\) del paso de Euler semiimplícito; \(\det A_s = 1\) (conserva el área, es simpléctico).</dd>
+<dt>\(1+z^2\)</dt><dd data-hojas="8">Factor por el que Euler explícito multiplica la energía del oscilador en cada paso, para todo \(h \gt 0\).</dd>
+<dt>\(|R(iz)|^2\)</dt><dd data-hojas="8">Factor de amplificación de la energía por paso de RK4: \(1 - z^6/72 + z^8/576\). Disipa un poco y es estable hasta \(z = 2\sqrt2\).</dd>
+<dt>\(p\)</dt><dd data-hojas="8">Orden del método de integración (1 para Euler, 4 para RK4): el error local es \(O(h^{p+1})\) y el global, \(O(h^p)\).</dd>
+<dt>\(L\)</dt><dd data-hojas="8">Constante de Lipschitz de la dinámica; fija cuánto se amplifican los errores con el tiempo (\(e^{Lt}\), Grönwall).</dd>
+<dt>\(t\)</dt><dd data-hojas="8">Tiempo simulado (s); en la cota del error, el horizonte de integración.</dd>
+<dt>\(C\)</dt><dd data-hojas="8">Constante que depende del problema en la cota \(\|\mathbf x(t)-\mathbf x_k\| \le C\,\frac{e^{Lt}-1}{L}h^p\); acota las derivadas de la dinámica.</dd>
+<dt>\(\mathbf x(t)\)</dt><dd data-hojas="8">Solución exacta del estado en el instante \(t\), con la que se compara la numérica \(\mathbf x_k\).</dd>
+<dt>\(2^4\)</dt><dd data-hojas="34">Factor 16: lo que baja el error global de RK4 al dividir el paso entre 2.</dd>
+</dl>
+<h3>Parte 1 · Contacto</h3>
+<dl>
+<dt>\(\phi(\mathbf q)\)</dt><dd data-hojas="11">Distancia entre dos cuerpos en función de la configuración \(\mathbf q\); es cero en el contacto y positiva si están separados.</dd>
+<dt>\(\lambda_n\)</dt><dd data-hojas="11">Fuerza normal de contacto (escalar, en N, no negativa). Es nula si hay separación.</dd>
+<dt>\(\boldsymbol\lambda_t\)</dt><dd data-hojas="11">Fuerza tangencial (de rozamiento) en el contacto, acotada por la ley de Coulomb: \(\|\boldsymbol\lambda_t\| \le \mu\lambda_n\).</dd>
+<dt>\(\mu\)</dt><dd data-hojas="11">Coeficiente de rozamiento de Coulomb (adimensional).</dd>
+</dl>
+<h3>Parte 1 · Actuadores y vuelo</h3>
+<dl>
+<dt>\(u\)</dt><dd data-hojas="12">Mando normalizado del motor, \(u \in [0, 1]\) (en SIH).</dd>
+<dt>\(\Omega\)</dt><dd data-hojas="12">Velocidad de giro del rotor (rad/s); en Gazebo es la entrada del motor y llega hasta 1000 rad/s.</dd>
+<dt>\(\Omega_h\)</dt><dd data-hojas="14">Velocidad del rotor en estacionario (vuelo estacionario), usada para calcular el arrastre equivalente \(D = 4c_d\Omega_h\).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="12">Constante de tiempo del motor de primer orden: 12,5 ms al subir y 25 ms al bajar en Gazebo; 50 ms (SIH_T_TAU) en SIH.</dd>
+<dt>\(e^{-h/\tau}\)</dt><dd data-hojas="12">Factor con que Gazebo discretiza la dinámica de primer orden del motor en un paso \(h\).</dd>
+<dt>\(k_T\)</dt><dd data-hojas="12">Coeficiente de empuje del rotor del x500 en Gazebo: empuje \(= k_T\Omega^2\), con \(k_T = 8{,}55\cdot10^{-6}\) N/(rad/s)².</dd>
+<dt>\(T_{\max}\)</dt><dd data-hojas="12">Empuje máximo por motor en SIH (5 N); el empuje es lineal: \(T_{\max}u\).</dd>
+<dt>\(c_d\)</dt><dd data-hojas="12">Coeficiente de arrastre de rotor en Gazebo (\(8{,}06\cdot10^{-5}\)); la fuerza por rotor es \(-|\Omega|\,c_d\,\mathbf v_\perp\).</dd>
+<dt>\(\mathbf v_\perp\)</dt><dd data-hojas="12">Componente de la velocidad del dron perpendicular al eje del rotor, sobre la que actúa el arrastre de rotor.</dd>
+<dt>\(K_{dv}\)</dt><dd data-hojas="12">Coeficiente de arrastre lineal de SIH en traslación (1 N/(m/s)): fuerza \(-K_{dv}\mathbf v\).</dd>
+<dt>\(K_{dw}\)</dt><dd data-hojas="12">Coeficiente de amortiguamiento angular de SIH: momento \(-K_{dw}\boldsymbol\omega\).</dd>
+<dt>\(\boldsymbol\omega\) (cuerpo)</dt><dd data-hojas="12">Velocidad angular del dron (rad/s), vector de \(\mathbb{R}^3\), sobre la que actúa el amortiguamiento de SIH. No es la \(\omega\) del oscilador.</dd>
+<dt>\(T\)</dt><dd data-hojas="14">Empuje total de los rotores en vuelo recto.</dd>
+<dt>\(D\)</dt><dd data-hojas="14">Coeficiente de arrastre lineal equivalente del dron (N/(m/s)): la fuerza de arrastre es \(D\mathbf v\).</dd>
+<dt>\(\theta\)</dt><dd data-hojas="14">Inclinación del dron en vuelo recto a velocidad constante: \(\tan\theta = Dv/(mg)\).</dd>
+<dt>\(m\)</dt><dd data-hojas="14">Masa del dron (kg).</dd>
+<dt>\(g\)</dt><dd data-hojas="14">Aceleración de la gravedad (m/s²).</dd>
+<dt>\(v\) (velocidad de crucero)</dt><dd data-hojas="14">Módulo de la velocidad de vuelo recto (escalar, m/s), p. ej. 5 m/s.</dd>
+<dt>\(K_p\)</dt><dd data-hojas="14">Ganancia proporcional del PD de posición del ejemplo (2,064·4 en la cuenta del error estacionario).</dd>
+<dt>\(e\)</dt><dd data-hojas="14">Error estacionario de posición en crucero: \(e = Dv/(mK_p)\), el que compensa el arrastre cuando no hay integral.</dd>
+</dl>
+<h3>Parte 2 y 3 · Rendimiento y diseño</h3>
+<dl>
+<dt>\(2^{16}\)</dt><dd data-hojas="21">Número de entornos en paralelo (65 536) en las cifras de Aerial Gym y L2F.</dd>
+<dt>\(2^4\) (entornos)</dt><dd data-hojas="21">16 entornos en la cifra de render de gym-pybullet-drones.</dd>
+<dt>\(2^{10}\)</dt><dd data-hojas="21">1024 entornos en la cifra de ray casting de Aerial Gym.</dd>
+<dt>\(\times 148\)</dt><dd data-hojas="21">Factor entre dos cifras del gráfico de rendimiento (figura de «Pasos por segundo»).</dd>
+<dt>\(\tau\) (aleatorización)</dt><dd data-hojas="36">En la respuesta de la autoevaluación, constante de tiempo del motor aleatorizada entre 10 y 60 ms.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>SITL</dt><dd data-hojas="1">Software-in-the-loop: el autopiloto real (PX4) corre en el PC conectado a un simulador, sin placa.</dd>
+<dt>HIL</dt><dd data-hojas="7">Hardware-in-the-loop: la placa real (p. ej. una Pixhawk) corre su software conectada a un simulador.</dd>
+<dt>RC</dt><dd data-hojas="17">Radio control: aviación tripulada y RC, las que cubren los simuladores de vuelo (X-Plane, FlightGear, RealFlight), útiles para ala fija.</dd>
+<dt>MATLAB</dt><dd data-hojas="17">Entorno de cálculo del que forma parte el UAV Toolbox, simulador centrado en dinámica.</dd>
+<dt>HITL</dt><dd data-hojas="19">Hardware-in-the-loop (nombre que usa AirSim con MAVLink).</dd>
+<dt>SIH</dt><dd data-hojas="10">Simulation-in-hardware: simulador de PX4 con la física dentro del propio autopiloto, en C++, sin dependencias ni interfaz gráfica.</dd>
+<dt>PX4</dt><dd data-hojas="3">Software de vuelo (autopiloto) de código abierto para drones.</dd>
+<dt>ArduPilot</dt><dd data-hojas="7">Otro autopiloto de código abierto, con su propio SITL.</dd>
+<dt>ROS 2</dt><dd data-hojas="3">Robot Operating System 2: middleware de comunicación y herramientas para robots.</dd>
+<dt>MAVLink</dt><dd data-hojas="15">Protocolo de mensajes entre autopiloto y simulador o estación de tierra (HIL_SENSOR, HIL_ACTUATOR_CONTROLS).</dd>
+<dt>RL</dt><dd data-hojas="3">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>IL</dt><dd data-hojas="7">Imitation learning: aprendizaje por imitación.</dd>
+<dt>GPU</dt><dd data-hojas="2">Graphics processing unit: tarjeta gráfica usada para simular miles de entornos en paralelo.</dd>
+<dt>RGB</dt><dd data-hojas="19">Red-green-blue: imagen de color; las cinco cámaras RGB del render más ligero, y la pregunta de si la política navega con RGB.</dd>
+<dt>IAMAI</dt><dd data-hojas="19">IAMAI Consulting: organización que mantiene Project AirSim (licencia MIT) tras abandonarlo Microsoft.</dd>
+<dt>CPU</dt><dd data-hojas="21">Central processing unit: procesador general.</dd>
+<dt>FPS</dt><dd data-hojas="4">Frames per second: aquí, pasos o imágenes por segundo según el artículo (por eso las cifras no son comparables).</dd>
+<dt>LTS</dt><dd data-hojas="4">Long-term support: versión de soporte largo (Gazebo Harmonic y Jetty).</dd>
+<dt>API</dt><dd data-hojas="6">Application programming interface: interfaz con la que otro programa maneja el simulador.</dd>
+<dt>GUI</dt><dd data-hojas="7">Graphical user interface: interfaz gráfica.</dd>
+<dt>UAV</dt><dd data-hojas="7">Unmanned aerial vehicle: vehículo aéreo no tripulado.</dd>
+<dt>Gazebo</dt><dd data-hojas="4">Simulador multirrobot de código abierto (antes Ignition), oficial de PX4.</dd>
+<dt>Gazebo Classic</dt><dd data-hojas="18">Versión anterior de Gazebo (render OGRE), que pasa a mantenimiento de la comunidad.</dd>
+<dt>MuJoCo</dt><dd data-hojas="4">Motor de física a medida del control basado en modelos, con contacto por velocity-stepping.</dd>
+<dt>MJX</dt><dd data-hojas="20">Reimplementación de MuJoCo en JAX.</dd>
+<dt>MuJoCo Warp</dt><dd data-hojas="20">Versión de MuJoCo para GPU NVIDIA (DeepMind y NVIDIA), escrita en Warp.</dd>
+<dt>MuJoCo Playground</dt><dd data-hojas="20">Conjunto de entornos de MuJoCo que entrena «en minutos en una sola GPU».</dd>
+<dt>MuJoCo Menagerie</dt><dd data-hojas="10">Colección de modelos de robots para MuJoCo (X2, Crazyflie 2).</dd>
+<dt>JAX</dt><dd data-hojas="3">Biblioteca de cálculo numérico con diferenciación automática y compilación; base de tu simulador y de MJX.</dd>
+<dt>Warp</dt><dd data-hojas="20">Marco de NVIDIA para escribir núcleos de GPU en Python; base de Newton y MuJoCo Warp.</dd>
+<dt>Newton</dt><dd data-hojas="20">Motor de física de la Linux Foundation (iniciado por Disney Research, DeepMind y NVIDIA), nativo en Warp.</dd>
+<dt>Brax</dt><dd data-hojas="24">Física en JAX de Google; ya no se mantiene (remite a MJX).</dd>
+<dt>Isaac Gym</dt><dd data-hojas="20">Simulador con física, observaciones y recompensas en la GPU (2021).</dd>
+<dt>Isaac Sim</dt><dd data-hojas="3">Simulador de NVIDIA con render RTX.</dd>
+<dt>Isaac Lab</dt><dd data-hojas="20">Marco de NVIDIA para aprendizaje de robots en GPU; la versión 3.0 separa tarea, motor de física y de render.</dd>
+<dt>Pegasus</dt><dd data-hojas="19">Pegasus Simulator: marco sobre Isaac Sim con PX4 en el lazo y varios vehículos.</dd>
+<dt>OmniDrones</dt><dd data-hojas="4">Plataforma de RL para drones sobre Isaac Sim.</dd>
+<dt>Aerial Gym</dt><dd data-hojas="4">Simulador de robots aéreos en GPU (Isaac Gym + Warp) con ray casting de profundidad.</dd>
+<dt>L2F</dt><dd data-hojas="4">Learning to fly in seconds: simulador propio, muy rápido, con transferencia a un Crazyflie.</dd>
+<dt>AirSim</dt><dd data-hojas="4">Simulador de Microsoft sobre Unreal Engine, archivado en 2022; sucesor: Project AirSim.</dd>
+<dt>VTOL</dt><dd data-hojas="24">Vertical take-off and landing: despegue y aterrizaje vertical; PX4 lo simula en SIH y en Gazebo.</dd>
+<dt>Colosseum</dt><dd data-hojas="27">Fork de AirSim, archivado.</dd>
+<dt>Flightmare</dt><dd data-hojas="19">Simulador de cuadrirrotores con Unity para el render y física separada.</dd>
+<dt>FlightGoggles</dt><dd data-hojas="4">Simulador con fotogrametría y el vehículo real en el lazo.</dd>
+<dt>gym-pybullet-drones</dt><dd data-hojas="4">Entorno Gym con física PyBullet para RL de cuadrirrotores y enjambres.</dd>
+<dt>RotorS</dt><dd data-hojas="4">Marco de simulación de multirrotores sobre Gazebo y ROS.</dd>
+<dt>JSBSim</dt><dd data-hojas="24">Modelo de dinámica de vuelo de código abierto en C++, de 6 GDL, para ala fija.</dd>
+<dt>X-Plane, FlightGear, RealFlight</dt><dd data-hojas="17">Simuladores de vuelo de aviación tripulada y RC.</dd>
+<dt>Webots, CoppeliaSim</dt><dd data-hojas="17">Simuladores universales de robótica.</dd>
+<dt>RotorPy, RotorTM, RflySim</dt><dd data-hojas="17">Simuladores centrados en dinámica (vuelo, carga o manipulación).</dd>
+<dt>QuadSwarm, safe-control-gym</dt><dd data-hojas="17">Simuladores centrados en enjambres y en aprendizaje, respectivamente.</dd>
+<dt>Agilicious, MRS UAV System, Aerostack2, CrazySim</dt><dd data-hojas="17">Pilas de vuelo con su propio simulador.</dd>
+<dt>MARSIM</dt><dd data-hojas="17">Simulador de LiDAR.</dd>
+<dt>VisFly</dt><dd data-hojas="24">Simulador de vuelo con física diferenciable y render con Habitat-Sim.</dd>
+<dt>Genesis</dt><dd data-hojas="4">Simulador cuya cifra de 43 millones de FPS fue discutida (hoja 22).</dd>
+<dt>ManiSkill</dt><dd data-hojas="22">Simulador competidor desarrollado por el autor de la réplica a Genesis.</dd>
+<dt>Madrona</dt><dd data-hojas="23">Render por lotes en GPU usado en MuJoCo Playground.</dd>
+<dt>SDF</dt><dd data-hojas="6">Simulation Description Format: formato de mundos y modelos de Gazebo.</dd>
+<dt>MJCF</dt><dd data-hojas="6">MuJoCo XML Format: formato de modelos de MuJoCo.</dd>
+<dt>USD</dt><dd data-hojas="6">Universal Scene Description: formato de escenas de Isaac.</dd>
+<dt>URDF</dt><dd data-hojas="6">Unified Robot Description Format: formato de robots de ROS.</dd>
+<dt>RK4</dt><dd data-hojas="8">Runge-Kutta de orden 4: cuatro evaluaciones por paso, error global \(O(h^4)\) si la dinámica es suave.</dd>
+<dt>LCP</dt><dd data-hojas="11">Linear complementarity problem: formulación del contacto rígido como problema de complementariedad.</dd>
+<dt>EKF</dt><dd data-hojas="15">Extended Kalman filter: el estimador de estado de PX4, que en el lockstep recibe los sensores simulados.</dd>
+<dt>IMU</dt><dd data-hojas="10">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>GNSS</dt><dd data-hojas="18">Global navigation satellite system: posicionamiento por satélite (GPS y similares).</dd>
+<dt>baro</dt><dd data-hojas="6">Barómetro: sensor de presión para la altitud.</dd>
+<dt>LiDAR</dt><dd data-hojas="17">Sensor de distancia por láser.</dd>
+<dt>ECEF</dt><dd data-hojas="18">Earth-centered, earth-fixed: sistema de ejes ligado a la Tierra, en el que SIH integra.</dd>
+<dt>WGS84</dt><dd data-hojas="24">Modelo de Tierra usado por JSBSim.</dd>
+<dt>GDL</dt><dd data-hojas="24">Grados de libertad (6 en el vuelo rígido).</dd>
+<dt>ODE, DART</dt><dd data-hojas="18">Motores de física de Gazebo: ODE se declara en el mundo por defecto de PX4, pero gz-sim carga DART.</dd>
+<dt>OGRE, OpenGL, Vulkan</dt><dd data-hojas="19">Motores o interfaces gráficas de render; OGRE y OpenGL se consideran de baja fidelidad visual frente a Vulkan.</dd>
+<dt>RTX</dt><dd data-hojas="19">Render de NVIDIA por trazado de rayos.</dd>
+<dt>3DGS</dt><dd data-hojas="7">3D Gaussian Splatting: reconstrucción de escenas reales con gaussianas, para render creíble (B3b).</dd>
+<dt>DOPE</dt><dd data-hojas="19">Detector de objetos con el que Dimmig et al. midieron la fidelidad visual.</dd>
+<dt>PD</dt><dd data-hojas="14">Proporcional-derivativo: controlador de posición del ejemplo, sin término integral.</dd>
+<dt>NEES</dt><dd data-hojas="31">Normalized estimation error squared: error de estimación normalizado, con el que se supervisa un belief.</dd>
+<dt>IMU_GYRO_RATEMAX, IMU_INTEG_RATE</dt><dd data-hojas="10">Parámetros de PX4 cuyo mínimo fija el paso de SIH (con 800 y 200 Hz por defecto, cae en 5 ms).</dd>
+<dt>SIH_T_TAU</dt><dd data-hojas="12">Parámetro de SIH con la constante de tiempo del motor (50 ms).</dd>
+<dt>SYS_HITL</dt><dd data-hojas="18">Parámetro de PX4; con valor 2 activa SIH en la propia controladora.</dd>
+<dt>PX4_SIM_SPEED_FACTOR</dt><dd data-hojas="15">Variable de PX4 que acelera, frena o pausa la simulación en lockstep.</dd>
+<dt>rotorVelocitySlowdownSim</dt><dd data-hojas="10">Parámetro del plugin de motor de Gazebo que divide la velocidad del rotor por 10 para evitar aliasing.</dd>
+<dt>dyntype</dt><dd data-hojas="12">Atributo de los actuadores de MuJoCo; con <code>filter</code> da un filtro de primer orden al motor.</dd>
+<dt>gz_bridge</dt><dd data-hojas="15">Transporte por el que Gazebo habla con PX4.</dd>
+<dt>x500</dt><dd data-hojas="9">Cuadricóptero de referencia de PX4 usado en todo el tema.</dd>
+<dt>sim-to-real, sim-to-sim</dt><dd data-hojas="3">Diferencia entre simulación y realidad, o entre dos simuladores; esta última es una cota inferior de la incertidumbre de modelo.</dd>
+<dt>lockstep</dt><dd data-hojas="15">Modo en que simulador y autopiloto avanzan el tiempo simulado juntos, esperándose.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

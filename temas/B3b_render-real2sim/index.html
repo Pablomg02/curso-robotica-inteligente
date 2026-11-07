@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -792,6 +792,144 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector. El sombrero indica estimación o valor discretizado (\(\hat C\)); la prima, una cantidad proyectada (\(\Sigma'\)).</p>
+<dl>
+<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="9">Valor aproximado por cuadratura, como \(\hat C\), frente a la integral exacta \(C\).</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza (media) de una variable aleatoria.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="7">«Se distribuye según», como en \(\xi\sim p\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="18">Norma euclídea; en el bundle adjustment mide el error de reproyección en px.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="12">Traspuesta de una matriz.</dd>
+<dt>\(\sum\), \(\prod\)</dt><dd data-hojas="9">Suma y producto sobre un índice; en la composición alfa recorren los tramos del rayo.</dd>
+<dt>\(\int\)</dt><dd data-hojas="9">Integral a lo largo del rayo, en el render volumétrico.</dd>
+<dt>\(\min\)</dt><dd data-hojas="18">Minimización sobre las variables indicadas debajo del símbolo, en el ajuste de bundle adjustment.</dd>
+<dt>\(\mathbb R^3\)</dt><dd data-hojas="12">Espacio de vectores reales de 3 componentes.</dd>
+<dt>\(\in\)</dt><dd data-hojas="12">«Pertenece a»: \(\boldsymbol\mu\in\mathbb R^3\).</dd>
+<dt>\(\to\)</dt><dd data-hojas="9">«Se transforma en»: la red \(F_\Theta\) lleva (posición, dirección) a (color, densidad).</dd>
+<dt>\(\le\), \(\ge\)</dt><dd data-hojas="7">Menor o igual, mayor o igual.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="18">«Aproximadamente igual a».</dd>
+<dt>\(p(o\mid s)\)</dt><dd data-hojas="23">Modelo de observación del POMDP: probabilidad de la observación \(o\) dado el estado \(s\). En este tema es el renderizador más el modelo de sensor.</dd>
+</dl>
+<h3>Aleatorización de dominio</h3>
+<dl>
+<dt>\(\xi\)</dt><dd data-hojas="7">Parámetros visuales aleatorizados (texturas, luces, cámara, distractores) de un render.</dd>
+<dt>\(p(\xi)\)</dt><dd data-hojas="7">Distribución de la que se muestrean los parámetros visuales durante el entrenamiento.</dd>
+<dt>\(\xi^\star\)</dt><dd data-hojas="7">Parámetros del mundo real; se espera que sea «una muestra más» de \(p\).</dd>
+<dt>\(\theta\)</dt><dd data-hojas="7">Parámetros de la red (política o detector) que se entrena.</dd>
+<dt>\(\mathcal L(\theta;\xi)\)</dt><dd data-hojas="7">Pérdida no negativa de la red con parámetros \(\theta\) en un mundo \(\xi\).</dd>
+<dt>\(\bar{\mathcal L}\)</dt><dd data-hojas="7">Riesgo esperado \(\mathbb E_{\xi\sim p}[\mathcal L(\theta;\xi)]\) sobre la distribución de \(\xi\).</dd>
+<dt>\(k\) (Markov)</dt><dd data-hojas="7">Factor de la desigualdad de Markov: \(P(\mathcal L \gt k\bar{\mathcal L})\le 1/k\).</dd>
+<dt>\(P\)</dt><dd data-hojas="7">Probabilidad de un suceso.</dd>
+</dl>
+<h3>NeRF y render volumétrico</h3>
+<dl>
+<dt>\(F_\Theta\)</dt><dd data-hojas="9">Red neuronal de NeRF con parámetros \(\Theta\): de (posición, dirección) a (color, densidad).</dd>
+<dt>\(\Theta\)</dt><dd data-hojas="9">Pesos de la red de NeRF, que se ajustan minimizando el error de color por píxel.</dd>
+<dt>\(\mathbf x\) (NeRF)</dt><dd data-hojas="9">Punto 3D de la escena donde se consulta la red, en \(\mathbb R^3\). En la hoja 18, \(\mathbf x_{ij}\) es un punto de imagen en px.</dd>
+<dt>\(\mathbf d\)</dt><dd data-hojas="9">Dirección de visión del rayo; de ella depende el color.</dd>
+<dt>\(\mathbf c\)</dt><dd data-hojas="9">Color (RGB) en un punto, dependiente de la dirección \(\mathbf d\).</dd>
+<dt>\(\sigma\) (NeRF)</dt><dd data-hojas="9">Densidad volumétrica en un punto, independiente de la dirección. En la hoja 12 la figura usa \(\sigma\) para desviaciones típicas de las elipses.</dd>
+<dt>\(\mathbf r(t)\)</dt><dd data-hojas="9">Punto a distancia \(t\) a lo largo del rayo: \(\mathbf o + t\mathbf d\).</dd>
+<dt>\(\mathbf o\)</dt><dd data-hojas="9">Origen del rayo (centro de la cámara).</dd>
+<dt>\(t\), \(s\) (rayo)</dt><dd data-hojas="9">Distancia a lo largo del rayo; \(s\) es la variable de integración de \(T\).</dd>
+<dt>\(t_n\), \(t_f\)</dt><dd data-hojas="9">Distancias cercana y lejana entre las que se integra el rayo.</dd>
+<dt>\(C(\mathbf r)\)</dt><dd data-hojas="9">Color del píxel por el rayo \(\mathbf r\), integral del render volumétrico.</dd>
+<dt>\(C\) (3DGS)</dt><dd data-hojas="13">Color compuesto del píxel en el rasterizador: \(\sum_i \mathbf c_i\alpha_i\prod_{j\lt i}(1-\alpha_j)\).</dd>
+<dt>\(T(t)\)</dt><dd data-hojas="9">Transmitancia: fracción de luz que llega a la distancia \(t\) sin ser absorbida, \(e^{-\int\sigma}\).</dd>
+<dt>\(N\)</dt><dd data-hojas="9">Número de tramos (muestras) en que se divide el rayo en la cuadratura.</dd>
+<dt>\(i\), \(j\)</dt><dd data-hojas="9">Índices de tramos del rayo (\(j\lt i\) son los anteriores); en la hoja 18, índices de cámara \(i\) y punto \(j\).</dd>
+<dt>\(\delta_i\)</dt><dd data-hojas="9">Longitud del tramo \(i\) del rayo.</dd>
+<dt>\(\alpha_i\)</dt><dd data-hojas="9">Opacidad del tramo \(i\): \(1-e^{-\sigma_i\delta_i}\). En 3DGS (hoja 13), opacidad de la gaussiana en el píxel.</dd>
+<dt>\(T_i\)</dt><dd data-hojas="9">Transmitancia acumulada hasta el tramo \(i\): \(\prod_{j\lt i}(1-\alpha_j)\).</dd>
+<dt>\(\mathbf c_i\), \(\sigma_i\)</dt><dd data-hojas="9">Color y densidad del tramo \(i\).</dd>
+<dt>\(w_i\)</dt><dd data-hojas="10">Peso \(T_i\alpha_i\) de la muestra \(i\); la profundidad esperada es \(\sum w_it_i/\sum w_i\).</dd>
+<dt>\(t_i\)</dt><dd data-hojas="10">Distancia de la muestra \(i\) a lo largo del rayo.</dd>
+<dt>\(dT/dt\)</dt><dd data-hojas="9">Ecuación de absorción, \(-\sigma T\), de la que sale la transmitancia.</dd>
+<dt>\(T\sigma\,dt\)</dt><dd data-hojas="9">Probabilidad de que el rayo «termine» entre \(t\) y \(t+dt\); es el integrando del render.</dd>
+</dl>
+<h3>3D Gaussian Splatting</h3>
+<dl>
+<dt>\(\boldsymbol\mu\)</dt><dd data-hojas="12">Media (centro) de una gaussiana 3D, vector de \(\mathbb R^3\).</dd>
+<dt>\(\Sigma\)</dt><dd data-hojas="12">Covarianza 3D de la gaussiana: \(RSS^\top R^\top\), siempre semidefinida positiva.</dd>
+<dt>\(S\)</dt><dd data-hojas="12">Escala de la gaussiana, matriz diagonal \(3\times 3\).</dd>
+<dt>\(R\) (gaussiana)</dt><dd data-hojas="12">Rotación de la gaussiana, dada por un cuaternión. En la hoja 18, \(R_i\) es la rotación de la cámara \(i\).</dd>
+<dt>\(o\), \(o_i\)</dt><dd data-hojas="12">Opacidad de la gaussiana (\(o_i\) la de la \(i\)-ésima).</dd>
+<dt>\(W\)</dt><dd data-hojas="12">Rotación mundo-cámara.</dd>
+<dt>\(\pi(x,y,z)\)</dt><dd data-hojas="12">Proyección de cámara estenopeica: \((fx/z,\ fy/z)\). En la hoja 18, \(\pi\) proyecta puntos con la matriz \(K\).</dd>
+<dt>\(f\)</dt><dd data-hojas="12">Distancia focal de la cámara, en píxeles.</dd>
+<dt>\(x,y,z\)</dt><dd data-hojas="12">Coordenadas de un punto en el sistema de la cámara.</dd>
+<dt>\(J\)</dt><dd data-hojas="12">Jacobiano \(2\times 3\) de la proyección \(\pi\) en la media de la gaussiana.</dd>
+<dt>\(\Sigma'\)</dt><dd data-hojas="12">Covarianza 2D de la gaussiana proyectada: \(JW\Sigma W^\top J^\top\) (EWA).</dd>
+<dt>\(\Sigma_i'\)</dt><dd data-hojas="13">Covarianza 2D de la gaussiana \(i\) en la imagen, usada en \(\alpha_i\).</dd>
+<dt>\(\Delta\)</dt><dd data-hojas="13">Vector entre el centro de la gaussiana proyectada y el píxel que se evalúa.</dd>
+<dt>\(\mathbf c_i\) (3DGS)</dt><dd data-hojas="13">Color de la gaussiana \(i\) visto desde la dirección de la cámara.</dd>
+<dt>\(\mathcal L\)</dt><dd data-hojas="14">Pérdida de entrenamiento de 3DGS: \((1-\lambda)\mathcal L_1+\lambda\mathcal L_{\text{D-SSIM}}\). En la hoja 7 es la pérdida de la aleatorización.</dd>
+<dt>\(\mathcal L_1\)</dt><dd data-hojas="14">Error absoluto medio entre la imagen renderizada y la real.</dd>
+<dt>\(\mathcal L_{\text{D-SSIM}}\)</dt><dd data-hojas="14">Término basado en la disimilitud estructural (SSIM) entre las dos imágenes.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="14">Peso del término D-SSIM en la pérdida, 0,2.</dd>
+</dl>
+<h3>Real2sim: poses y escala</h3>
+<dl>
+<dt>\(R_i\), \(\mathbf t_i\)</dt><dd data-hojas="18">Rotación y traslación de la cámara \(i\) (pose) en el ajuste de SfM.</dd>
+<dt>\(\mathbf X_j\)</dt><dd data-hojas="18">Punto 3D \(j\) de la escena reconstruida.</dd>
+<dt>\(\mathbf x_{ij}\)</dt><dd data-hojas="18">Observación en píxeles del punto \(j\) en la imagen \(i\).</dd>
+<dt>\(K\) (intrínsecos)</dt><dd data-hojas="18">Matriz de intrínsecos de la cámara en el bundle adjustment.</dd>
+<dt>\(\rho\)</dt><dd data-hojas="18">Función de pérdida robusta que reduce el peso de los errores grandes.</dd>
+<dt>\(s\)</dt><dd data-hojas="18">Factor de escala de una similitud (\(s\gt 0\)); la escala que las fotos no fijan.</dd>
+<dt>\(Q\)</dt><dd data-hojas="18">Rotación de una similitud: la orientación (vertical) que las fotos no fijan.</dd>
+<dt>\(\mathbf p\)</dt><dd data-hojas="18">Traslación de una similitud: el origen que las fotos no fijan.</dd>
+<dt>\(\mathbf X_j'\), \(R_i'\), \(\mathbf t_i'\)</dt><dd data-hojas="18">Puntos y poses transformados por la similitud, con el mismo coste de reproyección.</dd>
+</dl>
+<h3>Cobertura y métricas</h3>
+<dl>
+<dt>PSNR</dt><dd data-hojas="9">Peak signal-to-noise ratio: error de píxel entre una imagen renderizada y una real, en dB.</dd>
+<dt>SSIM</dt><dd data-hojas="15">Structural similarity: similitud estructural entre dos imágenes.</dd>
+<dt>LPIPS</dt><dd data-hojas="15">Learned perceptual image patch similarity: distancia entre características de una red profunda, más cercana a la percepción humana.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>NeRF</dt><dd data-hojas="9">Neural radiance field: escena como red neuronal que da densidad y color en cada punto.</dd>
+<dt>3DGS</dt><dd data-hojas="12">3D Gaussian Splatting: escena como millones de gaussianas 3D que se rasterizan.</dd>
+<dt>FPS</dt><dd data-hojas="13">Frames per second, imágenes por segundo: tasa de render de 3DGS frente a Mip-NeRF 360.</dd>
+<dt>2DGS</dt><dd data-hojas="15">Variante de Gaussian Splatting con discos planos, orientada a superficies.</dd>
+<dt>3DGUT</dt><dd data-hojas="4">3D Gaussian Unscented Transform: renderiza cámaras con distorsión y obturador rodante.</dd>
+<dt>gsplat</dt><dd data-hojas="4">Biblioteca abierta (Apache-2.0) que reimplementa el rasterizador de 3DGS.</dd>
+<dt>Instant-NGP</dt><dd data-hojas="4">Entrena un NeRF en segundos con codificación hash multirresolución.</dd>
+<dt>COLMAP</dt><dd data-hojas="4">Herramienta de Structure-from-Motion que da poses de cámara y puntos 3D a partir de fotos.</dd>
+<dt>SfM</dt><dd data-hojas="17">Structure-from-Motion: reconstrucción de poses y puntos 3D a partir de fotos.</dd>
+<dt>EWA</dt><dd data-hojas="12">Elliptical weighted average: aproximación de primer orden usada para proyectar la gaussiana 3D en 2D.</dd>
+<dt>PBR</dt><dd data-hojas="6">Physically based rendering: materiales con albedo, rugosidad y metalicidad.</dd>
+<dt>RT</dt><dd data-hojas="6">Ray tracing: núcleos de las GPU que aceleran el trazado de rayos.</dd>
+<dt>RTX</dt><dd data-hojas="6">Plataforma de GPU de NVIDIA con núcleos RT; en Isaac Sim, sensores que trazan rayos.</dd>
+<dt>Nanite, Lumen</dt><dd data-hojas="6">Geometría virtualizada e iluminación global dinámica de Unreal Engine 5, según sus fabricantes.</dd>
+<dt>CAD2RL</dt><dd data-hojas="4">Política de evitación de colisiones entrenada solo en simulación con modelos CAD y vuelo real.</dd>
+<dt>FlightGoggles</dt><dd data-hojas="4">Simulador de drones con escenas por fotogrametría.</dd>
+<dt>GNSS</dt><dd data-hojas="18">Global navigation satellite system: posicionamiento por satélite; sin VIO, una alternativa (GNSS RTK) para fijar la escala y la posición al alinear la reconstrucción.</dd>
+<dt>FiGS</dt><dd data-hojas="20">Simulador de SOUS VIDE: dinámica sencilla más gaussianas, hasta 130 imágenes/s.</dd>
+<dt>SOUS VIDE</dt><dd data-hojas="20">Política de dron entrenada en escenas de gaussianas por destilación de un MPC con estado privilegiado.</dd>
+<dt>GRaD-Nav</dt><dd data-hojas="20">Navegación visual por puertas entrenada con gaussianas y dinámica diferenciable.</dd>
+<dt>FalconGym</dt><dd data-hojas="20">Navegación por puertas entrenada en escenas NeRF y probada sin ajuste.</dd>
+<dt>Splat-Nav</dt><dd data-hojas="20">Planificación segura y localización sobre un mapa de gaussianas.</dd>
+<dt>SplatSim</dt><dd data-hojas="20">Manipulación con RGB entrenada solo en gaussianas.</dd>
+<dt>MPC</dt><dd data-hojas="20">Model predictive control: control óptimo que reoptimiza en cada paso.</dd>
+<dt>RGB</dt><dd data-hojas="20">Red-green-blue: la política de manipulación se entrena solo en gaussianas con entrada RGB.</dd>
+<dt>RL</dt><dd data-hojas="21">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>BPTT</dt><dd data-hojas="21">Backpropagation through time: retropropagación a través de los pasos de una dinámica.</dd>
+<dt>VIO</dt><dd data-hojas="17">Visual-inertial odometry: odometría con cámara e IMU, que da poses con escala métrica.</dd>
+<dt>IMU</dt><dd data-hojas="17">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>RTK</dt><dd data-hojas="18">Real-time kinematic: GNSS con precisión de centímetros, para fijar la escala.</dd>
+<dt>HD</dt><dd data-hojas="21">High definition: resolución a la que se compara el entrenamiento de Instant-NGP en la tabla.</dd>
+<dt>NuRec</dt><dd data-hojas="22">Función de Isaac Sim para renderizar escenas de gaussianas junto con mallas, según NVIDIA.</dd>
+<dt>EUVS</dt><dd data-hojas="22">Benchmark de síntesis de vistas con grandes cambios de punto de vista.</dd>
+<dt>POMDP</dt><dd data-hojas="23">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
+<dt>JAX</dt><dd data-hojas="29">Biblioteca de cálculo numérico con la que se programa el laboratorio.</dd>
+<dt>GPU</dt><dd data-hojas="6">Graphics processing unit: procesador gráfico.</dd>
+<dt>OGRE, MuJoCo, Unity, Unreal</dt><dd data-hojas="6">Motores gráficos o de simulación citados al comparar el render clásico.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

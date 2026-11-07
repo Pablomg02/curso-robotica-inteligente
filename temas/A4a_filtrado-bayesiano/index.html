@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -753,6 +753,183 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector; mayúscula: matriz. Índice \(k\): paso de tiempo discreto. Superíndice \(-\): valor predicho, antes de usar la medida \(y_k\). Las letras son las del filtrado (Kalman); \(Q\) y \(R\) aquí son covarianzas de ruido, no pesos de coste como en A3a.</p>
+<dl>
+<dt>\(\sim\)</dt><dd data-hojas="6">«Se distribuye según», p. ej. \(w\sim\mathcal N(0,Q)\).</dd>
+<dt>\(\propto\)</dt><dd data-hojas="6">«Proporcional a»: igual salvo una constante de normalización (en el filtro de Bayes, \(\eta\)).</dd>
+<dt>\(\mathcal N(m,P)\)</dt><dd data-hojas="9">Gaussiana de media \(m\) y covarianza \(P\).</dd>
+<dt>\(^\top\)</dt><dd data-hojas="9">Traspuesta de una matriz.</dd>
+<dt>\(^{-1}\)</dt><dd data-hojas="9">Inversa de una matriz cuadrada, p. ej. \(S^{-1}\), \(P^{-1}\).</dd>
+<dt>\(I\)</dt><dd data-hojas="9">Matriz identidad del tamaño que pida el contexto.</dd>
+<dt>\(\operatorname{Cov}\)</dt><dd data-hojas="9">Covarianza entre variables aleatorias; \(\operatorname{Cov}(y)\) es la covarianza de \(y\) consigo misma.</dd>
+<dt>\(\int\), \(dx\)</dt><dd data-hojas="6">Integral sobre el estado, que marginaliza una variable.</dd>
+<dt>\(\delta(\cdot)\)</dt><dd data-hojas="16">Delta de Dirac: la masa concentrada en un punto. Cada partícula es una delta ponderada.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="19">Prefijo de «error pequeño» en el filtro de estado de error: \(\delta\boldsymbol\theta\), \(\delta\mathbf v\), \(\delta\mathbf x\).</dd>
+<dt>\(\hat{\ }\) en el ESKF</dt><dd data-hojas="19">Sombrero sobre una letra del ESKF (\(\hat R\), \(\hat{\mathbf b}_g\)): valor del estado nominal, el que se propaga sin ruido.</dd>
+<dt>\(\hat m\) (UKF)</dt><dd data-hojas="15">Media recompuesta tras propagar los puntos sigma por \(f\).</dd>
+<dt>\(\dot{\ }\)</dt><dd data-hojas="11">Derivada respecto al tiempo continuo, p. ej. \(\dot p\), \(\delta\dot{\boldsymbol\theta}\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="15">Derivada parcial; \(\partial f/\partial x\) es el jacobiano de \(f\).</dd>
+<dt>\(\operatorname{Exp}\)</dt><dd data-hojas="19">Exponencial de SO(3) (M1): convierte un vector de rotación de \(\mathbb R^3\) en una matriz de rotación.</dd>
+<dt>\([\mathbf a]_\times\)</dt><dd data-hojas="19">Matriz \(3\times 3\) antisimétrica de \(\mathbf a\in\mathbb R^3\): \([\mathbf a]_\times\mathbf b = \mathbf a\times\mathbf b\).</dd>
+<dt>\(\operatorname{diag}\), \(\|\cdot\|\)</dt><dd data-hojas="19">Operadores sobre vectores y matrices: matriz diagonal y norma.</dd>
+</dl>
+<h3>Filtro de Bayes</h3>
+<p>Modelo de Markov oculto: estado \(x\) no observado, medida \(y\), mando \(u\).</p>
+<dl>
+<dt>\(x_k\)</dt><dd data-hojas="6">Estado verdadero en el paso \(k\), vector de \(\mathbb R^n\).</dd>
+<dt>\(x_{k-1}\)</dt><dd data-hojas="6">Estado en el paso anterior; se marginaliza en la predicción.</dd>
+<dt>\(y_k\)</dt><dd data-hojas="6">Medida en el paso \(k\), vector de \(\mathbb R^m\).</dd>
+<dt>\(y_{1:k}\)</dt><dd data-hojas="3,6">Todas las medidas desde el paso 1 hasta el \(k\).</dd>
+<dt>\(u_{k-1}\), \(u_{1:k-1}\)</dt><dd data-hojas="3,6">Mando aplicado en el paso \(k-1\) y la historia de mandos.</dd>
+<dt>\(n\)</dt><dd data-hojas="6,15">Dimensión del estado; en la rejilla de la hoja 6, número de celdas.</dd>
+<dt>\(m\) (dimensión)</dt><dd data-hojas="13">Dimensión de la medida, grados de libertad de la \(\chi^2\) del NIS. No confundir con la media \(m\).</dd>
+<dt>\(w\) (celdas)</dt><dd data-hojas="6">En el coste de la rejilla, anchura en celdas del núcleo de movimiento (convolución).</dd>
+<dt>\(p(x_k\mid x_{k-1},u_{k-1})\)</dt><dd data-hojas="6">Modelo de transición: probabilidad del nuevo estado dado el anterior y el mando.</dd>
+<dt>\(p(y_k\mid x_k)\)</dt><dd data-hojas="6">Modelo de medida o verosimilitud: probabilidad de la medida dado el estado.</dd>
+<dt>\(\mathrm{bel}(x_k)\)</dt><dd data-hojas="3,6">Belief: \(p(x_k\mid y_{1:k},u_{1:k-1})\), la distribución del estado dadas todas las medidas y mandos. Es un estadístico suficiente para decidir.</dd>
+<dt>\(\overline{\mathrm{bel}}(x_k)\)</dt><dd data-hojas="6">Belief predicho, antes de incorporar \(y_k\).</dd>
+<dt>\(\eta\)</dt><dd data-hojas="6">Constante de normalización de la actualización de Bayes (escalar) para que el belief sume 1.</dd>
+<dt>\(O(\cdot)\)</dt><dd data-hojas="6">Orden del coste de cómputo, p. ej. \(O(n^2)\) para la predicción en una rejilla de \(n\) celdas.</dd>
+</dl>
+<h3>Filtro de Kalman</h3>
+<dl>
+<dt>\(F\)</dt><dd data-hojas="9">Matriz \(n\times n\) de la dinámica lineal: \(x_k = Fx_{k-1}+\dots\) Aparece también como jacobiano \(F_k\) del EKF.</dd>
+<dt>\(G\)</dt><dd data-hojas="9">Matriz de entrada del modelo lineal: cómo actúa el mando \(u\) sobre el estado.</dd>
+<dt>\(H\)</dt><dd data-hojas="9">Matriz \(m\times n\) de medida: \(y_k = Hx_k+v\). En el EKF, jacobiano \(H_k\) de \(h\).</dd>
+<dt>\(w\)</dt><dd data-hojas="9">Ruido de proceso, gaussiano de media cero y covarianza \(Q\), independiente del de medida.</dd>
+<dt>\(v\)</dt><dd data-hojas="9">Ruido de medida, gaussiano de media cero y covarianza \(R\).</dd>
+<dt>\(Q\)</dt><dd data-hojas="9">Covarianza del ruido de proceso (\(n\times n\)): cuánto se desconfía del modelo en cada paso.</dd>
+<dt>\(R\)</dt><dd data-hojas="9">Covarianza del ruido de medida (\(m\times m\)): cuánto se desconfía del sensor.</dd>
+<dt>\(m\), \(m_k\) (media)</dt><dd data-hojas="9">Media del belief gaussiano, vector de \(\mathbb R^n\): la estimación del estado.</dd>
+<dt>\(P\)</dt><dd data-hojas="9">Covarianza del belief gaussiano (\(n\times n\)), tras la actualización.</dd>
+<dt>\(m^-\), \(P^-\)</dt><dd data-hojas="9">Media y covarianza predichas: \(m^-=Fm+Gu\), \(P^-=FPF^\top+Q\).</dd>
+<dt>\(\nu\)</dt><dd data-hojas="9">Innovación: \(\nu=y-Hm^-\), lo que la medida aporta respecto a lo previsto.</dd>
+<dt>\(S\)</dt><dd data-hojas="9">Covarianza de la innovación (\(m\times m\)): \(S=HP^-H^\top+R\).</dd>
+<dt>\(K\)</dt><dd data-hojas="9">Ganancia de Kalman: \(K=P^-H^\top S^{-1}\), pondera modelo y medida según sus incertidumbres.</dd>
+<dt>Joseph</dt><dd data-hojas="9">Forma de Joseph de la covarianza, \(P=(I-KH)P^-(I-KH)^\top+KRK^\top\): simétrica y definida positiva aunque \(K\) no sea óptima.</dd>
+<dt>\(\operatorname{Cov}(x,y)\)</dt><dd data-hojas="9">Covarianza cruzada entre estado y medida: \(P^-H^\top\). Con ella se condiciona la gaussiana conjunta.</dd>
+<dt>\(P_k^-\), \(P_{k+1}^-\)</dt><dd data-hojas="10">Covarianza predicha en dos pasos consecutivos; su recursión es la de Riccati del filtro.</dd>
+<dt>\(A\to F^\top\), \(B\to H^\top\)</dt><dd data-hojas="10">Correspondencia de dualidad: la Riccati del filtro es la del LQR de A3a con \(A\) cambiada por \(F^\top\) y \(B\) por \(H^\top\).</dd>
+<dt>\(Q^{1/2}\)</dt><dd data-hojas="10">Raíz cuadrada (factor) de \(Q\), usada en las condiciones de detectabilidad y estabilizabilidad.</dd>
+<dt>\((A,B)\)</dt><dd data-hojas="10">Pareja del LQR: dinámica y entrada del sistema de A3a.</dd>
+</dl>
+<h3>Filtro complementario y ruido de proceso</h3>
+<dl>
+<dt>\(p\), \(v\) (un eje)</dt><dd data-hojas="11">Posición y velocidad en un eje del ejemplo del complementario: \(\dot p=v\).</dd>
+<dt>\(a_m\)</dt><dd data-hojas="11">Aceleración medida por el acelerómetro, usada como mando.</dd>
+<dt>\(n\)</dt><dd data-hojas="11">Ruido de la medida de posición en \(y=p+n\) (con densidad \(r\)). Fuera de esa hoja, \(n\) es la dimensión del estado.</dd>
+<dt>\(q\)</dt><dd data-hojas="11">Densidad espectral del ruido del acelerómetro (en la hoja 12, m²/s³).</dd>
+<dt>\(r\)</dt><dd data-hojas="11">Densidad espectral del ruido de la medida de posición.</dd>
+<dt>\(\omega_0\)</dt><dd data-hojas="11">Frecuencia de cruce del complementario, \(\omega_0=(q/r)^{1/4}\), en rad/s: por debajo manda la medida de posición, por encima el acelerómetro.</dd>
+<dt>\(\zeta\)</dt><dd data-hojas="11">Amortiguamiento del error del complementario, \(1/\sqrt2\).</dd>
+<dt>\(e\)</dt><dd data-hojas="11">Error de estimación de posición en la ecuación de segundo orden \(\ddot e+\sqrt2\omega_0\dot e+\omega_0^2e\).</dd>
+<dt>\(A\), \(L\), \(C\)</dt><dd data-hojas="11">Matrices del modelo continuo: dinámica, entrada del ruido y medida (\(C=(1,0)\)).</dd>
+<dt>\(P\), \(p_{11}\), \(p_{12}\)</dt><dd data-hojas="11">Covarianza estacionaria de Riccati y sus componentes.</dd>
+<dt>\(Q_d\)</dt><dd data-hojas="12">Covarianza de proceso discreta calculada desde el ruido blanco continuo de densidad \(q\) integrando durante \(\Delta t\).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="12">Periodo de muestreo o paso de integración, en segundos.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="12">Variable de integración del tiempo dentro de un paso, entre 0 y \(\Delta t\).</dd>
+<dt>\(e^{A\tau}\)</dt><dd data-hojas="12">Exponencial matricial: la propagación del estado durante un tiempo \(\tau\).</dd>
+<dt>\(\Lambda\)</dt><dd data-hojas="12">Matriz de información, \(\Lambda=P^{-1}\).</dd>
+<dt>\(\eta\) (información)</dt><dd data-hojas="12">Vector de información, \(\eta=P^{-1}m\). Fuera de esta hoja, \(\eta\) es la constante de normalización de Bayes.</dd>
+<dt>\(\Lambda^-\), \(\eta^-\)</dt><dd data-hojas="12">Información predicha, antes de sumar la medida.</dd>
+</dl>
+<h3>Consistencia</h3>
+<dl>
+<dt>\(e_k\)</dt><dd data-hojas="13">Error de estimación, estado verdadero menos estimación.</dd>
+<dt>\(\epsilon_k\), NEES</dt><dd data-hojas="13">Error de estado normalizado, \(\epsilon_k=e_k^\top P_k^{-1}e_k\). En un filtro consistente sigue una \(\chi^2_n\) y su media vale \(n\).</dd>
+<dt>\(P_k\)</dt><dd data-hojas="13">Covarianza del filtro en el paso \(k\).</dd>
+<dt>\(\nu_k\), \(S_k\)</dt><dd data-hojas="13">Innovación y su covarianza en el paso \(k\); \(\nu_k^\top S_k^{-1}\nu_k\sim\chi^2_m\) es el NIS.</dd>
+<dt>\(\chi^2_n\), \(\chi^2_m\)</dt><dd data-hojas="13">Distribución chi cuadrado con \(n\) o \(m\) grados de libertad.</dd>
+<dt>\(d^2\)</dt><dd data-hojas="25">Distancia de Mahalanobis al cuadrado de la innovación, \(\nu^\top S^{-1}\nu\); se compara con un cuantil de \(\chi^2_m\) para rechazar medidas atípicas.</dd>
+</dl>
+<h3>EKF, UKF y filtro de partículas</h3>
+<dl>
+<dt>\(f\)</dt><dd data-hojas="15">Función de dinámica no lineal: \(x_k=f(x_{k-1},u)+w\).</dd>
+<dt>\(h\)</dt><dd data-hojas="15">Función de medida no lineal: \(y_k=h(x_k)+v\).</dd>
+<dt>\(F_k\)</dt><dd data-hojas="15">Jacobiano de \(f\) respecto al estado, evaluado en la estimación \(m\).</dd>
+<dt>\(H_k\)</dt><dd data-hojas="15">Jacobiano de \(h\) respecto al estado, evaluado en la predicción \(m^-\).</dd>
+<dt>\(\mathcal X_j\)</dt><dd data-hojas="15">Punto sigma \(j\) del UKF: \(\mathcal X_0=m\) y \(\mathcal X_{\pm i}=m\pm(\sqrt{(n+\lambda)P})_i\); son \(2n+1\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="15">Parámetro de escala del UKF que fija la separación de los puntos sigma.</dd>
+<dt>\(\sqrt{(n+\lambda)P}\)</dt><dd data-hojas="15">Raíz de matriz (Cholesky) de \((n+\lambda)P\); su columna \(i\) desplaza el punto \(\mathcal X_{\pm i}\).</dd>
+<dt>\(W_j\)</dt><dd data-hojas="15">Peso del punto sigma \(j\) al recomponer media y covarianza.</dd>
+<dt>\(x^i\), \(x_k^i\)</dt><dd data-hojas="16">Partícula \(i\): una muestra del estado en el paso \(k\).</dd>
+<dt>\(w^i\), \(w_k^i\)</dt><dd data-hojas="16">Peso de la partícula \(i\); los pesos suman 1.</dd>
+<dt>\(q(x_k\mid x_{k-1}^i,y_k)\)</dt><dd data-hojas="16">Distribución de propuesta del muestreo por importancia. Con la transición como propuesta, el peso es la verosimilitud (bootstrap).</dd>
+<dt>\(1/\sum_i (w^i)^2\)</dt><dd data-hojas="16">Tamaño efectivo de partículas: mide la degeneración; si baja, se remuestrea.</dd>
+<dt>\(x\), \(k\) (ejemplo bimodal)</dt><dd data-hojas="17">Estado escalar y paso del modelo de la comparación: \(x_k=x/2+25x/(1+x^2)+8\cos(1{,}2k)+w\), \(y_k=x^2/20+v\).</dd>
+<dt>RMSE</dt><dd data-hojas="17">Raíz del error cuadrático medio de la estimación.</dd>
+</dl>
+<h3>Filtro de estado de error (ESKF)</h3>
+<dl>
+<dt>\(R\) (actitud)</dt><dd data-hojas="19">Matriz de rotación \(3\times3\) de cuerpo a mundo (verdadera). Aquí \(R\) es la actitud, no la covarianza de medida.</dd>
+<dt>\(\hat R\)</dt><dd data-hojas="19">Actitud nominal; se propaga con la IMU sin ruido, \(\hat R\leftarrow\hat R\operatorname{Exp}((\boldsymbol\omega_m-\hat{\mathbf b}_g)\Delta t)\).</dd>
+<dt>\(\delta\boldsymbol\theta\)</dt><dd data-hojas="19">Error de actitud, vector de \(\mathbb R^3\) en rad, con perturbación por la derecha: \(R=\hat R\operatorname{Exp}(\delta\boldsymbol\theta)\).</dd>
+<dt>\(\delta\dot{\boldsymbol\theta}\)</dt><dd data-hojas="19">Derivada del error de actitud: \(-[\boldsymbol\omega_m-\hat{\mathbf b}_g]_\times\delta\boldsymbol\theta-\delta\mathbf b_g-\mathbf n_g\).</dd>
+<dt>\(\boldsymbol\omega_m\)</dt><dd data-hojas="19">Velocidad angular medida por el giróscopo, en rad/s.</dd>
+<dt>\(\hat{\mathbf b}_g\), \(\mathbf b_g\)</dt><dd data-hojas="19">Sesgo del giróscopo: estimado (nominal) y verdadero, en rad/s.</dd>
+<dt>\(\delta\mathbf b_g\)</dt><dd data-hojas="19">Error del sesgo del giróscopo.</dd>
+<dt>\(\mathbf n_g\)</dt><dd data-hojas="19">Ruido blanco del giróscopo.</dd>
+<dt>\(\delta x\), \(\delta\mathbf x\)</dt><dd data-hojas="19,20">Vector de error del ESKF (media cero); en la hoja 20 está en \(\mathbb R^{15}\).</dd>
+<dt>\(\mathbf y\)</dt><dd data-hojas="19">Medida vectorial de un vector fijo del mundo en ejes cuerpo, \(\mathbf y=R^\top\mathbf v\).</dd>
+<dt>\(\mathbf v\) (vector fijo)</dt><dd data-hojas="19">Vector fijo del mundo (gravedad, campo magnético) en la hoja 19. En la hoja 20 \(\mathbf v\) es la velocidad.</dd>
+<dt>\(H_{\delta\theta}\)</dt><dd data-hojas="19">Jacobiano de la medida respecto al error de actitud: \([\hat R^\top\mathbf v]_\times\); ciego a giros alrededor de \(\hat R^\top\mathbf v\).</dd>
+<dt>\(\mathbf p\)</dt><dd data-hojas="20">Posición, en m; \(\delta\mathbf p\) es su error.</dd>
+<dt>\(\mathbf v\), \(\delta\mathbf v\)</dt><dd data-hojas="20">Velocidad y su error. Ecuación: \(\dot{\mathbf v}=R(\mathbf a_m-\mathbf b_a-\mathbf n_a)+\mathbf g\).</dd>
+<dt>\(\mathbf b_a\), \(\hat{\mathbf b}_a\), \(\delta\mathbf b_a\)</dt><dd data-hojas="20">Sesgo del acelerómetro: verdadero, nominal y error.</dd>
+<dt>\(\mathbf a_m\)</dt><dd data-hojas="20">Fuerza específica medida por el acelerómetro: \(\mathbf a_m=R^\top(\dot{\mathbf v}-\mathbf g)\).</dd>
+<dt>\(\mathbf a\), \(\boldsymbol\omega\)</dt><dd data-hojas="20">Medidas corregidas del sesgo: \(\mathbf a=\mathbf a_m-\hat{\mathbf b}_a\), \(\boldsymbol\omega=\boldsymbol\omega_m-\hat{\mathbf b}_g\).</dd>
+<dt>\(\mathbf g\)</dt><dd data-hojas="20">Vector de gravedad en el mundo.</dd>
+<dt>\(\mathbf n_a\)</dt><dd data-hojas="20">Ruido blanco del acelerómetro.</dd>
+<dt>\(\mathbf n_{ba}\), \(\mathbf n_{bg}\)</dt><dd data-hojas="20">Ruidos de paseo aleatorio de los sesgos del acelerómetro y del giróscopo.</dd>
+<dt>\(H\) (posición)</dt><dd data-hojas="20">Matriz de la medida de posición, \([I\ 0\ 0\ 0\ 0]\): lineal en el error.</dd>
+<dt>\(\sigma\), \(2\sigma\)</dt><dd data-hojas="21">Desviación típica que declara el filtro y su banda doble, comparada con el error real en la figura de la guiñada.</dd>
+</dl>
+<h3>Retardos, ajuste y suavizado</h3>
+<dl>
+<dt>\(G_k\)</dt><dd data-hojas="25">Ganancia del suavizador RTS: \(G_k=P_kF^\top(P^-_{k+1})^{-1}\).</dd>
+<dt>\(m^s_k\)</dt><dd data-hojas="25">Media suavizada en el paso \(k\), que usa también las medidas futuras.</dd>
+<dt>\(m_k\), \(m^-_{k+1}\)</dt><dd data-hojas="25">Media filtrada en \(k\) y media predicha en \(k+1\), usadas en el suavizador.</dd>
+<dt>\(N\)</dt><dd data-hojas="25">Número de últimas medidas del horizonte de la estimación de horizonte móvil (MHE).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>PX4</dt><dd data-hojas="3">Autopiloto de código abierto cuyo estimador EKF2 se estudia como ejemplo real.</dd>
+<dt>EKF</dt><dd data-hojas="3">Extended Kalman filter: Kalman aplicado al modelo linealizado en la estimación actual.</dd>
+<dt>EKF2</dt><dd data-hojas="3">Estimador de PX4: 24 estados, estado de error, horizonte retrasado.</dd>
+<dt>UKF</dt><dd data-hojas="3">Unscented Kalman filter: propaga puntos sigma por la función no lineal, sin jacobianos.</dd>
+<dt>PF</dt><dd data-hojas="3">Particle filter: belief con muestras pesadas.</dd>
+<dt>ESKF</dt><dd data-hojas="2">Error-state Kalman filter: estado nominal en la variedad y error pequeño en el espacio tangente.</dd>
+<dt>MDP</dt><dd data-hojas="6">Markov decision process: un POMDP se convierte en uno sobre beliefs gracias a que el belief es un estadístico suficiente.</dd>
+<dt>InEKF</dt><dd data-hojas="27">Invariant EKF: EKF con el error definido por la estructura del grupo de Lie.</dd>
+<dt>NEES</dt><dd data-hojas="13">Normalized estimation error squared: \(e^\top P^{-1}e\); necesita el estado real.</dd>
+<dt>NIS</dt><dd data-hojas="13">Normalized innovation squared: \(\nu^\top S^{-1}\nu\); se calcula en vuelo.</dd>
+<dt>LQR</dt><dd data-hojas="10">Linear quadratic regulator, de A3a; dual del filtro de Kalman.</dd>
+<dt>DARE</dt><dd data-hojas="10">Discrete algebraic Riccati equation: la Riccati en régimen estacionario.</dd>
+<dt>MPC</dt><dd data-hojas="3">Model predictive control, de A3.</dd>
+<dt>MHE</dt><dd data-hojas="25">Moving horizon estimation: el dual del MPC, optimiza sobre las últimas \(N\) medidas.</dd>
+<dt>Rauch-Tung-Striebel, RTS</dt><dd data-hojas="25">Rauch-Tung-Striebel: suavizador con pasada hacia atrás.</dd>
+<dt>MSCKF</dt><dd data-hojas="4">Multi-state constraint Kalman filter: clona estados para navegación visual-inercial (A4b).</dd>
+<dt>VIO</dt><dd data-hojas="29">Visual-inertial odometry: odometría con cámara e IMU.</dd>
+<dt>SLAM</dt><dd data-hojas="12">Simultaneous localization and mapping.</dd>
+<dt>IMU</dt><dd data-hojas="12">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>GNSS</dt><dd data-hojas="20">Global navigation satellite system: posición por satélite.</dd>
+<dt>NED</dt><dd data-hojas="22">North-east-down: sistema de ejes del estado de EKF2.</dd>
+<dt>RSSM</dt><dd data-hojas="3">Recurrent state-space model de Dreamer: belief latente aprendido (A8).</dd>
+<dt>POMDP</dt><dd data-hojas="3">Partially observable Markov decision process.</dd>
+<dt>POMCP</dt><dd data-hojas="16">Partially observable Monte Carlo planning: planificación con belief de partículas (A7).</dd>
+<dt>FFT</dt><dd data-hojas="6">Fast Fourier transform, con la que la predicción por convolución cuesta \(O(n\log n)\).</dd>
+<dt>VINS</dt><dd data-hojas="33">Visual-inertial navigation system: sistema de navegación visual-inercial; la lectura recomendada analiza la observabilidad del VINS lineal frente al no lineal.</dd>
+<dt>EuRoC</dt><dd data-hojas="34">Dataset público de vuelos de un microdrón con IMU, cámaras y referencia, usado en el laboratorio.</dd>
+<dt>KalmanNet</dt><dd data-hojas="4">Filtro híbrido que mantiene la estructura de Kalman y aprende con una red lo que el modelo no sabe.</dd>
+<dt>EKF2_DELAY_MAX</dt><dd data-hojas="22">Parámetro de PX4: retardo máximo del horizonte de fusión.</dd>
+<dt>EKF2_PREDICT_US</dt><dd data-hojas="22">Parámetro de PX4: periodo de predicción.</dd>
+<dt>EKF2_TAU_VEL, EKF2_TAU_POS</dt><dd data-hojas="11">Parámetros de PX4: constantes de tiempo del filtro complementario de velocidad y posición.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

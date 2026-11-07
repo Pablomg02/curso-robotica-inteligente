@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -864,6 +864,176 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Una tilde sobre una medida (\(\tilde\omega\)) indica lo que entrega el sensor; el sombrero, una estimación. Los subíndices \(g\) y \(a\) indican giróscopo y acelerómetro, y \(d\) discreto, salvo donde se avise.</p>
+<dl>
+<dt>\(\tilde{\ }\) (tilde)</dt><dd data-hojas="6">Medida del sensor, con sesgo y ruido: \(\tilde\omega = \omega + b + n\).</dd>
+<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="7">Estimador de una cantidad a partir de datos, como \(\hat\sigma^2(\tau)\), la varianza de Allan estimada.</dd>
+<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="7">Promedio sobre una ventana de duración \(\tau\), como \(\bar\Omega_k(\tau)\).</dd>
+<dt>\(\dot{\ }\) (punto)</dt><dd data-hojas="6">Derivada respecto al tiempo, como \(\dot b\).</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="6">Esperanza (media) de una variable aleatoria.</dd>
+<dt>\(\mathrm{Var}\)</dt><dd data-hojas="6">Varianza de una variable aleatoria.</dd>
+<dt>\(\mathcal N(0,1)\)</dt><dd data-hojas="6">Gaussiana de media 0 y varianza 1; \(w_k\sim\mathcal N(0,1)\) se lee «\(w_k\) se distribuye según».</dd>
+<dt>\(\delta(t_1-t_2)\)</dt><dd data-hojas="6">Delta de Dirac: la autocorrelación de un ruido blanco es cero salvo cuando \(t_1=t_2\).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="6">Paso de muestreo, en s (por ejemplo 5 ms a 200 Hz).</dd>
+<dt>\(\Rightarrow\)</dt><dd data-hojas="6">«Implica»: en la hoja 6, de la varianza de la media sale la desviación discreta.</dd>
+<dt>\(\propto\)</dt><dd data-hojas="10">«Proporcional a»: en la deriva, p. ej. aceleración blanca \(\propto t^{1{,}5}\).</dd>
+<dt>\(\approx\)</dt><dd data-hojas="6">«Aproximadamente igual a».</dd>
+<dt>\(\mathbf x\)</dt><dd data-hojas="15">Posición de un píxel en la imagen en \(\mathbb R^2\), en px, como en \(I(\mathbf x,t)\).</dd>
+<dt>\(\sum\)</dt><dd data-hojas="7">Suma sobre un índice; en Allan, sobre todas las ventanas \(k\).</dd>
+<dt>\(\int\)</dt><dd data-hojas="6">Integral; promedia o acumula una señal continua en el tiempo.</dd>
+</dl>
+<h3>IMU: modelo de medida</h3>
+<p>Modelo por eje. La densidad se da en unidades por raíz de hercio; la desviación por muestra, en unidades de la medida.</p>
+<dl>
+<dt>\(\tilde\omega(t)\)</dt><dd data-hojas="6">Velocidad angular medida por el giróscopo en un eje (rad/s): verdad más sesgo más ruido.</dd>
+<dt>\(\omega(t)\)</dt><dd data-hojas="6">Velocidad angular verdadera en ese eje (rad/s). En la cámara (hojas 13, 14), \(\omega\) es el giro del dron.</dd>
+<dt>\(b(t)\)</dt><dd data-hojas="6">Sesgo del giróscopo, escalar que deriva lentamente; su derivada es ruido blanco.</dd>
+<dt>\(b_k\)</dt><dd data-hojas="6">Sesgo en el paso \(k\) en discreto: \(b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\,w_k\).</dd>
+<dt>\(n(t)\)</dt><dd data-hojas="6">Ruido blanco de la medida, de densidad \(\sigma_g\).</dd>
+<dt>\(w(t)\), \(w_k\)</dt><dd data-hojas="6">Ruido blanco unitario que alimenta el paseo aleatorio del sesgo; en discreto, \(w_k\sim\mathcal N(0,1)\). En la hoja 21 es el ruido del proceso de Gauss-Markov del GNSS.</dd>
+<dt>\(\sigma_g\)</dt><dd data-hojas="6">Densidad de ruido del giróscopo (rad/s/√Hz), el «angle random walk» de las hojas de datos.</dd>
+<dt>\(\sigma_{b_g}\)</dt><dd data-hojas="6">Paseo aleatorio del sesgo del giróscopo (rad/s²/√Hz).</dd>
+<dt>\(\sigma_a\)</dt><dd data-hojas="9">Densidad de ruido del acelerómetro (m/s²/√Hz).</dd>
+<dt>\(\sigma_{b_a}\)</dt><dd data-hojas="9">Paseo aleatorio del sesgo del acelerómetro (m/s³/√Hz).</dd>
+<dt>\(\sigma_{g,d}\)</dt><dd data-hojas="6">Desviación típica por muestra del ruido del giróscopo en discreto: \(\sigma_g/\sqrt{\Delta t}\).</dd>
+<dt>\(\sigma_d\) (en la IMU)</dt><dd data-hojas="29">En el ejemplo de autoevaluación, desviación por muestra: \(\sigma_d = \sigma/\sqrt{\Delta t}\). En la cámara (hoja 13), \(\sigma_d\) es el ruido oscuro; son dos usos distintos.</dd>
+<dt>\(m\)</dt><dd data-hojas="7">Número de muestras por ventana de Allan, \(m=\tau f_s\).</dd>
+<dt>\(f_s\)</dt><dd data-hojas="7">Frecuencia de muestreo de la IMU, en Hz.</dd>
+</dl>
+<h3>Varianza de Allan</h3>
+<dl>
+<dt>\(\tau\)</dt><dd data-hojas="7">Duración de las ventanas de promediado de Allan, en s.</dd>
+<dt>\(\bar\Omega_k(\tau)\)</dt><dd data-hojas="7">Media de la señal en la ventana \(k\)-ésima de duración \(\tau\).</dd>
+<dt>\(\sigma^2(\tau)\), \(\sigma(\tau)\)</dt><dd data-hojas="7">Varianza y desviación de Allan: la mitad de la varianza de la diferencia entre ventanas consecutivas, en función de \(\tau\).</dd>
+<dt>\(\hat\sigma^2(\tau)\)</dt><dd data-hojas="7">Estimador solapado de la varianza de Allan a partir del ángulo integrado.</dd>
+<dt>\(\theta_k\)</dt><dd data-hojas="7">Ángulo integrado del giróscopo en la muestra \(k\), usado en el estimador solapado.</dd>
+<dt>\(N\) (muestras)</dt><dd data-hojas="7">En el estimador solapado de Allan, número total de muestras del registro.</dd>
+<dt>\(N\) (ruido blanco)</dt><dd data-hojas="7">Coeficiente de ruido blanco (ARW) leído en la curva de Allan: \(N=\sigma(1\ \text s)\). Hou lo llama \(Q\). No es el número de muestras.</dd>
+<dt>\(N/n\)</dt><dd data-hojas="8">Número de ventanas disponibles para un \(\tau\) dado; fija el error relativo de cada punto, \(1/\sqrt{2(N/n-1)}\).</dd>
+<dt>\(Q\)</dt><dd data-hojas="7">Coeficiente de cuantización de la tabla de Allan: \(\sigma(\tau)=\sqrt3\,Q/\tau\). Hou usa también \(Q\) para lo que aquí es \(N\).</dd>
+<dt>\(B\)</dt><dd data-hojas="7">Inestabilidad del sesgo: el mínimo de la curva de Allan es \(\approx 0{,}664\,B\).</dd>
+<dt>\(K\)</dt><dd data-hojas="7">Coeficiente del paseo aleatorio de la tasa (RRW), leído como \(K=\sigma(3\ \text s)\) sobre la recta +1/2. En la cámara (hoja 13), \(K\) es la ganancia; es otro uso.</dd>
+<dt>\(R\) (rampa)</dt><dd data-hojas="7">Coeficiente de la rampa de la tabla de Allan: \(\sigma(\tau)=R\tau/\sqrt2\).</dd>
+</dl>
+<h3>Navegación a ciegas</h3>
+<dl>
+<dt>\(\sigma_p^{(a)}\)</dt><dd data-hojas="10">Desviación típica de la posición debida al ruido blanco del acelerómetro: \(\sigma_a t^{3/2}/\sqrt3\), crece como \(t^{3/2}\).</dd>
+<dt>\(\sigma_p^{(b_a)}\)</dt><dd data-hojas="10">Desviación de la posición por el paseo del sesgo del acelerómetro: \(\sigma_{b_a} t^{5/2}/\sqrt{20}\).</dd>
+<dt>\(\sigma_p^{(g)}\)</dt><dd data-hojas="10">Desviación de la posición por el ruido del giróscopo, que entra por la inclinación: \(g\,\sigma_g t^{5/2}/\sqrt{20}\).</dd>
+<dt>\(\sigma_p^{(b_g)}\)</dt><dd data-hojas="10">Desviación de la posición por el paseo del sesgo del giróscopo: \(g\,\sigma_{b_g} t^{7/2}/\sqrt{252}\).</dd>
+<dt>\(t\)</dt><dd data-hojas="10">Tiempo sin corrección externa, en s.</dd>
+<dt>\(q\), \(k\)</dt><dd data-hojas="10">En la derivación, \(q\) es la densidad de un ruido blanco y \(k\) el número de veces que se integra (la integral \(k\)-ésima tiene varianza \(q^2 t^{2k-1}/((k-1)!^2(2k-1))\)).</dd>
+<dt>\(g\)</dt><dd data-hojas="10">Aceleración de la gravedad (m/s²); proyectada por un error de actitud, da aceleración horizontal.</dd>
+<dt>\(\delta\theta\)</dt><dd data-hojas="10">Error de actitud (inclinación), en rad; produce una aceleración horizontal \(g\,\delta\theta\).</dd>
+<dt>\(a\) (aceleración de parada)</dt><dd data-hojas="19">En la distancia de parada, \(a=g\tan30°\), la aceleración máxima de frenado.</dd>
+</dl>
+<h3>Vibración y temperatura</h3>
+<dl>
+<dt>IMU_GYRO_CUTOFF</dt><dd data-hojas="11">Parámetro de PX4: frecuencia de corte del paso bajo del giróscopo.</dd>
+<dt>IMU_GYRO_DNF_EN</dt><dd data-hojas="11">Parámetro de PX4 que activa los filtros notch dinámicos; desactivado por defecto.</dd>
+</dl>
+<h3>Cámara: ruido fotométrico</h3>
+<dl>
+<dt>\(\mu_p\)</dt><dd data-hojas="13">Número medio de fotones por píxel durante la exposición.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="13">Eficiencia cuántica: fracción de fotones que se convierten en electrones.</dd>
+<dt>\(K\) (ganancia)</dt><dd data-hojas="13">Ganancia del sensor, en niveles digitales por electrón. En la hoja 7, \(K\) es el coeficiente del paseo aleatorio de Allan.</dd>
+<dt>\(\mu_d\)</dt><dd data-hojas="13">Media de electrones oscuros (corriente oscura) por píxel.</dd>
+<dt>\(\mu_y\)</dt><dd data-hojas="13">Media de la salida digital del píxel, en niveles digitales: \(\mu_y=K(\eta\mu_p+\mu_d)\).</dd>
+<dt>\(\mu_{y,\text{dark}}\)</dt><dd data-hojas="13">Media de la salida digital en oscuridad; se resta para aislar el ruido de disparo.</dd>
+<dt>\(\sigma_y^2\)</dt><dd data-hojas="13">Varianza de la salida digital: oscuro, cuantización y disparo, esta última proporcional a la señal.</dd>
+<dt>\(\sigma_d\) (en la cámara)</dt><dd data-hojas="13">Ruido oscuro (lectura y corriente oscura), en electrones; domina con poca luz.</dd>
+<dt>\(\sigma_q^2\)</dt><dd data-hojas="13">Varianza de cuantización, \(1/12\) niveles digitales al cuadrado.</dd>
+<dt>\(\mathrm{SNR}\)</dt><dd data-hojas="13">Relación señal-ruido: \(\eta\mu_p\) dividida entre la raíz de la suma de varianzas. Con buena luz, \(\approx\sqrt{\eta\mu_p}\).</dd>
+<dt>\(f\)</dt><dd data-hojas="13">Distancia focal de la cámara, en píxeles (458,65 px en EuRoC).</dd>
+<dt>\(t_{\exp}\)</dt><dd data-hojas="13">Tiempo de exposición, en s; el desenfoque es \(f\omega t_{\exp}\) píxeles.</dd>
+</dl>
+<h3>Cámara: obturador rodante</h3>
+<dl>
+<dt>\(t_{ro}\)</dt><dd data-hojas="14">Tiempo de lectura de la imagen completa (readout), en s.</dd>
+<dt>\(v\)</dt><dd data-hojas="14">Índice de la fila de la imagen, de 0 a \(H\).</dd>
+<dt>\(H\)</dt><dd data-hojas="14">Número de filas de la imagen.</dd>
+<dt>\(\Delta u(v)\)</dt><dd data-hojas="14">Desplazamiento horizontal de la fila \(v\) respecto a la primera por el obturador rodante, en px: \(f\omega t_{ro}\,v/H\).</dd>
+</dl>
+<h3>Cámara de eventos</h3>
+<dl>
+<dt>\(I\)</dt><dd data-hojas="15">Intensidad de luz en un píxel; la cámara de eventos reacciona a \(\ln I\).</dd>
+<dt>\(\ln I\)</dt><dd data-hojas="15">Logaritmo de la intensidad que cada píxel memoriza en su último evento.</dd>
+<dt>\(C\)</dt><dd data-hojas="15">Umbral de contraste: cambio de \(\ln I\) que dispara un evento (0,2 en la figura).</dd>
+<dt>\(\Delta\ln I(\mathbf x,t)\)</dt><dd data-hojas="15">Cambio de \(\ln I\) desde el último evento del píxel; hay evento al alcanzar \(\pm C\).</dd>
+<dt>\(t_{\text{último}}\)</dt><dd data-hojas="15">Instante del último evento emitido por el píxel.</dd>
+<dt>\(\pm1\)</dt><dd data-hojas="15">Polaridad del evento: ON si sube la intensidad, OFF si baja.</dd>
+<dt>\(t_k\)</dt><dd data-hojas="16">Instante de render \(k\) en ESIM; \(t_{k+1}=t_k+\lambda C\,|\partial L/\partial t|_{\max}^{-1}\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="16">Factor adimensional que escala el paso adaptativo de ESIM.</dd>
+<dt>\(L\)</dt><dd data-hojas="16">Brillo (logaritmo de la intensidad) de la imagen renderizada en la fórmula del paso de ESIM; su derivada temporal máxima fija el paso.</dd>
+<dt>\(\sigma_\theta\)</dt><dd data-hojas="16">Dispersión del umbral entre píxeles en v2e (≈ 0,03 alrededor de unos 0,3).</dd>
+</dl>
+<h3>LiDAR y profundidad</h3>
+<dl>
+<dt>\(\Delta\theta_h\)</dt><dd data-hojas="19">Resolución angular horizontal del LiDAR, en grados o rad.</dd>
+<dt>\(w\)</dt><dd data-hojas="19">Anchura de un objeto (poste, cable), en m.</dd>
+<dt>\(r\)</dt><dd data-hojas="19">Distancia al objeto, en m.</dd>
+<dt>\(n_h\)</dt><dd data-hojas="19">Número de columnas del barrido que tocan el objeto: \(w/(r\,\Delta\theta_h)\).</dd>
+<dt>\(\sigma_Z\)</dt><dd data-hojas="18">Error de la profundidad estéreo, \(Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
+<dt>\(Z\)</dt><dd data-hojas="18">Profundidad (distancia) de un punto a la cámara, en m.</dd>
+<dt>\(\sigma_d\) (estéreo)</dt><dd data-hojas="18">Error de disparidad en píxeles dentro de \(\sigma_Z\). Otro uso distinto de \(\sigma_d\).</dd>
+<dt>\(b\)</dt><dd data-hojas="18">Línea de base (baseline) del par estéreo, en m.</dd>
+</dl>
+<h3>GNSS, barómetro y magnetómetro</h3>
+<dl>
+<dt>\(e_k\)</dt><dd data-hojas="21">Error de posición en un eje en el paso \(k\), modelado como Gauss-Markov de primer orden.</dd>
+<dt>\(a\) (Gauss-Markov)</dt><dd data-hojas="21">Coeficiente de correlación del Gauss-Markov, \(a=e^{-\Delta t/\tau}\) (0,76 en PX4 a 8 Hz).</dd>
+<dt>\(\sigma\) (Gauss-Markov)</dt><dd data-hojas="21">Desviación típica estacionaria del error GNSS; el ruido de entrada es \(\sigma\sqrt{1-a^2}\).</dd>
+<dt>\(\tau\) (Gauss-Markov)</dt><dd data-hojas="21">Tiempo de correlación del error del GNSS, en s (60 s en el ejemplo, 0,46 s en PX4).</dd>
+<dt>\(dp\)</dt><dd data-hojas="23">Variación de la presión del barómetro; \(dp=-\rho g\,dh\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="23">Densidad del aire, en kg/m³.</dd>
+<dt>\(dh\)</dt><dd data-hojas="23">Variación de la altura, en m; 1 Pa equivale a 8,3 cm.</dd>
+<dt>\(p(o\mid s)\)</dt><dd data-hojas="3">Modelo de observación del POMDP: probabilidad de la observación \(o\) dado el estado \(s\).</dd>
+<dt>EKF2_GND_EFF_DZ</dt><dd data-hojas="23">Parámetro de PX4: zona muerta del barómetro por efecto suelo (4 m por defecto).</dd>
+<dt>CAL_MAG_COMP_TYP</dt><dd data-hojas="23">Parámetro de PX4 que compensa el campo de los motores en el magnetómetro; desactivado por defecto.</dd>
+<dt>eph, epv</dt><dd data-hojas="21">Precisión horizontal y vertical que declara el receptor GNSS (0,9 m y 1,78 m en PX4 simulado).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>IMU</dt><dd data-hojas="1">Inertial measurement unit: giróscopo y acelerómetro en un chip.</dd>
+<dt>GPU</dt><dd data-hojas="4">Graphics processing unit: sensores simulados en GPU para entrenar políticas masivamente.</dd>
+<dt>MEMS</dt><dd data-hojas="8">Micro-electro-mechanical systems: sensores inerciales baratos de silicio.</dd>
+<dt>ARW</dt><dd data-hojas="7">Angle random walk: ruido blanco del giróscopo, integrado en el ángulo; sale de \(\sigma_g\) y de \(N\).</dd>
+<dt>RRW</dt><dd data-hojas="7">Rate random walk: paseo aleatorio de la tasa (el sesgo); se lee con \(K\).</dd>
+<dt>DVS</dt><dd data-hojas="4">Dynamic vision sensor: sensor de visión de contraste temporal asíncrono.</dd>
+<dt>EMVA 1288</dt><dd data-hojas="13">Estándar de la European Machine Vision Association para caracterizar sensores de imagen con un modelo lineal.</dd>
+<dt>ESIM</dt><dd data-hojas="16">Simulador de cámara de eventos que acopla el renderizador con el generador de eventos y elige el paso de render de forma adaptativa.</dd>
+<dt>v2e</dt><dd data-hojas="16">Herramienta que convierte vídeo en eventos y añade los defectos del sensor real.</dd>
+<dt>EQS</dt><dd data-hojas="16">Event Quality Score: distancia entre eventos simulados y reales en el espacio latente de una red.</dd>
+<dt>LiDAR</dt><dd data-hojas="17">Light detection and ranging: medida de distancia con rayos láser.</dd>
+<dt>LiDARsim</dt><dd data-hojas="18">Simulador de LiDAR que reconstruye la escena con datos reales y aprende qué rayos se pierden.</dd>
+<dt>MARSIM</dt><dd data-hojas="18">Simulador de LiDAR ligero para drones que construye una imagen de profundidad desde un mapa de puntos.</dd>
+<dt>mAP</dt><dd data-hojas="18">Mean average precision: métrica de detección de objetos.</dd>
+<dt>CPU</dt><dd data-hojas="18">Central processing unit: la versión en CPU de MARSIM es el doble de rápida que Gazebo con GPU.</dd>
+<dt>GNSS</dt><dd data-hojas="21">Global navigation satellite system: posicionamiento por satélite (GPS y otros).</dd>
+<dt>RTK</dt><dd data-hojas="22">Real-time kinematic: corrección de GNSS con precisión de centímetros.</dd>
+<dt>CEP</dt><dd data-hojas="22">Circular error probable: radio del círculo que contiene la mitad de las posiciones.</dd>
+<dt>EKF</dt><dd data-hojas="21">Extended Kalman filter: el estimador de a bordo de PX4 que recibe el GNSS con su incertidumbre.</dd>
+<dt>NEES</dt><dd data-hojas="3">Normalized estimation error squared: mide si la covarianza de un filtro es coherente con su error real.</dd>
+<dt>VIO</dt><dd data-hojas="9">Visual-inertial odometry: odometría con cámara e IMU.</dd>
+<dt>POMDP</dt><dd data-hojas="3">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
+<dt>GPS</dt><dd data-hojas="22">Global positioning system: en la tabla, el servicio estándar tiene ≤ 8 m horizontal y ≤ 13 m vertical (95 %).</dd>
+<dt>ESKF</dt><dd data-hojas="33">Error-state Kalman filter: el filtro de Kalman sobre el error de estado del tema A4a.</dd>
+<dt>Kalibr</dt><dd data-hojas="4">Herramienta de calibración de cámara e IMU, con un modelo de ruido de IMU estándar en robótica.</dd>
+<dt>TUM VI</dt><dd data-hojas="8">Dataset visual-inertial de la TUM; su secuencia imu-static dura 111 h en reposo.</dd>
+<dt>EuRoC</dt><dd data-hojas="9">Dataset de vuelo de un dron con IMU ADIS16448 y cámara de 752 × 480.</dd>
+<dt>PX4</dt><dd data-hojas="3">Autopiloto de código abierto cuyos simuladores se comparan en el tema.</dd>
+<dt>SIH</dt><dd data-hojas="3">Simulation-in-hardware: simulador de PX4 con el ruido «realista» desactivado en el código.</dd>
+<dt>ESC</dt><dd data-hojas="11">Electronic speed controller: controlador de velocidad del motor; su telemetría alimenta los notch dinámicos.</dd>
+<dt>FFT</dt><dd data-hojas="11">Fast Fourier transform: se usa a bordo para seguir la frecuencia de la vibración.</dd>
+<dt>OKVIS, ROVIO, OpenVINS</dt><dd data-hojas="9">Sistemas de VIO citados al comparar el inflado de los parámetros de la IMU.</dd>
+<dt>JAX</dt><dd data-hojas="33">Biblioteca de cálculo numérico con la que se programa el modelo de IMU del laboratorio.</dd>
+<dt>3DGS</dt><dd data-hojas="27">3D Gaussian splatting: render neuronal tratado en el tema B3b.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

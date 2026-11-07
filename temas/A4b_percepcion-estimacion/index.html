@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -684,6 +684,143 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Misma notación que A4a: negrita, vector; mayúscula, matriz; \(\delta\), error pequeño del filtro de estado de error; \(\hat{\ }\), valor nominal (estimado). Subíndices \(w\) (mundo), \(c\) (cámara).</p>
+<dl>
+<dt>\(\delta\)</dt><dd data-hojas="9">Prefijo de «error pequeño» (\(\delta\mathbf x\), \(\delta\mathbf p_f\)), como en el ESKF de A4a.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="6">Traspuesta de una matriz. Para una rotación, \(R^\top=R^{-1}\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="6">Derivada parcial; \(\partial\pi/\partial\mathbf p_c\) es el jacobiano de la proyección.</dd>
+<dt>\(\operatorname{Exp}\)</dt><dd data-hojas="11">Exponencial de SO(3) (M1): vector de rotación de \(\mathbb R^3\) a matriz de rotación.</dd>
+<dt>\([\mathbf a]_\times\)</dt><dd data-hojas="6">Matriz \(3\times3\) antisimétrica de \(\mathbf a\): \([\mathbf a]_\times\mathbf b=\mathbf a\times\mathbf b\).</dd>
+<dt>\(\|\mathbf r\|^2_\Sigma\)</dt><dd data-hojas="10">Norma al cuadrado ponderada por la inversa de la covarianza \(\Sigma\): \(\mathbf r^\top\Sigma^{-1}\mathbf r\) (distancia de Mahalanobis).</dd>
+<dt>\(\prod\), \(\sum\)</dt><dd data-hojas="11">Producto ordenado de rotaciones y suma de muestras de la IMU entre dos fotogramas.</dd>
+<dt>\(\min_{\mathcal X}\)</dt><dd data-hojas="10">Minimización sobre el conjunto de variables \(\mathcal X\) de la ventana (poses, puntos, sesgos).</dd>
+<dt>\(\mathbb R^3\)</dt><dd data-hojas="6">Espacio de vectores reales de 3 componentes.</dd>
+<dt>\(\chi^2\)</dt><dd data-hojas="23">Distribución chi cuadrado, de cuyo cuantil se saca el umbral del NIS.</dd>
+</dl>
+<h3>Geometría de la cámara</h3>
+<dl>
+<dt>\(\mathbf p_w\)</dt><dd data-hojas="6">Punto 3D en el mundo, vector de \(\mathbb R^3\).</dd>
+<dt>\(R_{wc}\)</dt><dd data-hojas="6">Rotación \(3\times3\) de la cámara respecto al mundo (de ejes cámara a ejes mundo).</dd>
+<dt>\(\mathbf t_{wc}\)</dt><dd data-hojas="6">Posición de la cámara en el mundo, vector de \(\mathbb R^3\).</dd>
+<dt>\(\mathbf p_c\)</dt><dd data-hojas="6">El punto en ejes cámara: \(\mathbf p_c=R_{wc}^\top(\mathbf p_w-\mathbf t_{wc})=(X,Y,Z)\).</dd>
+<dt>\(X,Y,Z\)</dt><dd data-hojas="6">Componentes de \(\mathbf p_c\); \(Z\) es la profundidad, a lo largo del eje óptico.</dd>
+<dt>\(\pi(\cdot)\)</dt><dd data-hojas="6">Modelo de agujero: proyecta un punto en ejes cámara al píxel \(\mathbf u\).</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="6">Píxel predicho, vector de \(\mathbb R^2\): \((f_xX/Z+c_x,\ f_yY/Z+c_y)\).</dd>
+<dt>\(f_x\), \(f_y\)</dt><dd data-hojas="6">Distancias focales en píxeles. En el resto del tema \(f\) es la focal cuando coinciden.</dd>
+<dt>\(c_x\), \(c_y\)</dt><dd data-hojas="6">Punto principal de la imagen, en píxeles.</dd>
+<dt>\(\mathbf z\)</dt><dd data-hojas="6">Medida del píxel, \(\mathbf z=\pi(\mathbf p_c)+\mathbf n\).</dd>
+<dt>\(\mathbf n\)</dt><dd data-hojas="6">Ruido de la medida del píxel (0,5–1 píxel tras la detección). En la hoja 9, ruido del residuo apilado.</dd>
+<dt>\(\mathbf z-\pi(\cdot)\)</dt><dd data-hojas="6">Error de reproyección: residuo que minimizan casi todos los VIO.</dd>
+<dt>\(\partial\pi/\partial\mathbf p_c\)</dt><dd data-hojas="6">Jacobiano \(2\times3\) de la proyección respecto al punto en ejes cámara; lleva un factor \(1/Z\).</dd>
+<dt>\(b\)</dt><dd data-hojas="6">Base del par estéreo: distancia entre las dos cámaras.</dd>
+<dt>\(d\)</dt><dd data-hojas="6">Disparidad estéreo en píxeles, con \(Z=fb/d\).</dd>
+<dt>\(Z\)</dt><dd data-hojas="6">Profundidad de un punto; en estéreo \(Z=fb/d\).</dd>
+<dt>\(\sigma_d\)</dt><dd data-hojas="6">Desviación típica del ruido de la disparidad, en píxeles (0,5 en el ejemplo).</dd>
+<dt>\(\sigma_Z\)</dt><dd data-hojas="6">Incertidumbre de la profundidad estéreo: \(\sigma_Z=Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
+</dl>
+<h3>Observabilidad y MSCKF</h3>
+<dl>
+<dt>\(\mathbf r\)</dt><dd data-hojas="9">Residuo apilado de reproyección de un punto: \(\mathbf r=H_x\delta\mathbf x+H_f\delta\mathbf p_f+\mathbf n\).</dd>
+<dt>\(\delta\mathbf x\)</dt><dd data-hojas="9">Error del estado del filtro (IMU y clones de poses), el del ESKF de A4a.</dd>
+<dt>\(\delta\mathbf p_f\)</dt><dd data-hojas="9">Error de la posición del punto triangulado \(f\); no está en el estado.</dd>
+<dt>\(H_x\)</dt><dd data-hojas="9">Jacobiano del residuo respecto al error del estado.</dd>
+<dt>\(H_f\)</dt><dd data-hojas="9">Jacobiano del residuo respecto al punto: 3 columnas y \(2m\) filas.</dd>
+<dt>\(N\)</dt><dd data-hojas="9">Base del espacio nulo izquierdo de \(H_f\): \(N^\top H_f=0\).</dd>
+<dt>\(\mathbf r_o\)</dt><dd data-hojas="9">Residuo proyectado, \(\mathbf r_o=N^\top\mathbf r\), que solo depende de las poses.</dd>
+<dt>\(m\) (observaciones)</dt><dd data-hojas="9">Número de veces que se observa un punto; el espacio nulo tiene dimensión \(2m-3\).</dd>
+<dt>\(2m-3\)</dt><dd data-hojas="9">Dimensión del espacio nulo izquierdo de \(H_f\) y número de residuos que quedan tras proyectar.</dd>
+</dl>
+<h3>Ventana deslizante y preintegración</h3>
+<dl>
+<dt>\(\mathcal X\)</dt><dd data-hojas="10">Conjunto de variables a optimizar: poses de la ventana, puntos visibles, velocidades y sesgos.</dd>
+<dt>\(\mathbf r_{\text{prior}}\)</dt><dd data-hojas="10">Residuo de la prioridad que resume lo marginalizado.</dd>
+<dt>\(\mathbf r_{\text{IMU},k}\)</dt><dd data-hojas="10">Residuo del factor de preintegración de la IMU entre dos fotogramas.</dd>
+<dt>\(\mathbf r_{ij}\)</dt><dd data-hojas="10">Residuo de reproyección del punto \(j\) en el fotograma \(i\).</dd>
+<dt>\(\Sigma_k\), \(\Sigma\)</dt><dd data-hojas="10">Covarianzas que ponderan los residuos de la IMU y de reproyección.</dd>
+<dt>\(\rho\)</dt><dd data-hojas="10">Función robusta (Huber, Cauchy) que limita el peso de las asociaciones erróneas.</dd>
+<dt>\(K\) (ventana)</dt><dd data-hojas="10">Número de últimas poses que se optimizan en la ventana deslizante.</dd>
+<dt>\(i\), \(j\) (fotogramas)</dt><dd data-hojas="11">Índices de dos fotogramas; entre ellos hay cientos de muestras de la IMU. En la hoja 10, \(i,j\) indexan fotograma y punto.</dd>
+<dt>\(k\) (muestra IMU)</dt><dd data-hojas="11">Índice de una muestra de la IMU entre los fotogramas \(i\) y \(j\).</dd>
+<dt>\(\Delta R_{ij}\)</dt><dd data-hojas="11">Rotación preintegrada entre \(i\) y \(j\), expresada en el marco del cuerpo en \(i\).</dd>
+<dt>\(\Delta\mathbf v_{ij}\)</dt><dd data-hojas="11">Incremento de velocidad preintegrado entre \(i\) y \(j\).</dd>
+<dt>\(\Delta\mathbf p_{ij}\)</dt><dd data-hojas="11">Incremento de posición preintegrado entre \(i\) y \(j\).</dd>
+<dt>\(\Delta R_{ik}\), \(\Delta\mathbf v_{ik}\)</dt><dd data-hojas="11">Incrementos acumulados desde \(i\) hasta la muestra \(k\), usados en la suma.</dd>
+<dt>\(\boldsymbol\omega_k\)</dt><dd data-hojas="11">Velocidad angular medida por el giróscopo en la muestra \(k\), en rad/s.</dd>
+<dt>\(\mathbf a_k\)</dt><dd data-hojas="11">Fuerza específica medida por el acelerómetro en la muestra \(k\).</dd>
+<dt>\(\mathbf b_g\)</dt><dd data-hojas="11">Sesgo del giróscopo.</dd>
+<dt>\(\mathbf b_a\)</dt><dd data-hojas="11">Sesgo del acelerómetro.</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="11">Periodo de muestreo de la IMU, en segundos.</dd>
+<dt>\(\Delta t_{ij}\)</dt><dd data-hojas="11">Tiempo transcurrido entre los fotogramas \(i\) y \(j\).</dd>
+<dt>\(R_i\), \(\mathbf v_i\), \(\mathbf v_j\)</dt><dd data-hojas="11">Rotación y velocidad del cuerpo en los fotogramas \(i\) y \(j\), en el mundo.</dd>
+<dt>\(R\), \(\mathbf v\), \(\mathbf p\)</dt><dd data-hojas="11">Actitud, velocidad y posición del cuerpo en las ecuaciones continuas: \(\dot R=R[\boldsymbol\omega]_\times\), \(\dot{\mathbf v}=R\mathbf a+\mathbf g\), \(\dot{\mathbf p}=\mathbf v\).</dd>
+<dt>\(\mathbf g\)</dt><dd data-hojas="11">Vector de gravedad en el mundo.</dd>
+</dl>
+<h3>Desfase temporal</h3>
+<dl>
+<dt>\(t_d\)</dt><dd data-hojas="14">Desfase temporal entre cámara e IMU: segundos que antes de su marca de tiempo se tomó la imagen.</dd>
+<dt>\(f\omega t_d\)</dt><dd data-hojas="14">Error en píxeles por la rotación: focal \(f\), velocidad angular \(\omega\) y desfase \(t_d\).</dd>
+<dt>\(\omega\)</dt><dd data-hojas="14">Módulo de la velocidad angular de la cámara, en rad/s.</dd>
+<dt>\(v\,t_d\)</dt><dd data-hojas="14">Error en metros por la traslación: velocidad \(v\) por desfase \(t_d\).</dd>
+<dt>\(\mathbf p(t-t_d)\)</dt><dd data-hojas="15">Posición en el instante real de la imagen, \(\approx\mathbf p(t)-\mathbf v(t)\,t_d\) a primer orden.</dd>
+<dt>\(\mathbf v(t)\)</dt><dd data-hojas="15">Velocidad del dron; su opuesto \(-\mathbf v\) es el jacobiano de la medida respecto a \(t_d\).</dd>
+</dl>
+<h3>Cámaras de eventos</h3>
+<dl>
+<dt>\(e_k\)</dt><dd data-hojas="18">Evento \(k\): la tupla \((x_k,y_k,t_k,p_k)\).</dd>
+<dt>\(x_k\), \(y_k\)</dt><dd data-hojas="18">Coordenadas del píxel que dispara el evento.</dd>
+<dt>\(t_k\)</dt><dd data-hojas="18">Instante del evento, con resolución del orden de microsegundos.</dd>
+<dt>\(p_k\)</dt><dd data-hojas="18">Polaridad del evento, \(\pm1\): brillo que sube o baja.</dd>
+<dt>\(I(t)\)</dt><dd data-hojas="18">Brillo del píxel en el instante \(t\); el evento depende de \(\log I\).</dd>
+<dt>\(C\)</dt><dd data-hojas="18">Umbral de contraste: cambio de \(\log I\) que dispara un evento.</dd>
+<dt>\(\Delta t_k\)</dt><dd data-hojas="18">Tiempo desde el último evento del mismo píxel.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>VIO</dt><dd data-hojas="3">Visual-inertial odometry: la IMU da el movimiento a alta frecuencia y la cámara corrige la deriva.</dd>
+<dt>RMS</dt><dd data-hojas="15">Root mean square: valor cuadrático medio del error; en la figura, 8,8 cm RMS ignorando el desfase frente a 1,3 cm estimándolo.</dd>
+<dt>KF</dt><dd data-hojas="20">Kalman filter, filtro de Kalman; en Backprop KF una red produce la medida y se entrena de extremo a extremo.</dd>
+<dt>GPU</dt><dd data-hojas="20">Graphics processing unit: lo mejor de la tabla de estimadores aprendidos necesita una GPU de sobremesa, que un dron no lleva.</dd>
+<dt>SLAM</dt><dd data-hojas="22">Simultaneous localization and mapping: guarda un mapa y cierra bucles.</dd>
+<dt>IMU</dt><dd data-hojas="3">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>GNSS</dt><dd data-hojas="3">Global navigation satellite system.</dd>
+<dt>ESKF</dt><dd data-hojas="9">Error-state Kalman filter (A4a), base del MSCKF.</dd>
+<dt>EKF</dt><dd data-hojas="10">Extended Kalman filter; aquí se compara con una iteración de Gauss-Newton.</dd>
+<dt>MSCKF</dt><dd data-hojas="9">Multi-state constraint Kalman filter: clones de poses y proyección al espacio nulo del punto.</dd>
+<dt>OpenVINS</dt><dd data-hojas="9">Plataforma abierta de VIO basada en el MSCKF extendido, con puntos SLAM y calibración en línea.</dd>
+<dt>OKVIS</dt><dd data-hojas="10">VIO por optimización con fotogramas clave.</dd>
+<dt>VINS-Mono</dt><dd data-hojas="10">VIO monocular por ventana deslizante con cierre de bucle y relocalización.</dd>
+<dt>Basalt</dt><dd data-hojas="10">VIO que extrae factores no lineales que resumen lo marginalizado y los reutiliza en un ajuste global.</dd>
+<dt>ORB-SLAM3</dt><dd data-hojas="3">Sistema de SLAM con optimización, mapa, cierre de bucle y varios mapas.</dd>
+<dt>SVO</dt><dd data-hojas="12">Semi-direct visual odometry: eficiente y, en la comparación citada, el menos preciso (con MSF).</dd>
+<dt>MSF</dt><dd data-hojas="12">Multi-sensor fusion: marco de fusión que acompaña a SVO en la comparación.</dd>
+<dt>ROVIO</dt><dd data-hojas="12">VIO por filtro que es el compromiso de la comparación.</dd>
+<dt>Kalibr</dt><dd data-hojas="15">Herramienta de calibración espacial y temporal cámara-IMU, fuera de línea.</dd>
+<dt>TLIO</dt><dd data-hojas="20">Tight learned inertial odometry: una red predice desplazamientos y un EKF los funde.</dd>
+<dt>DROID-SLAM</dt><dd data-hojas="20">SLAM aprendido: actualización recurrente de flujo óptico y ajuste de haces diferenciable.</dd>
+<dt>DPVO</dt><dd data-hojas="20">Odometría visual dispersa aprendida: menos memoria y más rápida que DROID-SLAM.</dd>
+<dt>MASt3R-SLAM</dt><dd data-hojas="20">SLAM denso monocular sobre un modelo 3D fundacional.</dd>
+<dt>PL-EVIO</dt><dd data-hojas="18">VIO con eventos, imágenes e IMU que cierra el lazo en volteretas.</dd>
+<dt>NIS</dt><dd data-hojas="23">Normalized innovation squared (A4a): indicador de que el estimador visual se pierde.</dd>
+<dt>ATE</dt><dd data-hojas="21">Absolute trajectory error: error de posición tras alinear la trayectoria.</dd>
+<dt>RPE</dt><dd data-hojas="24">Relative pose error: mide cosas distintas que el ATE.</dd>
+<dt>EuRoC</dt><dd data-hojas="3">Dataset de un microdrón con estéreo, IMU y referencia.</dd>
+<dt>TUM-VI</dt><dd data-hojas="3">Dataset visual-inercial con sincronización por hardware.</dd>
+<dt>UZH-FPV</dt><dd data-hojas="24">Dataset de un dron de carreras con eventos.</dd>
+<dt>TartanAir</dt><dd data-hojas="20">Dataset sintético en el que se mide la mejora de DROID-SLAM.</dd>
+<dt>PAMPC</dt><dd data-hojas="7">MPC consciente de la percepción (A3a), que ya cuidaba la visibilidad.</dd>
+<dt>FPS</dt><dd data-hojas="20">Fotogramas por segundo.</dd>
+<dt>RTI</dt><dd data-hojas="10">Real-time iteration (A3a): una sola iteración de optimización por paso.</dd>
+<dt>SQP</dt><dd data-hojas="10">Sequential quadratic programming (A3a).</dd>
+<dt>RSSM</dt><dd data-hojas="20">Recurrent state-space model de Dreamer (A8).</dd>
+<dt>RTX 3090</dt><dd data-hojas="20">GPU de sobremesa con la que DROID-SLAM va en tiempo real.</dd>
+<dt>Jetson TX2</dt><dd data-hojas="21">Computador embarcado en el que corre el estimador de la carrera.</dd>
+<dt>evo</dt><dd data-hojas="24">Herramienta común para comparar trayectorias con ATE y RPE.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

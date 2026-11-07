@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -702,6 +702,89 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Sombrero: predicción del modelo (\(\hat o\), \(\hat s\), \(\hat p\), \(\hat v\)). Estrella: valor objetivo (\(p^\star\)). Misma notación que en A8a: \(o\) observación, \(a\) acción.</p>
+<dl>
+<dt>\(\|\cdot\|_1\)</dt><dd data-hojas="7">Norma \(\ell_1\): suma de los valores absolutos de las diferencias; es la pérdida de V-JEPA 2.</dd>
+<dt>\(\|\cdot\|^2\)</dt><dd data-hojas="18">Norma euclídea al cuadrado, en el coste de MPPI.</dd>
+<dt>\(\min\)</dt><dd data-hojas="7">Minimización respecto a los parámetros indicados debajo.</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="8">Valor de las acciones que minimiza la distancia a la meta en el planificador.</dd>
+<dt>\(\mathrm{sg}\)</dt><dd data-hojas="7">Stop-gradient (gradiente detenido): el objetivo se usa como constante, sin propagar gradiente.</dd>
+<dt>\(\bar\theta\)</dt><dd data-hojas="7">Pesos del codificador objetivo: media móvil exponencial (EMA) de \(\theta\); evita el colapso en la práctica.</dd>
+</dl>
+<h3>Dos caminos: generativo y predictivo conjunto</h3>
+<dl>
+<dt>\(o_t\)</dt><dd data-hojas="6">Observación en \(t\) (la imagen o, en el x500, posición, actitud y giróscopo).</dd>
+<dt>\(a_t\)</dt><dd data-hojas="6">Acción en \(t\).</dd>
+<dt>\(\hat o_{t+1}\)</dt><dd data-hojas="6">Observación (píxeles) predicha por un modelo generativo.</dd>
+<dt>\(o_{t+1}\)</dt><dd data-hojas="6">Observación real siguiente, de la que el codificador objetivo saca la representación.</dd>
+<dt>\(E_\theta\)</dt><dd data-hojas="6,7">Codificador con parámetros \(\theta\): lleva la entrada a una representación.</dd>
+<dt>\(E_{\bar\theta}\)</dt><dd data-hojas="6,7">Codificador objetivo, con pesos EMA y sin gradiente; produce el objetivo de la predicción.</dd>
+<dt>\(P_\phi\)</dt><dd data-hojas="6,7">Predictor con parámetros \(\phi\): predice la representación (condicionado a la acción en V-JEPA 2-AC).</dd>
+<dt>\(\hat s_{t+1}\)</dt><dd data-hojas="6">Representación predicha del instante siguiente.</dd>
+<dt>\(s_{t+1}\)</dt><dd data-hojas="6">Representación del instante siguiente calculada por el codificador objetivo.</dd>
+<dt>\(x\)</dt><dd data-hojas="7">Parte visible del vídeo (contexto) de la que V-JEPA 2 predice las partes enmascaradas.</dd>
+<dt>\(y\)</dt><dd data-hojas="7">Partes ocultas (enmascaradas) del vídeo, cuya representación se predice.</dd>
+<dt>\(\Delta_y\)</dt><dd data-hojas="7">Token que marca qué partes se predicen; se entrena junto con \(\theta\) y \(\phi\).</dd>
+<dt>\(c\)</dt><dd data-hojas="7">Constante a la que colapsaría una representación trivial: el mínimo global que no aprende nada.</dd>
+</dl>
+<h3>V-JEPA 2 y su coste</h3>
+<dl>
+<dt>\(\hat a_{1:T}\)</dt><dd data-hojas="8">Secuencia de acciones óptima encontrada por el planificador (de la acción 1 a la \(T\)). Solo se ejecuta la primera y se replanifica.</dd>
+<dt>\(a_{1:T}\)</dt><dd data-hojas="8">Secuencia de acciones candidata que se optimiza con CEM.</dd>
+<dt>\(s_k\)</dt><dd data-hojas="8">Representación del estado actual (codificada) desde la que se imagina.</dd>
+<dt>\(E(o_{\text{meta}})\)</dt><dd data-hojas="8">Representación de la imagen meta, a la que debe acercarse la representación imaginada.</dd>
+<dt>\(P_\phi(a_{1:T};\, s_k)\)</dt><dd data-hojas="8">Representación que predice el predictor condicionado a la acción tras ejecutar la secuencia desde \(s_k\).</dd>
+</dl>
+<h3>Planificar con MPPI en el x500</h3>
+<dl>
+<dt>\(J\)</dt><dd data-hojas="18">Coste de una secuencia de acciones, que MPPI minimiza: error de posición, un término de velocidad y penalizaciones de acción y de cambio de acción.</dd>
+<dt>\(k\)</dt><dd data-hojas="18">Índice del paso dentro de la secuencia planificada (en esta parte, no la longitud de despliegue de A8a).</dd>
+<dt>\(\hat p_k\)</dt><dd data-hojas="18">Posición predicha por el modelo en el paso \(k\).</dd>
+<dt>\(p^\star\)</dt><dd data-hojas="18">Posición objetivo, un punto aleatorio (a ±1 m) donde mantenerse 3 s.</dd>
+<dt>\(\hat v_k\)</dt><dd data-hojas="18">Velocidad estimada con diferencias de las posiciones predichas; así sirve con cualquier modelo.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="18">Ganancia del campo de velocidades que pide \(v = -\lambda(p - p^\star)\); \(\lambda = 1{,}5\) s\(^{-1}\). En A8a la misma letra es otro parámetro (retorno \(\lambda\)).</dd>
+<dt>\(a_k\)</dt><dd data-hojas="18">Acción en el paso \(k\).</dd>
+<dt>\(\Delta a_k\)</dt><dd data-hojas="18">Cambio de acción entre pasos consecutivos; se penaliza para suavizar.</dd>
+<dt>\(w_a\), \(w_\Delta\)</dt><dd data-hojas="18">Pesos de las penalizaciones de la acción y de su cambio en \(J\).</dd>
+<dt>\(\omega\)</dt><dd data-hojas="18">Velocidad angular constante de ejemplo, en rad/s (\(\omega = 1\) rad/s).</dd>
+<dt>\(\theta\) (inclinación)</dt><dd data-hojas="18">Inclinación del dron \(\theta=\omega t\) en la derivación; la aceleración horizontal es \(g\theta\). En el resto del tema \(\theta\) son los parámetros del codificador.</dd>
+<dt>\(g\)</dt><dd data-hojas="18">Aceleración de la gravedad.</dd>
+<dt>\(t\)</dt><dd data-hojas="18">Tiempo en la derivación (aquí 0,5 s).</dd>
+<dt>\(v\), \(p\)</dt><dd data-hojas="18">Velocidad y posición horizontales: \(v = g\omega t^2/2\), \(p = g\omega t^3/6\).</dd>
+<dt>\(Q\)</dt><dd data-hojas="18">Valor-acción de TD-MPC; el término de velocidad hace de valor terminal tosco, el papel que cumple \(Q\).</dd>
+<dt>\(R^2\)</dt><dd data-hojas="20">Coeficiente de determinación de la política imitada frente al controlador de los datos (0,96 en datos de prueba).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>JEPA</dt><dd data-hojas="4,6">Joint-embedding predictive architecture: arquitectura predictiva conjunta, que predice representaciones y no la observación.</dd>
+<dt>I-JEPA, V-JEPA, V-JEPA 2</dt><dd data-hojas="7,8">JEPA en imágenes, en vídeo, y su versión de 2025 con un millón de horas de vídeo.</dd>
+<dt>V-JEPA 2-AC</dt><dd data-hojas="8">Action-conditioned: predictor condicionado a la acción sobre el codificador congelado de V-JEPA 2.</dd>
+<dt>EMA</dt><dd data-hojas="6">Exponential moving average: media móvil exponencial de los pesos del codificador.</dd>
+<dt>CEM</dt><dd data-hojas="8">Cross-entropy method: optimizador por muestreo (800 muestras, 10 iteraciones, 10 mejores).</dd>
+<dt>MPPI</dt><dd data-hojas="18">Model predictive path integral: planificador por muestreo de secuencias (256 secuencias de 0,5 s).</dd>
+<dt>MPC</dt><dd data-hojas="8">Model predictive control.</dd>
+<dt>RSSM</dt><dd data-hojas="18">Recurrent state-space model de A8a, usado como modelo del x500.</dd>
+<dt>SimNorm</dt><dd data-hojas="18">Proyección del latente en símplices con softmax, de TD-MPC2.</dd>
+<dt>MLP</dt><dd data-hojas="18">Perceptrón multicapa; aquí, el modelo de un paso sin memoria.</dd>
+<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="6">Planificación MPC en un latente sin reconstrucción, con política previa.</dd>
+<dt>Genie</dt><dd data-hojas="11">Modelo de entornos interactivos aprendido de vídeo sin etiquetas de acción, con acciones latentes.</dd>
+<dt>Cosmos</dt><dd data-hojas="12">Plataforma de modelos fundacionales de mundo de NVIDIA para la IA física.</dd>
+<dt>GAIA-1, GAIA-2</dt><dd data-hojas="12">World models generativos de Wayve para conducción.</dd>
+<dt>DIAMOND</dt><dd data-hojas="12">World model de difusión en el que se entrena un agente.</dd>
+<dt>UniSim</dt><dd data-hojas="12">Simulador interactivo aprendido de datos reales.</dd>
+<dt>Physics-IQ</dt><dd data-hojas="13">Banco de pruebas de comprensión física de modelos de vídeo.</dd>
+<dt>WorldGym, Ctrl-World, DreamGen, Veo</dt><dd data-hojas="15">Trabajos que evalúan políticas o fabrican datos con un world model de vídeo.</dd>
+<dt>AirScape, ANWM, ImagineUAV</dt><dd data-hojas="16">Primeros world models para vehículos aéreos.</dd>
+<dt>NWM</dt><dd data-hojas="16">Modelo de referencia con el que se compara ANWM.</dd>
+<dt>DROID</dt><dd data-hojas="8">Dataset de trayectorias de robots usado para ajustar V-JEPA 2-AC.</dd>
+<dt>PD</dt><dd data-hojas="20">Controlador proporcional-derivativo: el de los datos, sin integral.</dd>
+<dt>x500</dt><dd data-hojas="3">Cuadricóptero del laboratorio.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

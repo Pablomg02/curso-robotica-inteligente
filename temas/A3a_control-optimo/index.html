@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -910,6 +910,172 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector (\(\mathbf p\), \(\mathbf e_c\)); mayúscula: matriz o conjunto. Subíndice \(k\): paso de tiempo discreto. En este tema la jornada A3b mantiene las mismas letras para estado, mando, horizonte y costes (se avisa donde una letra cambia de sentido).</p>
+<dl>
+<dt>\(^\top\)</dt><dd data-hojas="6">Traspuesta de una matriz o vector, como en \(x^\top Qx\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="21">Norma euclídea de un vector. \(\|r\|^2\) es la suma de los cuadrados de sus componentes.</dd>
+<dt>\(\|\Delta u_k\|_R^2\)</dt><dd data-hojas="26">Norma al cuadrado ponderada por la matriz \(R\): \(\Delta u_k^\top R\,\Delta u_k\). Penaliza los cambios de mando.</dd>
+<dt>\(\succeq 0\), \(\succ 0\)</dt><dd data-hojas="6">Semidefinida positiva y definida positiva. \(Q\succeq 0\) y \(R\succ 0\) garantizan que el coste es convexo en el mando.</dd>
+<dt>\(\operatorname{diag}\)</dt><dd data-hojas="7">Matriz diagonal con los elementos o bloques indicados, p. ej. \(Q = \operatorname{diag}(1/x_{i,\max}^2)\).</dd>
+<dt>\(\star\) (superíndice)</dt><dd data-hojas="14">Valor óptimo: \(u_0^\star\), \(x_N^\star\), \(V_N^\star\).</dd>
+<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="17">Estimación procedente de un estimador: \(\hat x\), \(\hat d\), \(\hat\theta\).</dd>
+<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="11,18">Dos usos: en la forma condensada, matrices por bloques \(\bar Q\), \(\bar R\); en el MPC de tubo, la trayectoria nominal \(\bar x\), \(\bar u\).</dd>
+<dt>\(\tilde u\)</dt><dd data-hojas="14">Secuencia de mandos desplazada, usada en la demostración de estabilidad.</dd>
+<dt>\(\Delta\)</dt><dd data-hojas="26">Incremento: \(\Delta u_k\) es el cambio de mando entre pasos; \(\Delta y^k\), en la parte de RTI, la distancia de la iterada \(k\) a la solución.</dd>
+<dt>\(\nabla\), \(\nabla^2\)</dt><dd data-hojas="21">Gradiente y hessiana (matriz de segundas derivadas) de una función escalar.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="21">«Aproximadamente igual», p. ej. la hessiana del lagrangiano \(\approx J_r^\top J_r\).</dd>
+<dt>\(\Pr\)</dt><dd data-hojas="18">Probabilidad; en MPC estocástico, \(\Pr(x_k\in\mathbb X)\ge 1-\varepsilon\).</dd>
+<dt>\(\mathcal N(\hat x,\Sigma)\)</dt><dd data-hojas="18">Gaussiana de media \(\hat x\) y covarianza \(\Sigma\): el estado visto por un estimador.</dd>
+<dt>\(\arcsin\)</dt><dd data-hojas="9">Arcoseno; aparece en el margen de fase discreto \(2\arcsin(\gamma/2)\).</dd>
+<dt>\(\min\)</dt><dd data-hojas="6">Mínimo; \(\min_u\) significa minimizar sobre la variable del subíndice.</dd>
+</dl>
+<h3>LQR y programación dinámica</h3>
+<dl>
+<dt>\(x_k\), \(x\)</dt><dd data-hojas="6">Estado del sistema en el paso \(k\): vector de \(\mathbb R^n\). En el x500 son 12 estados (posición, velocidad, ángulos y velocidad angular). Sin índice, es el estado genérico en una función.</dd>
+<dt>\(u_k\), \(u\)</dt><dd data-hojas="6">Mando en el paso \(k\): vector de \(\mathbb R^m\) (en el x500, empuje y tres pares).</dd>
+<dt>\(A\), \(B\)</dt><dd data-hojas="6">Matrices de la dinámica lineal discreta \(x_{k+1} = Ax_k + Bu_k\): \(A\) es \(n\times n\), \(B\) es \(n\times m\).</dd>
+<dt>\(n\), \(m\)</dt><dd data-hojas="12">Número de estados y de mandos. Para el x500, \(n = 12\) y \(m = 4\).</dd>
+<dt>\(N\)</dt><dd data-hojas="6">Longitud del horizonte en pasos. Cuenta cuántos mandos se optimizan; el horizonte en segundos es \(N\) por el periodo de muestreo.</dd>
+<dt>\(Q\)</dt><dd data-hojas="6">Matriz de pesos del estado en el coste, simétrica \(n\times n\) y \(\succeq 0\). Se elige por la regla de Bryson (hoja 7).</dd>
+<dt>\(R\)</dt><dd data-hojas="6">Matriz de pesos del mando en el coste, \(m\times m\) y \(\succ 0\). En la parte de contorno, \(R\) pondera los cambios de mando \(\Delta u_k\).</dd>
+<dt>\(P_f\)</dt><dd data-hojas="6">Peso del coste terminal cuadrático \(x_N^\top P_f x_N\). Con \(P_f = \Pi_\infty\) la ganancia es la infinita con cualquier \(N\).</dd>
+<dt>\(V_k(x)\)</dt><dd data-hojas="6">Función de valor: coste óptimo para ir de \(x\) al final del horizonte empezando en el paso \(k\). Es cuadrática, \(x^\top\Pi_kx\).</dd>
+<dt>\(\Pi_k\)</dt><dd data-hojas="6">Matriz de la función de valor en el paso \(k\) (\(n\times n\)). Se calcula hacia atrás por la recursión de Riccati desde \(\Pi_N = P_f\).</dd>
+<dt>\(K_k\)</dt><dd data-hojas="6">Ganancia de realimentación del LQR en el paso \(k\), matriz \(m\times n\): \(u_k = -K_kx_k\).</dd>
+<dt>\(\Pi_\infty\), \(K_\infty\)</dt><dd data-hojas="8">Solución de la DARE y ganancia correspondiente de horizonte infinito (el punto fijo de la recursión).</dd>
+<dt>\(K_0(N)\)</dt><dd data-hojas="8">Ganancia en el paso 0 de un LQR de horizonte finito \(N\). La figura mide \(\|K_0(N)-K_\infty\|/\|K_\infty\|\).</dd>
+<dt>\(Q^{1/2}\)</dt><dd data-hojas="6">Raíz cuadrada matricial de \(Q\); la condición «\((A,Q^{1/2})\) detectable» asegura que el coste ve los estados inestables.</dd>
+<dt>\(x_{i,\max}\)</dt><dd data-hojas="7">Error máximo admisible del estado \(i\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
+<dt>\(u_{j,\max}\)</dt><dd data-hojas="7">Mando máximo del mando \(j\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
+<dt>\(|s|\)</dt><dd data-hojas="7">Módulo de un polo en lazo cerrado, en rad/s: da la rapidez de cada grupo de polos (2,6; 6,3; 19,7).</dd>
+<dt>\(L(j\omega)\)</dt><dd data-hojas="9">Ganancia de lazo del LQR en frecuencia, \(L = K(j\omega I - A)^{-1}B\). La igualdad de retorno da \(|1+L|\ge 1\).</dd>
+<dt>\(j\)</dt><dd data-hojas="9">Unidad imaginaria, en la evaluación en frecuencia \(j\omega\).</dd>
+<dt>\(\omega\) (frecuencia)</dt><dd data-hojas="9">Frecuencia en rad/s del diagrama de Nyquist. En la parte de RTI, \(\omega\) cambia de sentido (ver más abajo).</dd>
+<dt>\(\beta\)</dt><dd data-hojas="9">Factor por el que se multiplica la ganancia de lazo \(L\) al estudiar el margen de ganancia; equivale a mover el punto crítico a \(-1/\beta\).</dd>
+<dt>\(\gamma\) (margen discreto)</dt><dd data-hojas="9">Constante \(\lt 1\), dependiente de la planta, del margen de fase discreto \(2\arcsin(\gamma/2)\). Tiende a 1 si el periodo de muestreo se reduce.</dd>
+<dt>\(\theta\) (cabeceo)</dt><dd data-hojas="7">Ángulo de cabeceo del dron. \(\theta_{\max}\) es su límite (20° en el ejemplo de la hoja 15).</dd>
+<dt>\(q\) (velocidad de cabeceo)</dt><dd data-hojas="7">Velocidad angular de cabeceo, estado del que depende el par de cabeceo junto a \(x\), \(v_x\) y \(\theta\).</dd>
+<dt>\(v_x\)</dt><dd data-hojas="7">Velocidad horizontal en el eje \(x\).</dd>
+</dl>
+<h3>MPC lineal: formulación y coste</h3>
+<dl>
+<dt>\(\ell(x_k,u_k)\)</dt><dd data-hojas="11">Coste de etapa del MPC. En el caso lineal-cuadrático es \(x^\top Qx + u^\top Ru\).</dd>
+<dt>\(V_f(x_N)\)</dt><dd data-hojas="11">Coste terminal: se suma al final del horizonte. En el caso lineal, el coste del LQR (la DARE).</dd>
+<dt>\(f(x_k,u_k)\)</dt><dd data-hojas="11">Función de la dinámica, \(x_{k+1} = f(x_k,u_k)\); lineal \(Ax+Bu\) en MPC lineal.</dd>
+<dt>\(x(t)\), \(x_0\)</dt><dd data-hojas="11">Estado medido o estimado en el instante actual, que fija el estado inicial \(x_0 = x(t)\) del problema. Por aquí entra la realimentación.</dd>
+<dt>\(\mathbb Z\)</dt><dd data-hojas="11">Conjunto de pares estado-mando admisibles (las restricciones del problema).</dd>
+<dt>\(\mathbb X_f\)</dt><dd data-hojas="11">Conjunto terminal: región a la que debe llegar \(x_N\) y que es invariante bajo la ley terminal.</dd>
+<dt>\(\mathbb X\)</dt><dd data-hojas="18">Conjunto de estados admisibles, usado en las restricciones del MPC estocástico.</dd>
+<dt>\(X\), \(U\)</dt><dd data-hojas="11">Estados y mandos de todo el horizonte apilados en un vector. Forma condensada: \(X = \Phi x_0 + \Gamma U\).</dd>
+<dt>\(\Phi\), \(\Gamma\)</dt><dd data-hojas="11">Matrices de predicción: \(\Phi\) apila las potencias \(A^k\); \(\Gamma\) es triangular inferior por bloques con los términos \(A^{k-1-j}B\).</dd>
+<dt>\(\bar Q\), \(\bar R\)</dt><dd data-hojas="11">Matrices diagonales por bloques con los pesos de todo el horizonte: \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\), \(\bar R = \operatorname{diag}(R,\dots,R)\).</dd>
+<dt>\(H\) (hessiana)</dt><dd data-hojas="11">Hessiana del QP condensado, \(H = \Gamma^\top\bar Q\Gamma + \bar R\). En A3b, \(H\) es el horizonte del planificador.</dd>
+<dt>\(G\), \(w\), \(E\)</dt><dd data-hojas="11">Matrices y vector de las restricciones lineales del QP condensado: \(GU \le w + Ex_0\).</dd>
+<dt>flop</dt><dd data-hojas="12">Operación de coma flotante; unidad con que se compara el coste de Riccati (\(\propto N\)) y de condensar (\(\propto N^3\)).</dd>
+<dt>\(\kappa_f\)</dt><dd data-hojas="14">Ley de control terminal admisible dentro de \(\mathbb X_f\), \(u = \kappa_f(x)\).</dd>
+<dt>\(x^+\)</dt><dd data-hojas="14">Estado siguiente tras aplicar el primer mando óptimo, \(x^+ = f(x,u_0^\star)\).</dd>
+<dt>\(V_N^\star(x)\)</dt><dd data-hojas="14">Coste óptimo del MPC con horizonte \(N\) desde \(x\); actúa como función de Lyapunov.</dd>
+<dt>\(\mathcal K_\infty\)</dt><dd data-hojas="14">Clase de funciones de una variable crecientes, nulas en cero y no acotadas; cotas \(\ell\) y \(V_f\) por funciones de esta clase.</dd>
+<dt>\(F_i\), \(g_i\)</dt><dd data-hojas="16">Matriz y vector de la ley afín del MPC explícito en la región \(i\): \(u = F_ix + g_i\).</dd>
+</dl>
+<h3>Seguimiento, perturbaciones y robustez</h3>
+<dl>
+<dt>\(d_k\)</dt><dd data-hojas="17">Perturbación constante estimada junto al estado, con \(d_{k+1} = d_k\).</dd>
+<dt>\(B_d\), \(C_d\)</dt><dd data-hojas="17">Matrices por las que la perturbación \(d\) entra en la dinámica y en la salida.</dd>
+<dt>\(y_k\), \(C\)</dt><dd data-hojas="17">Salida medida, \(y = Cx + C_dd\), y su matriz de salida \(C\).</dd>
+<dt>\(r\)</dt><dd data-hojas="17">Referencia que debe alcanzar la salida. Sin negrita, a diferencia de los residuos \(r(s_k,q_k)\) del NMPC (hoja 21).</dd>
+<dt>\(\hat x\), \(\hat d\)</dt><dd data-hojas="17">Estado y perturbación estimados por el estimador del modelo aumentado.</dd>
+<dt>\(x_s\), \(u_s\)</dt><dd data-hojas="17">Estado y mando de equilibrio objetivo que llevan la salida a la referencia con la perturbación estimada. El MPC penaliza \(x-x_s\) y \(u-u_s\).</dd>
+<dt>\(\bar x\), \(\bar u\)</dt><dd data-hojas="18">Trayectoria nominal planificada en el MPC de tubo; la ley auxiliar es \(u = \bar u + K(x-\bar x)\).</dd>
+<dt>\(K\) (tubo)</dt><dd data-hojas="18">Ganancia de la ley auxiliar que mantiene el estado real dentro del tubo alrededor de la nominal.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="18">Probabilidad máxima admitida de violar la restricción en MPC estocástico.</dd>
+<dt>\(\Sigma\)</dt><dd data-hojas="18">Covarianza de la incertidumbre del estado en \(\mathcal N(\hat x,\Sigma)\).</dd>
+<dt>\(\sigma_\theta\)</dt><dd data-hojas="18">Desviación típica de la incertidumbre sobre el cabeceo; se usa para estrechar la restricción: \(|\hat\theta|\le\theta_{\max}-2\sigma_\theta\).</dd>
+<dt>\(\hat\theta\)</dt><dd data-hojas="18">Cabeceo estimado.</dd>
+</dl>
+<h3>NMPC, multiple shooting y RTI</h3>
+<dl>
+<dt>\(s_k\)</dt><dd data-hojas="21">Estado del nodo \(k\) como variable de optimización en multiple shooting (\(s_0 = x(t)\)).</dd>
+<dt>\(q_k\)</dt><dd data-hojas="21">Mando del intervalo \(k\) como variable de optimización. Para el MPCC, \(q_c\) y \(q_l\) son pesos distintos.</dd>
+<dt>\(\phi(s_k,q_k)\)</dt><dd data-hojas="21">Integrador numérico (RK4 en cada intervalo) que da el estado del nodo siguiente.</dd>
+<dt>\(r(s_k,q_k)\), \(r_N(s_N)\)</dt><dd data-hojas="21">Residuos del coste de mínimos cuadrados en cada nodo y en el terminal: el coste es \(\tfrac12\|r\|^2\).</dd>
+<dt>\(h(s_k,q_k)\)</dt><dd data-hojas="21">Restricciones de desigualdad, \(h\le 0\).</dd>
+<dt>\(J_r\)</dt><dd data-hojas="21">Jacobiano de los residuos respecto a las variables; la hessiana de Gauss-Newton es \(J_r^\top J_r\).</dd>
+<dt>\(\mathcal L\)</dt><dd data-hojas="21">Lagrangiano del problema; \(\nabla^2\mathcal L\) es su hessiana.</dd>
+<dt>\(r_i\)</dt><dd data-hojas="21">Componente \(i\) del vector de residuos \(r\).</dd>
+<dt>\(\Delta y^k\)</dt><dd data-hojas="22">Distancia (error) de la iterada \(k\) a la solución exacta del problema.</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="22">Medida del error de la aproximación de la hessiana en el teorema de contracción de RTI.</dd>
+<dt>\(\omega\) (no linealidad)</dt><dd data-hojas="22">Constante de no linealidad del teorema de contracción de RTI; no es la frecuencia de la parte de LQR.</dd>
+<dt>\(\delta_0\)</dt><dd data-hojas="22">\(\kappa + \tfrac\omega2\|\Delta y^0\|\): si es \(\lt 1\), las iteradas se acercan geométricamente a la solución.</dd>
+</dl>
+<h3>Control de contorno (MPCC)</h3>
+<dl>
+<dt>\(\mathbf p\)</dt><dd data-hojas="26">Posición del dron, vector de \(\mathbb R^3\) (en la figura, «p (dron)»).</dd>
+<dt>\(\vartheta\)</dt><dd data-hojas="26">Parámetro de longitud de arco del camino; pasa a ser un estado más. No es el cabeceo \(\theta\).</dd>
+<dt>\(\mathbf p_d(\vartheta)\)</dt><dd data-hojas="26">Punto del camino deseado a longitud de arco \(\vartheta\).</dd>
+<dt>\(\mathbf t(\vartheta)\)</dt><dd data-hojas="26">Tangente unitaria del camino en \(\vartheta\).</dd>
+<dt>\(v_k\)</dt><dd data-hojas="26">Mando virtual de progreso: \(\vartheta_{k+1} = \vartheta_k + v_kT_s\).</dd>
+<dt>\(T_s\)</dt><dd data-hojas="26">Periodo de muestreo del modelo discreto.</dd>
+<dt>\(e_l\)</dt><dd data-hojas="26">Error de retraso: componente del error de posición a lo largo de la tangente.</dd>
+<dt>\(\mathbf e_c\)</dt><dd data-hojas="26">Error de contorno: componente del error de posición perpendicular al camino.</dd>
+<dt>\(J\)</dt><dd data-hojas="26">Coste total del MPCC, suma de \(q_c\|\mathbf e_c\|^2 + q_le_l^2 - \rho v_k + \|\Delta u_k\|_R^2\).</dd>
+<dt>\(q_c\), \(q_l\)</dt><dd data-hojas="26">Pesos del error de contorno y del de retraso (\(q_l\) alto para que \(\vartheta\approx\vartheta^\star\)).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="26">Peso del premio al avance \(-\rho v_k\).</dd>
+<dt>\(\vartheta^\star\)</dt><dd data-hojas="26">Valor de \(\vartheta\) que minimiza la distancia al camino (la proyección), que el MPCC aproxima sin imponerla.</dd>
+</dl>
+<h3>MPC en drones reales</h3>
+<dl>
+<dt>\(N\) (nodos)</dt><dd data-hojas="29">En las tablas, número de nodos de la malla de predicción (p. ej. \(N = 20\), \(N = 10\), \(N = 15\)).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>PID</dt><dd data-hojas="3">Proportional-integral-derivative: controlador clásico que no maneja restricciones explícitas, a diferencia del MPC.</dd>
+<dt>LQR</dt><dd data-hojas="4">Linear quadratic regulator: control óptimo de un sistema lineal con coste cuadrático.</dd>
+<dt>MPC</dt><dd data-hojas="3">Model predictive control: optimiza el futuro con un modelo en cada muestra y aplica solo el primer mando.</dd>
+<dt>NMPC</dt><dd data-hojas="1">Nonlinear MPC: MPC con modelo no lineal.</dd>
+<dt>MPCC</dt><dd data-hojas="1">Model predictive contouring control: MPC que sigue un camino y decide cuánto avanza.</dd>
+<dt>RTI</dt><dd data-hojas="1">Real-time iteration: una sola iteración de SQP por muestra, preparada antes de conocer el estado.</dd>
+<dt>DMC</dt><dd data-hojas="4">Dynamic matrix control: uno de los primeros MPC industriales (Shell), de 1978–80.</dd>
+<dt>IDCOM</dt><dd data-hojas="4">Identification and command: primer MPC industrial de Richalet et al., de 1978–80.</dd>
+<dt>DARE</dt><dd data-hojas="6">Discrete algebraic Riccati equation: punto fijo de la recursión de Riccati, da la solución de horizonte infinito.</dd>
+<dt>QP</dt><dd data-hojas="11">Quadratic program: problema con coste cuadrático y restricciones lineales.</dd>
+<dt>KKT</dt><dd data-hojas="11">Karush-Kuhn-Tucker: condiciones de optimalidad; el sistema de banda del QP disperso.</dd>
+<dt>POMDP</dt><dd data-hojas="18">Partially observable Markov decision process: problema de decisión con estado no observado; con un estimador, el estado es una distribución.</dd>
+<dt>Hamilton-Jacobi-Bellman, HJB</dt><dd data-hojas="20">Hamilton-Jacobi-Bellman: ecuación en derivadas parciales de la función de valor en todo el espacio de estados; solo es práctica con pocos estados o en el caso lineal cuadrático.</dd>
+<dt>EDP</dt><dd data-hojas="20">Ecuación en derivadas parciales; la de Hamilton-Jacobi-Bellman es una para la función de valor.</dd>
+<dt>SQP</dt><dd data-hojas="21">Sequential quadratic programming: resuelve un NLP con una secuencia de QP.</dd>
+<dt>MPPI</dt><dd data-hojas="23">Model predictive path integral: MPC por muestreo de trayectorias; TD-MPC2 lo usa con una política que propone el arranque.</dd>
+<dt>NLP</dt><dd data-hojas="24">Nonlinear program: problema de optimización no lineal.</dd>
+<dt>ADMM</dt><dd data-hojas="13">Alternating direction method of multipliers: método de operadores usado por OSQP y TinyMPC.</dd>
+<dt>RK4</dt><dd data-hojas="21">Runge-Kutta de cuarto orden, el integrador de cada intervalo.</dd>
+<dt>ERK, IRK</dt><dd data-hojas="24">Integradores Runge-Kutta explícitos e implícitos disponibles en acados.</dd>
+<dt>acados</dt><dd data-hojas="24">Marco de código abierto para control óptimo rápido con generación de código C, SQP y RTI.</dd>
+<dt>HPIPM</dt><dd data-hojas="13">Solver de QP de punto interior con Riccati, usado dentro de acados.</dd>
+<dt>qpOASES</dt><dd data-hojas="13">Solver de QP de conjunto activo paramétrico.</dd>
+<dt>OSQP</dt><dd data-hojas="13">Solver de QP por operadores (ADMM).</dd>
+<dt>TinyMPC</dt><dd data-hojas="13">Solver ADMM con Riccati precalculada para microcontroladores.</dd>
+<dt>GP</dt><dd data-hojas="29">Gaussian process: proceso gaussiano; en la tabla de MPC en drones, el modelo aprendido de la parte que falta, con un coste de 4–5 ms.</dd>
+<dt>PAMPC</dt><dd data-hojas="29">Perception-aware MPC: MPC que tiene en cuenta la percepción en un cuadricóptero; aparece en la tabla de MPC en drones.</dd>
+<dt>HPA-MPC</dt><dd data-hojas="29">Hybrid perception-aware nonlinear MPC: MPC no lineal consciente de la percepción para cuadricópteros con carga suspendida; aparece en la tabla de MPC en drones.</dd>
+<dt>DAQP</dt><dd data-hojas="30">Solver de conjunto activo con peor caso certificado.</dd>
+<dt>IPOPT</dt><dd data-hojas="13">Solver genérico de NLP de punto interior.</dd>
+<dt>CasADi</dt><dd data-hojas="24">Biblioteca de modelado simbólico y diferenciación automática para optimización.</dd>
+<dt>ACADO</dt><dd data-hojas="24">Herramienta de control óptimo en tiempo real que aparece en las tablas de MPC en drones y en la comparación de tiempos con acados.</dd>
+<dt>CVXGEN</dt><dd data-hojas="29">Solver de QP con el que Kamel et al. resuelven su MPC lineal (tabla).</dd>
+<dt>INDI</dt><dd data-hojas="3">Incremental nonlinear dynamic inversion: control de actitud con medida de aceleración (de A2).</dd>
+<dt>CTBR</dt><dd data-hojas="37">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
+<dt>PETS, TD-MPC2, Dreamer</dt><dd data-hojas="3">Agentes basados en modelo que planifican con un modelo aprendido (se desarrollan en A3b).</dd>
+<dt>PX4</dt><dd data-hojas="7">Piloto automático de código abierto, con la cascada de control de A2.</dd>
+<dt>TECS</dt><dd data-hojas="30">Total energy control system: control de altura y velocidad en ala fija.</dd>
+<dt>RL</dt><dd data-hojas="4">Reinforcement learning, aprendizaje por refuerzo.</dd>
+<dt>MCU</dt><dd data-hojas="3">Microcontroller unit, microcontrolador.</dd>
+<dt>RMS</dt><dd data-hojas="23">Root mean square, valor cuadrático medio, usado para el error de posición.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

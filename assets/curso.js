@@ -1,6 +1,6 @@
 /* Curso de robótica inteligente: motor de presentaciones.
    Modos: presentación (una hoja escalada) y lectura (hojas apiladas).
-   Teclas: ← → espacio RePág AvPág Inicio Fin · I índice · L modo · T tema */
+   Teclas: ← → espacio RePág AvPág Inicio Fin · I índice · G glosario · L modo · T tema */
 (function () {
   "use strict";
 
@@ -95,6 +95,96 @@
     });
   });
   body.appendChild(panel);
+
+  /* ---------- Glosario (tecla G) ----------
+     Fuente en la página: <aside id="glosario" hidden> con <h3> por grupo y
+     <dl> de pares <dt>símbolo</dt><dd data-hojas="12,30">qué es</dd>.
+     Se lee aquí, antes de que MathJax (defer) convierta el TeX, para poder
+     buscar también por el código del símbolo (\theta, \Sigma…). */
+  const gSrc = document.getElementById("glosario");
+  let gPanel = null;
+  let gInput = null;
+  if (gSrc) {
+    const norm = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+    gPanel = document.createElement("aside");
+    gPanel.className = "index-panel glos-panel";
+    gPanel.hidden = true;
+    gPanel.setAttribute("aria-label", "Glosario de símbolos");
+    gPanel.innerHTML =
+      '<div class="glos-head"><h3>Glosario · <span></span></h3>' +
+      '<button type="button" class="glos-close" aria-label="Cerrar glosario">×</button></div>' +
+      '<input type="search" class="glos-q" placeholder="Buscar: theta, matriz, covarianza…" aria-label="Buscar en el glosario">' +
+      '<p class="glos-empty" hidden>Nada coincide.</p>';
+    gPanel.querySelector(".glos-head span").textContent = deckId;
+    gInput = gPanel.querySelector(".glos-q");
+    const empty = gPanel.querySelector(".glos-empty");
+    Array.from(gSrc.children).forEach((el) => gPanel.insertBefore(el, empty));
+    gSrc.remove();
+    const rows = [];
+    gPanel.querySelectorAll("dl").forEach((dl) => {
+      Array.from(dl.querySelectorAll(":scope > dt")).forEach((dt) => {
+        const dd = dt.nextElementSibling;
+        if (!dd || dd.tagName !== "DD") return;
+        const row = document.createElement("div");
+        row.className = "glos-row";
+        dt.before(row);
+        row.append(dt, dd);
+        rows.push({ row, dl, text: norm(dt.textContent + " " + dd.textContent) });
+        const hs = (dd.dataset.hojas || "").split(/[\s,]+/).filter(Boolean).map(Number);
+        if (hs.length) {
+          const w = document.createElement("span");
+          w.className = "glos-hojas";
+          hs.forEach((h) => {
+            if (!(h >= 1 && h <= N)) { console.warn("[curso] glosario: hoja fuera de rango:", h, dt.textContent); return; }
+            const a = document.createElement("a");
+            a.href = "#" + slides[h - 1].id;
+            a.textContent = String(h);
+            a.title = slides[h - 1].dataset.titleResolved;
+            a.addEventListener("click", (e) => { e.preventDefault(); go(h - 1); gPanel.hidden = true; });
+            w.appendChild(a);
+          });
+          w.dataset.label = w.children.length > 1 ? "hojas" : "hoja";
+          if (w.children.length) dd.appendChild(w);
+        }
+      });
+    });
+    gInput.addEventListener("input", () => {
+      const q = norm(gInput.value.trim()).replace(/\\/g, "");
+      let shown = 0;
+      rows.forEach((r) => {
+        const ok = !q || r.text.replace(/\\/g, "").includes(q);
+        r.row.hidden = !ok;
+        if (ok) shown++;
+      });
+      gPanel.querySelectorAll("dl").forEach((dl) => {
+        const any = rows.some((r) => r.dl === dl && !r.row.hidden);
+        dl.hidden = !any;
+        const h = dl.previousElementSibling;
+        if (h && h.tagName === "H3") h.hidden = !any;
+      });
+      empty.hidden = shown > 0;
+    });
+    gPanel.querySelector(".glos-close").addEventListener("click", () => toggleGlos(false));
+    body.appendChild(gPanel);
+    const btnG = document.createElement("button");
+    btnG.type = "button";
+    btnG.id = "btn-glos";
+    btnG.textContent = "Glosario";
+    btnG.setAttribute("aria-label", "Glosario de símbolos (tecla G)");
+    btnG.addEventListener("click", () => toggleGlos());
+    bar.querySelector("#btn-index").after(btnG);
+  }
+  function toggleGlos(show) {
+    if (!gPanel) return;
+    const open = show === undefined ? gPanel.hidden : show;
+    gPanel.hidden = !open;
+    if (!open && document.activeElement === gInput) gInput.blur();
+    if (open) {
+      panel.hidden = true;
+      /* En pantallas táctiles no se enfoca el buscador: abriría el teclado */
+      if (!window.matchMedia || window.matchMedia("(hover: hover)").matches) { gInput.focus({ preventScroll: true }); gInput.select(); }
+    }
+  }
 
   /* ---------- Referencias ---------- */
   const refItems = Array.from(document.querySelectorAll("ol.refs > li[id^='ref-']"));
@@ -213,10 +303,18 @@
 
   bar.querySelector("#btn-prev").addEventListener("click", () => go(cur - 1));
   bar.querySelector("#btn-next").addEventListener("click", () => go(cur + 1));
-  bar.querySelector("#btn-index").addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  function toggleIndex() {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden && gPanel) gPanel.hidden = true;
+  }
+  bar.querySelector("#btn-index").addEventListener("click", toggleIndex);
   btnMode.addEventListener("click", () => setMode(body.classList.contains("mode-present") ? "read" : "present"));
 
   document.addEventListener("keydown", (e) => {
+    if (gInput && e.target === gInput) {
+      if (e.key === "Escape") { e.preventDefault(); toggleGlos(false); }
+      return;
+    }
     if (e.target.closest("input, textarea, select")) return;
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     const k = e.key;
@@ -225,10 +323,11 @@
     else if (present && (k === "ArrowLeft" || k === "PageUp")) { e.preventDefault(); go(cur - 1); }
     else if (present && k === "Home") { e.preventDefault(); go(0); }
     else if (present && k === "End") { e.preventDefault(); go(N - 1); }
-    else if (k === "i" || k === "I") { panel.hidden = !panel.hidden; }
+    else if (k === "i" || k === "I") { toggleIndex(); }
+    else if ((k === "g" || k === "G") && gPanel) { e.preventDefault(); toggleGlos(); }
     else if (k === "l" || k === "L") { btnMode.click(); }
     else if (k === "t" || k === "T") { bar.querySelector("#btn-theme").click(); }
-    else if (k === "Escape") { panel.hidden = true; }
+    else if (k === "Escape") { panel.hidden = true; toggleGlos(false); }
   });
 
   /* En modo lectura, el contador sigue al scroll */

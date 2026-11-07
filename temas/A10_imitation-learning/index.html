@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -612,6 +612,125 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>\(\mathbb E\) es la esperanza; \(\|\cdot\|\) la norma euclídea; \(\sim\) significa «se distribuye según».</p>
+<dl>
+<dt>\(\mathbb E\)</dt><dd data-hojas="6,7">Esperanza (media) de una variable aleatoria; el subíndice o la barra vertical indican respecto a qué distribución o dado qué.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="7">Norma euclídea de un vector; \(\|\hat a - a\|^2\) es el error cuadrático entre acción predicha y acción del experto.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="6,12">«Se distribuye según», p. ej. \(x_0\sim\mathcal N(0, I)\).</dd>
+<dt>\(\mathcal N(0, I)\)</dt><dd data-hojas="12">Gaussiana de media cero y covarianza identidad: de ella sale el ruido inicial \(x_0\) del flow matching.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="7">Traspuesta de un vector o matriz; en \(\hat a^\top\mathbb E[a\mid o]\) es el producto escalar.</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="7">Argumento que minimiza la función que sigue: el valor de la variable donde se alcanza el mínimo.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="7">«Dado»: \(\mathbb E[a\mid o]\) es la media de \(a\) condicionada a la observación \(o\).</dd>
+<dt>\(\dot x\)</dt><dd data-hojas="12">Derivada de \(x\) respecto al tiempo del flujo \(t\) (no el tiempo del robot).</dd>
+<dt>\(\sum|\Delta a|\)</dt><dd data-hojas="17">Actividad de control por paso: suma de los cambios absolutos de la acción entre pasos consecutivos; mide lo brusca que es la política.</dd>
+<dt>\(\pm\)</dt><dd data-hojas="16,18">Intervalo simétrico de las desviaciones iniciales: \(\pm 2\) cm en el experimento principal, \(\pm 15\) cm en el contraste.</dd>
+</dl>
+<h3>Clonado de comportamiento</h3>
+<p>Letras de la parte 1: \(o\) observación, \(a\) acción, \(\pi\) política.</p>
+<dl>
+<dt>\(\theta\)</dt><dd data-hojas="6">Parámetros (pesos) de la red que representa la política o el campo de velocidades; se optimizan en el entrenamiento.</dd>
+<dt>\(\pi_\theta(o)\)</dt><dd data-hojas="6">Política del alumno con parámetros \(\theta\): función que devuelve la acción para la observación \(o\).</dd>
+<dt>\(\pi_\theta(a_t\mid s_t)\)</dt><dd data-hojas="10">Política estocástica: distribución de la acción \(a_t\) dado el estado \(s_t\), una acción por paso.</dd>
+<dt>\(\pi^*(o)\)</dt><dd data-hojas="7">Política óptima del error cuadrático: la que minimiza el error esperado, que resulta ser la media condicionada \(\mathbb E[a\mid o]\).</dd>
+<dt>\(o\)</dt><dd data-hojas="6">Observación que recibe la política (lo que mide el robot).</dd>
+<dt>\(a\)</dt><dd data-hojas="6">Acción del experto en la observación \(o\) (la etiqueta que se imita).</dd>
+<dt>\(\hat a\)</dt><dd data-hojas="7">Acción propuesta o predicha por el alumno, el argumento que se optimiza en \(J(\hat a)\).</dd>
+<dt>\(\mathcal D_{\text{experto}}\)</dt><dd data-hojas="6">Conjunto de demostraciones del experto: pares observación-acción \((o, a)\).</dd>
+<dt>\(\ell\)</dt><dd data-hojas="6">Función de pérdida que compara la acción del alumno con la del experto (aquí, error cuadrático).</dd>
+<dt>\(\min_\theta\)</dt><dd data-hojas="6">Minimización respecto a los parámetros \(\theta\): es el entrenamiento del clonado de comportamiento.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="6">Error por paso de la política en la distribución del experto (repaso de A6b).</dd>
+<dt>\(T\)</dt><dd data-hojas="6">Horizonte del episodio, número de pasos; el coste de BC puede crecer como \(T^2\varepsilon\).</dd>
+<dt>\(u\)</dt><dd data-hojas="6">Constante de la cota de DAgger, \(O(uT\varepsilon)\): A6b la introduce como lo máximo que cuesta equivocarse en un paso; el tema solo la recuerda.</dd>
+<dt>\(O(uT\varepsilon)\)</dt><dd data-hojas="6">Orden de magnitud del coste de DAgger, lineal en el horizonte \(T\) frente al cuadrático de BC.</dd>
+<dt>\(T^2\varepsilon\)</dt><dd data-hojas="6">Orden al que puede crecer el coste del clonado de comportamiento por el desplazamiento de covariables.</dd>
+<dt>\(J(\hat a)\)</dt><dd data-hojas="7">Error cuadrático esperado de la acción \(\hat a\) para una \(o\) fija; se desarrolla en tres términos para ver que su mínimo es la media.</dd>
+<dt>\(E_\theta(o, a)\)</dt><dd data-hojas="7">Energía del BC implícito: función escalar que es baja para pares observación-acción compatibles; la acción se obtiene minimizándola.</dd>
+<dt>\(k\) (Behavior Transformers)</dt><dd data-hojas="7">Número de grupos de k-means en que se agrupan las acciones; la red predice el grupo y un desplazamiento continuo.</dd>
+<dt>\(D_w(s, a)\)</dt><dd data-hojas="8">Discriminador de GAIL con parámetros \(w\): da un valor en \((0, 1)\) que separa los pares estado-acción del experto de los del alumno.</dd>
+<dt>\(w\)</dt><dd data-hojas="8">Parámetros del discriminador de GAIL.</dd>
+<dt>\(s\)</dt><dd data-hojas="8,10">Estado (en GAIL y en la política con trozos); \(s_t\) es el estado en el paso \(t\).</dd>
+<dt>\(c(s, a)\)</dt><dd data-hojas="8">Coste que minimiza la política en GAIL: \(c(s, a) = \log D_w(s, a)\), calculado con trayectorias simuladas.</dd>
+<dt>\(x\), \(y\) (posición del x500)</dt><dd data-hojas="16,18">\(x\) es la coordenada a lo largo del vuelo, de \(-2{,}5\) a \(+2{,}5\) m; \(y\) es la lateral, y la variable de entorno A10_Y0 fija sus desviaciones iniciales.</dd>
+<dt>A10_Y0</dt><dd data-hojas="18">Parámetro del script con la desviación inicial lateral en metros (0,15 en el contraste).</dd>
+</dl>
+<h3>Trozos de acciones y difusión</h3>
+<p>Parte 2: ACT y Diffusion Policy generan secuencias de acciones en lugar de una sola.</p>
+<dl>
+<dt>\(a_{t:t+k}\)</dt><dd data-hojas="10">Trozo de \(k\) acciones consecutivas desde el paso \(t\): lo que predice la política con trozos en cada consulta.</dd>
+<dt>\(k\)</dt><dd data-hojas="10">Tamaño del trozo de acciones de ACT; la política observa cada \(k\) pasos, lo que reduce \(k\) veces el horizonte efectivo.</dd>
+<dt>\(w_i\)</dt><dd data-hojas="10">Peso del ensamblado temporal para la predicción de antigüedad \(i\): \(w_i = e^{-m i}\).</dd>
+<dt>\(m\)</dt><dd data-hojas="10">Constante positiva que fija lo deprisa que decae el peso del ensamblado temporal con la antigüedad.</dd>
+<dt>\(i\)</dt><dd data-hojas="10">Índice de la predicción dentro del ensamblado temporal (cuánto hace que se hizo).</dd>
+<dt>\(z\)</dt><dd data-hojas="10">Variable de «estilo» del CVAE de ACT: comprime la secuencia de acciones en el entrenamiento y se descarta en la prueba.</dd>
+<dt>\(T_o\)</dt><dd data-hojas="11">Número de observaciones pasadas que toma Diffusion Policy; valor habitual 2.</dd>
+<dt>\(T_p\)</dt><dd data-hojas="11">Número de acciones que genera por difusión (horizonte de predicción); valor habitual 16.</dd>
+<dt>\(T_a\)</dt><dd data-hojas="11">Número de acciones que ejecuta sin replanificar (horizonte de ejecución); valor habitual 8.</dd>
+<dt>\(H\)</dt><dd data-hojas="13">Longitud del trozo que genera π0: 50 acciones.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="13">Tamaño del paso de integración de π0: \(\delta = 0{,}1\), es decir, 10 pasos de Euler.</dd>
+</dl>
+<h3>Flow matching</h3>
+<p>Parte 3: \(x_0\) es ruido, \(x_1\) es un dato (un trozo de acciones) y \(t\in[0, 1]\) es el tiempo del flujo.</p>
+<dl>
+<dt>\(x\)</dt><dd data-hojas="12">Punto del espacio de datos por el que circula el flujo; en una política, un trozo de acciones (parcialmente generado).</dd>
+<dt>\(t\)</dt><dd data-hojas="12">Tiempo del flujo, de \(t = 0\) (ruido) a \(t = 1\) (datos). No es el paso de control del robot.</dd>
+<dt>\(x_0\)</dt><dd data-hojas="12">Muestra de ruido gaussiano, punto de partida del flujo.</dd>
+<dt>\(x_1\)</dt><dd data-hojas="12">Dato (un trozo de acciones del experto), punto de llegada del flujo.</dd>
+<dt>\(x_t\)</dt><dd data-hojas="12,24">Punto del camino condicional en el instante \(t\); con \(\sigma_{\min} = 0\), \(x_t = (1-t)x_0 + t x_1\).</dd>
+<dt>\(v_\theta(x, t)\)</dt><dd data-hojas="12">Campo de velocidades aprendido por la red: define el flujo \(\dot x = v_\theta(x, t)\) que lleva ruido a datos. Se condiciona a la observación.</dd>
+<dt>\(\psi_t(x_0)\)</dt><dd data-hojas="12">Camino condicional lineal desde el ruido \(x_0\) hacia el dato \(x_1\) en el instante \(t\).</dd>
+<dt>\(\sigma_{\min}\)</dt><dd data-hojas="12">Ruido residual del camino condicional; en nuestro x500 vale 0.</dd>
+<dt>\(\mathcal L_{\text{CFM}}(\theta)\)</dt><dd data-hojas="12">Objetivo de flow matching condicional: error cuadrático medio entre \(v_\theta\) y la velocidad del camino \(x_1 - (1-\sigma_{\min})x_0\).</dd>
+<dt>\(u_t(x)\)</dt><dd data-hojas="12">Campo de velocidades ideal que genera la distribución de los datos; es intratable.</dd>
+<dt>\(u_t(x\mid x_1)\)</dt><dd data-hojas="12">Campo condicional del camino hacia un dato concreto \(x_1\); es sencillo y da el mismo gradiente que \(u_t(x)\).</dd>
+<dt>\(N\)</dt><dd data-hojas="12">Número de pasos de Euler al muestrear: \(x \leftarrow x + \tfrac{1}{N} v_\theta(x, t)\).</dd>
+<dt>\(\leftarrow\)</dt><dd data-hojas="12">Asignación: el valor de la derecha sustituye al de la izquierda en cada paso de Euler.</dd>
+<dt>\(x_1 - x_0\)</dt><dd data-hojas="12,24">Objetivo de regresión con \(\sigma_{\min} = 0\): la derivada del camino lineal respecto a \(t\).</dd>
+<dt>\(p(a\mid o)\)</dt><dd data-hojas="25">Distribución de la acción dada la observación; su multimodalidad es la que importa para perder o no un modo.</dd>
+</dl>
+<h3>Montaje y resultados</h3>
+<p>Parte 4: x500 que esquiva un poste, un experto MPPI y cinco alumnos.</p>
+<dl>
+<dt>x500</dt><dd data-hojas="1,16">Dron cuadricóptero del experimento, que va de \(x = -2{,}5\) a \(x = +2{,}5\) m con un poste de 0,6 m de radio en medio.</dd>
+<dt>Éxito</dt><dd data-hojas="17">Porcentaje de los 200 vuelos de prueba que llegan a la meta.</dd>
+<dt>Izquierda / derecha</dt><dd data-hojas="17">Porcentaje de vuelos que rodean el poste por cada lado; mide si el alumno reproduce el reparto bimodal del experto.</dd>
+<dt>BC con trozos</dt><dd data-hojas="16">Alumno que predice 8 acciones con error cuadrático, ejecuta 4 y vuelve a predecir.</dd>
+<dt>DAgger (BC)</dt><dd data-hojas="16">Alumno BC reentrenado en 4 rondas de 100 despliegues propios, etiquetados por el experto a la sombra.</dd>
+<dt>Flow matching + DAgger</dt><dd data-hojas="16">Lo mismo con el trozo de 8 acciones del plan del experto como etiqueta.</dd>
+<dt>ms por paso</dt><dd data-hojas="19">Tiempo de cómputo por decisión de control en una RTX 4060 Ti: 10,0 (MPPI), 0,021 (BC), 0,081 (flow matching).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>ALVINN</dt><dd data-hojas="4,6">Autonomous Land Vehicle In a Neural Network: red de 1988 entrenada con imágenes simuladas para conducir un vehículo.</dd>
+<dt>BC</dt><dd data-hojas="6">Behavioral cloning: regresión supervisada de las acciones del experto a partir de la observación.</dd>
+<dt>DAgger</dt><dd data-hojas="4,6">Dataset Aggregation: etiqueta con el experto los estados que visita el alumno y reentrena, lo que corrige el desplazamiento de covariables.</dd>
+<dt>MPC</dt><dd data-hojas="3,14">Model predictive control: control que optimiza una secuencia de acciones con un modelo en cada paso.</dd>
+<dt>MPPI</dt><dd data-hojas="3,16">Model predictive path integral: MPC que muestrea secuencias de acciones con ruido y las pondera por su coste; es el experto del experimento.</dd>
+<dt>NAVLAB</dt><dd data-hojas="6">Vehículo terrestre que ALVINN condujo a 0,5 m/s en un camino.</dd>
+<dt>IBC</dt><dd data-hojas="11,7">Implicit behavioral cloning: BC con modelo de energía.</dd>
+<dt>BeT</dt><dd data-hojas="11">Behavior Transformers: agrupan las acciones con k-means y predicen grupo más desplazamiento.</dd>
+<dt>LSTM-GMM</dt><dd data-hojas="11">Línea base con una red recurrente que predice una mezcla de gaussianas.</dd>
+<dt>IRL</dt><dd data-hojas="8">Inverse reinforcement learning: recuperar la recompensa del experto a partir de demostraciones y luego obtener la política con RL.</dd>
+<dt>GAIL</dt><dd data-hojas="8">Generative adversarial imitation learning: extrae la política directamente con un discriminador entre pares del experto y del alumno.</dd>
+<dt>RL</dt><dd data-hojas="8">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>ACT</dt><dd data-hojas="3,10">Action Chunking with Transformers: política que predice trozos de acciones y los ensambla en el tiempo.</dd>
+<dt>ALOHA</dt><dd data-hojas="4">Sistema bimanual de bajo coste con el que se presenta ACT.</dd>
+<dt>CVAE</dt><dd data-hojas="10">Conditional variational autoencoder: aporta la variable de estilo \(z\) de ACT.</dd>
+<dt>DDPM</dt><dd data-hojas="11">Denoising diffusion probabilistic model: difusión original, con unos 100 pasos de inferencia en la tabla de latencias.</dd>
+<dt>DDIM</dt><dd data-hojas="11">Denoising diffusion implicit model: muestreo de difusión con menos pasos (10 a 15).</dd>
+<dt>Consistency Policy</dt><dd data-hojas="4,11">Destilación de Diffusion Policy con autoconsistencia, que genera en un solo paso.</dd>
+<dt>π0</dt><dd data-hojas="4,13">Modelo de visión, lenguaje y acción de Physical Intelligence con un experto de acciones por flow matching (cifras de la empresa).</dd>
+<dt>CFM</dt><dd data-hojas="12">Conditional flow matching: flow matching con el objetivo condicional.</dd>
+<dt>RSSM</dt><dd data-hojas="21">Recurrent state-space model: world model cuyo estado latente sirve de belief aprendido.</dd>
+<dt>TX2</dt><dd data-hojas="3,6">Jetson TX2, ordenador de a bordo donde se miden las políticas destiladas.</dd>
+<dt>IMU</dt><dd data-hojas="6">Inertial measurement unit: acelerómetro y giróscopo.</dd>
+<dt>CPU, GPU</dt><dd data-hojas="3,27">Procesador general y procesador gráfico; el laboratorio corre en GPU de consumo, con CPU como alternativa.</dd>
+<dt>JAX</dt><dd data-hojas="16">Librería de cálculo con la que se escribe el script de las figuras, determinista.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

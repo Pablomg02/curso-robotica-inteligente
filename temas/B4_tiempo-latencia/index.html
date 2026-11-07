@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -974,6 +974,120 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Subíndice \(k\) o \(t\): paso discreto. \(\hat{\ }\): predicción del modelo. \(\bar{\ }\): valor medio.</p>
+<dl>
+<dt>\(\hat x_k\)</dt><dd data-hojas="13">Estado predicho en el paso \(k\) a partir de la medida retrasada \(x_{k-d}\) y de las acciones ya enviadas.</dd>
+<dt>\(\mathbb N\)</dt><dd data-hojas="21">Conjunto de los números naturales; aquí, valores posibles de cada retardo aleatorio.</dd>
+<dt>\(\max(\cdot,\cdot)\)</dt><dd data-hojas="17">Máximo de dos valores; en la llegada FIFO impide que una medida llegue antes que la anterior.</dd>
+<dt>\(\mathrm{round}(\cdot)\)</dt><dd data-hojas="7">Redondeo al entero más próximo; da el número de pasos entre disparos de un sensor con deriva.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="21">En \(p(a\mid b)\): probabilidad de \(a\) condicionada a \(b\).</dd>
+</dl>
+<h3>Parte 1 · El reloj del simulador</h3>
+<dl>
+<dt>\(\text{RTF}\)</dt><dd data-hojas="6">Factor de tiempo real, escalar adimensional: \(\Delta t_\text{sim}/\Delta t_\text{pared}\). Mayor que 1 al entrenar; igual a 1 con hardware en el lazo.</dd>
+<dt>\(\Delta t_\text{sim}\)</dt><dd data-hojas="6">Tiempo simulado transcurrido, en segundos; el que integra la física.</dd>
+<dt>\(\Delta t_\text{pared}\)</dt><dd data-hojas="6">Tiempo de pared (del ordenador) transcurrido, en segundos.</dd>
+<dt>\(t_\text{ap}\)</dt><dd data-hojas="6,17">Tiempo que marca el reloj de un aparato (controladora, ordenador de a bordo, sensor): \(t_\text{ap}=(1+\varepsilon)\,t+b\).</dd>
+<dt>\(t\)</dt><dd data-hojas="6">Tiempo verdadero (el del simulador), escalar en segundos.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="6">Deriva del reloj de un aparato: error relativo de frecuencia, adimensional.</dd>
+<dt>\(b\)</dt><dd data-hojas="6">Desfase constante del reloj de un aparato respecto al tiempo verdadero, en segundos.</dd>
+<dt>\(T\)</dt><dd data-hojas="7,16">Periodo de un sensor o de las medidas periódicas, en segundos (en la hoja 7, el de la cámara).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="7,12">Paso base de la física (1 ms en el ejemplo) y periodo de muestreo de las señales discretas.</dd>
+<dt>\(k\)</dt><dd data-hojas="8,12">Contador global de pasos, escalar entero común a todos los entornos; también índice de paso discreto en las fórmulas.</dd>
+</dl>
+<h3>Parte 2 · Retardos</h3>
+<dl>
+<dt>\(D\)</dt><dd data-hojas="12">Número de casillas del búfer circular de retardo; el retardo máximo representable es \(D-1\) pasos.</dd>
+<dt>\(d\) (búfer y predictor)</dt><dd data-hojas="12,13">Retardo en pasos enteros: lectura \(d\) pasos atrás en el búfer; en el predictor, retardo de la medida.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="12">Retardo fraccionario en segundos: \(\tau=(m+\alpha)\Delta t\).</dd>
+<dt>\(m\)</dt><dd data-hojas="12">Parte entera del retardo fraccionario, en pasos.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="12">Parte fraccionaria del retardo, con \(0\le\alpha\lt 1\); peso de la interpolación lineal.</dd>
+<dt>\(x_{k-m}\)</dt><dd data-hojas="12">Muestra de la señal \(m\) pasos atrás; junto con \(x_{k-m-1}\), extremo de la interpolación.</dd>
+<dt>\(y_k\)</dt><dd data-hojas="12">Salida retrasada por interpolación: \(y_k=(1-\alpha)x_{k-m}+\alpha x_{k-m-1}\).</dd>
+<dt>\(H(e^{j\omega\Delta t})\)</dt><dd data-hojas="12">Respuesta en frecuencia del retardo fraccionario por interpolación; su módulo cae hasta \(|1-2\alpha|\) en Nyquist.</dd>
+<dt>\(\omega\)</dt><dd data-hojas="12">Frecuencia angular, en rad/s, en la respuesta en frecuencia del retardo.</dd>
+<dt>\(j\) (imaginaria)</dt><dd data-hojas="12">Unidad imaginaria en \(e^{j\omega\Delta t}\).</dd>
+<dt>\(J/J_0\)</dt><dd data-hojas="13">Coste medio de un experimento relativo al coste sin retardo; escalar adimensional.</dd>
+<dt>\(u_k\)</dt><dd data-hojas="13">Acción de control (entrada) en el paso \(k\). En el predictor, \(u_{k-d+i}\) son las acciones ya enviadas.</dd>
+<dt>\(K\) (ganancia LQR)</dt><dd data-hojas="13">Matriz de ganancia del LQR: \(u_k=-K\,x_{k-d}\).</dd>
+<dt>\(x_{k-d}\)</dt><dd data-hojas="13">Estado medido con retardo de \(d\) pasos.</dd>
+<dt>\(x_k\)</dt><dd data-hojas="13">Estado verdadero en el paso \(k\), igual a \(\hat x_k\) más el efecto de las ráfagas no observadas.</dd>
+<dt>\(A\), \(B\)</dt><dd data-hojas="13">Matrices discretas de dinámica y de entrada del modelo del eje: \(x_{k+1}=Ax_k+Bu_k+Gw_k\).</dd>
+<dt>\(G\)</dt><dd data-hojas="13">Matriz por la que entra la perturbación (ráfagas de viento) en la dinámica.</dd>
+<dt>\(w\)</dt><dd data-hojas="13">Perturbación (ráfaga de viento) en cada paso, vector de ruido de proceso.</dd>
+<dt>\(W\)</dt><dd data-hojas="13">Covarianza de la perturbación \(w\); entra en la covarianza del error del predictor \(\sum_i A^iGWG^\top A^{i\top}\).</dd>
+<dt>\(i\)</dt><dd data-hojas="13">Índice de suma sobre los \(d\) pasos de la ventana de retardo.</dd>
+</dl>
+<h3>Parte 3 · Jitter, pérdidas y marcas de tiempo</h3>
+<dl>
+<dt>\(T_\text{cám}\)</dt><dd data-hojas="16">Periodo de la cámara, en segundos (a 30 Hz).</dd>
+<dt>\(L\)</dt><dd data-hojas="16">Latencia fija de una medida, de la captura a la llegada, en segundos.</dd>
+<dt>\(U\)</dt><dd data-hojas="16">Tiempo desde la última llegada hasta el instante en que mira el control; variable uniforme en \([0,T)\). La edad es \(L+U\).</dd>
+<dt>\(d_j\)</dt><dd data-hojas="17">Retardo de la medida \(j\)-ésima con jitter: \(d_j=\bar d+\sigma\varepsilon_j\).</dd>
+<dt>\(\bar d\)</dt><dd data-hojas="17">Retardo medio (nominal) del canal.</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="17,18">Desviación típica del jitter del retardo (p. ej. 20 o 40 ms en la tabla de la hoja 18).</dd>
+<dt>\(\varepsilon_j\) (jitter)</dt><dd data-hojas="17">Variable aleatoria que da el jitter de la medida \(j\); distinta de la deriva \(\varepsilon\) del reloj.</dd>
+<dt>\(a_j\)</dt><dd data-hojas="17">Instante de llegada de la medida \(j\) en un canal FIFO: \(a_j=\max(j+d_j,a_{j-1})\).</dd>
+<dt>\(p\)</dt><dd data-hojas="17">Probabilidad de pérdida de cada medida en el modelo de Bernoulli (pérdidas independientes).</dd>
+<dt>\(p_{gb}\)</dt><dd data-hojas="17">Probabilidad de paso del estado bueno al malo en la cadena de dos estados de las pérdidas a ráfagas.</dd>
+<dt>\(p_{bg}\)</dt><dd data-hojas="17">Probabilidad de paso del estado malo al bueno; las ráfagas duran \(1/p_{bg}\) pasos de media.</dd>
+<dt>\(o\)</dt><dd data-hojas="26">Observación con marca de tiempo: \(o=(y,t_\text{medida})\).</dd>
+<dt>\(y\)</dt><dd data-hojas="26">Valor de la medida dentro de una observación con marca.</dd>
+<dt>\(t_\text{medida}\)</dt><dd data-hojas="26">Instante en que se tomó la medida; la marca de tiempo que debe llevar el dato.</dd>
+</dl>
+<h3>Parte 4 · Aprender con retardos</h3>
+<dl>
+<dt>\(s_t\)</dt><dd data-hojas="21">Estado verdadero del entorno en el paso \(t\).</dd>
+<dt>\(s_{t-d}\)</dt><dd data-hojas="21">Estado observado con retardo de observación \(d\): lo que la política ve en \(t\).</dd>
+<dt>\(a_t\)</dt><dd data-hojas="21">Acción tomada en el paso \(t\); \(a_{t-d},\dots,a_{t-1}\) son las acciones en vuelo aún no reflejadas en la observación.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="21">Estado aumentado markoviano con retardo: \(z_t=(s_{t-d},a_{t-d},\dots,a_{t-1})\).</dd>
+<dt>\(K\) (acciones guardadas)</dt><dd data-hojas="21">Con retardos aleatorios, número de últimas acciones que hay que añadir; es el retardo máximo combinado.</dd>
+<dt>\(S\times A^K\times\mathbb N^2\)</dt><dd data-hojas="21">Espacio de estados aumentado con retardos aleatorios: estado, \(K\) acciones y los dos retardos.</dd>
+<dt>\(S\), \(A\) (conjuntos)</dt><dd data-hojas="21,22">Conjunto de estados y conjunto de acciones del MDP; \(S\times A\) es el estado aumentado del RL en tiempo real.</dd>
+<dt>\(b_t(s_t)\)</dt><dd data-hojas="21">Belief sobre el estado actual: \(b_t(s_t)=p(s_t\mid z_t)\), obtenido con \(d\) pasos de predicción desde \(s_{t-d}\).</dd>
+<dt>\(p(\cdot\mid\cdot)\)</dt><dd data-hojas="21">Modelo de transición o probabilidad condicionada, p. ej. \(p(z_{t+1}\mid z_t,a_t)\).</dd>
+<dt>\(z_{t+1}\)</dt><dd data-hojas="21">Estado aumentado en el paso siguiente: desplaza el búfer de acciones y añade \(a_t\).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>RTF</dt><dd data-hojas="6">Real-time factor: tiempo simulado dividido por tiempo de pared.</dd>
+<dt>IMU</dt><dd data-hojas="7">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>GNSS</dt><dd data-hojas="7,11">Global navigation satellite system: posicionamiento por satélite; en PX4 llega al EKF con 110 ms de retardo por defecto.</dd>
+<dt>SITL</dt><dd data-hojas="7">Software in the loop: autopiloto real ejecutado contra un simulador.</dd>
+<dt>JAX</dt><dd data-hojas="2,8">Biblioteca de cálculo con compilación y vectorización (jit, vmap, lax.scan) en la que se escribe el simulador.</dd>
+<dt>FIFO</dt><dd data-hojas="17">First in, first out: canal que entrega las medidas en orden de envío, de modo que el jitter solo retrasa.</dd>
+<dt>UDP</dt><dd data-hojas="17">User datagram protocol: canal que puede entregar fuera de orden.</dd>
+<dt>LQR</dt><dd data-hojas="13">Linear-quadratic regulator: controlador de realimentación de estado \(u=-Kx\) óptimo para un coste cuadrático.</dd>
+<dt>EKF</dt><dd data-hojas="11">Extended Kalman filter: estimador de PX4 (EKF2) que tiene un horizonte retrasado.</dd>
+<dt>ESKF</dt><dd data-hojas="32">Error-state Kalman filter: el estimador de A4a, al que el laboratorio añade marcas de tiempo.</dd>
+<dt>VIO</dt><dd data-hojas="17,23">Visual-inertial odometry: estimación de movimiento fundiendo cámara e IMU.</dd>
+<dt>VINS-Mono</dt><dd data-hojas="4,17">Sistema de VIO monocular cuyo desfase cámara-IMU se calibra en línea.</dd>
+<dt>MDP</dt><dd data-hojas="4,21">Markov decision process: proceso de decisión de Markov, con estado completamente observado.</dd>
+<dt>POMDP</dt><dd data-hojas="3,22">Partially observable MDP: MDP en el que solo se observa parte del estado.</dd>
+<dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>SAC</dt><dd data-hojas="22">Soft actor-critic: algoritmo actor-crítico fuera de política, usado como referencia en el RL en tiempo real.</dd>
+<dt>DCAC</dt><dd data-hojas="22">Delay-correcting actor-critic: actor-crítico que remuestrea parcialmente las trayectorias del búfer para corregir el valor con retardos aleatorios.</dd>
+<dt>DDS</dt><dd data-hojas="6,17">Data distribution service: middleware de comunicación de ROS 2 y del puente de PX4.</dd>
+<dt>ROS 2</dt><dd data-hojas="6,17">Robot Operating System 2: middleware de robótica con tiempo de sistema, monótono y ROS.</dd>
+<dt>MAVLink</dt><dd data-hojas="6">Protocolo de mensajes entre controladora y ordenador de a bordo.</dd>
+<dt>PX4</dt><dd data-hojas="6,11">Autopiloto de código abierto para drones.</dd>
+<dt>EKF2</dt><dd data-hojas="11">Implementación del EKF de PX4; sus parámetros (p. ej. EKF2_DELAY_MAX) fijan el retardo de cada sensor respecto a la IMU.</dd>
+<dt>uORB</dt><dd data-hojas="34">Sistema de mensajes internos de PX4, con campos timestamp y timestamp_sample.</dd>
+<dt>PWM</dt><dd data-hojas="19">Pulse-width modulation: señal de mando a los motores; Tan et al. mandan un pulso de un paso para medir la respuesta.</dd>
+<dt>PD</dt><dd data-hojas="3">Controlador proporcional-derivativo; en el Minitaur corre en el microcontrolador con 3 ms de latencia.</dd>
+<dt>TX2</dt><dd data-hojas="3,9">Jetson TX2: ordenador de a bordo de NVIDIA en el que corren las redes de Swift y del Minitaur.</dd>
+<dt>Swift</dt><dd data-hojas="3,23">Sistema de drones de carreras de Kaufmann et al., con 40 ms de la cámara a los motores.</dd>
+<dt>MuJoCo</dt><dd data-hojas="4,12">Simulador físico; desde la 3.5 incluye búferes de retardo en actuadores y sensores.</dd>
+<dt>Isaac Lab</dt><dd data-hojas="9,12">Marco de simulación y RL de NVIDIA; retrasa las órdenes de actuador con un búfer circular.</dd>
+<dt>Minitaur</dt><dd data-hojas="3,23">Robot cuadrúpedo de Tan et al., ejemplo de sim-to-real con latencia medida.</dd>
+<dt>ANYmal</dt><dd data-hojas="23">Robot cuadrúpedo de Hwangbo et al., con red de actuador entrenada.</dd>
+<dt>H2</dt><dd data-hojas="24">Hito 2 del curso, al que contribuye el simulador con canales de tiempo.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

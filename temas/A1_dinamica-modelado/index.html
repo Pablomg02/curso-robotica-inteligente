@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -1261,6 +1261,252 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Negrita: vector (\(\mathbf p\), \(\boldsymbol\omega\)); mayúscula: matriz. Subíndice \(B\): ejes cuerpo; sin subíndice, ejes mundo (ENU). Los niveles N0 a N5 son los peldaños de la escalera de modelos de la hoja 5.</p>
+<dl>
+<dt>\(\dot{\mathbf p}\), \(\ddot{\mathbf p}\), \(\dddot{\mathbf p}\)</dt><dd data-hojas="7">Derivadas respecto al tiempo: \(\dot{\mathbf p}\) velocidad, \(\ddot{\mathbf p}\) aceleración, \(\dddot{\mathbf p}\) jerk. \(\mathbf p^{(4)}\) es la cuarta derivada (snap).</dd>
+<dt>\(\mathbf e_3\)</dt><dd data-hojas="7">Vector unitario vertical hacia arriba del marco mundo (ENU), \((0,0,1)\). Aparece también como eje del rotor en el marco cuerpo.</dd>
+<dt>\([\boldsymbol\omega]_\times\)</dt><dd data-hojas="7">Matriz \(3\times 3\) antisimétrica tal que \([\boldsymbol\omega]_\times \mathbf a = \boldsymbol\omega\times\mathbf a\) (M1).</dd>
+<dt>\(\times\)</dt><dd data-hojas="7">Producto vectorial en \(\mathbb R^3\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="8">Norma euclídea de un vector.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="7">Traspuesta de una matriz; para una rotación, \(R^\top = R^{-1}\).</dd>
+<dt>\(\otimes\)</dt><dd data-hojas="9">Producto de Hamilton de cuaterniones (compone giros).</dd>
+<dt>\(\mathrm{diag}\)</dt><dd data-hojas="8">Matriz diagonal con los valores indicados en la diagonal.</dd>
+<dt>\(\operatorname{atan2}\), \(\arcsin\), \(\arctan\)</dt><dd data-hojas="28">Funciones trigonométricas inversas; \(\operatorname{atan2}(y,x)\) devuelve el ángulo correcto en los cuatro cuadrantes.</dd>
+<dt>\(\propto\)</dt><dd data-hojas="14">«Proporcional a»; se usa en las leyes de escala y en la semejanza de rotores.</dd>
+<dt>\(\Rightarrow\)</dt><dd data-hojas="12">«Implica»: pasa de una expresión a la siguiente.</dd>
+<dt>\(\delta\), \(\delta_x\), \(\delta_y\), \(\delta_z\)</dt><dd data-hojas="8">Perturbación pequeña de la velocidad angular alrededor del giro estacionario \(\omega_0\). En ala fija, \(\delta\) con subíndice es una deflexión de mando (véase la parte 5).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="8">Paso de integración, en s.</dd>
+</dl>
+<h3>Introducción</h3>
+<p>Hojas 1 a 5: objetivos, usos del modelo y escalera de niveles N0 a N5.</p>
+<dl>
+<dt>N0, N1, N2, N3, N4, N5</dt><dd data-hojas="5,3">Niveles de la escalera de modelos: N0 masa puntual; N1 cuerpo rígido en SE(3) con empuje \(k\Omega^2\); N2 más motor y arrastre; N3 más elemento de pala (BEM), flapping, efecto suelo, viento, batería; N4 híbrido físico más red o GP; N5 CFD. Son acumulativos.</dd>
+<dt>SE(3)</dt><dd data-hojas="2,6">Grupo de las poses rígidas en 3D (posición más orientación); donde se escribe el cuerpo rígido.</dd>
+<dt>SO(3)</dt><dd data-hojas="1">Grupo de las rotaciones de \(\mathbb R^3\) (matrices \(3\times 3\) ortogonales con determinante \(+1\)).</dd>
+</dl>
+<h3>Parte 1: el cuerpo rígido</h3>
+<dl>
+<dt>\(\mathbf p\)</dt><dd data-hojas="7">Posición del centro de masas en el mundo, vector de \(\mathbb R^3\) en m.</dd>
+<dt>\(\mathbf v\)</dt><dd data-hojas="7">Velocidad del centro de masas en el mundo, vector de \(\mathbb R^3\) en m/s.</dd>
+<dt>\(R\)</dt><dd data-hojas="7">Matriz de rotación \(3\times 3\) que pasa de ejes cuerpo a ejes mundo. Sus columnas son \(\mathbf x_B, \mathbf y_B, \mathbf z_B\).</dd>
+<dt>\(\mathbf q\)</dt><dd data-hojas="7,9">Cuaternión unitario de orientación (Hamilton, orden w, x, y, z); alternativa a \(R\). En la parte 1 es el cuaternión; en la fórmula de multicuerpo (hoja 10) \(\mathbf q\) son coordenadas generalizadas.</dd>
+<dt>\(\boldsymbol\omega\)</dt><dd data-hojas="7">Velocidad angular del cuerpo expresada en ejes cuerpo, vector de \(\mathbb R^3\) en rad/s. Sus componentes son \(\omega_x, \omega_y, \omega_z\).</dd>
+<dt>\(m\)</dt><dd data-hojas="7">Masa del vehículo, en kg.</dd>
+<dt>\(g\)</dt><dd data-hojas="7">Aceleración de la gravedad, escalar en m/s².</dd>
+<dt>\(\mathbf g\)</dt><dd data-hojas="7">Vector gravedad, \(-g\,\mathbf e_3\) en el mundo.</dd>
+<dt>\(\mathbf f_B\)</dt><dd data-hojas="7">Fuerza total aplicada (sin gravedad) expresada en ejes cuerpo, en N.</dd>
+<dt>\(\boldsymbol\tau_B\), \(\boldsymbol\tau\)</dt><dd data-hojas="7,9">Par total aplicado al cuerpo, en ejes cuerpo, vector de \(\mathbb R^3\) en N m. En las ecuaciones del modelo completo se escribe \(\boldsymbol\tau\).</dd>
+<dt>\(J\)</dt><dd data-hojas="7">Matriz de inercia del cuerpo en ejes cuerpo, \(3\times 3\) simétrica definida positiva, en kg m². En el dron es diagonal.</dd>
+<dt>\(\mathbf L\)</dt><dd data-hojas="7">Momento angular en ejes mundo, \(\mathbf L = RJ\boldsymbol\omega\).</dd>
+<dt>\(\mathbf v_B\)</dt><dd data-hojas="7,28">Velocidad del centro de masas expresada en ejes cuerpo (forma habitual en ala fija).</dd>
+<dt>\(\omega_0\)</dt><dd data-hojas="8">Velocidad angular estacionaria alrededor de un eje principal, en rad/s, sobre la que se perturba.</dd>
+<dt>\(J_x\), \(J_y\), \(J_z\)</dt><dd data-hojas="8">Momentos principales de inercia (ejes x, y, z del cuerpo), en kg m².</dd>
+<dt>\(\lambda\) (inestabilidad)</dt><dd data-hojas="8">Tasa de crecimiento, en s\(^{-1}\), de la perturbación en el giro alrededor del eje intermedio: \(\lambda = \omega_0\sqrt{(J_z-J_x)(J_x-J_y)/(J_yJ_z)}\). Con el dron de NeuroBEM a 20 rad/s vale 5,65 s\(^{-1}\).</dd>
+<dt>\(J_r\), \(\dot\Omega_i\)</dt><dd data-hojas="8">\(J_r\) es la inercia de un rotor; \(J_r\dot\Omega_i\) es la reacción en guiñada por la aceleración del rotor \(i\), relevante en transitorios rápidos.</dd>
+<dt>\(T\)</dt><dd data-hojas="9">Empuje colectivo total del multirrotor, escalar en N, según \(\mathbf z_B\).</dd>
+<dt>\(D\) (arrastre)</dt><dd data-hojas="9,15">Matriz de arrastre de rotor normalizada por la masa, \(\mathrm{diag}(d_x,d_y,d_z)\), en s\(^{-1}\): \(\mathbf f_{\text{drag}}/m = -RDR^\top\mathbf v\).</dd>
+<dt>\(M\) (asignación)</dt><dd data-hojas="9,20">Matriz de asignación \(4\times 4\) que lleva los cuatro empujes de rotor a empuje colectivo y tres pares: \((T,\boldsymbol\tau)=M(T_1,\dots,T_4)\). Se define en la hoja 20.</dd>
+<dt>\(\Omega_i\)</dt><dd data-hojas="9">Velocidad de giro del rotor \(i\) (\(i=1,\dots,4\)), en rad/s. Es el estado del motor.</dd>
+<dt>\(\Omega_i^{\mathrm{cmd}}\)</dt><dd data-hojas="9">Consigna de velocidad del rotor \(i\), en rad/s; el motor la sigue con un primer orden.</dd>
+<dt>\(\tau_m\)</dt><dd data-hojas="9,17">Constante de tiempo del motor, en s; distinta al subir y al bajar (12,5 / 25 ms en el x500).</dd>
+<dt>\(k_T\)</dt><dd data-hojas="9,14">Constante de empuje del rotor, \(T=k_T\Omega^2\), en N/(rad/s)². En el x500 vale \(8{,}55\cdot10^{-6}\) (motorConstant).</dd>
+<dt>\(\Omega_{\max}\)</dt><dd data-hojas="9">Velocidad máxima del rotor, 1000 rad/s en el x500.</dd>
+<dt>\(J_{xx}, J_{yy}, J_{zz}\)</dt><dd data-hojas="9">Componentes diagonales de la inercia del x500 (cuerpo más rotores), en kg m².</dd>
+<dt>\(\mathbf q\), \(\ddot{\mathbf q}\), \(\dot{\mathbf q}\) (multicuerpo)</dt><dd data-hojas="10">En la ecuación de los multicuerpo, coordenadas generalizadas (ángulos articulares o pose de la base flotante) con su velocidad y su aceleración.</dd>
+<dt>\(M(\mathbf q)\)</dt><dd data-hojas="10">Matriz de masas generalizada (inercia) del sistema multicuerpo, simétrica definida positiva.</dd>
+<dt>\(C(\mathbf q,\dot{\mathbf q})\)</dt><dd data-hojas="10">Matriz de términos de Coriolis y centrífugos del sistema multicuerpo.</dd>
+<dt>\(\mathbf g(\mathbf q)\)</dt><dd data-hojas="10">Vector de fuerzas generalizadas de gravedad.</dd>
+<dt>\(B\) (multicuerpo)</dt><dd data-hojas="10">Matriz que lleva las entradas \(\mathbf u\) a fuerzas generalizadas. Brazo: \(B=I\); cuadricóptero: rango 4, subactuado.</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="10">Vector de entradas (pares o empujes) del sistema multicuerpo.</dd>
+<dt>\(J_c\)</dt><dd data-hojas="10">Jacobiana de los puntos de contacto; \(J_c^\top\boldsymbol\lambda\) lleva las fuerzas de contacto a fuerzas generalizadas.</dd>
+<dt>\(\boldsymbol\lambda\) (contacto)</dt><dd data-hojas="10">Fuerzas de contacto del multicuerpo, con conos de fricción.</dd>
+<dt>\(O(n)\)</dt><dd data-hojas="10">Coste lineal en el número de cuerpos \(n\), propio de los algoritmos recursivos RNEA y ABA.</dd>
+</dl>
+<h3>Parte 2: el rotor y el motor</h3>
+<dl>
+<dt>\(\rho\)</dt><dd data-hojas="12">Densidad del aire, en kg/m³.</dd>
+<dt>\(A\)</dt><dd data-hojas="12">Área del disco del rotor, en m².</dd>
+<dt>\(v_i\)</dt><dd data-hojas="12">Velocidad inducida en el disco por el rotor, en m/s.</dd>
+<dt>\(v_h\)</dt><dd data-hojas="12">Velocidad inducida en vuelo estacionario, \(v_h=\sqrt{T/(2\rho A)}\), en m/s. En la hoja 15, \(v_h\) también es la velocidad horizontal en ejes cuerpo del término \(k_hv_h^2\) (hoja 14).</dd>
+<dt>\(P_{\text{ideal}}\)</dt><dd data-hojas="12">Potencia ideal del rotor, \(P_{\text{ideal}}=T v_h = T^{3/2}/\sqrt{2\rho A}\), en W.</dd>
+<dt>\(P_{\text{real}}\), \(P\)</dt><dd data-hojas="12,14">Potencia real consumida por el rotor. En la hoja 14, \(P\propto\rho n^3D^5\) por semejanza.</dd>
+<dt>\(\dot m\) (flujo másico)</dt><dd data-hojas="12">Flujo másico de aire por el disco, \(\dot m=\rho A v_i\), en kg/s.</dd>
+<dt>\(w\)</dt><dd data-hojas="12">Velocidad de la estela lejos aguas abajo; resulta \(w=2v_i\).</dd>
+<dt>\(V_c\)</dt><dd data-hojas="12,13">Velocidad de subida axial (negativa en descenso), en m/s.</dd>
+<dt>\(\mathrm{FM}\)</dt><dd data-hojas="12">Figura de mérito, \(P_{\text{ideal}}/P_{\text{real}}\); recoge las pérdidas de perfil, punta y rotación de la estela.</dd>
+<dt>\(R\) (radio del rotor)</dt><dd data-hojas="12,14">Radio del rotor. En la hoja 12 aparece en \(P\propto T^{3/2}/R\); en la hoja 14, en \(T=C_T\rho A(\Omega R)^2\). No confundir con la matriz de rotación \(R\).</dd>
+<dt>\(r\)</dt><dd data-hojas="14">Radio de la sección de pala considerada, entre 0 y \(R\).</dd>
+<dt>\(U_T\)</dt><dd data-hojas="14">Velocidad tangencial de una sección de pala, \(U_T=\Omega r\).</dd>
+<dt>\(dL\)</dt><dd data-hojas="14">Sustentación elemental de una sección de pala, \(dL=\tfrac12\rho U_T^2cC_l(\alpha)dr\).</dd>
+<dt>\(c\) (cuerda)</dt><dd data-hojas="14">Cuerda de la pala, en m. En la hoja 29 \(c\) es la cuerda aerodinámica media del ala; en la hoja 26, \(c\) es el empuje/masa máximo.</dd>
+<dt>\(C_l\)</dt><dd data-hojas="14">Coeficiente de sustentación de la sección de pala; \(C_l=a\alpha\) en régimen lineal.</dd>
+<dt>\(a\)</dt><dd data-hojas="14">Pendiente de sustentación de la sección de pala, \(C_l=a\alpha\).</dd>
+<dt>\(\alpha\) (pala)</dt><dd data-hojas="14">Ángulo de ataque de la sección de pala, \(\alpha=\theta-\phi\). En ala fija, \(\alpha\) es el ángulo de ataque del avión (hoja 28); en las leyes de escala, \(\alpha\) es la aceleración angular (hoja 34).</dd>
+<dt>\(b\)</dt><dd data-hojas="14">Número de palas del rotor. En la hoja 29, \(b\) es la envergadura del ala.</dd>
+<dt>\(\theta(r)\)</dt><dd data-hojas="14">Paso de la pala a radio \(r\), en rad.</dd>
+<dt>\(\phi\) (ángulo de entrada)</dt><dd data-hojas="14">Ángulo de entrada del flujo, \(\phi\approx v_i/(\Omega r)\). En la parte lateral del ala fija, \(\phi\) es el ángulo de alabeo.</dd>
+<dt>\(C_T\), \(C_Q\)</dt><dd data-hojas="14">Coeficientes adimensionales de empuje y de par del rotor: \(T=C_T\rho A(\Omega R)^2\), \(Q=C_Q\rho A(\Omega R)^2R\).</dd>
+<dt>\(Q\)</dt><dd data-hojas="14">Par de reacción aerodinámico del rotor, \(Q=k_Q\Omega^2\), en N m.</dd>
+<dt>\(k_Q\)</dt><dd data-hojas="14">Constante de par del rotor, \(Q=k_Q\Omega^2\). Aparece también en \(J_m\dot\Omega=k_ti-k_Q\Omega^2\) (hoja 17).</dd>
+<dt>\(n\), \(D\) (diámetro)</dt><dd data-hojas="14">\(n\) es la frecuencia de giro del rotor y \(D\) su diámetro, en las leyes de semejanza \(T\propto\rho n^2D^4\), \(P\propto\rho n^3D^5\). \(D\) con otro sentido es la matriz de arrastre (hoja 9).</dd>
+<dt>\(J\) (avance)</dt><dd data-hojas="14">Coeficiente de avance del rotor, \(J=V/(nD)\), adimensional. No confundir con la inercia \(J\) ni con el momento de inercia del motor \(J_m\).</dd>
+<dt>\(V\)</dt><dd data-hojas="14">Velocidad de avance del rotor respecto al aire.</dd>
+<dt>\(f\), \(s\) (THR_MDL_FAC)</dt><dd data-hojas="14">Modelo de empuje relativo de PX4, \(fs^2+(1-f)s\): \(s\) es la señal al ESC y \(f\) el parámetro THR_MDL_FAC.</dd>
+<dt>\(c_{\text{cmd}}\), \(k_h\)</dt><dd data-hojas="14">Modelo de empuje de Faessler: \(c=c_{\text{cmd}}+k_hv_h^2\); \(c_{\text{cmd}}\) es la aceleración de empuje ordenada y \(k_h=0{,}009\) m\(^{-1}\).</dd>
+<dt>\(d_x\), \(d_y\), \(d_z\)</dt><dd data-hojas="15">Coeficientes de arrastre de rotor en los ejes cuerpo x, y, z, en s\(^{-1}\); son la diagonal de \(D\). \(d\) sin subíndice es el caso isótropo.</dd>
+<dt>\(\mathbf f_{\text{drag}}\)</dt><dd data-hojas="15">Fuerza de arrastre de rotor sumada de los cuatro rotores, \(\mathbf f_{\text{drag}}/m=-RDR^\top\mathbf v\).</dd>
+<dt>\(\lambda_1\), \(v^\perp\)</dt><dd data-hojas="15,22">\(\lambda_1\) es el coeficiente de arrastre inducido del modelo de Gazebo (\(8{,}06\cdot10^{-5}\)); \(\mathbf v_A^\perp\) es la velocidad respecto al aire perpendicular al eje del rotor.</dd>
+<dt>\(a^B_x\), \(v^B_x\)</dt><dd data-hojas="15">Aceleración medida por el acelerómetro y velocidad, ambas en el eje x del cuerpo; con arrastre, \(a^B_x\approx-d_xv^B_x\).</dd>
+<dt>\(T_{\text{IGE}}/T_{\text{OGE}}\)</dt><dd data-hojas="16">Cociente entre el empuje con efecto suelo y sin él (misma orden): \(1/(1-(R/4z)^2)\).</dd>
+<dt>\(z\) (altura)</dt><dd data-hojas="16">Altura del rotor sobre el suelo, en m; se compara con el radio mediante \(z/R\).</dd>
+<dt>\(R_m\)</dt><dd data-hojas="17">Resistencia eléctrica del motor sin escobillas, en \(\Omega\).</dd>
+<dt>\(k_t\)</dt><dd data-hojas="17">Constante de par del motor eléctrico, par = \(k_ti\).</dd>
+<dt>\(k_e\)</dt><dd data-hojas="17">Constante de fuerza contraelectromotriz del motor.</dd>
+<dt>\(J_m\)</dt><dd data-hojas="17">Inercia del motor más la hélice, en kg m².</dd>
+<dt>\(i\), \(v\) (motor)</dt><dd data-hojas="17">Corriente en el motor y tensión aplicada. \(v\) también es la velocidad del dron en otras hojas.</dd>
+<dt>\(\delta\Omega\), \(\delta v\), \(\Omega_0\)</dt><dd data-hojas="17">Variación de la velocidad del rotor y de la tensión alrededor del punto de trabajo \(\Omega_0\), al linealizar.</dd>
+<dt>\(f_{-3\,\mathrm{dB}}\)</dt><dd data-hojas="17">Frecuencia de corte a \(-3\) dB del motor, \(1/(2\pi\tau_m)\), en Hz.</dd>
+<dt>\(f\) (frecuencia)</dt><dd data-hojas="17">Frecuencia en Hz, p. ej. 10 Hz en la fase \(-\arctan(2\pi f\tau_m)\).</dd>
+</dl>
+<h3>Parte 3: de motores a fuerzas</h3>
+<dl>
+<dt>\(T_i\)</dt><dd data-hojas="20">Empuje del rotor \(i\) (\(i=1,\dots,4\)), en N; entrada de \(M\).</dd>
+<dt>\(\tau_x\), \(\tau_y\), \(\tau_z\)</dt><dd data-hojas="20">Componentes del par total en los ejes cuerpo (alabeo, cabeceo, guiñada), en N m.</dd>
+<dt>\(\tau_{z,i}\)</dt><dd data-hojas="20">Par de guiñada que produce el rotor \(i\): \(\tau_{z,i}=\kappa_iT_i\).</dd>
+<dt>\(\mathbf r_i\)</dt><dd data-hojas="20">Posición del rotor \(i\) respecto al centro de masas, \((x_i,y_i,0)\), en m.</dd>
+<dt>\(x_i\), \(y_i\)</dt><dd data-hojas="20">Coordenadas del rotor \(i\) en el plano del cuerpo; en el x500, \(\pm0{,}174\) m.</dd>
+<dt>\(\kappa_i\)</dt><dd data-hojas="20">Cociente par/empuje del rotor \(i\) con signo, \(\kappa_i=\pm k_Q/k_T\) (positivo si gira en sentido antihorario visto desde arriba), en m. Corresponde a CA_ROTORn_KM en PX4.</dd>
+<dt>\(M^{-1}\)</dt><dd data-hojas="20">Inversa de la matriz de asignación: da el empuje de cada motor a partir de \(T,\tau_x,\tau_y,\tau_z\).</dd>
+<dt>\(T_{\max}\)</dt><dd data-hojas="21,34">Empuje máximo de un rotor; la caja \(0\le T_i\le T_{\max}\) define el conjunto factible.</dd>
+<dt>\(\mathbf z_B\)</dt><dd data-hojas="21,24">Eje z del cuerpo (dirección del empuje), tercera columna de \(R\).</dd>
+<dt>\(k\) (Gazebo)</dt><dd data-hojas="22">Constante de empuje de la tabla de Gazebo, \(T_i=k\Omega_i^2\), \(k=8{,}55\cdot10^{-6}\); es \(k_T\).</dd>
+<dt>\(s_i\)</dt><dd data-hojas="22">Signo del sentido de giro del rotor \(i\) en el par de guiñada de Gazebo, \(-s_i\cdot0{,}016\,\mathrm m\cdot T_i\).</dd>
+<dt>\(\mu_1\)</dt><dd data-hojas="22">Coeficiente del momento de balanceo del rotor en Gazebo, \(10^{-6}\).</dd>
+<dt>\(\Omega_h\)</dt><dd data-hojas="22">Velocidad de giro de cada rotor en vuelo estacionario, \(\sqrt{mg/(4k)}\); en el x500 son 770 rad/s (el 77 % de \(\Omega_{\max}\)).</dd>
+</dl>
+<h3>Parte 4: planitud diferencial</h3>
+<dl>
+<dt>\(\boldsymbol\sigma\)</dt><dd data-hojas="24">Salidas planas del sistema; para el cuadricóptero, \(\boldsymbol\sigma=(x,y,z,\psi)\).</dd>
+<dt>\(\psi\)</dt><dd data-hojas="24">Rumbo (guiñada) deseado, en rad. \(\dot\psi\) es su derivada.</dd>
+<dt>\(\mathbf t\)</dt><dd data-hojas="24">Vector de empuje por unidad de masa, \(\mathbf t=\ddot{\mathbf p}+g\mathbf e_3\). Su módulo da \(T/m\).</dd>
+<dt>\(\mathbf x_C\)</dt><dd data-hojas="24">Vector unitario horizontal del rumbo, \((\cos\psi,\sin\psi,0)\); fija el giro alrededor de \(\mathbf z_B\).</dd>
+<dt>\(\mathbf x_B\), \(\mathbf y_B\)</dt><dd data-hojas="24">Ejes x e y del cuerpo, que junto con \(\mathbf z_B\) forman las columnas de \(R\). \(\mathbf y_B\propto\mathbf z_B\times\mathbf x_C\).</dd>
+<dt>\(\mathbf j\)</dt><dd data-hojas="25">Jerk, tercera derivada de la posición, \(\mathbf j=\dddot{\mathbf p}\), en m/s³.</dd>
+<dt>\(\mathbf h_\omega\)</dt><dd data-hojas="25">Componente del jerk perpendicular a \(\mathbf z_B\), normalizada: \(\mathbf h_\omega=\tfrac mT(\mathbf j-(\mathbf z_B\cdot\mathbf j)\mathbf z_B)=\omega_y\mathbf x_B-\omega_x\mathbf y_B\).</dd>
+<dt>\(\dot T\), \(\dot{\mathbf z}_B\)</dt><dd data-hojas="25">Derivadas del empuje y del eje del cuerpo; \(\dot T=m\,\mathbf z_B\cdot\mathbf j\) y \(\dot{\mathbf z}_B\perp\mathbf z_B\).</dd>
+<dt>\(\dot{\boldsymbol\omega}\)</dt><dd data-hojas="25">Aceleración angular, obtenida del snap; con Euler da los pares: \(\boldsymbol\tau=J\dot{\boldsymbol\omega}+\boldsymbol\omega\times J\boldsymbol\omega\).</dd>
+<dt>\(\mathbf p^{(4)}\)</dt><dd data-hojas="25">Snap: cuarta derivada de la posición, en m/s⁴. Minimum snap minimiza \(\int\|\mathbf p^{(4)}\|^2dt\).</dd>
+<dt>\(d\) (isótropo)</dt><dd data-hojas="26">Coeficiente de arrastre isótropo, en s\(^{-1}\): en el ejemplo, \(d=0{,}465\) (media de \(d_x\) y \(d_y\)). Con él, \(T\mathbf z_B=m(\ddot{\mathbf p}+g\mathbf e_3+d\mathbf v)\).</dd>
+<dt>\(c\) (empuje/masa)</dt><dd data-hojas="26">Empuje/masa máximo, en m/s²; límite 50,5 m/s² en la figura. Con otro sentido, cuerda (hojas 14 y 29).</dd>
+</dl>
+<h3>Parte 5: ala fija</h3>
+<p>Ejes cuerpo del avión: \(u,v,w\) velocidades, \(p,q,r\) velocidades angulares, \(\phi,\theta\) alabeo y cabeceo. Superficies: \(\delta_e\) elevador, \(\delta_a\) alerones, \(\delta_r\) timón.</p>
+<dl>
+<dt>\(\mathbf w\)</dt><dd data-hojas="28">Velocidad del viento en el mundo, vector de \(\mathbb R^3\) en m/s. No confundir con la componente \(w\) de la velocidad en ejes cuerpo.</dd>
+<dt>\(\mathbf v_r\)</dt><dd data-hojas="28">Velocidad relativa al aire en ejes cuerpo, \(\mathbf v_r=\mathbf v_B-R^\top\mathbf w\), de componentes \((u_r,v_r,w_r)\).</dd>
+<dt>\(V_a\)</dt><dd data-hojas="28">Velocidad respecto al aire, \(V_a=\|\mathbf v_r\|\), en m/s.</dd>
+<dt>\(V_g\)</dt><dd data-hojas="28">Velocidad respecto al suelo (la que da el GNSS), en m/s.</dd>
+<dt>\(V_w\)</dt><dd data-hojas="28">Velocidad del viento en el triángulo de velocidades \(V_g=V_a+V_w\).</dd>
+<dt>\(\alpha\) (ataque)</dt><dd data-hojas="28">Ángulo de ataque, \(\alpha=\operatorname{atan2}(w_r,u_r)\), en rad.</dd>
+<dt>\(\beta\)</dt><dd data-hojas="28">Ángulo de derrape, \(\beta=\arcsin(v_r/V_a)\), en rad.</dd>
+<dt>\(L\), \(D\) (aerodinámicas)</dt><dd data-hojas="28">Sustentación (perpendicular a \(V_a\)) y resistencia (opuesta a \(V_a\)), en N. \(D\) con otro sentido es la matriz de arrastre.</dd>
+<dt>\(F_L\), \(F_D\), \(F_Y\)</dt><dd data-hojas="29">Fuerzas de sustentación, resistencia y lateral. \(F_L=\tfrac12\rho V_a^2S[\dots]\).</dd>
+<dt>\(m_y\), \(\ell\), \(n\)</dt><dd data-hojas="29">Momentos aerodinámicos de cabeceo, alabeo y guiñada.</dd>
+<dt>\(S\)</dt><dd data-hojas="29">Superficie alar, en m² (0,55 en el Aerosonde).</dd>
+<dt>\(b\) (envergadura)</dt><dd data-hojas="29">Envergadura del ala, en m (2,90 en el Aerosonde).</dd>
+<dt>\(c\) (cuerda media)</dt><dd data-hojas="29">Cuerda aerodinámica del ala, en m, que normaliza \(q\) en \(\tfrac{c}{2V_a}q\).</dd>
+<dt>\(q\), \(p\), \(r\)</dt><dd data-hojas="29,30">Velocidades angulares del avión en ejes cuerpo: cabeceo, alabeo y guiñada, en rad/s. \(q\) con otro sentido es el cuaternión.</dd>
+<dt>\(\delta_e\), \(\delta_a\), \(\delta_r\)</dt><dd data-hojas="29">Deflexiones del elevador, de los alerones y del timón de dirección.</dd>
+<dt>\(C_L(\alpha)\)</dt><dd data-hojas="29">Coeficiente de sustentación en función del ángulo de ataque.</dd>
+<dt>\(C_{L_0}\), \(C_{L_\alpha}\)</dt><dd data-hojas="29">Coeficiente de sustentación a \(\alpha=0\) y pendiente de sustentación respecto a \(\alpha\) (5,61 /rad en el Aerosonde).</dd>
+<dt>\(C_{L_q}\), \(C_{L_{\delta_e}}\)</dt><dd data-hojas="29">Derivadas de estabilidad de la sustentación respecto a la velocidad de cabeceo y a la deflexión del elevador.</dd>
+<dt>\(C_{m_0}\), \(C_{m_\alpha}\)</dt><dd data-hojas="29">Momento de cabeceo a \(\alpha=0\) y su derivada respecto a \(\alpha\); negativa implica estabilidad en cabeceo (\(-2{,}74\) /rad).</dd>
+<dt>\(C_{m_q}\), \(C_{m_{\delta_e}}\)</dt><dd data-hojas="29">Amortiguamiento en cabeceo (\(-38{,}2\)) y eficacia del elevador sobre el momento de cabeceo.</dd>
+<dt>\(C_{D_p}\)</dt><dd data-hojas="29">Coeficiente de resistencia parásita en \(C_D(\alpha)\).</dd>
+<dt>\(C_D(\alpha)\)</dt><dd data-hojas="29">Coeficiente de resistencia: parásita más inducida, \(C_{D_p}+(C_{L_0}+C_{L_\alpha}\alpha)^2/(\pi e\,\mathit{AR})\).</dd>
+<dt>\(e\), \(\mathit{AR}\)</dt><dd data-hojas="29">Factor de eficiencia de Oswald y alargamiento del ala, en la resistencia inducida.</dd>
+<dt>\(C_{\ell_p}\)</dt><dd data-hojas="29">Amortiguamiento en alabeo (\(-0{,}51\) en el Aerosonde).</dd>
+<dt>\(C_{n_\beta}\)</dt><dd data-hojas="29">Estabilidad de veleta: derivada del momento de guiñada respecto al derrape (0,073 /rad).</dd>
+<dt>\(f_x\), \(f_z\)</dt><dd data-hojas="29">Fuerzas aerodinámicas en ejes cuerpo: \(f_x=-D\cos\alpha+L\sin\alpha\), \(f_z=-D\sin\alpha-L\cos\alpha\).</dd>
+<dt>\(\sigma(\alpha)\)</dt><dd data-hojas="29">Función de mezcla (sigmoide doble) que pasa del régimen lineal (\(\sigma=0\)) al de placa plana (\(\sigma=1\)) alrededor de \(\pm\alpha_0\). En la parte 4, \(\boldsymbol\sigma\) en negrita eran las salidas planas.</dd>
+<dt>\(\alpha_0\), \(M\) (pérdida)</dt><dd data-hojas="29">Ángulo de transición de la pérdida (0,47 rad, 27°, en el Aerosonde) y pendiente de la transición (50). \(M\) también es la matriz de asignación.</dd>
+<dt>\(\mathbf x\), \(\mathbf u\) (linealización)</dt><dd data-hojas="30">Estado y entrada del modelo del avión linealizado \(\dot{\mathbf x}=A\mathbf x+B\mathbf u\).</dd>
+<dt>\(A\), \(B\) (lineales)</dt><dd data-hojas="30">Matrices de estado y de entrada del modelo linealizado del avión (jacobianos en el equilibrio).</dd>
+<dt>\(u\), \(v\), \(w\), \(\phi\), \(\theta\)</dt><dd data-hojas="30">Estados del avión: velocidades en ejes cuerpo (\(u\) longitudinal, \(v\) lateral, \(w\) vertical) y ángulos de alabeo \(\phi\) y cabeceo \(\theta\). Longitudinal: \((u,w,q,\theta)\); lateral: \((v,p,r,\phi)\).</dd>
+<dt>\(J_{xz}\)</dt><dd data-hojas="30">Producto de inercia del avión en el plano x–z; rompe un poco la simetría.</dd>
+<dt>\(\omega_n\), \(\zeta\)</dt><dd data-hojas="30">Frecuencia natural (rad/s) y amortiguamiento de un modo oscilatorio.</dd>
+<dt>\(\tau\) (modo)</dt><dd data-hojas="30">Constante de tiempo de un modo real; p. ej. 45 ms en la convergencia en alabeo.</dd>
+<dt>\(\Delta V_a\), \(\Delta u_0\)</dt><dd data-hojas="31">Variación de velocidad respecto al aire y salto inicial de \(u\) (+2 m/s) con los que se simula la fugoide.</dd>
+<dt>\(\omega_{ph}\), \(T_{ph}\)</dt><dd data-hojas="31">Frecuencia y periodo de la fugoide de Lanchester: \(\omega_{ph}=\sqrt2g/V_0\), \(T_{ph}=\sqrt2\pi V_0/g\).</dd>
+<dt>\(V_0\), \(V\)</dt><dd data-hojas="31">Velocidad de vuelo de equilibrio y velocidad instantánea en la deducción de la fugoide.</dd>
+<dt>\(h\), \(h_0\)</dt><dd data-hojas="31">Altura y altura de equilibrio, en m.</dd>
+<dt>\(W\)</dt><dd data-hojas="31">Peso del avión, \(W=mg\), en N.</dd>
+<dt>\(\delta_e\) (trim)</dt><dd data-hojas="30">Deflexión del elevador en el equilibrio (\(-7{,}1°\) a 25 m/s); junto con \(\alpha=2{,}85°\), mando de motor 0,77 y 10,3 N de empuje.</dd>
+<dt>\(\phi\) (teoría de Lustosa)</dt><dd data-hojas="32">«Teoría \(\phi\)»: modelo aerodinámico global consistente para ángulos de ataque y derrape de 360° en tailsitters.</dd>
+</dl>
+<h3>Parte 6: escala, identificabilidad e híbridos</h3>
+<dl>
+<dt>\(L\) (escala)</dt><dd data-hojas="34">Longitud característica del dron. Las leyes de escala: \(m\propto L^3\), \(J\propto L^5\), \(T\propto\rho n^2D^4\). No confundir con la sustentación \(L\).</dd>
+<dt>\(\alpha\) (aceleración angular)</dt><dd data-hojas="34">Aceleración angular máxima, \(\alpha_{\max}=2T_{\max}\ell/J_{xx}\), en rad/s². Escala como \(L^{-2}\) (Mach) o \(L^{-1}\) (Froude).</dd>
+<dt>\(\ell\) (brazo)</dt><dd data-hojas="34">Brazo de alabeo: distancia del rotor al eje de giro, en m. \(\ell\) con otro sentido es el momento de alabeo del ala fija.</dd>
+<dt>\(t\) (tiempo característico)</dt><dd data-hojas="34">Tiempo característico de actitud, \(t\propto\alpha^{-1/2}\); el tiempo para girar 90° es \(\sqrt{\pi/\alpha_{\max}}\).</dd>
+<dt>\(\mathbf a_m\)</dt><dd data-hojas="35">Medida del acelerómetro (fuerza específica) en ejes cuerpo: \(\tfrac{k_T}{m}\sum_i\Omega_i^2\mathbf e_3-DR^\top\mathbf v\).</dd>
+<dt>\(s\) (escala)</dt><dd data-hojas="35">Factor positivo que multiplica a la vez \(m,J,k_T,k_Q\) y deja las medidas idénticas: dirección no observable.</dd>
+<dt>\(I_{xx}\), \(I_{yy}\), \(I_{zz}\)</dt><dd data-hojas="35">Momentos de inercia usados por Eschmann et al.; en guiñada basta el cociente \(I_{zz}/K_\tau\).</dd>
+<dt>\(K_\tau\)</dt><dd data-hojas="35">Constante de par usada en el cociente \(I_{zz}/K_\tau\) identificable en guiñada.</dd>
+<dt>\(k\) (vecinos)</dt><dd data-hojas="37">En Swift, número de vecinos (k = 5) del modelo de aceleración residual.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>ENU</dt><dd data-hojas="7">East-North-Up: marco mundo con z hacia arriba, convenio del proyecto.</dd>
+<dt>NED</dt><dd data-hojas="7">North-East-Down: marco mundo con z hacia abajo, el de PX4.</dd>
+<dt>FLU</dt><dd data-hojas="7">Forward-Left-Up: marco cuerpo con x al frente, y a la izquierda, z arriba.</dd>
+<dt>FRD</dt><dd data-hojas="7">Forward-Right-Down: marco cuerpo de PX4.</dd>
+<dt>IMU</dt><dd data-hojas="2">Inertial measurement unit: acelerómetro más giróscopo.</dd>
+<dt>RPM</dt><dd data-hojas="2">Revoluciones por minuto (aquí, medida de la velocidad del rotor).</dd>
+<dt>PX4</dt><dd data-hojas="9">Autopiloto de código abierto; su x500 en Gazebo es la plataforma de referencia del tema.</dd>
+<dt>RNEA, ABA</dt><dd data-hojas="10">Recursive Newton-Euler Algorithm y Articulated Body Algorithm: algoritmos de Featherstone de dinámica inversa y directa en \(O(n)\).</dd>
+<dt>MuJoCo</dt><dd data-hojas="10">Motor de física en coordenadas generalizadas con contacto blando y convexo.</dd>
+<dt>SWaP</dt><dd data-hojas="12">Size, weight and power: tamaño, peso y potencia; la potencia de hover marca la autonomía y el cómputo a bordo se descuenta de ella.</dd>
+<dt>VRS</dt><dd data-hojas="13">Vortex ring state: estado de anillos de vórtice en descenso, donde el empuje fluctúa.</dd>
+<dt>BEM, BEMT</dt><dd data-hojas="14">Blade element momentum (theory): teoría que combina elemento de pala y cantidad de movimiento anillo a anillo.</dd>
+<dt>CFD</dt><dd data-hojas="5">Computational fluid dynamics: resolución de Navier-Stokes alrededor del dron (nivel N5).</dd>
+<dt>ESC</dt><dd data-hojas="14">Electronic speed controller: variador que conmuta el motor sin escobillas.</dd>
+<dt>THR_MDL_FAC</dt><dd data-hojas="14">Parámetro de PX4 del modelo de empuje relativo \(fs^2+(1-f)s\).</dd>
+<dt>PID</dt><dd data-hojas="17">Proportional-integral-derivative: controlador del lazo de rate; correrlo a 8 kHz reduce el retardo del muestreo pero no acelera el motor.</dd>
+<dt>CPU</dt><dd data-hojas="17">Central processing unit: procesador; el ancho de banda del lazo de rate lo limita el actuador, no la CPU. En el laboratorio, el tema funciona en CPU.</dd>
+<dt>CW, CCW</dt><dd data-hojas="20">Clockwise y counter-clockwise: sentido de giro horario y antihorario de cada rotor en la figura de la configuración en X.</dd>
+<dt>CA_METHOD, CA_ROTORn_KM, MC_AIRMODE</dt><dd data-hojas="21,20">Parámetros de PX4: método de asignación, cociente par/empuje del rotor \(n\) y modo que permite subir o bajar el empuje total para mantener el control de actitud.</dd>
+<dt>MPC</dt><dd data-hojas="3">Model predictive control: control que optimiza sobre un horizonte con el modelo (A3).</dd>
+<dt>RL</dt><dd data-hojas="5">Reinforcement learning (aprendizaje por refuerzo).</dd>
+<dt>DShot</dt><dd data-hojas="18">Protocolo digital entre controladora y ESC (hoja 18: bidireccional).</dd>
+<dt>PWM</dt><dd data-hojas="18">Pulse-width modulation: protocolo analógico entre controladora y ESC.</dd>
+<dt>RAPTOR</dt><dd data-hojas="17">Política fundacional para cuadricópteros que aleatoriza el motor y la dinámica; aleatoriza en cocientes.</dd>
+<dt>MonoRace</dt><dd data-hojas="21">Política que da comandos de motor directos y hace de asignador.</dd>
+<dt>Betaflight</dt><dd data-hojas="20">Firmware de dron de carreras, con numeración de motores distinta a la de PX4.</dd>
+<dt>Agilicious</dt><dd data-hojas="18">Plataforma de dron ágil de código abierto, con lazo de RPM y medidas a 500 Hz.</dd>
+<dt>NeuroBEM</dt><dd data-hojas="4">Modelo híbrido de elemento de pala más red residual, y el dataset de vuelos de carreras usado en el laboratorio.</dd>
+<dt>RotorPy</dt><dd data-hojas="5">Simulador de multirrotor en Python con aerodinámica (nivel N3).</dd>
+<dt>XLA</dt><dd data-hojas="36">Accelerated Linear Algebra: compilador sobre el que corre JAX; aparece en «MuJoCo XLA», el simulador de la tabla de modelos identificados.</dd>
+<dt>Swift</dt><dd data-hojas="37">Sistema que gana carreras a campeones humanos con residuo aprendido.</dd>
+<dt>GP</dt><dd data-hojas="5">Gaussian process: proceso gaussiano, usado como residuo.</dd>
+<dt>GNSS</dt><dd data-hojas="15">Global navigation satellite system: da la velocidad respecto al suelo.</dd>
+<dt>SIH</dt><dd data-hojas="32">Simulation-in-hardware: simulador de PX4 con el modelo físico dentro del autopiloto.</dd>
+<dt>VTOL</dt><dd data-hojas="32">Vertical take-off and landing: aeronave de despegue vertical.</dd>
+<dt>TECS</dt><dd data-hojas="30">Total energy control system: lazo de energía que gestiona la fugoide (A2).</dd>
+<dt>MJX</dt><dd data-hojas="39">MuJoCo XLA: MuJoCo reescrito en JAX; los modelos identificados se publican junto a simuladores masivos en JAX y MJX.</dd>
+<dt>JAX</dt><dd data-hojas="46">Biblioteca de cálculo diferenciable y vectorizado en que se programa el modelo del laboratorio.</dd>
+<dt>POMDP</dt><dd data-hojas="9">Partially observable Markov decision process: marco de la tesis.</dd>
+<dt>RK4</dt><dd data-hojas="8">Runge-Kutta de cuarto orden, integrador del ejemplo del eje intermedio.</dd>
+<dt>QP</dt><dd data-hojas="25">Quadratic program: programa cuadrático al que se reduce minimum snap.</dd>
+<dt>MAP</dt><dd data-hojas="36">Maximum a posteriori: tipo de estimación usada para \(\tau_m\).</dd>
+<dt>DAIML</dt><dd data-hojas="37">Método de Neural-Fly que aprende la base de la fuerza residual invariante al viento.</dd>
+<dt>Dec-POMDP</dt><dd data-hojas="16">POMDP descentralizado multiagente (A15).</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

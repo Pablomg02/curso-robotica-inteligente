@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -705,6 +705,134 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\), \(Q\), \(A\) valor, valor de acción y ventaja. Sombrero: estimación a partir de muestras; asterisco: óptimo o maestro.</p>
+<dl>
+<dt>\(\mathbb E\)</dt><dd data-hojas="6">Esperanza (media) de una variable aleatoria. El subíndice indica la distribución, p. ej. \(\mathbb E_{\tau\sim\pi_\theta}\): media sobre trayectorias generadas por la política.</dd>
+<dt>\(\hat{\mathbb E}_t\)</dt><dd data-hojas="8">Media empírica sobre las muestras (pasos) de un lote, que sustituye a la esperanza en el objetivo de PPO.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="6">«Se distribuye según», p. ej. \(\tau\sim\pi_\theta\).</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="6">Gradiente respecto a los parámetros \(\theta\) de la política.</dd>
+<dt>\(\hat{\ }\)</dt><dd data-hojas="7">Sombrero: valor estimado con muestras, p. ej. \(\hat A_t\) es la ventaja estimada con GAE.</dd>
+<dt>\(\bar{\ }\)</dt><dd data-hojas="8">Barra: valor modificado o promedio, p. ej. \(\bar r_t\) (cociente recortado) o \(\bar r\) (recompensa media por paso).</dd>
+<dt>\(\iff\)</dt><dd data-hojas="19">«Si y solo si»; equivalencia entre dos condiciones.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="18">Norma euclídea de un vector (su longitud), usada en los costes de recompensa.</dd>
+<dt>\(\mathcal N\)</dt><dd data-hojas="16">Distribución gaussiana (normal). En TD3, ruido gaussiano de media 0 que se suma a la acción del objetivo.</dd>
+<dt>\(\mathrm{clip}\)</dt><dd data-hojas="8">Recorte: \(\mathrm{clip}(x,l,u)\) fija \(x\) al intervalo \([l,u]\).</dd>
+<dt>\(\tanh\)</dt><dd data-hojas="15">Tangente hiperbólica, con valores en \((-1,1)\). Acota la acción en SAC y acota el coste en la recompensa del x500.</dd>
+<dt>\(\min\)</dt><dd data-hojas="8">Mínimo o máximo de dos o más valores (PPO toma el mínimo de dos términos; TD3, el mínimo de dos críticos).</dd>
+<dt>\(\int\)</dt><dd data-hojas="6">Integral sobre trayectorias o sobre acciones.</dd>
+<dt>\(\sum\)</dt><dd data-hojas="6">Suma, normalmente sobre los pasos de tiempo \(t\).</dd>
+<dt>\(\mathrm{diag}\)</dt><dd data-hojas="15">Matriz diagonal con los elementos dados; aparece en el jacobiano de la tangente hiperbólica.</dd>
+</dl>
+<h3>Gradiente de la política (parte 1)</h3>
+<dl>
+<dt>\(\pi_\theta(a\mid s)\)</dt><dd data-hojas="6">Política estocástica: probabilidad de la acción \(a\) en el estado \(s\), con parámetros \(\theta\) (los pesos de la red).</dd>
+<dt>\(\theta\)</dt><dd data-hojas="6">Parámetros de la política (vector de pesos de la red).</dd>
+<dt>\(s\), \(s_t\)</dt><dd data-hojas="6">Estado en el instante \(t\).</dd>
+<dt>\(s'\)</dt><dd data-hojas="16">Estado siguiente.</dd>
+<dt>\(a\), \(a_t\)</dt><dd data-hojas="6">Acción tomada por la política en el instante \(t\).</dd>
+<dt>\(r\), \(r_t\)</dt><dd data-hojas="6">Recompensa escalar recibida en el paso \(t\).</dd>
+<dt>\(t\)</dt><dd data-hojas="6">Índice del paso de tiempo.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento, en \([0,1)\). En las tareas del tema, 0,99. Pondera \(\gamma^t\) las recompensas futuras y fija el horizonte efectivo \(1/(1-\gamma)\).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="6">Trayectoria \((s_0,a_0,r_0,s_1,\dots)\) generada por la política y la dinámica. (En SAC, \(\tau\) es otra cosa: la tasa de actualización de las redes objetivo.)</dd>
+<dt>\(J(\theta)\)</dt><dd data-hojas="6">Objetivo de la política: retorno descontado esperado \(\mathbb E_{\tau\sim\pi_\theta}[\sum_t\gamma^t r_t]\), que se quiere maximizar.</dd>
+<dt>\(R(\tau)\)</dt><dd data-hojas="6">Retorno de una trayectoria completa.</dd>
+<dt>\(p_\theta(\tau)\)</dt><dd data-hojas="6">Probabilidad de la trayectoria \(\tau\) bajo la política \(\pi_\theta\) y la dinámica; solo la parte de la política depende de \(\theta\).</dd>
+<dt>\(p(s_{t+1}\mid s_t,a_t)\)</dt><dd data-hojas="6">Dinámica del entorno: no depende de \(\theta\), por eso desaparece del gradiente.</dd>
+<dt>\(Q^\pi(s,a)\)</dt><dd data-hojas="6">Valor de acción: retorno esperado si se toma \(a\) en \(s\) y después se sigue \(\pi\).</dd>
+<dt>\(V^\pi(s)\)</dt><dd data-hojas="6">Función de valor: retorno esperado desde \(s\) siguiendo \(\pi\). Es la línea base del gradiente.</dd>
+<dt>\(V(s_t)\)</dt><dd data-hojas="6">Función de valor aprendida (crítico) en el estado \(s\), con una red aparte de la política.</dd>
+<dt>\(A^\pi(s,a)\)</dt><dd data-hojas="6">Ventaja: \(Q^\pi(s,a)-V^\pi(s)\), cuánto mejor es la acción \(a\) que la media de la política en \(s\).</dd>
+<dt>\(b(s)\)</dt><dd data-hojas="6">Línea base: cualquier función que no dependa de la acción; restarla no cambia la esperanza del gradiente y reduce la varianza.</dd>
+<dt>\(\nabla_\theta\log\pi_\theta\)</dt><dd data-hojas="6">Gradiente del logaritmo de la política («score»). Sube la probabilidad de la acción tomada.</dd>
+</dl>
+<h3>GAE y PPO</h3>
+<dl>
+<dt>\(\delta_t\)</dt><dd data-hojas="7">Error de diferencia temporal: \(r_t+\gamma V(s_{t+1})-V(s_t)\). Es una estimación de la ventaja a un paso.</dd>
+<dt>\(\hat A_t\)</dt><dd data-hojas="7">Ventaja estimada en el paso \(t\) (con GAE).</dd>
+<dt>\(\hat A_t^{\mathrm{GAE}(\gamma,\lambda)}\)</dt><dd data-hojas="7">Estimador de ventaja generalizada: \(\sum_{l\ge0}(\gamma\lambda)^l\delta_{t+l}\), media exponencial de ventajas a varios pasos.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="7">Parámetro de GAE en \([0,1]\): con 0 la ventaja es \(\delta_t\) (poca varianza, sesgo si \(V\) falla); con 1, el retorno menos \(V\) (sin sesgo, mucha varianza). Se usa 0,95 en el x500.</dd>
+<dt>\(l\)</dt><dd data-hojas="7">Índice de la suma de GAE: cuántos pasos hacia delante se mira.</dd>
+<dt>\(L^{\text{CLIP}}\)</dt><dd data-hojas="8">Objetivo sustituto recortado de PPO, que se maximiza.</dd>
+<dt>\(r_t\) (cociente)</dt><dd data-hojas="8">Cociente de probabilidades \(\pi_\theta(a_t\mid s_t)/\pi_{\theta_\text{viejo}}(a_t\mid s_t)\) entre la política nueva y la que recogió los datos. En la hoja 6, \(r_t\) es la recompensa; en PPO, el cociente.</dd>
+<dt>\(\bar r_t\)</dt><dd data-hojas="8">Cociente recortado \(\mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="8">Anchura del recorte de PPO (0,2 en el tema). En BC/DAgger (A6b) es otra cosa: error por paso del alumno.</dd>
+<dt>\(\pi_{\theta_\text{viejo}}\)</dt><dd data-hojas="9">Política con la que se recogieron los datos del lote, fija durante las épocas de actualización.</dd>
+<dt>\(L^{\text{VF}}\)</dt><dd data-hojas="9">Pérdida de la función de valor (error cuadrático contra los objetivos \(\hat A_t+V(s_t)\)).</dd>
+<dt>\(c_1\), \(c_2\)</dt><dd data-hojas="9">Coeficientes que ponderan la pérdida del valor y la bonificación de entropía en el objetivo total de PPO.</dd>
+<dt>\(S[\pi_\theta]\)</dt><dd data-hojas="9">Bonificación de entropía de la política; en el x500 no se usa.</dd>
+<dt>\(N\), \(T\)</dt><dd data-hojas="9">En PPO: número de entornos en paralelo y de pasos por tramo desplegado (4096 × 32 en el x500). En DAgger (A6b), \(T\) es el horizonte.</dd>
+<dt>\(K\)</dt><dd data-hojas="9">Número de épocas de optimización sobre cada lote.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="8">Cota de la divergencia KL media en TRPO (0,01). No es el error de diferencia temporal \(\delta_t\) de GAE.</dd>
+<dt>σ</dt><dd data-hojas="11">Desviación de la acción de la política gaussiana; se aprende como \(\log\sigma\) independiente del estado (inicial 0,6 en el x500).</dd>
+</dl>
+
+<h3>Fuera de política: SAC y TD3</h3>
+<dl>
+<dt>\(\alpha\)</dt><dd data-hojas="15">Temperatura de SAC: peso de la entropía frente a la recompensa. Se ajusta sola con su propio gradiente.</dd>
+<dt>\(\mathcal H(\pi(\cdot\mid s_t))\)</dt><dd data-hojas="15">Entropía de la política en \(s_t\): mide cuánto aleatoriza.</dd>
+<dt>\(\rho_\pi\)</dt><dd data-hojas="15">Distribución de pares estado-acción que visita la política \(\pi\).</dd>
+<dt>\(J(\pi)\)</dt><dd data-hojas="15">Objetivo de máxima entropía de SAC: recompensa más \(\alpha\) por entropía, sumados en el tiempo.</dd>
+<dt>\(Q(s,a)\)</dt><dd data-hojas="15">Crítico de acción aprendido con el búfer de repetición.</dd>
+<dt>\(\bar{\mathcal H}\)</dt><dd data-hojas="15">Entropía mínima objetivo de SAC, restricción de la temperatura automática; objetivo \(-\dim(A)\).</dd>
+<dt>\(\dim(A)\)</dt><dd data-hojas="15">Dimensión del espacio de acciones \(A\).</dd>
+<dt>\(\tau = 0{,}005\)</dt><dd data-hojas="15">Tasa de la actualización suave de las redes objetivo en SAC.</dd>
+<dt>\(u\), \(\mu(u\mid s)\)</dt><dd data-hojas="15">Muestra gaussiana previa a la tangente hiperbólica y su densidad. En DAgger (A6b), \(u\) es otra cosa: el aumento del coste futuro por una acción errónea.</dd>
+<dt>\(\log\pi(a\mid s)\)</dt><dd data-hojas="15">Log-probabilidad de la acción acotada: \(\log\mu(u\mid s)-\sum_i\log(1-\tanh^2u_i)\).</dd>
+<dt>\(y\)</dt><dd data-hojas="16">Objetivo del crítico en TD3: \(r+\gamma\min_i Q_{\theta'_i}(s',\pi_{\phi'}(s'))\).</dd>
+<dt>\(Q_{\theta'_i}\)</dt><dd data-hojas="16">Los dos críticos objetivo de TD3 (\(i=1,2\)); se toma el mínimo para evitar sobrestimar el valor.</dd>
+<dt>\(\pi_{\phi'}\)</dt><dd data-hojas="16">Actor determinista objetivo de TD3, con parámetros \(\phi'\).</dd>
+<dt>\(d\)</dt><dd data-hojas="16">Retraso de las actualizaciones del actor en TD3 (cada 2 pasos del crítico).</dd>
+</dl>
+
+<h3>Recompensa de un dron</h3>
+<dl>
+<dt>\(p\), \(e_p\)</dt><dd data-hojas="18">Posición del dron y su error respecto a la consigna.</dd>
+<dt>\(v\), \(e_v\)</dt><dd data-hojas="18">Velocidad lineal del dron y su error.</dd>
+<dt>\(\omega\), \(e_\omega\)</dt><dd data-hojas="18">Velocidad angular del dron (rad/s) y su error.</dd>
+<dt>\(\Delta a\)</dt><dd data-hojas="19">Cambio de la acción entre pasos consecutivos; \(\|\Delta a\|^2\) mide la suavidad del mando.</dd>
+<dt>\(\angle R\)</dt><dd data-hojas="18">Ángulo de la rotación del dron respecto a la actitud deseada.</dd>
+<dt>\(\alpha_v\), \(\alpha_\omega\), \(\alpha_a\), \(\alpha_R\)</dt><dd data-hojas="18">Pesos de los términos de velocidad, velocidad angular, acción y rotación en el coste de Molchanov et al.</dd>
+<dt>\(dt\)</dt><dd data-hojas="18">Paso de tiempo que multiplica el coste en la recompensa de Molchanov et al.</dd>
+<dt>\(b\)</dt><dd data-hojas="18">Peso de la penalización \(b\|\omega\|^2\) en la recompensa de carreras de Song et al. (en la hoja 6, \(b(s)\) es la línea base).</dd>
+<dt>\(C_{rs}\)</dt><dd data-hojas="18">Constante de supervivencia de Eschmann et al.: se suma por paso para que seguir volando valga más que terminar.</dd>
+<dt>\(c\)</dt><dd data-hojas="19">Coste por paso del x500: \(\|e_p\|+0{,}1\|v\|+0{,}05\|\omega\|+0{,}1\|\Delta a\|^2\).</dd>
+<dt>\(P\)</dt><dd data-hojas="19">Castigo único por estrellarse (10 en el x500).</dd>
+<dt>\(\bar r\)</dt><dd data-hojas="19">Recompensa media por paso mientras se sigue volando. Terminar compensa si \(\bar r<-P(1-\gamma)\).</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="20">Potencial de moldeado (p. ej. menos la distancia a la meta).</dd>
+<dt>\(\tilde r\)</dt><dd data-hojas="20">Recompensa con moldeado por potencial: \(r+\gamma\Phi(s')-\Phi(s)\).</dd>
+<dt>\(\tilde Q\), \(\tilde V\), \(\tilde A\)</dt><dd data-hojas="20">Valores bajo la recompensa moldeada: \(\tilde Q=Q-\Phi\), \(\tilde V=V-\Phi\), \(\tilde A=A\). La política óptima no cambia.</dd>
+</dl>
+
+<h3>PPO en JAX con el x500</h3>
+<dl>
+<dt>log σ</dt><dd data-hojas="22">Logaritmo de la desviación de la política gaussiana, parámetro independiente del estado.</dd>
+<dt>\(q\)</dt><dd data-hojas="22">Cuaternión de actitud; \(q\) y \(-q\) representan la misma actitud (doble cobertura), por eso la observación usa la matriz de rotación.</dd>
+</dl>
+
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="1">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization: gradiente de política con recorte del cociente de probabilidades.</dd>
+<dt>TRPO</dt><dd data-hojas="4">Trust region policy optimization: mejora la política con la divergencia KL acotada.</dd>
+<dt>GAE</dt><dd data-hojas="7">Generalized advantage estimation: ventajas como media exponencial de errores TD.</dd>
+<dt>SAC</dt><dd data-hojas="15">Soft actor-critic: método fuera de política de máxima entropía.</dd>
+<dt>TD3</dt><dd data-hojas="16">Twin delayed DDPG: actor determinista con doble crítico, actualizaciones retrasadas y suavizado.</dd>
+<dt>KL</dt><dd data-hojas="8">Divergencia de Kullback-Leibler entre dos distribuciones; mide cuánto cambió la política.</dd>
+<dt>JAX</dt><dd data-hojas="22">Biblioteca de cálculo numérico con compilación (XLA) para GPU; en ella está el PPO del tema.</dd>
+<dt>GPU</dt><dd data-hojas="1">Unidad de procesamiento gráfico, donde se entrena.</dd>
+<dt>PQN</dt><dd data-hojas="4">Parallelised Q-network: Q-learning sin búfer ni red objetivo con entornos vectorizados.</dd>
+<dt>FastTD3</dt><dd data-hojas="4">Variante de TD3 para entornos masivos (preprint).</dd>
+<dt>SAPG</dt><dd data-hojas="16">Split and aggregate policy gradients: reparte PPO en varias políticas cuando se satura con muchos entornos.</dd>
+<dt>MuJoCo</dt><dd data-hojas="9">Simulador de física usado en los bancos de prueba de PPO.</dd>
+<dt>RPM</dt><dd data-hojas="3">Revoluciones por minuto de los rotores.</dd>
+<dt>RTX</dt><dd data-hojas="3">Familia de GPU de NVIDIA (3090, 4060 Ti) usada en los experimentos.</dd>
+<dt>x500</dt><dd data-hojas="1">Cuadricóptero de referencia del curso, el que se mantiene en el aire.</dd>
+</dl>
+</aside>
+
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>

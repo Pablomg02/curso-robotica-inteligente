@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=9">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -681,6 +681,114 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<!-- ============ GLOSARIO (tecla G) ============ -->
+<aside id="glosario" hidden>
+</dl>
+<h3>Notación general</h3>
+<p>Un sombrero (\(\hat x\)) es una estimación; una barra (\(\bar b_j\)), una referencia; una estrella (\(\theta^*\)), la solución al terminar una tarea. Los errores son cuadráticos medios.</p>
+<dl>
+<dt>\(\theta\)</dt><dd data-hojas="8">Vector de parámetros (pesos) de la red; \(\theta_i\) es su componente \(i\). En encoger y perturbar, \(\theta\) es la red al empezar la ronda.</dd>
+<dt>\(\mathcal L(\theta)\)</dt><dd data-hojas="8">Función de pérdida total que se minimiza con EWC: la pérdida de la tarea nueva más la penalización.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="8">Esperanza (media) sobre los datos; \(\mathbb E_x\) es la media sobre las entradas \(x\).</dd>
+<dt>\(\mathcal N(0, \sigma^2)\)</dt><dd data-hojas="13">Gaussiana de media cero y varianza \(\sigma^2\); de ella sale el ruido \(p\) de encoger y perturbar.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="13">«Se distribuye según».</dd>
+<dt>\(\approx\)</dt><dd data-hojas="8">«Aproximadamente igual»: la aproximación de Laplace del posterior.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="8">«Dado que»: \(p(\theta\mid D_A)\) es la probabilidad de \(\theta\) dados los datos \(D_A\).</dd>
+<dt>\(\log\)</dt><dd data-hojas="8">Logaritmo natural, usado en la verosimilitud y en el posterior.</dd>
+<dt>\(\leftarrow\)</dt><dd data-hojas="13">Asignación: el valor de la derecha sustituye al de la izquierda.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="8">Traspuesta de una matriz o vector.</dd>
+<dt>\(\partial\)</dt><dd data-hojas="8">Derivada parcial; con ella se define el jacobiano \(J = \partial f_\theta(x)/\partial\theta\).</dd>
+<dt>\(\|\theta\|\)</dt><dd data-hojas="22">Norma de los parámetros de la red: mide si los pesos crecen durante el entrenamiento.</dd>
+
+</dl>
+<h3>Olvido: la matriz de resultados</h3>
+<p>Parte 1. \(T\) tareas (en el experimento, regímenes de vuelo) se aprenden en orden.</p>
+<dl>
+<dt>\(T\)</dt><dd data-hojas="7">Número total de tareas de la secuencia.</dd>
+<dt>\(i\), \(j\)</dt><dd data-hojas="7">Índices de tarea: \(i\) es la última tarea entrenada y \(j\), la tarea en la que se evalúa.</dd>
+<dt>\(R_{i,j}\)</dt><dd data-hojas="7">Matriz de resultados: resultado en la tarea \(j\) tras terminar la tarea \(i\). Con regresión es un error cuadrático medio.</dd>
+<dt>\(R_{T,i}\)</dt><dd data-hojas="7">Última fila de la matriz: resultado en la tarea \(i\) al final de todo el entrenamiento.</dd>
+<dt>\(R_{i,i}\)</dt><dd data-hojas="7">Diagonal: resultado en la tarea \(i\) justo después de aprenderla.</dd>
+<dt>\(R_{i-1,i}\)</dt><dd data-hojas="7">Resultado en la tarea \(i\) antes de entrenarla, con lo aprendido hasta la tarea anterior; se usa en FWT.</dd>
+<dt>\(\bar b_j\)</dt><dd data-hojas="7">Resultado de referencia en la tarea \(j\) antes de entrenar. Aquí, el error de predecir la media de cada régimen.</dd>
+<dt>\(\mathrm{ACC}\)</dt><dd data-hojas="7">Precisión media final: \(\frac1T\sum_i R_{T,i}\), promedio de la última fila.</dd>
+<dt>\(\mathrm{BWT}\)</dt><dd data-hojas="7">Transferencia hacia atrás: media de \(R_{T,i} - R_{i,i}\). Con aciertos, muy negativa es olvido; con errores (nuestro caso), positiva es olvido.</dd>
+<dt>\(\mathrm{FWT}\)</dt><dd data-hojas="7">Transferencia hacia delante: media de \(R_{i-1,i} - \bar b_i\), lo que ayuda lo aprendido a una tarea aún no entrenada.</dd>
+<dt>\(\sum_{i=1}^T\)</dt><dd data-hojas="7">Suma sobre las tareas.</dd>
+
+</dl>
+<h3>Olvido: EWC y remedios</h3>
+<p>\(A\) es la tarea anterior y \(B\), la nueva.</p>
+<dl>
+<dt>\(\mathcal L_B(\theta)\)</dt><dd data-hojas="8">Pérdida de la tarea nueva \(B\).</dd>
+<dt>\(\lambda\) (EWC)</dt><dd data-hojas="8">Peso de la penalización de EWC: cuánto vale cada muelle. En el experimento, 0,01 y 1. En encoger y perturbar, \(\lambda\) es el factor de encogimiento.</dd>
+<dt>\(F_i\)</dt><dd data-hojas="8">Elemento \(i\) de la diagonal de la información de Fisher en \(\theta^*_A\): importancia del parámetro \(\theta_i\) para la tarea anterior.</dd>
+<dt>\(\theta^*_A\), \(\theta^*_{A,i}\)</dt><dd data-hojas="8">Parámetros óptimos tras la tarea \(A\) y su componente \(i\); es el punto al que el muelle ancla.</dd>
+<dt>\(D_A\), \(D_B\)</dt><dd data-hojas="8">Datos de las tareas \(A\) y \(B\).</dd>
+<dt>\(p(\theta\mid D_A)\)</dt><dd data-hojas="8">Posterior de los parámetros dados los datos de \(A\): contiene toda la información de \(A\). Se aproxima con una gaussiana (Laplace).</dd>
+<dt>\(p(D_B\mid\theta)\)</dt><dd data-hojas="8">Verosimilitud de los datos de \(B\) dados los parámetros.</dd>
+<dt>\(p(D_B)\)</dt><dd data-hojas="8">Probabilidad marginal de los datos de \(B\); no depende de \(\theta\).</dd>
+<dt>\(J\)</dt><dd data-hojas="8">Jacobiano de la salida de la red respecto a los parámetros, \(J = \partial f_\theta(x)/\partial\theta\). Con verosimilitud gaussiana de varianza unidad, \(F = \mathbb E[J^\top J]\).</dd>
+<dt>\(f_\theta(x)\)</dt><dd data-hojas="8">Salida de la red con parámetros \(\theta\) para la entrada \(x\).</dd>
+<dt>\(x\)</dt><dd data-hojas="8">Entrada de la red (en el experimento, velocidad, empuje y eje de empuje).</dd>
+
+</dl>
+<h3>Pérdida de plasticidad</h3>
+<p>Parte 2. Unidades latentes y remedios que devuelven plasticidad.</p>
+<dl>
+<dt>\(s_i^\ell\)</dt><dd data-hojas="12">Puntuación de la unidad \(i\) de la capa \(\ell\): su actividad media normalizada por la media de su capa.</dd>
+<dt>\(h_i^\ell(x)\)</dt><dd data-hojas="12">Activación de la unidad \(i\) de la capa \(\ell\) para la entrada \(x\).</dd>
+<dt>\(H^\ell\)</dt><dd data-hojas="12">Número de unidades de la capa \(\ell\).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="12">Umbral de la puntuación: la unidad es \(\tau\)-latente si \(s_i^\ell \le \tau\) (se usa \(\tau = 0{,}1\)).</dd>
+<dt>\(\lambda\) (encoger)</dt><dd data-hojas="13">Factor de encogimiento, \(0 \lt \lambda \lt 1\), en \(\theta \leftarrow \lambda\theta + p\).</dd>
+<dt>\(p\)</dt><dd data-hojas="13">Ruido gaussiano de perturbación, \(p \sim \mathcal N(0, \sigma^2)\), que se suma a los pesos encogidos.</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="13">Desviación típica del ruido de perturbación.</dd>
+<dt>\(\theta_{\text{nueva}}\)</dt><dd data-hojas="19">Pesos de una red recién inicializada, mezclados en encoger y perturbar: \(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\).</dd>
+<dt>\(u_\ell[i]\)</dt><dd data-hojas="13">Utilidad de la unidad \(i\) de la capa \(\ell\) en retropropagación continua: media móvil de su contribución.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="13">Factor de la media móvil de la utilidad (\(\eta = 0{,}99\)).</dd>
+<dt>\(h_{\ell,i,t}\)</dt><dd data-hojas="13">Activación de la unidad \(i\) de la capa \(\ell\) en el paso \(t\).</dd>
+<dt>\(w_{\ell,i,k,t}\)</dt><dd data-hojas="13">Peso de salida de la unidad \(i\) de la capa \(\ell\) hacia la unidad \(k\) de la capa siguiente, en el paso \(t\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="13,19">Fracción muy pequeña de unidades maduras de menor utilidad que se reinicializan en cada paso (en el experimento, \(10^{-4}\)).</dd>
+<dt>\(m\)</dt><dd data-hojas="13">Número mínimo de actualizaciones para que una unidad sea «madura» (en el experimento, 100).</dd>
+<dt>\(10^{-3}\), \(10^{-2}\)</dt><dd data-hojas="19,22">Tasas de aprendizaje de Adam; \(10^{-3}\) es la tasa por defecto y \(10^{-2}\), la alta con la que sí aparece pérdida de plasticidad. \(10^{-3}\) es también el decaimiento de pesos de L2.</dd>
+<dt>N²</dt><dd data-hojas="20">Unidad del error cuadrático medio de la fuerza (newtons al cuadrado).</dd>
+<dt>\(\lambda = 0{,}01\) y \(1\)</dt><dd data-hojas="19">Los dos pesos de EWC probados en el experimento.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="12">Índice de capa de la red.</dd>
+</dl>
+
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>EWC</dt><dd data-hojas="8">Elastic weight consolidation: penaliza cambiar los parámetros importantes para tareas anteriores, con la Fisher diagonal.</dd>
+<dt>SI</dt><dd data-hojas="8">Synaptic intelligence: acumula la importancia de cada parámetro en línea, como una integral del gradiente.</dd>
+<dt>LwF</dt><dd data-hojas="8">Learning without forgetting: entrena solo con datos nuevos y conserva las salidas anteriores.</dd>
+<dt>CLEAR</dt><dd data-hojas="9">Método de repetición que mezcla al 50 % experiencia nueva y repetida, con clonación del comportamiento sobre la repetida.</dd>
+<dt>GEM</dt><dd data-hojas="4">Gradient episodic memory: método de aprendizaje continuo que propone también métricas.</dd>
+<dt>ACC</dt><dd data-hojas="7">Accuracy: precisión media final sobre todas las tareas.</dd>
+<dt>BWT</dt><dd data-hojas="7">Backward transfer: efecto de aprender tareas nuevas sobre las anteriores; mide el olvido.</dd>
+<dt>FWT</dt><dd data-hojas="7">Forward transfer: efecto de lo aprendido sobre tareas aún no entrenadas.</dd>
+<dt>CIFAR</dt><dd data-hojas="11">Conjunto de datos de imágenes (CIFAR-100) con el que se prueba el olvido por clases.</dd>
+<dt>ReDo</dt><dd data-hojas="12">Método que reinicializa periódicamente las unidades latentes: pesos de entrada nuevos, de salida a cero.</dd>
+<dt>L2</dt><dd data-hojas="13">Regularización L2 (decaimiento de pesos): mantiene los pesos pequeños.</dd>
+<dt>ReLU</dt><dd data-hojas="19">Rectified linear unit: activación de las unidades de la red de dos capas.</dd>
+<dt>Adam</dt><dd data-hojas="19">Optimizador usado en el experimento, con tasa \(10^{-3}\).</dd>
+<dt>PPO</dt><dd data-hojas="3">Proximal policy optimization: algoritmo de RL que mejora y luego colapsa en el «ant» al entrenar muchos pasos.</dd>
+<dt>SAC</dt><dd data-hojas="12">Soft actor-critic: algoritmo de RL que mejora al reiniciar parte de la red.</dd>
+<dt>SPR</dt><dd data-hojas="12">Self-predictive representations: agente de RL evaluado en Atari 100k.</dd>
+<dt>IQM</dt><dd data-hojas="12">Interquartile mean: medida de rendimiento usada para SAC en DeepMind Control.</dd>
+<dt>DroQ</dt><dd data-hojas="15">Algoritmo de RL sin modelo sobre el que se construye el cuadrúpedo que aprende en 20 minutos.</dd>
+<dt>MPC</dt><dd data-hojas="16">Model predictive control: control que optimiza la acción sobre un modelo; aquí, consciente de la incertidumbre.</dd>
+<dt>KNODE</dt><dd data-hojas="16">Modelo de dinámica aprendido que se mejora en línea durante el despliegue.</dd>
+<dt>RL</dt><dd data-hojas="3">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>RSSM</dt><dd data-hojas="25">Recurrent state-space model: el modelo del mundo de A8a, con una GRU.</dd>
+<dt>GRU</dt><dd data-hojas="25">Gated recurrent unit: red recurrente del RSSM.</dd>
+<dt>RMA</dt><dd data-hojas="25">Rapid motor adaptation: estima un latente desde el historial (ver A9a).</dd>
+<dt>IMU</dt><dd data-hojas="15">Inertial measurement unit: sensor inercial usado con los contactos de las patas para estimar la velocidad.</dd>
+<dt>L1</dt><dd data-hojas="3">Control adaptativo L1: la referencia nominal con la que se compara el dron que aprende su dinámica.</dd>
+<dt>GPU</dt><dd data-hojas="15">Graphics processing unit: aquí, la de un portátil que entrena al A1, o la de consumo del laboratorio.</dd>
+<dt>JAX</dt><dd data-hojas="19">Biblioteca en la que corre el script del experimento, en GPU y de forma determinista.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>
