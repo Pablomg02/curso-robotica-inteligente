@@ -14,7 +14,7 @@ Añadir al proyecto hilo un módulo `estimacion/` con filtro de Kalman, ESKF y f
 | ESKF de actitud sin magnetómetro, error inicial de 10° en guiñada | error sin corregir (de 1° a 28° a los 120 s según la semilla) con σ del filtro de unos 3,2° | 3 |
 | Kalman estacionario de un eje con acelerómetro: ganancias | \((\sqrt2\,\omega_0, \omega_0^2)\), \(\omega_0 = (q/r)^{1/4}\) | 1 |
 
-El script de las figuras está en `../figuras/figuras_a4a.py`. Úsalo para comparar al final de cada paso.
+El script de las figuras está en `../figuras/figuras_a4a.py`. Úsalo para comparar al final de cada paso. Los ejemplos que la presentación hace a mano (rejilla de cinco celdas, Joseph, \(Q_d\), forma de información, NEES, puntos sigma, pesos de partículas, jacobianos del ESKF) están en `../figuras/ejemplos_a4a.py`, con su salida en `../figuras/salida_ejemplos.txt`: sirven como tests unitarios de tus funciones.
 
 ## 0. Datos (20 min, se puede hacer antes)
 
