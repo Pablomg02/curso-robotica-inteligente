@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A12b · VLAs en 2025–2026 y VLAs para drones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A12b" data-deck-title="VLAs en 2025–2026, cross-embodiment y VLAs para drones · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 4 · Jornada 31 · Curso de robótica inteligente</p>
+  <h1>VLAs en 2025–2026, cross-embodiment y VLAs para drones</h1>
+  <p class="subtitle">Los VLA generalistas de 2025–2026 (π0.5, Gemini Robotics, GR00T N1, RDT-1B, π*0.6), cómo una sola política controla robots distintos, qué hay de VLAs para drones, cómo se ajustan con pocos datos y poca memoria (LoRA, QLoRA) y cómo empiezan a combinarse con world models. Con un ajuste fino de SmolVLA para que un dron vuele hasta el objeto que nombra una orden.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A10, A11, A12a</span>
+    <span><b>Prepara</b> A13, B7</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A12b</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Describir la arquitectura de dos sistemas (lento y rápido) de los VLA de 2025 y sus frecuencias.</li>
+    <li>Explicar cómo se unifican espacios de acción distintos para entrenar una política con muchos robots.</li>
+    <li>Leer con criterio los VLA para drones publicados: dónde corren, a qué frecuencia y cómo se evalúan.</li>
+    <li>Calcular cuántos parámetros entrena LoRA y cuánta memoria necesita un ajuste fino.</li>
+    <li>Ajustar un VLA pequeño con datos de un simulador y medir qué aporta frente a una política desde cero.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Un modelo lento que entiende y uno rápido que mueve</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>GR00T N1 separa un VLM a 10 Hz y una política de difusión a 120 Hz <a class="cite" data-ref="nvidia2025"></a>; Gemini Robotics, un modelo en la nube que responde en menos de 160 ms y un decodificador en el robot que da 50 Hz efectivos <a class="cite" data-ref="gemini2025"></a>.</li>
+        <li>π0.5 limpia cocinas y dormitorios de casas que no vio al entrenar; el 97,6 % de sus ejemplos de la primera fase no son de su robot <a class="cite" data-ref="pi2025"></a>.</li>
+        <li>Para drones, los VLA publicados vuelan despacio y piensan fuera del dron: RaceVLA, a 4 Hz en una RTX 4090 en tierra, a 1,04 m/s de media <a class="cite" data-ref="serpiva2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La división entre un sistema lento que interpreta y uno rápido que actúa es la misma que la de A11 (misión) y A6 (control), y la que desarrolla A13. La pregunta para un dron es qué viaja entre los dos: un objetivo, un trozo de trayectoria o un latente.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>SmolVLA ajustado con 200 y 1000 demostraciones de un simulador de dron, frente a una política pequeña desde cero, con un color que nunca fue objetivo. <code>ajuste_smolvla.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De un modelo por robot a una política para muchos cuerpos</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2021–2023</span>LoRA: ajustar con 10 000 veces menos parámetros entrenables <a class="cite" data-ref="hu2022"></a>; QLoRA: 65B en una GPU de 48 GB <a class="cite" data-ref="dettmers2023"></a>. RT-2 y Open X-Embodiment (A12a).</div>
+    <div class="ev"><span class="yr">2024</span>CrossFormer: una política para brazos, robots con ruedas, cuadrúpedos y un cuadricóptero <a class="cite" data-ref="doshi2024"></a>. HPT: troncos compartidos con entradas y salidas por robot <a class="cite" data-ref="wang2024"></a>. π0 (A10).</div>
+    <div class="ev"><span class="yr">2025</span>Gemini Robotics <a class="cite" data-ref="gemini2025"></a>, GR00T N1 <a class="cite" data-ref="nvidia2025"></a>, π0.5 <a class="cite" data-ref="pi2025"></a>, RDT-1B <a class="cite" data-ref="liu2025"></a>. VLAs para drones: RaceVLA, CognitiveDrone, UAV-VLA <a class="cite" data-ref="serpiva2025,lykov2025,sautenkov2025"></a>. VLAs con world model <a class="cite" data-ref="cen2025,zhang2025"></a>.</div>
+    <div class="ev"><span class="yr">2025–2026</span>π*0.6 aprende de su propia experiencia con RL <a class="cite" data-ref="pi2025b"></a>; Gemini Robotics 1.5 controla varios robots sin ajuste por robot <a class="cite" data-ref="gemini2025b"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Generalistas">
+  <p class="num">Parte 1</p>
+  <h2>Los VLA generalistas de 2025–2026</h2>
+  <p>Dos sistemas, datos mezclados y aprender de la experiencia.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · dos sistemas</p>
+  <h2>Lento para entender, rápido para mover</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Modelo</th><th>Sistema lento</th><th>Sistema rápido</th><th>Latencia publicada</th></tr></thead>
+      <tbody>
+        <tr><td>Gemini Robotics <a class="cite" data-ref="gemini2025"></a></td><td>VLA basado en Gemini 2.0, en la nube</td><td>decodificador de acciones en el robot</td><td>&lt; 160 ms de respuesta, ≈ 250 ms de extremo a extremo, 50 Hz efectivos con trozos</td></tr>
+        <tr><td>GR00T N1 <a class="cite" data-ref="nvidia2025"></a></td><td>VLM Eagle-2 (1,34B), 10 Hz</td><td>transformer de difusión con flow matching, 120 Hz</td><td>trozo de 16 acciones en 63,9 ms (L40, bf16); 2,2B en total</td></tr>
+        <tr><td>Helix (Figure AI) <a class="cite" data-ref="figure2025"></a></td><td>VLM de 7B a bordo, 7–9 Hz</td><td>transformer de 80 M, 200 Hz</td><td>afirmación de la empresa; pasa un latente continuo</td></tr>
+        <tr><td>π0.5 <a class="cite" data-ref="pi2025"></a></td><td>VLM de 2B (PaliGemma)</td><td>experto de flow matching</td><td>velocidades objetivo de la base a 50 Hz con trozos</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="callout clave"><span class="tag">El patrón</span>Ninguno pone el modelo grande en el lazo rápido. El lento corre a 7–10 Hz o tarda cientos de ms; el rápido genera trozos o sigue un latente a 50–200 Hz.</div>
+    <div class="callout realidad"><span class="tag">Cuidado</span>Gemini Robotics, GR00T N1 y π0.5 son informes técnicos sin revisión por pares; Helix, solo una página de empresa.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · datos</p>
+  <h2>π0.5 y GR00T N1: casi todos los datos vienen de otro sitio</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>π0.5</strong> <a class="cite" data-ref="pi2025"></a>: unas 400 h de manipuladores móviles en unas 100 casas, pero el 97,6 % de los ejemplos de la primera fase vienen de otros robots o de la web. Preentrena con tokens FAST (A12a) durante 280 000 pasos y después añade un experto de flow matching para generar trozos continuos.</li>
+        <li>Con 104 sitios de entrenamiento, rinde parecido a una versión que incluye las casas de prueba en el entrenamiento; las tareas en casas nuevas duran de 10 a 15 minutos.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>GR00T N1</strong> <a class="cite" data-ref="nvidia2025"></a>: una pirámide de datos (web y vídeo de personas abajo, datos sintéticos en medio, datos de robot arriba). Con vídeo generado amplía 88 h de teleoperación a 827 h, y genera 780 000 trayectorias en simulación en 11 h. Unas 50 000 horas de H100 de preentrenamiento.</li>
+        <li>En el humanoide GR-1 real: 42,6 % de éxito medio con el 10 % de los datos y 76,8 % con todos, frente al 10,2 % y el 46,4 % de Diffusion Policy.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Para un dron</span>La pirámide es la estrategia que te queda: muchos datos del simulador (fase 2), algunos reales públicos y el conocimiento general de un VLM.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · más allá de imitar</p>
+  <h2>RDT-1B, Gemini Robotics y π*0.6: pocas demostraciones y RL sobre el VLA</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>RDT-1B</strong> <a class="cite" data-ref="liu2025"></a>: un transformer de difusión de 1,2B para dos brazos, con 46 conjuntos de datos (más de un millón de trayectorias). Con 5 pasos de muestreo en vez de 100, genera trozos a 6 Hz y acciones a 381 Hz en una RTX 4090 a bordo.</li>
+        <li><strong>Gemini Robotics</strong> <a class="cite" data-ref="gemini2025"></a>: en 7 de 8 tareas nuevas supera el 70 % con como mucho 100 demostraciones (de 15 minutos a una hora de demostración).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>π*0.6 con RECAP</strong> (preprint) <a class="cite" data-ref="pi2025b"></a>: aprende de demostraciones, de sus propios intentos y de correcciones de un operador. Entrena una función de valor y condiciona el VLA a si la ventaja es positiva. En las tareas más difíciles, más que duplica el rendimiento y reduce los fallos a la mitad; preparó cafés durante 13 horas seguidas.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La lección</span>La imitación pone el techo de la demostración; el RL sobre el VLA (A2–A4, A9b) lo supera. Es la misma idea que el ajuste con RL de los LLM (A11), aplicada a acciones.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Cross-embodiment">
+  <p class="num">Parte 2</p>
+  <h2>Una política, muchos cuerpos</h2>
+  <p>Cómo se entrenan juntos robots con acciones de dimensiones distintas.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · unificar acciones</p>
+  <h2>Rellenar, asignar huecos con significado o poner una cabeza por robot</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Estrategia</th><th>Ejemplo</th></tr></thead>
+        <tbody>
+          <tr><td>Rellenar con ceros hasta la dimensión mayor</td><td>π0.5 <a class="cite" data-ref="pi2025"></a>; SmolVLA, hasta 32</td></tr>
+          <tr><td>Huecos con significado físico (128 dimensiones)</td><td>RDT-1B <a class="cite" data-ref="liu2025"></a></td></tr>
+          <tr><td>Una cabeza por tipo de acción, sin alinear a mano</td><td>CrossFormer <a class="cite" data-ref="doshi2024"></a></td></tr>
+          <tr><td>Entradas y salidas por robot, tronco compartido</td><td>HPT <a class="cite" data-ref="wang2024"></a>; GR00T N1 <a class="cite" data-ref="nvidia2025"></a></td></tr>
+          <tr><td>Acciones latentes aprendidas de vídeo</td><td>GR00T N1; UniVLA <a class="cite" data-ref="bu2025"></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">Cómo se rellena sin estropear el entrenamiento</span><p>Si el robot \(r\) tiene acciones \(a \in \mathbb R^{d_r}\) y el modelo usa \(D \ge d_r\) dimensiones, se rellena con ceros, \(\tilde a = (a, 0, \dots, 0)\), y la pérdida se pondera con una máscara \(m_j\) que vale 1 si \(j \le d_r\) y 0 si no: las dimensiones de relleno no aportan gradiente. Lo que no resuelve es el significado: la dimensión 3 puede ser la pinza de un robot y la guiñada de otro; por eso RDT asigna cada hueco a una magnitud física.</p></div>
+      <div class="callout realidad"><span class="tag">Y la dinámica</span>Unificar el formato no unifica la física: un cuadricóptero y un brazo responden de forma distinta a la misma «velocidad». Por eso los resultados entre cuerpos muy distintos son todavía modestos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · CrossFormer y HPT</p>
+  <h2>Un cuadricóptero sin datos de cuadricóptero, en tres pruebas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>CrossFormer</strong> <a class="cite" data-ref="doshi2024"></a>: 130 M parámetros y 900 000 trayectorias de 20 robots, con tokens de lectura y cuatro cabezas de acción (brazo, puntos de paso 2D, dos brazos y cuadrúpedo). De media en todos los robots, 73 % de éxito frente al 51 % del mejor método anterior.</li>
+        <li>Un cuadricóptero Tello, sin ningún dato de cuadricóptero en el entrenamiento, con la cabeza de navegación (puntos de paso 2D a altura fija): 0,82 de subobjetivos alcanzados frente a 0,68, en 3 ensayos.</li>
+        <li><strong>HPT</strong> <a class="cite" data-ref="wang2024"></a>: un tronco compartido preentrenado con 52 conjuntos de datos y hasta 1B parámetros; más del 20 % de mejora en tareas no vistas tras el ajuste.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Lectura crítica</span>Tres ensayos no son una estimación: con 3 intentos, una diferencia de 0,82 a 0,68 cabe en el azar. Y volar a altura fija con puntos de paso 2D es navegar como un robot con ruedas: la dinámica del dron la resuelve su controlador.</div>
+      <div class="callout clave"><span class="tag">Lo que sí enseña</span>Si la acción es de alto nivel (puntos de paso, velocidades), el dron puede compartir política con otros robots. Si es de bajo nivel (CTBR, motores), no.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Drones">
+  <p class="num">Parte 3</p>
+  <h2>VLAs para drones</h2>
+  <p>Lo que hay publicado, dónde corre y cómo se evalúa.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · lo publicado</p>
+  <h2>Despacio, en tierra o en simulación</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Modelo y datos</th><th>Acción y frecuencia</th><th>Dónde corre</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>RaceVLA <a class="cite" data-ref="serpiva2025"></a></td><td>OpenVLA (7B) con LoRA de rango 32; 200 episodios</td><td>\(v_x, v_y, v_z, \omega\); 4 Hz</td><td>RTX 4090 en tierra, int8; 0,25 s por imagen</td><td>vuelo real a 1,04 m/s de media y 2,02 m/s como máximo</td></tr>
+        <tr><td>CognitiveDrone <a class="cite" data-ref="lykov2025"></a></td><td>OpenVLA; más de 8000 trayectorias simuladas</td><td>\(v_x, v_y, v_z, \omega\); 10 Hz; razonador a unos 2 Hz</td><td>10 GB de memoria, 20 GB con el razonador</td><td>59,6 % y 77,2 % con razonador, frente al 31,3 % de RaceVLA, en simulación</td></tr>
+        <tr><td>UAV-VLA <a class="cite" data-ref="sautenkov2025"></a></td><td>GPT + Molmo sobre imágenes de satélite</td><td>planes de vuelo, no mandos</td><td>RTX 4090</td><td>error medio de 34,22 m al localizar objetos; 6,5 veces más rápido que un operador</td></tr>
+        <tr><td>CrossFormer <a class="cite" data-ref="doshi2024"></a></td><td>130 M, sin datos de dron</td><td>puntos de paso 2D a altura fija</td><td>—</td><td>0,82 frente a 0,68, en 3 ensayos</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="callout realidad"><span class="tag">Lectura crítica</span>Todos menos CrossFormer son preprints del mismo grupo o de grupos pequeños; las evaluaciones son cortas, la mayoría en simulación, y la inferencia se hace en una GPU de sobremesa, no a bordo.</div>
+    <div class="callout clave"><span class="tag">Lo común</span>Velocidades de referencia a 4–10 Hz que sigue la controladora del dron (A6): el VLA hace de piloto lento, no de controlador.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · presupuesto de tiempo</p>
+  <h2>Cuánto se mueve el dron mientras el VLA piensa</h2>
+  <p><strong>Notación:</strong> \(\delta\), tiempo que tarda el VLA en decidir (s); \(v\), velocidad del dron (m/s); \(e\), desplazamiento de la escena entre la imagen y la acción (m).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>la acción se calcula con la imagen de hace \(\delta\) segundos</td><td>La cámara capta, el modelo tarda \(\delta\), y entonces se aplica la acción</td></tr>
+      <tr><td><strong>2</strong></td><td>\(e = v\,\delta\)</td><td>Lo que avanza el dron, a velocidad constante, en ese tiempo</td></tr>
+      <tr><td><strong>3</strong></td><td>con trozos de acciones, el dron sigue el trozo anterior durante \(\delta\)</td><td>El error ya no es \(e\), sino lo que el trozo se equivoque al predecir esos \(\delta\) segundos</td></tr>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:6px">
+    <div class="aparte"><span class="rotulo">Con los números de RaceVLA</span><p>\(\delta = 0{,}25\) s y \(v = 2{,}02\) m/s, su velocidad máxima: \(e \approx 0{,}5\) m. A 10 m/s serían 2,5 m.</p></div>
+    <div class="callout realidad"><span class="tag">Memoria a bordo</span>OpenVLA en int4 ocupa 7,0 GB (A12a) y CognitiveDrone pide 10 GB; un Jetson Orin NX, habitual a bordo, tiene 8 o 16 GB compartidos entre CPU, GPU y todo lo demás (B5).</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Ajuste fino">
+  <p class="num">Parte 4</p>
+  <h2>Ajustar con pocos datos y poca memoria</h2>
+  <p>LoRA, QLoRA y cuántas demostraciones hacen falta.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · LoRA en dibujo</p>
+  <h2>Congelar los pesos y aprender una corrección pequeña al lado</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 480 230" role="img" aria-label="LoRA: la entrada pasa por la matriz congelada W0 y, en paralelo, por dos matrices pequeñas A y B; las dos salidas se suman">
+        <defs><marker id="fl2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="14">
+          <rect class="box" x="10" y="95" width="60" height="40" rx="5"/><text x="40" y="120" text-anchor="middle">x</text>
+          <rect class="box-soft" x="120" y="20" width="160" height="70" rx="5"/><text x="200" y="50" text-anchor="middle">W₀ (d × k)</text><text x="200" y="70" text-anchor="middle" class="t-muted" font-size="12">congelada</text>
+          <rect class="box-accent" x="120" y="140" width="60" height="70" rx="5"/><text x="150" y="172" text-anchor="middle">A</text><text x="150" y="190" text-anchor="middle" font-size="11">r × k</text>
+          <rect class="box-accent" x="220" y="150" width="60" height="50" rx="5"/><text x="250" y="172" text-anchor="middle">B</text><text x="250" y="190" text-anchor="middle" font-size="11">d × r</text>
+          <circle cx="340" cy="115" r="16" class="box"/><text x="340" y="120" text-anchor="middle">+</text>
+          <rect class="box" x="390" y="95" width="80" height="40" rx="5"/><text x="430" y="120" text-anchor="middle">salida</text>
+        </g>
+        <g class="ln" marker-end="url(#fl2)"><path d="M70,110 C 95,110 95,55 118,55"/><path d="M70,120 C 95,120 95,175 118,175"/><path d="M180,175 L218,175"/><path d="M280,55 C 310,55 320,90 330,102"/><path d="M280,175 C 310,175 320,140 330,128"/><path d="M356,115 L388,115"/></g>
+      </svg>
+      <figcaption>Esquema de LoRA <a class="cite" data-ref="hu2022"></a>: solo \(A\) y \(B\) se entrenan. Después, \(BA\) se suma a \(W_0\) y la inferencia cuesta lo mismo que antes.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Ajustar todo un modelo exige guardar gradientes y dos momentos de Adam por cada peso: varias veces la memoria del modelo.</li>
+        <li>LoRA congela los pesos \(W_0\) y aprende una corrección de rango bajo: con GPT-3 (175B), 10 000 veces menos parámetros entrenables y 3 veces menos memoria que el ajuste completo con Adam, sin latencia añadida.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">En la práctica</span>RaceVLA ajusta OpenVLA con LoRA de rango 32 en una A100 <a class="cite" data-ref="serpiva2025"></a>; la receta por defecto de SmolVLA congela el VLM y entrena solo el experto de acciones.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · LoRA paso a paso</p>
+  <h2>Cuántos parámetros entrena LoRA</h2>
+  \[ W = W_0 + \frac{\alpha}{r}\, B A, \qquad B \in \mathbb R^{d\times r},\; A \in \mathbb R^{r\times k} \]
+  <p><strong>Notación:</strong> \(W_0\), matriz de pesos preentrenada, \(d \times k\), congelada; \(r\), rango de la corrección, \(r \ll \min(d, k)\); \(A, B\), las matrices que se entrenan; \(\alpha\), escala fija.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(B = 0\) al empezar, así que \(W = W_0\)</td><td>El modelo ajustado parte exactamente del preentrenado</td></tr>
+      <tr><td><strong>2</strong></td><td>ajuste completo: \(dk\) parámetros entrenables</td><td>Uno por entrada de \(W\)</td></tr>
+      <tr><td><strong>3</strong></td><td>LoRA: \(dr + rk = r(d + k)\)</td><td>Las entradas de \(B\) y de \(A\)</td></tr>
+      <tr><td><strong>4</strong></td><td>fracción \(= r(d+k)/(dk)\)</td><td>Cociente de los pasos 3 y 2</td></tr>
+      <tr><td><strong>5</strong></td><td>la memoria del optimizador baja en la misma proporción</td><td>Adam guarda dos números por parámetro entrenable</td></tr>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:6px">
+    <div class="aparte"><span class="rotulo">Ejemplo con SmolVLA</span><p>Una proyección de atención de su VLM es de \(960 \times 960\) (<code>ajuste_smolvla.py</code>). Con \(r = 32\): \(32 \times 1920 = 61\,440\) parámetros frente a \(921\,600\), un 6,7 %. Con \(r = 8\), un 1,7 %.</p></div>
+    <div class="aparte"><span class="rotulo">QLoRA</span><p>Guarda los pesos congelados en 4 bits <a class="cite" data-ref="dettmers2023"></a>: \(65 \cdot 10^9 \times 0{,}5\) bytes \(\approx 32{,}5\) GB. Con adaptadores en 16 bits y optimizadores paginados, un modelo de 65B se ajusta en una GPU de 48 GB.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · cuántos datos</p>
+  <h2>De 1 a 200 demostraciones, según quién lo diga</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Fuente</th><th>Demostraciones</th><th>Resultado</th></tr></thead>
+        <tbody>
+          <tr><td>RDT-1B <a class="cite" data-ref="liu2025"></a></td><td class="n">1–5</td><td>aprende habilidades nuevas</td></tr>
+          <tr><td>Gemini Robotics <a class="cite" data-ref="gemini2025"></a></td><td class="n">≤ 100</td><td>&gt; 70 % en 7 de 8 tareas</td></tr>
+          <tr><td>Gemini Robotics On-Device <a class="cite" data-ref="deepmind2025"></a></td><td class="n">50–100</td><td>afirmación de la empresa</td></tr>
+          <tr><td>SmolVLA, guía de LeRobot <a class="cite" data-ref="lerobot2025"></a></td><td class="n">≈ 50</td><td>25 no bastaron; 20 000 pasos, unas 4 h en una A100</td></tr>
+          <tr><td>RaceVLA <a class="cite" data-ref="serpiva2025"></a></td><td class="n">200</td><td>LoRA de rango 32 en una A100</td></tr>
+          <tr><td>GR00T N1 <a class="cite" data-ref="nvidia2025"></a></td><td class="n">10 % de los datos</td><td>42,6 % frente a 76,8 % con todos</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Por qué no cuadran</span>«Una demostración» no es una unidad fija: depende de la duración, de lo parecida que sea la tarea a las del preentrenamiento y de lo que se cuente como éxito. Las cifras bajas suelen venir de tareas cercanas a las ya vistas.</div>
+      <div class="callout clave"><span class="tag">Receta por defecto de SmolVLA</span>VLM congelado y solo el experto de acciones (unos 100 M parámetros) y la proyección del estado entrenables. Es lo que usa el experimento de la parte 6.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="World models">
+  <p class="num">Parte 5</p>
+  <h2>VLAs que imaginan y VLAs seguros</h2>
+  <p>World models dentro del VLA y bancos de prueba de seguridad.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · predecir para actuar</p>
+  <h2>Predecir el futuro (o algo de él) como tarea auxiliar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>WorldVLA</strong> (preprint) <a class="cite" data-ref="cen2025"></a>: un único modelo autorregresivo que genera acciones e imágenes futuras. Frente al mismo modelo solo de acciones, 4 puntos más de éxito al agarrar en LIBERO; el world model reduce un 10 % la distancia FVD del vídeo predicho.</li>
+        <li><strong>DreamVLA</strong> (preprint) <a class="cite" data-ref="zhang2025"></a>: predice un resumen compacto del futuro (dinámica, profundidad y semántica) en vez de imágenes enteras; 76,7 % de éxito en robots reales y 4,44 de longitud media en CALVIN.</li>
+        <li><strong>UniVLA</strong> <a class="cite" data-ref="bu2025"></a>: acciones latentes aprendidas de vídeo; supera a OpenVLA con menos de 1/20 del cómputo de preentrenamiento y 1/10 de los datos de ajuste.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Estos modelos usan la predicción como señal de entrenamiento, no para planificar ni para mantener un belief. Un VLA cuyo latente se entrene como el de A8a (predecir observaciones futuras bajo observabilidad parcial) y sobre el que se pueda planificar es un hueco abierto.</div>
+      <div class="callout realidad"><span class="tag">Cuidado</span>Las mejoras son de unos puntos en bancos de prueba de manipulación; LIBERO-PRO (A12a) muestra lo frágiles que pueden ser esas cifras.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Seguridad · semántica</p>
+  <h2>¿Sabe el modelo qué acciones son peligrosas para una persona?</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>ASIMOV</strong> (preprint) <a class="cite" data-ref="sermanet2025"></a>: preguntas de seguridad generadas a partir de escenas reales y de informes hospitalarios de lesiones; se mide la coincidencia con el juicio de personas. Con «constituciones» generadas automáticamente, la mejor tasa de coincidencia es del 84,3 %, por encima de no usar constitución y de las escritas a mano.</li>
+        <li>Gemini Robotics 1.5 publica una versión ampliada, ASIMOV-2.0, con subconjuntos de lesiones, restricciones y vídeo <a class="cite" data-ref="gemini2025b"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Un 84,3 % no es una garantía</span>Una de cada seis decisiones de seguridad discrepa de las personas. Para un dron, la seguridad física (no chocar, no entrar en una zona prohibida) no puede depender de esto: va en un filtro con garantías (A14).</div>
+      <div class="callout clave"><span class="tag">Dos capas</span>El VLM juzga lo semántico (qué es peligroso); un filtro verificable impone lo físico (qué no se puede hacer). Es el mismo reparto que el LLM y el verificador de A11.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 6 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 6</p>
+  <h2>Ajustar SmolVLA para que un dron vaya adonde dice la orden</h2>
+  <p>Un VLA preentrenado frente a una política pequeña desde cero, con 200 y 1000 demostraciones y un color nuevo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>Una cámara cenital, tres objetos y «fly to the red object»</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 300 230" role="img" aria-label="Escena de ejemplo: zona de 20 por 20 metros vista desde arriba con tres discos de colores y el dron, que tiene que ir al del color pedido">
+        <rect x="40" y="10" width="200" height="200" class="box-soft"/>
+        <circle cx="90" cy="60" r="10" fill="#d81b1b"/><circle cx="190" cy="150" r="10" fill="#1aa62a"/><circle cx="170" cy="50" r="10" fill="#e6c619"/>
+        <circle cx="70" cy="180" r="4" class="fill-ink3"/>
+        <path d="M70,180 L88,72" class="ln-accent ln-dash" stroke-width="2"/>
+        <text x="104" y="46" font-size="12" class="t-muted">objetivo</text>
+        <text x="40" y="226" font-size="12" class="t-muted">«fly to the red object»</text>
+      </svg>
+      <figcaption>Esquema de una escena: el dron (gris) tiene que acabar junto al objeto del color pedido.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Escena:</strong> 20 × 20 m con tres discos de 1 m de radio y colores distintos (rojo, verde, azul, amarillo). Imagen cenital de 256 × 256.</li>
+        <li><strong>Dron:</strong> sigue la velocidad pedida con una constante de tiempo de 0,3 s; acción \((v_x, v_y)\) a 10 Hz, en trozos de 1 s de los que se ejecuta la mitad.</li>
+        <li><strong>Experto:</strong> recto al objeto, con ganancia proporcional y 3 m/s como máximo; su acción solo depende de la posición. Demostraciones con ruido en la acción ejecutada.</li>
+        <li><strong>Éxito:</strong> acabar a menos de 1,5 m del objeto pedido tras 12 s. El amarillo nunca es el objetivo en las demostraciones.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · qué se compara</p>
+  <h2>El mismo problema, con y sin un VLM preentrenado</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Política</th><th>Qué se entrena</th><th>Entradas</th></tr></thead>
+      <tbody>
+        <tr><td>SmolVLA base</td><td>nada (control: su salida es la de un brazo)</td><td>imagen, orden, posición</td></tr>
+        <tr><td>SmolVLA ajustado</td><td>experto de acciones y proyección del estado, 100 M de 450 M, con el VLM congelado; 4000 pasos de lote 16</td><td>imagen, orden en inglés, posición</td></tr>
+        <tr><td>Política pequeña</td><td>todo desde cero, 1,12 M: CNN con canales de coordenadas y FiLM (la palabra del color modula cada capa); 8000 pasos de lote 64</td><td>imagen a 64 × 64, color, posición</td></tr>
+        <tr><td>Ablación</td><td>la política pequeña con 200 demostraciones</td><td>además, la velocidad</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="aparte"><span class="rotulo">Por qué solo la posición</span><p>Con la velocidad en la entrada, durante la aproximación la acción del experto apunta casi igual que la velocidad, y una red puede aprender a copiarla en vez de mirar la imagen: es la confusión causal de la imitación (A10). La ablación lo mide.</p></div>
+    <p class="xsmall muted">Cada política se evalúa en las mismas 100 escenas con color visto y 100 con el amarillo; una semilla por condición. El experto acierta en 100 % y 100 %. <code>ajuste_smolvla.py</code>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · resultados</p>
+  <h2>Con 1000 demostraciones, la política pequeña acierta el 95 % y SmolVLA el 63 %; con el amarillo, ninguna</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Éxito (distancia final mediana)</th><th>Color visto</th><th>Amarillo</th></tr></thead>
+          <tbody>
+            <tr><td>SmolVLA base, sin ajustar</td><td class="n">0 % (55,9 m)</td><td class="n">—</td></tr><tr><td>SmolVLA ajustado, 200 demostraciones</td><td class="n">24 % (4,4 m)</td><td class="n">5 % (7,0 m)</td></tr><tr><td>Política pequeña, 200 demostraciones</td><td class="n">38 % (1,9 m)</td><td class="n">0 % (49,0 m)</td></tr><tr><td>SmolVLA ajustado, 1000 demostraciones</td><td class="n">63 % (0,9 m)</td><td class="n">6 % (7,7 m)</td></tr><tr><td>Política pequeña, 1000 demostraciones</td><td class="n">95 % (0,2 m)</td><td class="n">0 % (34,2 m)</td></tr><tr><td>Pequeña con velocidad, 200 demostraciones</td><td class="n">29 % (2,9 m)</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Azar: 1/3 si el dron acabara junto a un objeto cualquiera.</p>
+      <div class="callout clave"><span class="tag">Lo que el preentrenamiento no da gratis</span>El VLM congelado representa «yellow», pero el experto de acciones solo aprendió las palabras de las demostraciones. Para generalizar hacen falta demostraciones con lenguaje variado o ajustar también el VLM.</div>
+    </div>
+    <div class="stack">
+      <ul><li><strong>Color visto:</strong> con 200 demostraciones, SmolVLA ajustado 24 % y la pequeña 38 %; con 1000, 63 % y 95 %. En una tarea así de concreta, una red de 1,12 M entrenada desde cero aprende antes que un VLA con el VLM congelado y 4000 pasos de ajuste.</li><li><strong>Amarillo, que nunca fue objetivo:</strong> SmolVLA (1000 demostraciones) acaba junto al amarillo en el 6 % de los vuelos y junto a otro objeto en el 53 %: aprendió a ir a un objeto, no qué palabra corresponde a cada uno. La pequeña no tiene nada que hacer con un color que nunca vio y se aleja (34,2 m de mediana).</li><li><strong>Con la velocidad en la entrada</strong> (200 demostraciones): del 38 % al 29 %, del orden de lo que varía con una semilla.</li></ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · coste</p>
+  <h2>Ajustar SmolVLA cuesta 16,9 minutos y 4,4 GiB; la política pequeña, 1,1 minutos</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>RTX 4060 Ti</th><th>SmolVLA ajustado</th><th>Política pequeña</th></tr></thead>
+        <tbody>
+          <tr><td>Parámetros entrenables</td><td class="n">100 M</td><td class="n">1,12 M</td></tr>
+          <tr><td>Tiempo por paso de entrenamiento</td><td class="n">0,25 s (lote 16)</td><td class="n">8,3 ms (lote 64)</td></tr>
+          <tr><td>Ajuste completo</td><td class="n">16,9 min</td><td class="n">1,1 min</td></tr>
+          <tr><td>Memoria máxima al ajustar</td><td class="n">4,4 GiB</td><td class="n">—</td></tr>
+          <tr><td>Un trozo de acciones (lote 1)</td><td class="n">105 ms</td><td class="n">&lt; 1 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <p>El ajuste cabe en una GPU de consumo: 4,4 GiB con el VLM congelado y bfloat16. Un trozo de acciones tarda 105 ms: con trozos de 1 s de los que se ejecuta la mitad, sobra tiempo; para mandar a 50 Hz sin trozos, no.</p>
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Una tarea sencilla y totalmente observable, imágenes sintéticas, órdenes en inglés, una semilla y unos miles de pasos de ajuste, por debajo de los 20 000 que pone de ejemplo la guía de LeRobot. Mide lo que da un ajuste corto en una GPU de consumo, no el techo de SmolVLA.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Generalistas que aprenden de su experiencia, en cuerpos cada vez más distintos</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">HECHO</span><h3>Dos sistemas</h3><p>Un modelo lento que interpreta y uno rápido que actúa, con frecuencias de 7–10 Hz y 50–200 Hz <a class="cite" data-ref="nvidia2025,gemini2025,figure2025"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Datos de todas partes y RL</h3><p>Casi todos los datos de otros robots, de la web o sintéticos <a class="cite" data-ref="pi2025,nvidia2025"></a>, y RL sobre el propio VLA <a class="cite" data-ref="pi2025b"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Drones</h3><p>VLAs que piensan en tierra a 4–10 Hz y se evalúan poco <a class="cite" data-ref="serpiva2025,lykov2025"></a>; ninguno con belief ni a bordo.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>Los VLA de 2025–2026 separan un sistema lento que entiende de uno rápido que actúa y aprenden de muchos cuerpos; en drones, hoy deciden despacio, en tierra o en simulación. Ajustar uno pequeño es barato (16,9 min en una GPU de consumo), pero en nuestra tarea no gana a una red específica y no generaliza a una palabra nueva sin datos que la cubran.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Un VLA pequeño como sistema lento de un dron que busca</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Qué haría:</strong> leer la orden y la cámara y proponer el siguiente punto de paso o la zona que mirar, a unos Hz, como el sistema lento de GR00T N1 o de Helix.</li>
+        <li><strong>Qué no haría:</strong> estimar dónde está la persona con la información de todo el vuelo. Un VLA decide con la imagen actual; el belief (A7a) o el latente de un world model (A8a) tiene que ir aparte o dentro, y eso no está resuelto.</li>
+        <li><strong>Con qué datos:</strong> la pirámide de GR00T N1 adaptada: simulador con expertos privilegiados, algunos datos reales públicos y un VLM preentrenado.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cómo se condiciona un VLA a un belief explícito (un mapa de probabilidad o un latente recurrente) para que decida bien cuando el objetivo no está a la vista, y cuánto mejora frente a un VLA que solo ve la imagen actual?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> 105 ms por trozo de SmolVLA en tu GPU. <strong>Observabilidad parcial:</strong> sin memoria. <strong>Sim-to-real:</strong> imágenes sintéticas frente a reales. <strong>Cómputo:</strong> 4,4 GiB para ajustar, 100 M parámetros entrenables.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A12b</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Los VLA de 2025 separan un sistema lento (7–10 Hz, cientos de ms) y uno rápido (50–200 Hz) que genera trozos o sigue un latente.</li>
+    <li>Se entrenan con datos de muchos robots: rellenando dimensiones, asignando huecos con significado o con entradas y salidas por robot.</li>
+    <li>Los VLA para drones mandan velocidades a 4–10 Hz desde una GPU en tierra o en simulación; las evaluaciones son cortas.</li>
+    <li>LoRA entrena \(r(d+k)\) parámetros en vez de \(dk\); QLoRA guarda los pesos congelados en 4 bits.</li>
+    <li>En nuestro experimento, SmolVLA ajustado acierta el 63 % frente al 95 % de una red de 1,12 M, y ninguno va al color nuevo: el preentrenamiento no sustituye a datos que cubran lo que se quiere generalizar.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Generalistas</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. GR00T N1 tiene un VLM a 10 Hz y una política de difusión a 120 Hz. ¿Por qué no un solo modelo a 120 Hz?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el VLM no admite imágenes a 120 Hz</button></li>
+        <li><button type="button">Porque la difusión necesita el VLM</button></li>
+        <li><button type="button">Porque el VLM de 1,34B no cabe en 8 ms por decisión; la política pequeña sí, y sigue lo que decide el VLM</button></li>
+        <li><button type="button">Porque el humanoide solo acepta 120 Hz</button></li>
+      </ol>
+      <p class="explain">El lento interpreta la escena y la orden; el rápido cierra el lazo con lo que haya decidido el lento.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">2. El 97,6 % de los ejemplos de la primera fase de π0.5 no son de su robot. ¿Qué aportan?</p>
+      <ol class="opts">
+        <li><button type="button">Conocimiento de objetos, escenas y tareas que generaliza a casas nuevas, aunque las acciones vengan de otros cuerpos o no haya acciones</button></li>
+        <li><button type="button">Nada: solo cuenta el 2,4 %</button></li>
+        <li><button type="button">Acciones que el robot copia tal cual</button></li>
+        <li><button type="button">Solo más velocidad de entrenamiento</button></li>
+      </ol>
+      <p class="explain">Con 104 sitios de entrenamiento, π0.5 rinde parecido a una versión entrenada en las casas de prueba.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Ajuste y cuerpos</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Una proyección de 960 × 960 con LoRA de rango 32. ¿Qué fracción de sus parámetros se entrena?</p>
+      <ol class="opts">
+        <li><button type="button">32 / 960 ≈ 3,3 %</button></li>
+        <li><button type="button">1 / 32 ≈ 3,1 %</button></li>
+        <li><button type="button">Todos</button></li>
+        <li><button type="button">32 · (960 + 960) / 960² ≈ 6,7 %</button></li>
+      </ol>
+      <p class="explain">\(B\) tiene \(960 \times 32\) parámetros y \(A\), \(32 \times 960\).</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. CrossFormer vuela un Tello sin datos de cuadricóptero: 0,82 frente a 0,68 en 3 ensayos. ¿Qué concluyes?</p>
+      <ol class="opts">
+        <li><button type="button">Que los VLA ya vuelan drones</button></li>
+        <li><button type="button">Que es un indicio, no una estimación: con 3 ensayos la diferencia cabe en el azar, y la acción de alto nivel deja la dinámica al controlador</button></li>
+        <li><button type="button">Que los datos de dron no hacen falta</button></li>
+        <li><button type="button">Que CrossFormer es peor que el modelo de un solo robot</button></li>
+      </ol>
+      <p class="explain">Para afirmar una mejora harían falta decenas de ensayos y una acción que exija la dinámica del dron.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>En tu dron</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. En el experimento, ¿qué hace SmolVLA ajustado cuando se le pide el amarillo, que nunca fue objetivo en las demostraciones?</p>
+      <ol class="opts">
+        <li><button type="button">Va al amarillo casi siempre, gracias al VLM preentrenado</button></li><li><button type="button">Casi nunca va al amarillo (6 %), pero acaba junto a otro objeto en el 53 % de los vuelos</button></li><li><button type="button">Se queda quieto</button></li><li><button type="button">Lo mismo que la política pequeña: se aleja de todos los objetos</button></li>
+      </ol>
+      <p class="explain">Aprendió a ir a un objeto, pero solo a relacionar con la imagen las palabras de las demostraciones; la política pequeña, que no tiene representación para el amarillo, se aleja (34,2 m de mediana).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tienes 200 vuelos simulados de búsqueda con un experto que conoce dónde está la persona. ¿Ajustarías un VLA o entrenarías una política pequeña? ¿Qué pondrías en la entrada para que tenga en cuenta lo ya explorado?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p>Depende de qué tenga que generalizar. Si las órdenes y los objetos son siempre los mismos, una política pequeña entrenada desde cero basta, es más barata y corre a bordo. Si hay órdenes nuevas («busca a alguien con chaqueta roja»), el VLM preentrenado puede aportar lo que no está en las demostraciones, aunque, como en el experimento, no es seguro y hay que medirlo. En los dos casos, el experto que conoce la posición de la persona es privilegiado (A6b, A10): la política no puede copiarlo sin saber dónde ha mirado, así que la entrada tiene que incluir un belief (el mapa de probabilidad de A7a como imagen, o un latente recurrente de A8a); sin eso, la política aprende a ir a sitios que no puede justificar. Lo mediría con éxito y tiempo de búsqueda en escenas nuevas, y con órdenes nuevas para el VLA.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · PREPRINT</span>
+      <h3>GR00T N1 <a class="cite" data-ref="nvidia2025"></a></h3>
+      <p><strong>Lee:</strong> los dos sistemas y la pirámide de datos.</p>
+      <p><strong>Responde:</strong> ¿qué parte de la pirámide tendrías para un dron?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · CORL</span>
+      <h3>CrossFormer <a class="cite" data-ref="doshi2024"></a></h3>
+      <p><strong>Lee:</strong> las cabezas de acción y el experimento del cuadricóptero.</p>
+      <p><strong>Responde:</strong> ¿qué cambiaría con acciones de bajo nivel?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · PREPRINT</span>
+      <h3>π0.5 <a class="cite" data-ref="pi2025"></a></h3>
+      <p><strong>Lee:</strong> la mezcla de datos y el estudio con el número de casas.</p>
+      <p><strong>Responde:</strong> ¿cuántos entornos distintos necesitaría tu dron?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Gemini Robotics <a class="cite" data-ref="gemini2025"></a>; π*0.6 <a class="cite" data-ref="pi2025b"></a>; LoRA <a class="cite" data-ref="hu2022"></a>; RaceVLA <a class="cite" data-ref="serpiva2025"></a>; WorldVLA <a class="cite" data-ref="cen2025"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Ajuste fino ligero de un VLA con datos del simulador</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
+        <li><strong>Simulador y experto:</strong> escenas, cámara cenital y demostraciones con ruido.</li>
+        <li><strong>SmolVLA base</strong> en la tarea, sin ajustar.</li>
+        <li><strong>Ajuste fino</strong> del experto de acciones con 200 y 1000 demostraciones.</li>
+        <li><strong>Política pequeña</strong> desde cero con los mismos datos.</li>
+        <li><strong>Generalizar:</strong> un color que nunca fue objetivo.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Cuánto aporta el VLM preentrenado frente a una política desde cero, con pocos y con más datos, y a qué coste de memoria y tiempo.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Una GPU con 8 GB o más para el ajuste (memoria máxima medida: 4,4 GiB; todo el script tardó 42 minutos en una RTX 4060 Ti); en CPU solo es práctica la prueba corta.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/ajuste_smolvla.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-nvidia2025">NVIDIA: Bjorck, J., Castañeda, F., Cherniadev, N., et al. (2025). GR00T N1: An open foundation model for generalist humanoid robots. <a href="https://arxiv.org/abs/2503.14734">arXiv:2503.14734</a> (informe técnico; preprint)</li>
+    <li id="ref-gemini2025">Gemini Robotics Team, Google DeepMind (2025). Gemini Robotics: Bringing AI into the physical world. <a href="https://arxiv.org/abs/2503.20020">arXiv:2503.20020</a> (informe técnico; preprint)</li>
+    <li id="ref-pi2025">Physical Intelligence: Black, K., Brown, N., Darpinian, J., et al. (2025). π0.5: A vision-language-action model with open-world generalization. <a href="https://arxiv.org/abs/2504.16054">arXiv:2504.16054</a> (preprint)</li>
+    <li id="ref-serpiva2025">Serpiva, V., Lykov, A., Myshlyaev, A., Khan, M. H., Abdulkarim, A. A., Sautenkov, O., Tsetserukou, D. (2025). RaceVLA: VLA-based racing drone navigation with human-like behaviour. <a href="https://arxiv.org/abs/2503.02572">arXiv:2503.02572</a> (preprint)</li>
+    <li id="ref-hu2022">Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., Chen, W. (2021). LoRA: Low-rank adaptation of large language models. <a href="https://arxiv.org/abs/2106.09685">arXiv:2106.09685</a></li>
+    <li id="ref-dettmers2023">Dettmers, T., Pagnoni, A., Holtzman, A., Zettlemoyer, L. (2023). QLoRA: Efficient finetuning of quantized LLMs. <span class="venue">NeurIPS 2023</span>. <a href="https://arxiv.org/abs/2305.14314">arXiv:2305.14314</a></li>
+    <li id="ref-doshi2024">Doshi, R., Walke, H., Mees, O., Dasari, S., Levine, S. (2024). Scaling cross-embodied learning: One policy for manipulation, navigation, locomotion and aviation. <span class="venue">CoRL 2024, PMLR 270</span>, 496–512. <a href="https://arxiv.org/abs/2408.11812">arXiv:2408.11812</a></li>
+    <li id="ref-wang2024">Wang, L., Chen, X., Zhao, J., He, K. (2024). Scaling proprioceptive-visual learning with heterogeneous pre-trained transformers. <span class="venue">NeurIPS 2024</span>. <a href="https://arxiv.org/abs/2409.20537">arXiv:2409.20537</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="9">
+    <li id="ref-liu2025">Liu, S., Wu, L., Li, B., Tan, H., Chen, H., Wang, Z., Xu, K., Su, H., Zhu, J. (2025). RDT-1B: A diffusion foundation model for bimanual manipulation. <span class="venue">ICLR 2025</span>. <a href="https://arxiv.org/abs/2410.07864">arXiv:2410.07864</a></li>
+    <li id="ref-lykov2025">Lykov, A., Serpiva, V., Khan, M. H., Sautenkov, O., Myshlyaev, A., Tadevosyan, G., Yaqoot, Y., Tsetserukou, D. (2025). CognitiveDrone: A VLA model and evaluation benchmark for real-time cognitive task solving and reasoning in UAVs. <a href="https://arxiv.org/abs/2503.01378">arXiv:2503.01378</a> (preprint)</li>
+    <li id="ref-sautenkov2025">Sautenkov, O., Yaqoot, Y., Lykov, A., et al. (2025). UAV-VLA: Vision-language-action system for large scale aerial mission generation. <span class="venue">HRI 2025</span> (según el comentario de arXiv). <a href="https://arxiv.org/abs/2501.05014">arXiv:2501.05014</a></li>
+    <li id="ref-cen2025">Cen, J., Yu, C., Yuan, H., Jiang, Y., Huang, S., Guo, J., Li, X., Song, Y., et al. (2025). WorldVLA: Towards autoregressive action world model. <a href="https://arxiv.org/abs/2506.21539">arXiv:2506.21539</a> (preprint)</li>
+    <li id="ref-zhang2025">Zhang, W., Liu, H., Qi, Z., Wang, Y., Yu, X., Zhang, J., Dong, R., He, J., et al. (2025). DreamVLA: A vision-language-action model dreamed with comprehensive world knowledge. <a href="https://arxiv.org/abs/2507.04447">arXiv:2507.04447</a> (preprint)</li>
+    <li id="ref-pi2025b">Physical Intelligence: Amin, A., Aniceto, R., Balakrishna, A., et al. (2025). π*0.6: A VLA that learns from experience. <a href="https://arxiv.org/abs/2511.14759">arXiv:2511.14759</a> (preprint)</li>
+    <li id="ref-gemini2025b">Gemini Robotics Team, Google DeepMind (2025). Gemini Robotics 1.5: Pushing the frontier of generalist robots with advanced embodied reasoning, thinking, and motion transfer. <a href="https://arxiv.org/abs/2510.03342">arXiv:2510.03342</a> (informe técnico; preprint)</li>
+    <li id="ref-figure2025">Figure AI. Helix: A vision-language-action model for generalist humanoid control. Página de la empresa, <a href="https://www.figure.ai/news/helix">figure.ai/news/helix</a> (consultada el 7 de noviembre de 2026; afirmaciones de la empresa)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="17">
+    <li id="ref-bu2025">Bu, Q., Yang, Y., Cai, J., Gao, S., Ren, G., Yao, M., Luo, P., Li, H. (2025). UniVLA: Learning to act anywhere with task-centric latent actions. <span class="venue">RSS 2025</span> (según el comentario de arXiv). <a href="https://arxiv.org/abs/2505.06111">arXiv:2505.06111</a></li>
+    <li id="ref-deepmind2025">Google DeepMind. Gemini Robotics On-Device brings AI to local robotic devices. Blog de la empresa, <a href="https://deepmind.google/discover/blog/gemini-robotics-on-device-brings-ai-to-local-robotic-devices/">deepmind.google</a> (consultado el 7 de noviembre de 2026; afirmaciones de la empresa)</li>
+    <li id="ref-lerobot2025">Hugging Face. SmolVLA. Documentación de LeRobot, <a href="https://huggingface.co/docs/lerobot/smolvla">huggingface.co/docs/lerobot/smolvla</a> (consultada el 7 de noviembre de 2026; recomendaciones del proyecto)</li>
+    <li id="ref-sermanet2025">Sermanet, P., Majumdar, A., Irpan, A., Kalashnikov, D., Sindhwani, V. (2025). Generating robot constitutions &amp; benchmarks for semantic safety. <a href="https://arxiv.org/abs/2503.08663">arXiv:2503.08663</a> (preprint)</li>
+  </ol>
+</section>
+
+</main>
+<aside id="glosario" hidden>
+<h3>Varios cuerpos</h3>
+<p>Parte 2: cómo comparte una política robots con acciones distintas.</p>
+<dl>
+<dt>\(r\) (robot)</dt><dd data-hojas="10">Índice del robot en la hoja del relleno (en la de LoRA, \(r\) es el rango).</dd>
+<dt>\(a\)</dt><dd data-hojas="10">Acción del robot.</dd>
+<dt>\(d_r\)</dt><dd data-hojas="10">Dimensión de la acción del robot \(r\).</dd>
+<dt>\(D\)</dt><dd data-hojas="10">Dimensión común de acción que usa el modelo, \(D \ge d_r\).</dd>
+<dt>\(\tilde a\)</dt><dd data-hojas="10">Acción rellenada con ceros hasta \(D\) dimensiones.</dd>
+<dt>\(m_j\)</dt><dd data-hojas="10">Máscara de la pérdida: 1 en las dimensiones reales, 0 en las de relleno.</dd>
+</dl>
+<h3>Drones</h3>
+<p>Parte 3.</p>
+<dl>
+<dt>\(v_x, v_y, v_z, \omega\)</dt><dd data-hojas="13">Velocidades lineales y de guiñada que manda un VLA de dron.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="14">Tiempo que tarda el VLA en decidir (s).</dd>
+<dt>\(v\)</dt><dd data-hojas="14">Velocidad del dron (m/s).</dd>
+<dt>\(e\)</dt><dd data-hojas="14">Desplazamiento de la escena entre la imagen y la acción, \(e = v\,\delta\) (m).</dd>
+</dl>
+<h3>LoRA</h3>
+<p>Parte 4: ajuste fino con pocos parámetros.</p>
+<dl>
+<dt>\(W_0\)</dt><dd data-hojas="17">Matriz de pesos preentrenada, de tamaño \(d \times k\), congelada.</dd>
+<dt>\(d, k\)</dt><dd data-hojas="17">Dimensiones de \(W_0\) (salida y entrada).</dd>
+<dt>\(r\) (rango)</dt><dd data-hojas="17">Rango de la corrección de LoRA, \(r \ll \min(d, k)\).</dd>
+<dt>\(A, B\)</dt><dd data-hojas="17">Matrices que se entrenan: \(B\) de \(d \times r\) y \(A\) de \(r \times k\); la corrección es \(BA\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="17">Escala fija que multiplica la corrección de LoRA.</dd>
+<dt>\(W\)</dt><dd data-hojas="17">Pesos efectivos, \(W = W_0 + BA\) (con la escala).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>VLA</dt><dd data-hojas="1">Vision-language-action model: modelo de visión, lenguaje y acción.</dd>
+<dt>VLM</dt><dd data-hojas="3">Vision-language model: modelo de visión y lenguaje.</dd>
+<dt>LoRA</dt><dd data-hojas="1">Low-rank adaptation: ajuste con una corrección de rango bajo.</dd>
+<dt>QLoRA</dt><dd data-hojas="1">LoRA sobre un modelo cuantizado a 4 bits.</dd>
+<dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>FiLM</dt><dd data-hojas="24">Feature-wise linear modulation: la orden escala y desplaza cada canal de la red.</dd>
+<dt>CNN</dt><dd data-hojas="24">Convolutional neural network: red convolucional.</dd>
+<dt>HPT</dt><dd data-hojas="4">Heterogeneous pre-trained transformers.</dd>
+<dt>RDT</dt><dd data-hojas="1">Robotics diffusion transformer (RDT-1B).</dd>
+<dt>ASIMOV</dt><dd data-hojas="21">Banco de pruebas de seguridad semántica de Google DeepMind.</dd>
+<dt>int8</dt><dd data-hojas="13">Pesos cuantizados a enteros de 8 bits.</dd>
+<dt>bf16</dt><dd data-hojas="26">bfloat16: coma flotante de 16 bits con el rango de fp32.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
+</body>
+</html>
