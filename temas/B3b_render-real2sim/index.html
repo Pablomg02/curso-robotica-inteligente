@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B3b · Render y real2sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="B3b" data-deck-title="Render y real2sim · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 2 · Jornada 14 · Curso de robótica inteligente</p>
+  <h1>Render y real2sim</h1>
+  <p class="subtitle">Cómo fabricar las imágenes que verá una política entrenada en simulación: motores gráficos y aleatorización de dominio, campos de radiancia (NeRF) y Gaussian Splatting, y la cadena que convierte un vídeo de un sitio real en un mundo donde volar.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A4b (cámaras), B1, B3a</span>
+    <span><b>Prepara</b> B6, B7, A8b (world models de vídeo), A12</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de B3b</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar qué da un motor gráfico, qué cuesta y cuándo basta con aleatorizar la apariencia.</li>
+    <li>Derivar el render volumétrico de un campo de radiancia y su cuadratura, y saber qué significa su profundidad.</li>
+    <li>Describir la representación de 3D Gaussian Splatting, derivar la proyección de una gaussiana y explicar por qué rasteriza en tiempo real.</li>
+    <li>Montar una cadena real2sim: captura, poses, reconstrucción, alineación, colisiones y sensores.</li>
+    <li>Juzgar dónde deja de ser fiable una escena reconstruida y cómo afecta eso a entrenar y evaluar políticas.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Una política que mira solo transfiere si lo que mira se parece a la realidad</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En B1 viste que el render es el cuello de botella de la simulación masiva, y en B3a, que la cámara añade ruido, desenfoque y obturador.</li>
+        <li>Hay tres estrategias para que las imágenes simuladas sirvan: hacerlas <strong>fotorrealistas</strong> (motores gráficos), hacerlas <strong>variadas</strong> (aleatorización de dominio) o <strong>copiarlas de la realidad</strong> (real2sim con campos de radiancia).</li>
+        <li>Desde 2023, Gaussian Splatting permite reconstruir un sitio real a partir de un vídeo y renderizarlo en tiempo real: el mundo de entrenamiento puede ser el sitio donde volarás.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model que predice observaciones es, en el fondo, un renderizador aprendido. Este tema te da el renderizador clásico y el reconstruido, los dos patrones contra los que compararlo (A8b).</div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 250" role="img" aria-label="Tres estrategias para imágenes simuladas">
+          <rect x="10" y="20" width="155" height="150" rx="10" class="box"/>
+          <text x="87" y="48" text-anchor="middle" class="t-bold">Fotorrealismo</text>
+          <text x="87" y="74" text-anchor="middle" font-size="13">Unreal, Unity,</text>
+          <text x="87" y="92" text-anchor="middle" font-size="13">Isaac Sim (RTX)</text>
+          <text x="87" y="128" text-anchor="middle" class="t-muted" font-size="12">caro de construir</text>
+          <text x="87" y="146" text-anchor="middle" class="t-muted" font-size="12">y de renderizar</text>
+          <rect x="182" y="20" width="155" height="150" rx="10" class="box-accent"/>
+          <text x="259" y="48" text-anchor="middle" class="t-bold">Aleatorización</text>
+          <text x="259" y="74" text-anchor="middle" font-size="13">texturas, luces,</text>
+          <text x="259" y="92" text-anchor="middle" font-size="13">cámara al azar</text>
+          <text x="259" y="128" text-anchor="middle" class="t-muted" font-size="12">barata; la realidad</text>
+          <text x="259" y="146" text-anchor="middle" class="t-muted" font-size="12">es «una variante más»</text>
+          <rect x="354" y="20" width="155" height="150" rx="10" class="box-tesis"/>
+          <text x="431" y="48" text-anchor="middle" class="t-bold">Real2sim</text>
+          <text x="431" y="74" text-anchor="middle" font-size="13">NeRF, Gaussian</text>
+          <text x="431" y="92" text-anchor="middle" font-size="13">Splatting</text>
+          <text x="431" y="128" text-anchor="middle" class="t-muted" font-size="12">realista donde se</text>
+          <text x="431" y="146" text-anchor="middle" class="t-muted" font-size="12">capturó, estático</text>
+          <text x="260" y="212" text-anchor="middle" class="t-accent" font-size="14">se combinan: escena real + aleatorización + modelo de sensor</text>
+        </svg>
+        <figcaption>Las tres estrategias no se excluyen; la combinación es lo habitual en 2025–2026.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De la aleatorización a las escenas reconstruidas</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2016</span>Structure-from-Motion robusto y general (COLMAP): las poses de cámara a partir de fotos <a class="cite" data-ref="schonberger2016"></a>.</div>
+    <div class="ev"><span class="yr">2017</span>Aleatorización de dominio: un detector entrenado solo con imágenes sintéticas aleatorias funciona en fotos reales <a class="cite" data-ref="tobin2017"></a>. CAD2RL vuela un dron en interiores reales entrenado solo en simulación <a class="cite" data-ref="sadeghi2017"></a>.</div>
+    <div class="ev"><span class="yr">2019</span>FlightGoggles: escenas por fotogrametría para drones (B1) <a class="cite" data-ref="guerra2019"></a>.</div>
+    <div class="ev"><span class="yr">2020–2022</span>NeRF: una escena como red neuronal que se renderiza por integración volumétrica <a class="cite" data-ref="mildenhall2020"></a>. Instant-NGP la entrena en segundos con codificación hash <a class="cite" data-ref="muller2022"></a>.</div>
+    <div class="ev"><span class="yr">2023</span>3D Gaussian Splatting: millones de gaussianas que se rasterizan en tiempo real <a class="cite" data-ref="kerbl2023"></a>.</div>
+    <div class="ev"><span class="yr">2024–2026</span>Bibliotecas abiertas (gsplat) <a class="cite" data-ref="ye2025"></a>, cámaras con distorsión y obturador rodante (3DGUT) <a class="cite" data-ref="gsplat3dgut"></a>, y políticas de drones entrenadas o evaluadas en escenas de gaussianas <a class="cite" data-ref="low2025,chen2025gradnav,miao2025"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Render clásico">
+  <p class="num">Parte 1</p>
+  <h2>Motores gráficos y aleatorización</h2>
+  <p>El camino clásico: modelar el mundo a mano (o con fotogrametría) y renderizarlo con la tecnología de los videojuegos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Render clásico · cómo funciona</p>
+  <h2>Rasterizar o trazar rayos: dos formas de llegar al píxel</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Rasterizado:</strong> cada triángulo se proyecta a la pantalla y se pinta en los píxeles que cubre, con un búfer de profundidad para la oclusión. Es lo que hacen las GPU desde hace décadas: muy rápido, pero sombras, reflejos e iluminación indirecta se aproximan con trucos.</li>
+        <li><strong>Trazado de rayos y de caminos:</strong> desde cada píxel se lanzan rayos que rebotan por la escena. Física de la luz correcta (sombras, reflejos, iluminación global), con un coste mucho mayor; las GPU con núcleos RT lo hacen viable en tiempo real con pocas muestras y eliminación de ruido.</li>
+        <li><strong>Materiales físicos (PBR):</strong> albedo, rugosidad y metalicidad que responden a la luz de forma coherente. Sin buenos materiales, ni el mejor render parece real.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Según sus fabricantes</span>Unreal Engine 5: Nanite, geometría virtualizada que importa directamente escaneos de fotogrametría, y Lumen, iluminación global dinámica con «rebotes infinitos» <a class="cite" data-ref="ue5docs"></a>. Isaac Sim: sensores RTX que trazan rayos, de modo que un LiDAR ve los retornos de superficies transparentes o reflectantes <a class="cite" data-ref="isaacrtx"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">El coste oculto</span>El render es lo de menos: lo caro es construir el mundo. Modelos 3D, materiales y luces de calidad para un bosque, un almacén o una ciudad llevan semanas de trabajo de artistas o una fotogrametría cuidadosa.</div>
+      <div class="callout realidad"><span class="tag">Lo viste en B1</span>Según Dimmig et al., un detector de objetos no detectó una lata renderizada en Gazebo Classic (OGRE) y sí en Flightmare (Unity) <a class="cite" data-ref="dimmig2025"></a>. La fidelidad visual cambia el resultado de la percepción.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Elegir motor por lo bonito que se ve el vídeo. Lo que importa es si la red entrenada con él funciona con imágenes reales, y eso solo se mide en datos reales.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aleatorización de dominio</p>
+  <h2>Si no puedes copiar la realidad, haz que sea una variante más</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Idea: en vez de un render fiel, entrenar con muchos renders deliberadamente irreales (texturas, colores, luces, cámara, distractores aleatorios). Si la variedad es grande, el mundo real cae dentro de la distribución de entrenamiento.</p>
+      <div class="callout realidad"><span class="tag">Tobin et al. (2017)</span>Un detector entrenado solo con imágenes del renderizador de MuJoCo con texturas aleatorias y nada realistas localiza objetos reales con unos 1,5 cm de precisión; con él, un robot Fetch cogió el objeto en 38 de 40 intentos, también entre distractores <a class="cite" data-ref="tobin2017"></a>.</div>
+      <div class="callout realidad"><span class="tag">CAD2RL (2017)</span>Una política de evitación de colisiones a partir de una sola imagen, entrenada solo con modelos CAD y un render muy aleatorizado, voló drones Parrot Bebop reales por pasillos con menos colisiones que la referencia. Una puerta de cristal reflectante la engañó y el dron chocó <a class="cite" data-ref="sadeghi2017"></a>.</div>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Por qué funciona (y cuándo no)</summary>
+        <p class="small">Entrenas minimizando el riesgo esperado \(\bar{\mathcal L} = \mathbb E_{\xi\sim p}[\mathcal L(\theta;\xi)]\) sobre la distribución de parámetros visuales \(p(\xi)\). Si el mundo real \(\xi^\star\) se comporta como una muestra más de \(p\), la desigualdad de Markov (con \(\mathcal L \ge 0\)) da \(P\big(\mathcal L(\theta;\xi) &gt; k\bar{\mathcal L}\big) \le 1/k\): un riesgo medio bajo hace improbable que el real sea alto.</p>
+        <p class="small">Falla cuando la realidad tiene algo que ninguna variante tiene (reflejos, desenfoque, ruido de sensor, una geometría distinta): lo que no se aleatoriza no se aprende a ignorar. Y cuanto más ancha la distribución, más capacidad y más datos necesita la red.</p>
+      </details>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Una política con memoria puede «identificar» el dominio durante el episodio (es un problema de belief sobre \(\xi\)): eso es bueno si se adapta (A9a) y malo si memoriza el simulador. B7 lo trata a fondo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Campos de radiancia">
+  <p class="num">Parte 2</p>
+  <h2>Campos de radiancia: NeRF</h2>
+  <p>Una escena como función que da densidad y color en cada punto, aprendida a partir de fotos con poses conocidas y renderizada integrando a lo largo de cada rayo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">NeRF · render volumétrico</p>
+  <h2>El color de un píxel es una integral a lo largo de su rayo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Una red \(F_\Theta(\mathbf x, \mathbf d) \to (\mathbf c, \sigma)\) da color (dependiente de la dirección) y densidad (independiente) en cada punto. El color del rayo \(\mathbf r(t) = \mathbf o + t\mathbf d\) es <a class="cite" data-ref="mildenhall2020"></a></p>
+      \[ C(\mathbf r) = \int_{t_n}^{t_f} T(t)\,\sigma(\mathbf r(t))\,\mathbf c(\mathbf r(t), \mathbf d)\,dt, \]
+      \[ T(t) = \exp\Big(-\int_{t_n}^{t}\sigma(\mathbf r(s))\,ds\Big). \]
+      <p class="small">Con \(N\) tramos de longitud \(\delta_i\), la cuadratura es composición alfa:</p>
+      \[ \hat C = \sum_{i=1}^{N} T_i\,\alpha_i\,\mathbf c_i,\qquad \alpha_i = 1 - e^{-\sigma_i\delta_i},\quad T_i = \textstyle\prod_{j&lt;i}(1-\alpha_j). \]
+      <p class="small">Todo es diferenciable: con las fotos y sus poses (COLMAP), se ajusta \(\Theta\) minimizando el error de color por píxel.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: de la absorción a la cuadratura</summary>
+        <p class="small">La luz que atraviesa un medio con densidad \(\sigma\) se atenúa como \(dT/dt = -\sigma T\), de donde \(T(t) = e^{-\int\sigma}\). La probabilidad de que el rayo «termine» entre \(t\) y \(t+dt\) es \(T\sigma\,dt\): de ahí el integrando. Si \(\sigma\) y \(\mathbf c\) son constantes en un tramo, la integral exacta en ese tramo es \(T_i(1-e^{-\sigma_i\delta_i})\mathbf c_i\), y \(T_{i+1} = T_i e^{-\sigma_i\delta_i} = T_i(1-\alpha_i)\).</p>
+      </details>
+      <div class="callout clave"><span class="tag">Instant-NGP</span>Codificación hash multirresolución: en las escenas sintéticas, 29,26 dB de PSNR medio a los 5 s y 31,41 a los 15 s, frente a 31,01 de NeRF tras horas (RTX 3090) <a class="cite" data-ref="muller2022"></a>.</div>
+      <ul class="small">
+        <li><strong>Codificación posicional:</strong> \(\mathbf x\) entra como senos y cosenos de frecuencias crecientes; sin ella la red no aprende detalles finos.</li>
+        <li><strong>Muestreo jerárquico:</strong> una red «gruesa» decide dónde poner las muestras de la «fina» <a class="cite" data-ref="mildenhall2020"></a>.</li>
+        <li><strong>Coste:</strong> 1–2 días de entrenamiento por escena y unos 30 s por imagen en una V100 <a class="cite" data-ref="mildenhall2020"></a>; inservible tal cual para simular a cientos de Hz.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">NeRF · un rayo</p>
+  <h2>Muestras, transmitancia y una profundidad que no está en ninguna superficie</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Densidad, transmitancia y pesos a lo largo de un rayo">
+        <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="102" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="185" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <text x="269" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+        <text x="353" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+        <text x="436" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">5</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">6 m</text>
+        <line x1="171.4" y1="250" x2="171.4" y2="240.1" class="ln-time" stroke-width="5"/>
+        <line x1="178.6" y1="250" x2="178.6" y2="198.6" class="ln-time" stroke-width="5"/>
+        <line x1="185.8" y1="250" x2="185.8" y2="169.9" class="ln-time" stroke-width="5"/>
+        <line x1="193.0" y1="250" x2="193.0" y2="210.6" class="ln-time" stroke-width="5"/>
+        <line x1="200.2" y1="250" x2="200.2" y2="243.6" class="ln-time" stroke-width="5"/>
+        <line x1="343.9" y1="250" x2="343.9" y2="232.1" class="ln-time" stroke-width="5"/>
+        <line x1="351.1" y1="250" x2="351.1" y2="30.0" class="ln-time" stroke-width="5"/>
+        <line x1="358.3" y1="250" x2="358.3" y2="86.8" class="ln-time" stroke-width="5"/>
+        <path d="M60.0,250.0 L60.4,250.0 L60.8,250.0 L61.3,250.0 L61.7,250.0 L62.1,250.0 L62.5,250.0 L62.9,250.0 L63.3,250.0 L63.8,250.0 L64.2,250.0 L64.6,250.0 L65.0,250.0 L65.4,250.0 L65.9,250.0 L66.3,250.0 L66.7,250.0 L67.1,250.0 L67.5,250.0 L67.9,250.0 L68.4,250.0 L68.8,250.0 L69.2,250.0 L69.6,250.0 L70.0,250.0 L70.5,250.0 L70.9,250.0 L71.3,250.0 L71.7,250.0 L72.1,250.0 L72.5,250.0 L73.0,250.0 L73.4,250.0 L73.8,250.0 L74.2,250.0 L74.6,250.0 L75.1,250.0 L75.5,250.0 L75.9,250.0 L76.3,250.0 L76.7,250.0 L77.1,250.0 L77.6,250.0 L78.0,250.0 L78.4,250.0 L78.8,250.0 L79.2,250.0 L79.7,250.0 L80.1,250.0 L80.5,250.0 L80.9,250.0 L81.3,250.0 L81.7,250.0 L82.2,250.0 L82.6,250.0 L83.0,250.0 L83.4,250.0 L83.8,250.0 L84.3,250.0 L84.7,250.0 L85.1,250.0 L85.5,250.0 L85.9,250.0 L86.3,250.0 L86.8,250.0 L87.2,250.0 L87.6,250.0 L88.0,250.0 L88.4,250.0 L88.9,250.0 L89.3,250.0 L89.7,250.0 L90.1,250.0 L90.5,250.0 L90.9,250.0 L91.4,250.0 L91.8,250.0 L92.2,250.0 L92.6,250.0 L93.0,250.0 L93.5,250.0 L93.9,250.0 L94.3,250.0 L94.7,250.0 L95.1,250.0 L95.5,250.0 L96.0,250.0 L96.4,250.0 L96.8,250.0 L97.2,250.0 L97.6,250.0 L98.1,250.0 L98.5,250.0 L98.9,250.0 L99.3,250.0 L99.7,250.0 L100.1,250.0 L100.6,250.0 L101.0,250.0 L101.4,250.0 L101.8,250.0 L102.2,250.0 L102.7,250.0 L103.1,250.0 L103.5,250.0 L103.9,250.0 L104.3,250.0 L104.7,250.0 L105.2,250.0 L105.6,250.0 L106.0,250.0 L106.4,250.0 L106.8,250.0 L107.3,250.0 L107.7,250.0 L108.1,250.0 L108.5,250.0 L108.9,250.0 L109.3,250.0 L109.8,250.0 L110.2,250.0 L110.6,250.0 L111.0,250.0 L111.4,250.0 L111.9,250.0 L112.3,250.0 L112.7,250.0 L113.1,250.0 L113.5,250.0 L113.9,250.0 L114.4,250.0 L114.8,250.0 L115.2,250.0 L115.6,250.0 L116.0,250.0 L116.5,250.0 L116.9,250.0 L117.3,250.0 L117.7,250.0 L118.1,250.0 L118.5,250.0 L119.0,250.0 L119.4,250.0 L119.8,250.0 L120.2,250.0 L120.6,250.0 L121.1,250.0 L121.5,250.0 L121.9,250.0 L122.3,250.0 L122.7,250.0 L123.1,250.0 L123.6,250.0 L124.0,250.0 L124.4,250.0 L124.8,250.0 L125.2,250.0 L125.7,250.0 L126.1,250.0 L126.5,250.0 L126.9,250.0 L127.3,250.0 L127.7,250.0 L128.2,250.0 L128.6,250.0 L129.0,250.0 L129.4,250.0 L129.8,250.0 L130.3,250.0 L130.7,250.0 L131.1,250.0 L131.5,250.0 L131.9,250.0 L132.3,250.0 L132.8,250.0 L133.2,250.0 L133.6,250.0 L134.0,250.0 L134.4,250.0 L134.9,250.0 L135.3,250.0 L135.7,250.0 L136.1,250.0 L136.5,250.0 L136.9,250.0 L137.4,250.0 L137.8,250.0 L138.2,250.0 L138.6,250.0 L139.0,250.0 L139.5,250.0 L139.9,250.0 L140.3,250.0 L140.7,250.0 L141.1,250.0 L141.5,250.0 L142.0,250.0 L142.4,250.0 L142.8,250.0 L143.2,250.0 L143.6,250.0 L144.1,250.0 L144.5,250.0 L144.9,250.0 L145.3,250.0 L145.7,250.0 L146.1,250.0 L146.6,250.0 L147.0,250.0 L147.4,250.0 L147.8,250.0 L148.2,250.0 L148.7,250.0 L149.1,250.0 L149.5,250.0 L149.9,250.0 L150.3,250.0 L150.7,250.0 L151.2,250.0 L151.6,250.0 L152.0,250.0 L152.4,250.0 L152.8,250.0 L153.3,250.0 L153.7,250.0 L154.1,250.0 L154.5,250.0 L154.9,250.0 L155.3,250.0 L155.8,250.0 L156.2,250.0 L156.6,250.0 L157.0,250.0 L157.4,250.0 L157.9,250.0 L158.3,250.0 L158.7,250.0 L159.1,250.0 L159.5,250.0 L159.9,249.9 L160.4,249.9 L160.8,249.9 L161.2,249.9 L161.6,249.8 L162.0,249.8 L162.5,249.8 L162.9,249.7 L163.3,249.6 L163.7,249.6 L164.1,249.5 L164.5,249.3 L165.0,249.2 L165.4,249.0 L165.8,248.8 L166.2,248.6 L166.6,248.3 L167.1,248.0 L167.5,247.6 L167.9,247.2 L168.3,246.7 L168.7,246.1 L169.1,245.5 L169.6,244.8 L170.0,243.9 L170.4,243.0 L170.8,242.0 L171.2,240.8 L171.7,239.5 L172.1,238.1 L172.5,236.5 L172.9,234.8 L173.3,233.0 L173.7,231.0 L174.2,228.8 L174.6,226.5 L175.0,224.0 L175.4,221.4 L175.8,218.7 L176.3,215.8 L176.7,212.8 L177.1,209.7 L177.5,206.5 L177.9,203.3 L178.3,200.0 L178.8,196.6 L179.2,193.3 L179.6,190.0 L180.0,186.7 L180.4,183.6 L180.9,180.5 L181.3,177.6 L181.7,174.9 L182.1,172.3 L182.5,170.0 L182.9,168.0 L183.4,166.2 L183.8,164.7 L184.2,163.5 L184.6,162.7 L185.0,162.2 L185.5,162.0 L185.9,162.2 L186.3,162.7 L186.7,163.5 L187.1,164.7 L187.5,166.2 L188.0,168.0 L188.4,170.0 L188.8,172.3 L189.2,174.9 L189.6,177.6 L190.1,180.5 L190.5,183.6 L190.9,186.7 L191.3,190.0 L191.7,193.3 L192.1,196.6 L192.6,200.0 L193.0,203.3 L193.4,206.5 L193.8,209.7 L194.2,212.8 L194.7,215.8 L195.1,218.7 L195.5,221.4 L195.9,224.0 L196.3,226.5 L196.7,228.8 L197.2,231.0 L197.6,233.0 L198.0,234.8 L198.4,236.5 L198.8,238.1 L199.3,239.5 L199.7,240.8 L200.1,242.0 L200.5,243.0 L200.9,243.9 L201.3,244.8 L201.8,245.5 L202.2,246.1 L202.6,246.7 L203.0,247.2 L203.4,247.6 L203.9,248.0 L204.3,248.3 L204.7,248.6 L205.1,248.8 L205.5,249.0 L205.9,249.2 L206.4,249.3 L206.8,249.5 L207.2,249.6 L207.6,249.6 L208.0,249.7 L208.5,249.8 L208.9,249.8 L209.3,249.8 L209.7,249.9 L210.1,249.9 L210.5,249.9 L211.0,249.9 L211.4,250.0 L211.8,250.0 L212.2,250.0 L212.6,250.0 L213.1,250.0 L213.5,250.0 L213.9,250.0 L214.3,250.0 L214.7,250.0 L215.1,250.0 L215.6,250.0 L216.0,250.0 L216.4,250.0 L216.8,250.0 L217.2,250.0 L217.7,250.0 L218.1,250.0 L218.5,250.0 L218.9,250.0 L219.3,250.0 L219.7,250.0 L220.2,250.0 L220.6,250.0 L221.0,250.0 L221.4,250.0 L221.8,250.0 L222.3,250.0 L222.7,250.0 L223.1,250.0 L223.5,250.0 L223.9,250.0 L224.3,250.0 L224.8,250.0 L225.2,250.0 L225.6,250.0 L226.0,250.0 L226.4,250.0 L226.9,250.0 L227.3,250.0 L227.7,250.0 L228.1,250.0 L228.5,250.0 L228.9,250.0 L229.4,250.0 L229.8,250.0 L230.2,250.0 L230.6,250.0 L231.0,250.0 L231.5,250.0 L231.9,250.0 L232.3,250.0 L232.7,250.0 L233.1,250.0 L233.5,250.0 L234.0,250.0 L234.4,250.0 L234.8,250.0 L235.2,250.0 L235.6,250.0 L236.1,250.0 L236.5,250.0 L236.9,250.0 L237.3,250.0 L237.7,250.0 L238.1,250.0 L238.6,250.0 L239.0,250.0 L239.4,250.0 L239.8,250.0 L240.2,250.0 L240.7,250.0 L241.1,250.0 L241.5,250.0 L241.9,250.0 L242.3,250.0 L242.7,250.0 L243.2,250.0 L243.6,250.0 L244.0,250.0 L244.4,250.0 L244.8,250.0 L245.3,250.0 L245.7,250.0 L246.1,250.0 L246.5,250.0 L246.9,250.0 L247.3,250.0 L247.8,250.0 L248.2,250.0 L248.6,250.0 L249.0,250.0 L249.4,250.0 L249.9,250.0 L250.3,250.0 L250.7,250.0 L251.1,250.0 L251.5,250.0 L251.9,250.0 L252.4,250.0 L252.8,250.0 L253.2,250.0 L253.6,250.0 L254.0,250.0 L254.5,250.0 L254.9,250.0 L255.3,250.0 L255.7,250.0 L256.1,250.0 L256.5,250.0 L257.0,250.0 L257.4,250.0 L257.8,250.0 L258.2,250.0 L258.6,250.0 L259.1,250.0 L259.5,250.0 L259.9,250.0 L260.3,250.0 L260.7,250.0 L261.1,250.0 L261.6,250.0 L262.0,250.0 L262.4,250.0 L262.8,250.0 L263.2,250.0 L263.7,250.0 L264.1,250.0 L264.5,250.0 L264.9,250.0 L265.3,250.0 L265.7,250.0 L266.2,250.0 L266.6,250.0 L267.0,250.0 L267.4,250.0 L267.8,250.0 L268.3,250.0 L268.7,250.0 L269.1,250.0 L269.5,250.0 L269.9,250.0 L270.3,250.0 L270.8,250.0 L271.2,250.0 L271.6,250.0 L272.0,250.0 L272.4,250.0 L272.9,250.0 L273.3,250.0 L273.7,250.0 L274.1,250.0 L274.5,250.0 L274.9,250.0 L275.4,250.0 L275.8,250.0 L276.2,250.0 L276.6,250.0 L277.0,250.0 L277.5,250.0 L277.9,250.0 L278.3,250.0 L278.7,250.0 L279.1,250.0 L279.5,250.0 L280.0,250.0 L280.4,250.0 L280.8,250.0 L281.2,250.0 L281.6,250.0 L282.1,250.0 L282.5,250.0 L282.9,250.0 L283.3,250.0 L283.7,250.0 L284.1,250.0 L284.6,250.0 L285.0,250.0 L285.4,250.0 L285.8,250.0 L286.2,250.0 L286.7,250.0 L287.1,250.0 L287.5,250.0 L287.9,250.0 L288.3,250.0 L288.7,250.0 L289.2,250.0 L289.6,250.0 L290.0,250.0 L290.4,250.0 L290.8,250.0 L291.3,250.0 L291.7,250.0 L292.1,250.0 L292.5,250.0 L292.9,250.0 L293.3,250.0 L293.8,250.0 L294.2,250.0 L294.6,250.0 L295.0,250.0 L295.4,250.0 L295.9,250.0 L296.3,250.0 L296.7,250.0 L297.1,250.0 L297.5,250.0 L297.9,250.0 L298.4,250.0 L298.8,250.0 L299.2,250.0 L299.6,250.0 L300.0,250.0 L300.5,250.0 L300.9,250.0 L301.3,250.0 L301.7,250.0 L302.1,250.0 L302.5,250.0 L303.0,250.0 L303.4,250.0 L303.8,250.0 L304.2,250.0 L304.6,250.0 L305.1,250.0 L305.5,250.0 L305.9,250.0 L306.3,250.0 L306.7,250.0 L307.1,250.0 L307.6,250.0 L308.0,250.0 L308.4,250.0 L308.8,250.0 L309.2,250.0 L309.7,250.0 L310.1,250.0 L310.5,250.0 L310.9,250.0 L311.3,250.0 L311.7,250.0 L312.2,250.0 L312.6,250.0 L313.0,250.0 L313.4,250.0 L313.8,250.0 L314.3,250.0 L314.7,250.0 L315.1,250.0 L315.5,250.0 L315.9,250.0 L316.3,250.0 L316.8,250.0 L317.2,250.0 L317.6,250.0 L318.0,250.0 L318.4,250.0 L318.9,250.0 L319.3,250.0 L319.7,250.0 L320.1,250.0 L320.5,250.0 L320.9,250.0 L321.4,250.0 L321.8,250.0 L322.2,250.0 L322.6,250.0 L323.0,250.0 L323.5,250.0 L323.9,250.0 L324.3,250.0 L324.7,250.0 L325.1,250.0 L325.5,250.0 L326.0,250.0 L326.4,250.0 L326.8,250.0 L327.2,250.0 L327.6,250.0 L328.1,250.0 L328.5,250.0 L328.9,250.0 L329.3,250.0 L329.7,250.0 L330.1,250.0 L330.6,250.0 L331.0,250.0 L331.4,250.0 L331.8,250.0 L332.2,250.0 L332.7,250.0 L333.1,250.0 L333.5,250.0 L333.9,249.9 L334.3,249.9 L334.7,249.9 L335.2,249.9 L335.6,249.8 L336.0,249.8 L336.4,249.7 L336.8,249.7 L337.3,249.6 L337.7,249.5 L338.1,249.3 L338.5,249.1 L338.9,248.9 L339.3,248.5 L339.8,248.1 L340.2,247.6 L340.6,246.9 L341.0,246.0 L341.4,244.9 L341.9,243.4 L342.3,241.5 L342.7,239.1 L343.1,236.0 L343.5,232.1 L343.9,227.0 L344.4,220.6 L344.8,212.3 L345.2,201.7 L345.6,188.1 L346.0,170.9 L346.5,148.9 L346.9,121.0 L347.3,85.8 L347.7,41.3 L348.1,30.0 L348.5,30.0 L349.0,30.0 L349.4,30.0 L349.8,30.0 L350.2,30.0 L350.6,30.0 L351.1,30.0 L351.5,30.0 L351.9,30.0 L352.3,30.0 L352.7,30.0 L353.1,30.0 L353.6,30.0 L354.0,30.0 L354.4,30.0 L354.8,30.0 L355.2,30.0 L355.7,30.0 L356.1,30.0 L356.5,30.0 L356.9,30.0 L357.3,30.0 L357.7,30.0 L358.2,30.0 L358.6,30.0 L359.0,30.0 L359.4,30.0 L359.8,30.0 L360.3,30.0 L360.7,30.0 L361.1,30.0 L361.5,30.0 L361.9,30.0 L362.3,30.0 L362.8,30.0 L363.2,30.0 L363.6,30.0 L364.0,30.0 L364.4,30.0 L364.9,30.0 L365.3,30.0 L365.7,30.0 L366.1,30.0 L366.5,30.0 L366.9,30.0 L367.4,30.0 L367.8,30.0 L368.2,30.0 L368.6,30.0 L369.0,30.0 L369.5,30.0 L369.9,30.0 L370.3,30.0 L370.7,30.0 L371.1,30.0 L371.5,30.0 L372.0,30.0 L372.4,30.0 L372.8,30.0 L373.2,30.0 L373.6,30.0 L374.1,30.0 L374.5,30.0 L374.9,30.0 L375.3,30.0 L375.7,30.0 L376.1,30.0 L376.6,30.0 L377.0,30.0 L377.4,30.0 L377.8,30.0 L378.2,30.0 L378.7,30.0 L379.1,30.0 L379.5,30.0 L379.9,30.0 L380.3,30.0 L380.7,30.0 L381.2,30.0 L381.6,30.0 L382.0,30.0 L382.4,30.0 L382.8,30.0 L383.3,30.0 L383.7,30.0 L384.1,30.0 L384.5,30.0 L384.9,30.0 L385.3,30.0 L385.8,30.0 L386.2,30.0 L386.6,30.0 L387.0,30.0 L387.4,30.0 L387.9,30.0 L388.3,30.0 L388.7,30.0 L389.1,30.0 L389.5,30.0 L389.9,30.0 L390.4,30.0 L390.8,30.0 L391.2,30.0 L391.6,30.0 L392.0,30.0 L392.5,30.0 L392.9,30.0 L393.3,30.0 L393.7,30.0 L394.1,30.0 L394.5,30.0 L395.0,30.0 L395.4,30.0 L395.8,30.0 L396.2,30.0 L396.6,30.0 L397.1,30.0 L397.5,30.0 L397.9,30.0 L398.3,30.0 L398.7,30.0 L399.1,30.0 L399.6,30.0 L400.0,30.0 L400.4,30.0 L400.8,30.0 L401.2,30.0 L401.7,30.0 L402.1,30.0 L402.5,30.0 L402.9,30.0 L403.3,30.0 L403.7,30.0 L404.2,30.0 L404.6,30.0 L405.0,30.0 L405.4,30.0 L405.8,30.0 L406.3,30.0 L406.7,30.0 L407.1,30.0 L407.5,30.0 L407.9,30.0 L408.3,30.0 L408.8,30.0 L409.2,30.0 L409.6,30.0 L410.0,30.0 L410.4,30.0 L410.9,30.0 L411.3,30.0 L411.7,30.0 L412.1,30.0 L412.5,30.0 L412.9,30.0 L413.4,30.0 L413.8,30.0 L414.2,30.0 L414.6,30.0 L415.0,30.0 L415.5,30.0 L415.9,30.0 L416.3,30.0 L416.7,30.0 L417.1,30.0 L417.5,30.0 L418.0,30.0 L418.4,30.0 L418.8,30.0 L419.2,30.0 L419.6,30.0 L420.1,30.0 L420.5,30.0 L420.9,30.0 L421.3,30.0 L421.7,30.0 L422.1,30.0 L422.6,30.0 L423.0,30.0 L423.4,30.0 L423.8,30.0 L424.2,30.0 L424.7,30.0 L425.1,30.0 L425.5,30.0 L425.9,30.0 L426.3,30.0 L426.7,30.0 L427.2,30.0 L427.6,30.0 L428.0,30.0 L428.4,30.0 L428.8,30.0 L429.3,30.0 L429.7,30.0 L430.1,30.0 L430.5,30.0 L430.9,30.0 L431.3,30.0 L431.8,30.0 L432.2,30.0 L432.6,30.0 L433.0,30.0 L433.4,30.0 L433.9,30.0 L434.3,30.0 L434.7,30.0 L435.1,30.0 L435.5,30.0 L435.9,30.0 L436.4,30.0 L436.8,30.0 L437.2,30.0 L437.6,30.0 L438.0,30.0 L438.5,30.0 L438.9,30.0 L439.3,30.0 L439.7,30.0 L440.1,30.0 L440.5,30.0 L441.0,30.0 L441.4,30.0 L441.8,30.0 L442.2,30.0 L442.6,30.0 L443.1,30.0 L443.5,30.0 L443.9,30.0 L444.3,30.0 L444.7,30.0 L445.1,30.0 L445.6,30.0 L446.0,30.0 L446.4,30.0 L446.8,30.0 L447.2,30.0 L447.7,30.0 L448.1,30.0 L448.5,30.0 L448.9,30.0 L449.3,30.0 L449.7,30.0 L450.2,30.0 L450.6,30.0 L451.0,30.0 L451.4,30.0 L451.8,30.0 L452.3,30.0 L452.7,30.0 L453.1,30.0 L453.5,30.0 L453.9,30.0 L454.3,30.0 L454.8,30.0 L455.2,30.0 L455.6,30.0 L456.0,30.0 L456.4,30.0 L456.9,30.0 L457.3,30.0 L457.7,30.0 L458.1,30.0 L458.5,30.0 L458.9,30.0 L459.4,30.0 L459.8,30.0 L460.2,30.0 L460.6,30.0 L461.0,30.0 L461.5,30.0 L461.9,30.0 L462.3,30.0 L462.7,30.0 L463.1,30.0 L463.5,30.0 L464.0,30.0 L464.4,30.0 L464.8,30.0 L465.2,30.0 L465.6,30.0 L466.1,30.0 L466.5,30.0 L466.9,30.0 L467.3,30.0 L467.7,30.0 L468.1,30.0 L468.6,30.0 L469.0,30.0 L469.4,30.0 L469.8,30.0 L470.2,30.0 L470.7,30.0 L471.1,30.0 L471.5,30.0 L471.9,30.0 L472.3,30.0 L472.7,30.0 L473.2,30.0 L473.6,30.0 L474.0,30.0 L474.4,30.0 L474.8,30.0 L475.3,30.0 L475.7,30.0 L476.1,30.0 L476.5,30.0 L476.9,30.0 L477.3,30.0 L477.8,30.0 L478.2,30.0 L478.6,30.0 L479.0,30.0 L479.4,30.0 L479.9,30.0 L480.3,30.0 L480.7,30.0 L481.1,30.0 L481.5,30.0 L481.9,30.0 L482.4,30.0 L482.8,30.0 L483.2,30.0 L483.6,30.0 L484.0,30.0 L484.5,30.0 L484.9,30.0 L485.3,30.0 L485.7,30.0 L486.1,30.0 L486.5,30.0 L487.0,30.0 L487.4,30.0 L487.8,30.0 L488.2,30.0 L488.6,30.0 L489.1,30.0 L489.5,30.0 L489.9,30.0 L490.3,30.0 L490.7,30.0 L491.1,30.0 L491.6,30.0 L492.0,30.0 L492.4,30.0 L492.8,30.0 L493.2,30.0 L493.7,30.0 L494.1,30.0 L494.5,30.0 L494.9,30.0 L495.3,30.0 L495.7,30.0 L496.2,30.0 L496.6,30.0 L497.0,30.0 L497.4,30.0 L497.8,30.0 L498.3,30.0 L498.7,30.0 L499.1,30.0 L499.5,30.0 L499.9,30.0 L500.3,30.0 L500.8,30.0 L501.2,30.0 L501.6,30.0 L502.0,30.0 L502.4,30.0 L502.9,30.0 L503.3,30.0 L503.7,30.0 L504.1,30.0 L504.5,30.0 L504.9,30.0 L505.4,30.0 L505.8,30.0 L506.2,30.0 L506.6,30.0 L507.0,30.0 L507.5,30.0 L507.9,30.0 L508.3,30.0 L508.7,30.0 L509.1,30.0 L509.5,30.0 L510.0,30.0 L510.4,30.0 L510.8,30.0 L511.2,30.0 L511.6,30.0 L512.1,30.0 L512.5,30.0 L512.9,30.0 L513.3,30.0 L513.7,30.0 L514.1,30.0 L514.6,30.0 L515.0,30.0 L515.4,30.0 L515.8,30.0 L516.2,30.0 L516.7,30.0 L517.1,30.0 L517.5,30.0 L517.9,30.0 L518.3,30.0 L518.7,30.0 L519.2,30.0 L519.6,30.0 L520.0,30.0" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,30.0 L60.4,30.0 L60.8,30.0 L61.3,30.0 L61.7,30.0 L62.1,30.0 L62.5,30.0 L62.9,30.0 L63.3,30.0 L63.8,30.0 L64.2,30.0 L64.6,30.0 L65.0,30.0 L65.4,30.0 L65.9,30.0 L66.3,30.0 L66.7,30.0 L67.1,30.0 L67.5,30.0 L67.9,30.0 L68.4,30.0 L68.8,30.0 L69.2,30.0 L69.6,30.0 L70.0,30.0 L70.5,30.0 L70.9,30.0 L71.3,30.0 L71.7,30.0 L72.1,30.0 L72.5,30.0 L73.0,30.0 L73.4,30.0 L73.8,30.0 L74.2,30.0 L74.6,30.0 L75.1,30.0 L75.5,30.0 L75.9,30.0 L76.3,30.0 L76.7,30.0 L77.1,30.0 L77.6,30.0 L78.0,30.0 L78.4,30.0 L78.8,30.0 L79.2,30.0 L79.7,30.0 L80.1,30.0 L80.5,30.0 L80.9,30.0 L81.3,30.0 L81.7,30.0 L82.2,30.0 L82.6,30.0 L83.0,30.0 L83.4,30.0 L83.8,30.0 L84.3,30.0 L84.7,30.0 L85.1,30.0 L85.5,30.0 L85.9,30.0 L86.3,30.0 L86.8,30.0 L87.2,30.0 L87.6,30.0 L88.0,30.0 L88.4,30.0 L88.9,30.0 L89.3,30.0 L89.7,30.0 L90.1,30.0 L90.5,30.0 L90.9,30.0 L91.4,30.0 L91.8,30.0 L92.2,30.0 L92.6,30.0 L93.0,30.0 L93.5,30.0 L93.9,30.0 L94.3,30.0 L94.7,30.0 L95.1,30.0 L95.5,30.0 L96.0,30.0 L96.4,30.0 L96.8,30.0 L97.2,30.0 L97.6,30.0 L98.1,30.0 L98.5,30.0 L98.9,30.0 L99.3,30.0 L99.7,30.0 L100.1,30.0 L100.6,30.0 L101.0,30.0 L101.4,30.0 L101.8,30.0 L102.2,30.0 L102.7,30.0 L103.1,30.0 L103.5,30.0 L103.9,30.0 L104.3,30.0 L104.7,30.0 L105.2,30.0 L105.6,30.0 L106.0,30.0 L106.4,30.0 L106.8,30.0 L107.3,30.0 L107.7,30.0 L108.1,30.0 L108.5,30.0 L108.9,30.0 L109.3,30.0 L109.8,30.0 L110.2,30.0 L110.6,30.0 L111.0,30.0 L111.4,30.0 L111.9,30.0 L112.3,30.0 L112.7,30.0 L113.1,30.0 L113.5,30.0 L113.9,30.0 L114.4,30.0 L114.8,30.0 L115.2,30.0 L115.6,30.0 L116.0,30.0 L116.5,30.0 L116.9,30.0 L117.3,30.0 L117.7,30.0 L118.1,30.0 L118.5,30.0 L119.0,30.0 L119.4,30.0 L119.8,30.0 L120.2,30.0 L120.6,30.0 L121.1,30.0 L121.5,30.0 L121.9,30.0 L122.3,30.0 L122.7,30.0 L123.1,30.0 L123.6,30.0 L124.0,30.0 L124.4,30.0 L124.8,30.0 L125.2,30.0 L125.7,30.0 L126.1,30.0 L126.5,30.0 L126.9,30.0 L127.3,30.0 L127.7,30.0 L128.2,30.0 L128.6,30.0 L129.0,30.0 L129.4,30.0 L129.8,30.0 L130.3,30.0 L130.7,30.0 L131.1,30.0 L131.5,30.0 L131.9,30.0 L132.3,30.0 L132.8,30.0 L133.2,30.0 L133.6,30.0 L134.0,30.0 L134.4,30.0 L134.9,30.0 L135.3,30.0 L135.7,30.0 L136.1,30.0 L136.5,30.0 L136.9,30.0 L137.4,30.0 L137.8,30.0 L138.2,30.0 L138.6,30.0 L139.0,30.0 L139.5,30.0 L139.9,30.0 L140.3,30.0 L140.7,30.0 L141.1,30.0 L141.5,30.0 L142.0,30.0 L142.4,30.0 L142.8,30.0 L143.2,30.0 L143.6,30.0 L144.1,30.0 L144.5,30.0 L144.9,30.0 L145.3,30.0 L145.7,30.0 L146.1,30.0 L146.6,30.0 L147.0,30.0 L147.4,30.0 L147.8,30.0 L148.2,30.0 L148.7,30.0 L149.1,30.0 L149.5,30.0 L149.9,30.0 L150.3,30.0 L150.7,30.0 L151.2,30.0 L151.6,30.0 L152.0,30.0 L152.4,30.0 L152.8,30.0 L153.3,30.0 L153.7,30.0 L154.1,30.0 L154.5,30.0 L154.9,30.0 L155.3,30.0 L155.8,30.0 L156.2,30.0 L156.6,30.0 L157.0,30.0 L157.4,30.0 L157.9,30.0 L158.3,30.0 L158.7,30.0 L159.1,30.0 L159.5,30.0 L159.9,30.0 L160.4,30.0 L160.8,30.0 L161.2,30.0 L161.6,30.0 L162.0,30.0 L162.5,30.0 L162.9,30.0 L163.3,30.0 L163.7,30.0 L164.1,30.0 L164.5,30.0 L165.0,30.1 L165.4,30.1 L165.8,30.1 L166.2,30.1 L166.6,30.1 L167.1,30.2 L167.5,30.2 L167.9,30.2 L168.3,30.3 L168.7,30.3 L169.1,30.4 L169.6,30.5 L170.0,30.5 L170.4,30.6 L170.8,30.8 L171.2,30.9 L171.7,31.0 L172.1,31.2 L172.5,31.4 L172.9,31.6 L173.3,31.8 L173.7,32.1 L174.2,32.4 L174.6,32.7 L175.0,33.1 L175.4,33.5 L175.8,34.0 L176.3,34.4 L176.7,35.0 L177.1,35.5 L177.5,36.1 L177.9,36.8 L178.3,37.5 L178.8,38.2 L179.2,39.0 L179.6,39.9 L180.0,40.8 L180.4,41.7 L180.9,42.6 L181.3,43.6 L181.7,44.7 L182.1,45.7 L182.5,46.8 L182.9,48.0 L183.4,49.1 L183.8,50.3 L184.2,51.4 L184.6,52.6 L185.0,53.8 L185.5,54.9 L185.9,56.1 L186.3,57.3 L186.7,58.4 L187.1,59.5 L187.5,60.6 L188.0,61.7 L188.4,62.7 L188.8,63.7 L189.2,64.7 L189.6,65.6 L190.1,66.5 L190.5,67.4 L190.9,68.2 L191.3,68.9 L191.7,69.6 L192.1,70.3 L192.6,71.0 L193.0,71.5 L193.4,72.1 L193.8,72.6 L194.2,73.1 L194.7,73.5 L195.1,73.9 L195.5,74.2 L195.9,74.6 L196.3,74.9 L196.7,75.1 L197.2,75.4 L197.6,75.6 L198.0,75.8 L198.4,76.0 L198.8,76.1 L199.3,76.2 L199.7,76.4 L200.1,76.5 L200.5,76.5 L200.9,76.6 L201.3,76.7 L201.8,76.7 L202.2,76.8 L202.6,76.8 L203.0,76.9 L203.4,76.9 L203.9,76.9 L204.3,76.9 L204.7,77.0 L205.1,77.0 L205.5,77.0 L205.9,77.0 L206.4,77.0 L206.8,77.0 L207.2,77.0 L207.6,77.0 L208.0,77.0 L208.5,77.0 L208.9,77.0 L209.3,77.0 L209.7,77.0 L210.1,77.0 L210.5,77.0 L211.0,77.0 L211.4,77.0 L211.8,77.1 L212.2,77.1 L212.6,77.1 L213.1,77.1 L213.5,77.1 L213.9,77.1 L214.3,77.1 L214.7,77.1 L215.1,77.1 L215.6,77.1 L216.0,77.1 L216.4,77.1 L216.8,77.1 L217.2,77.1 L217.7,77.1 L218.1,77.1 L218.5,77.1 L218.9,77.1 L219.3,77.1 L219.7,77.1 L220.2,77.1 L220.6,77.1 L221.0,77.1 L221.4,77.1 L221.8,77.1 L222.3,77.1 L222.7,77.1 L223.1,77.1 L223.5,77.1 L223.9,77.1 L224.3,77.1 L224.8,77.1 L225.2,77.1 L225.6,77.1 L226.0,77.1 L226.4,77.1 L226.9,77.1 L227.3,77.1 L227.7,77.1 L228.1,77.1 L228.5,77.1 L228.9,77.1 L229.4,77.1 L229.8,77.1 L230.2,77.1 L230.6,77.1 L231.0,77.1 L231.5,77.1 L231.9,77.1 L232.3,77.1 L232.7,77.1 L233.1,77.1 L233.5,77.1 L234.0,77.1 L234.4,77.1 L234.8,77.1 L235.2,77.1 L235.6,77.1 L236.1,77.1 L236.5,77.1 L236.9,77.1 L237.3,77.1 L237.7,77.1 L238.1,77.1 L238.6,77.1 L239.0,77.1 L239.4,77.1 L239.8,77.1 L240.2,77.1 L240.7,77.1 L241.1,77.1 L241.5,77.1 L241.9,77.1 L242.3,77.1 L242.7,77.1 L243.2,77.1 L243.6,77.1 L244.0,77.1 L244.4,77.1 L244.8,77.1 L245.3,77.1 L245.7,77.1 L246.1,77.1 L246.5,77.1 L246.9,77.1 L247.3,77.1 L247.8,77.1 L248.2,77.1 L248.6,77.1 L249.0,77.1 L249.4,77.1 L249.9,77.1 L250.3,77.1 L250.7,77.1 L251.1,77.1 L251.5,77.1 L251.9,77.1 L252.4,77.1 L252.8,77.1 L253.2,77.1 L253.6,77.1 L254.0,77.1 L254.5,77.1 L254.9,77.1 L255.3,77.1 L255.7,77.1 L256.1,77.1 L256.5,77.1 L257.0,77.1 L257.4,77.1 L257.8,77.1 L258.2,77.1 L258.6,77.1 L259.1,77.1 L259.5,77.1 L259.9,77.1 L260.3,77.1 L260.7,77.1 L261.1,77.1 L261.6,77.1 L262.0,77.1 L262.4,77.1 L262.8,77.1 L263.2,77.1 L263.7,77.1 L264.1,77.1 L264.5,77.1 L264.9,77.1 L265.3,77.1 L265.7,77.1 L266.2,77.1 L266.6,77.1 L267.0,77.1 L267.4,77.1 L267.8,77.1 L268.3,77.1 L268.7,77.1 L269.1,77.1 L269.5,77.1 L269.9,77.1 L270.3,77.1 L270.8,77.1 L271.2,77.1 L271.6,77.1 L272.0,77.1 L272.4,77.1 L272.9,77.1 L273.3,77.1 L273.7,77.1 L274.1,77.1 L274.5,77.1 L274.9,77.1 L275.4,77.1 L275.8,77.1 L276.2,77.1 L276.6,77.1 L277.0,77.1 L277.5,77.1 L277.9,77.1 L278.3,77.1 L278.7,77.1 L279.1,77.1 L279.5,77.1 L280.0,77.1 L280.4,77.1 L280.8,77.1 L281.2,77.1 L281.6,77.1 L282.1,77.1 L282.5,77.1 L282.9,77.1 L283.3,77.1 L283.7,77.1 L284.1,77.1 L284.6,77.1 L285.0,77.1 L285.4,77.1 L285.8,77.1 L286.2,77.1 L286.7,77.1 L287.1,77.1 L287.5,77.1 L287.9,77.1 L288.3,77.1 L288.7,77.1 L289.2,77.1 L289.6,77.1 L290.0,77.1 L290.4,77.1 L290.8,77.1 L291.3,77.1 L291.7,77.1 L292.1,77.1 L292.5,77.1 L292.9,77.1 L293.3,77.1 L293.8,77.1 L294.2,77.1 L294.6,77.1 L295.0,77.1 L295.4,77.1 L295.9,77.1 L296.3,77.1 L296.7,77.1 L297.1,77.1 L297.5,77.1 L297.9,77.1 L298.4,77.1 L298.8,77.1 L299.2,77.1 L299.6,77.1 L300.0,77.1 L300.5,77.1 L300.9,77.1 L301.3,77.1 L301.7,77.1 L302.1,77.1 L302.5,77.1 L303.0,77.1 L303.4,77.1 L303.8,77.1 L304.2,77.1 L304.6,77.1 L305.1,77.1 L305.5,77.1 L305.9,77.1 L306.3,77.1 L306.7,77.1 L307.1,77.1 L307.6,77.1 L308.0,77.1 L308.4,77.1 L308.8,77.1 L309.2,77.1 L309.7,77.1 L310.1,77.1 L310.5,77.1 L310.9,77.1 L311.3,77.1 L311.7,77.1 L312.2,77.1 L312.6,77.1 L313.0,77.1 L313.4,77.1 L313.8,77.1 L314.3,77.1 L314.7,77.1 L315.1,77.1 L315.5,77.1 L315.9,77.1 L316.3,77.1 L316.8,77.1 L317.2,77.1 L317.6,77.1 L318.0,77.1 L318.4,77.1 L318.9,77.1 L319.3,77.1 L319.7,77.1 L320.1,77.1 L320.5,77.1 L320.9,77.1 L321.4,77.1 L321.8,77.1 L322.2,77.1 L322.6,77.1 L323.0,77.1 L323.5,77.1 L323.9,77.1 L324.3,77.1 L324.7,77.1 L325.1,77.1 L325.5,77.1 L326.0,77.1 L326.4,77.1 L326.8,77.1 L327.2,77.1 L327.6,77.1 L328.1,77.1 L328.5,77.1 L328.9,77.1 L329.3,77.1 L329.7,77.1 L330.1,77.1 L330.6,77.1 L331.0,77.1 L331.4,77.1 L331.8,77.1 L332.2,77.1 L332.7,77.1 L333.1,77.1 L333.5,77.1 L333.9,77.1 L334.3,77.1 L334.7,77.1 L335.2,77.1 L335.6,77.1 L336.0,77.1 L336.4,77.1 L336.8,77.1 L337.3,77.1 L337.7,77.1 L338.1,77.1 L338.5,77.1 L338.9,77.1 L339.3,77.1 L339.8,77.1 L340.2,77.2 L340.6,77.2 L341.0,77.2 L341.4,77.3 L341.9,77.4 L342.3,77.5 L342.7,77.6 L343.1,77.7 L343.5,77.9 L343.9,78.1 L344.4,78.4 L344.8,78.8 L345.2,79.3 L345.6,80.0 L346.0,80.8 L346.5,81.8 L346.9,83.1 L347.3,84.8 L347.7,86.9 L348.1,89.5 L348.5,92.7 L349.0,96.7 L349.4,101.6 L349.8,107.4 L350.2,114.3 L350.6,122.3 L351.1,131.4 L351.5,141.4 L351.9,152.2 L352.3,163.5 L352.7,174.8 L353.1,185.9 L353.6,196.3 L354.0,205.9 L354.4,214.3 L354.8,221.5 L355.2,227.6 L355.7,232.5 L356.1,236.5 L356.5,239.7 L356.9,242.2 L357.3,244.1 L357.7,245.5 L358.2,246.7 L358.6,247.5 L359.0,248.1 L359.4,248.6 L359.8,249.0 L360.3,249.2 L360.7,249.4 L361.1,249.6 L361.5,249.7 L361.9,249.8 L362.3,249.8 L362.8,249.9 L363.2,249.9 L363.6,249.9 L364.0,249.9 L364.4,250.0 L364.9,250.0 L365.3,250.0 L365.7,250.0 L366.1,250.0 L366.5,250.0 L366.9,250.0 L367.4,250.0 L367.8,250.0 L368.2,250.0 L368.6,250.0 L369.0,250.0 L369.5,250.0 L369.9,250.0 L370.3,250.0 L370.7,250.0 L371.1,250.0 L371.5,250.0 L372.0,250.0 L372.4,250.0 L372.8,250.0 L373.2,250.0 L373.6,250.0 L374.1,250.0 L374.5,250.0 L374.9,250.0 L375.3,250.0 L375.7,250.0 L376.1,250.0 L376.6,250.0 L377.0,250.0 L377.4,250.0 L377.8,250.0 L378.2,250.0 L378.7,250.0 L379.1,250.0 L379.5,250.0 L379.9,250.0 L380.3,250.0 L380.7,250.0 L381.2,250.0 L381.6,250.0 L382.0,250.0 L382.4,250.0 L382.8,250.0 L383.3,250.0 L383.7,250.0 L384.1,250.0 L384.5,250.0 L384.9,250.0 L385.3,250.0 L385.8,250.0 L386.2,250.0 L386.6,250.0 L387.0,250.0 L387.4,250.0 L387.9,250.0 L388.3,250.0 L388.7,250.0 L389.1,250.0 L389.5,250.0 L389.9,250.0 L390.4,250.0 L390.8,250.0 L391.2,250.0 L391.6,250.0 L392.0,250.0 L392.5,250.0 L392.9,250.0 L393.3,250.0 L393.7,250.0 L394.1,250.0 L394.5,250.0 L395.0,250.0 L395.4,250.0 L395.8,250.0 L396.2,250.0 L396.6,250.0 L397.1,250.0 L397.5,250.0 L397.9,250.0 L398.3,250.0 L398.7,250.0 L399.1,250.0 L399.6,250.0 L400.0,250.0 L400.4,250.0 L400.8,250.0 L401.2,250.0 L401.7,250.0 L402.1,250.0 L402.5,250.0 L402.9,250.0 L403.3,250.0 L403.7,250.0 L404.2,250.0 L404.6,250.0 L405.0,250.0 L405.4,250.0 L405.8,250.0 L406.3,250.0 L406.7,250.0 L407.1,250.0 L407.5,250.0 L407.9,250.0 L408.3,250.0 L408.8,250.0 L409.2,250.0 L409.6,250.0 L410.0,250.0 L410.4,250.0 L410.9,250.0 L411.3,250.0 L411.7,250.0 L412.1,250.0 L412.5,250.0 L412.9,250.0 L413.4,250.0 L413.8,250.0 L414.2,250.0 L414.6,250.0 L415.0,250.0 L415.5,250.0 L415.9,250.0 L416.3,250.0 L416.7,250.0 L417.1,250.0 L417.5,250.0 L418.0,250.0 L418.4,250.0 L418.8,250.0 L419.2,250.0 L419.6,250.0 L420.1,250.0 L420.5,250.0 L420.9,250.0 L421.3,250.0 L421.7,250.0 L422.1,250.0 L422.6,250.0 L423.0,250.0 L423.4,250.0 L423.8,250.0 L424.2,250.0 L424.7,250.0 L425.1,250.0 L425.5,250.0 L425.9,250.0 L426.3,250.0 L426.7,250.0 L427.2,250.0 L427.6,250.0 L428.0,250.0 L428.4,250.0 L428.8,250.0 L429.3,250.0 L429.7,250.0 L430.1,250.0 L430.5,250.0 L430.9,250.0 L431.3,250.0 L431.8,250.0 L432.2,250.0 L432.6,250.0 L433.0,250.0 L433.4,250.0 L433.9,250.0 L434.3,250.0 L434.7,250.0 L435.1,250.0 L435.5,250.0 L435.9,250.0 L436.4,250.0 L436.8,250.0 L437.2,250.0 L437.6,250.0 L438.0,250.0 L438.5,250.0 L438.9,250.0 L439.3,250.0 L439.7,250.0 L440.1,250.0 L440.5,250.0 L441.0,250.0 L441.4,250.0 L441.8,250.0 L442.2,250.0 L442.6,250.0 L443.1,250.0 L443.5,250.0 L443.9,250.0 L444.3,250.0 L444.7,250.0 L445.1,250.0 L445.6,250.0 L446.0,250.0 L446.4,250.0 L446.8,250.0 L447.2,250.0 L447.7,250.0 L448.1,250.0 L448.5,250.0 L448.9,250.0 L449.3,250.0 L449.7,250.0 L450.2,250.0 L450.6,250.0 L451.0,250.0 L451.4,250.0 L451.8,250.0 L452.3,250.0 L452.7,250.0 L453.1,250.0 L453.5,250.0 L453.9,250.0 L454.3,250.0 L454.8,250.0 L455.2,250.0 L455.6,250.0 L456.0,250.0 L456.4,250.0 L456.9,250.0 L457.3,250.0 L457.7,250.0 L458.1,250.0 L458.5,250.0 L458.9,250.0 L459.4,250.0 L459.8,250.0 L460.2,250.0 L460.6,250.0 L461.0,250.0 L461.5,250.0 L461.9,250.0 L462.3,250.0 L462.7,250.0 L463.1,250.0 L463.5,250.0 L464.0,250.0 L464.4,250.0 L464.8,250.0 L465.2,250.0 L465.6,250.0 L466.1,250.0 L466.5,250.0 L466.9,250.0 L467.3,250.0 L467.7,250.0 L468.1,250.0 L468.6,250.0 L469.0,250.0 L469.4,250.0 L469.8,250.0 L470.2,250.0 L470.7,250.0 L471.1,250.0 L471.5,250.0 L471.9,250.0 L472.3,250.0 L472.7,250.0 L473.2,250.0 L473.6,250.0 L474.0,250.0 L474.4,250.0 L474.8,250.0 L475.3,250.0 L475.7,250.0 L476.1,250.0 L476.5,250.0 L476.9,250.0 L477.3,250.0 L477.8,250.0 L478.2,250.0 L478.6,250.0 L479.0,250.0 L479.4,250.0 L479.9,250.0 L480.3,250.0 L480.7,250.0 L481.1,250.0 L481.5,250.0 L481.9,250.0 L482.4,250.0 L482.8,250.0 L483.2,250.0 L483.6,250.0 L484.0,250.0 L484.5,250.0 L484.9,250.0 L485.3,250.0 L485.7,250.0 L486.1,250.0 L486.5,250.0 L487.0,250.0 L487.4,250.0 L487.8,250.0 L488.2,250.0 L488.6,250.0 L489.1,250.0 L489.5,250.0 L489.9,250.0 L490.3,250.0 L490.7,250.0 L491.1,250.0 L491.6,250.0 L492.0,250.0 L492.4,250.0 L492.8,250.0 L493.2,250.0 L493.7,250.0 L494.1,250.0 L494.5,250.0 L494.9,250.0 L495.3,250.0 L495.7,250.0 L496.2,250.0 L496.6,250.0 L497.0,250.0 L497.4,250.0 L497.8,250.0 L498.3,250.0 L498.7,250.0 L499.1,250.0 L499.5,250.0 L499.9,250.0 L500.3,250.0 L500.8,250.0 L501.2,250.0 L501.6,250.0 L502.0,250.0 L502.4,250.0 L502.9,250.0 L503.3,250.0 L503.7,250.0 L504.1,250.0 L504.5,250.0 L504.9,250.0 L505.4,250.0 L505.8,250.0 L506.2,250.0 L506.6,250.0 L507.0,250.0 L507.5,250.0 L507.9,250.0 L508.3,250.0 L508.7,250.0 L509.1,250.0 L509.5,250.0 L510.0,250.0 L510.4,250.0 L510.8,250.0 L511.2,250.0 L511.6,250.0 L512.1,250.0 L512.5,250.0 L512.9,250.0 L513.3,250.0 L513.7,250.0 L514.1,250.0 L514.6,250.0 L515.0,250.0 L515.4,250.0 L515.8,250.0 L516.2,250.0 L516.7,250.0 L517.1,250.0 L517.5,250.0 L517.9,250.0 L518.3,250.0 L518.7,250.0 L519.2,250.0 L519.6,250.0 L520.0,250.0" fill="none" class="ln-tesis" stroke-width="2.5"/>
+        <line x1="316.5" y1="30" x2="316.5" y2="250" class="ln-dash"/>
+        <text x="320" y="44" class="t-muted" font-size="12">profundidad esperada: 3,57 m</text>
+        <text x="190" y="120" class="t-accent" font-size="12">σ: cristal</text>
+        <text x="420" y="110" class="t-accent" font-size="12">σ: pared</text>
+        <text x="80" y="44" class="t-tesis" font-size="12">transmitancia T</text>
+        <text x="210" y="226" class="t-time" font-size="12">pesos Tα (×4)</text>
+        <text x="300" y="286" text-anchor="middle" class="t-muted" font-size="13">distancia a lo largo del rayo</text>
+      </svg>
+      <figcaption>Un cristal semitransparente en 2 m (deja pasar el 78,6 %) y una pared opaca en 4 m. Pesos de 64 muestras uniformes, multiplicados por 4 para verlos. <code>figuras_b3b.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Color:</strong> \(0{,}214\cdot0{,}9 + 0{,}786\cdot0{,}3 = 0{,}428\). Con 16 muestras uniformes el error es 0,048; con 32, 0,0004.</li>
+        <li><strong>Profundidad esperada:</strong> \(\sum w_it_i/\sum w_i = 3{,}57\) m: un punto en el aire, ni en el cristal (2 m) ni en la pared (4 m).</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Usar la profundidad esperada de un campo de radiancia como si fuera una superficie para detectar colisiones. Con superficies semitransparentes o con niebla de reconstrucción, cae donde no hay nada. La mediana de la opacidad acumulada, o una geometría explícita, es más segura.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Gaussian Splatting">
+  <p class="num">Parte 3</p>
+  <h2>3D Gaussian Splatting</h2>
+  <p>En vez de una red que se consulta en cada muestra, millones de gaussianas explícitas que se proyectan y se componen como en un rasterizador. Mismo modelo de imagen que NeRF, otro algoritmo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">3DGS · representación</p>
+  <h2>Cada gaussiana: posición, forma, opacidad y color que depende de la dirección</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Media \(\boldsymbol\mu\in\mathbb R^3\); covarianza \(\Sigma = R S S^\top R^\top\), con escala \(S\) diagonal y rotación \(R\) por un cuaternión (así \(\Sigma\) es siempre semidefinida positiva durante la optimización); opacidad \(o\); color con armónicos esféricos de grado 3 <a class="cite" data-ref="kerbl2023"></a>.</li>
+        <li>Parámetros: \(3 + 3 + 4 + 1 + 48 = 59\) números. Un millón de gaussianas, 236 MB en float32 solo de parámetros (cuenta nuestra).</li>
+        <li>Se inicializan con los puntos de COLMAP y se optimizan con descenso por gradiente, con un <strong>control adaptativo de densidad</strong>: se clonan o dividen donde el gradiente es grande y se eliminan las casi transparentes.</li>
+      </ul>
+      <details class="deriv"><summary>Derivación: la proyección de una gaussiana</summary>
+        <p class="small">Con \(W\) la rotación mundo-cámara y la proyección \(\pi(x,y,z) = (fx/z,\ fy/z)\), linealizando \(\pi\) en la media (\(J\) es su jacobiano), una gaussiana 3D se proyecta en una gaussiana 2D:</p>
+        \[ \Sigma' = J\,W\,\Sigma\,W^\top J^\top,\qquad J = \begin{pmatrix} f/z & 0 & -fx/z^2\\ 0 & f/z & -fy/z^2\end{pmatrix}. \]
+        <p class="small">Es la aproximación de primer orden (EWA); falla cerca del borde de un gran angular, que es lo que corrige 3DGUT con la transformada sin perfume <a class="cite" data-ref="gsplat3dgut"></a>.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 260" role="img" aria-label="Gaussianas proyectadas en la imagen de una cámara">
+          <defs><clipPath id="cam"><rect x="0" y="0" width="400" height="260"/></clipPath></defs>
+          <rect x="0" y="0" width="400" height="260" class="box-soft"/>
+          <g clip-path="url(#cam)">
+          <ellipse cx="173.6" cy="158.7" rx="17.3" ry="1.7" transform="rotate(179.5 173.6 158.7)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="294.9" cy="159.0" rx="18.2" ry="1.7" transform="rotate(-178.4 294.9 159.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="200.9" cy="159.5" rx="17.7" ry="1.8" transform="rotate(-180.0 200.9 159.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="156.6" cy="159.8" rx="18.1" ry="1.9" transform="rotate(179.2 156.6 159.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="126.6" cy="160.8" rx="19.0" ry="1.9" transform="rotate(178.6 126.6 160.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="300.8" cy="161.2" rx="19.8" ry="2.0" transform="rotate(-178.2 300.8 161.2)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="245.6" cy="161.7" rx="19.2" ry="2.1" transform="rotate(-179.1 245.6 161.7)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="302.1" cy="162.1" rx="20.4" ry="2.1" transform="rotate(-178.1 302.1 162.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="76.5" cy="162.2" rx="20.9" ry="2.0" transform="rotate(177.8 76.5 162.2)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="73.3" cy="162.3" rx="21.1" ry="2.0" transform="rotate(177.8 73.3 162.3)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="314.6" cy="163.5" rx="21.6" ry="2.2" transform="rotate(-177.8 314.6 163.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="305.8" cy="163.8" rx="21.5" ry="2.3" transform="rotate(-178.0 305.8 163.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="217.1" cy="164.0" rx="20.4" ry="2.4" transform="rotate(-179.6 217.1 164.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="225.1" cy="164.1" rx="20.5" ry="2.4" transform="rotate(-179.5 225.1 164.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="245.8" cy="101.6" rx="9.7" ry="9.3" transform="rotate(177.1 245.8 101.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="228.3" cy="165.3" rx="21.3" ry="2.6" transform="rotate(-179.4 228.3 165.3)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="191.5" cy="166.5" rx="21.9" ry="2.8" transform="rotate(179.8 191.5 166.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="338.0" cy="166.9" rx="24.4" ry="2.6" transform="rotate(-177.3 338.0 166.9)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="179.8" cy="167.4" rx="22.5" ry="2.9" transform="rotate(179.5 179.8 167.4)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="187.0" cy="167.4" rx="22.5" ry="2.9" transform="rotate(179.7 187.0 167.4)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="131.9" cy="167.8" rx="23.3" ry="2.9" transform="rotate(178.4 131.9 167.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="282.0" cy="97.8" rx="15.0" ry="7.9" transform="rotate(106.0 282.0 97.8)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="248.3" cy="99.7" rx="15.0" ry="11.0" transform="rotate(82.4 248.3 99.7)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="176.0" cy="168.8" rx="23.4" ry="3.1" transform="rotate(179.4 176.0 168.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="285.1" cy="107.0" rx="15.9" ry="12.8" transform="rotate(116.1 285.1 107.0)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="196.4" cy="169.3" rx="23.6" ry="3.2" transform="rotate(179.9 196.4 169.3)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="270.9" cy="80.6" rx="12.4" ry="9.0" transform="rotate(160.2 270.9 80.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="350.8" cy="169.6" rx="26.6" ry="2.9" transform="rotate(-176.9 350.8 169.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="324.3" cy="169.6" rx="25.7" ry="3.0" transform="rotate(-177.3 324.3 169.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="275.5" cy="69.1" rx="17.7" ry="16.6" transform="rotate(143.2 275.5 69.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="259.4" cy="96.1" rx="12.8" ry="10.8" transform="rotate(94.0 259.4 96.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="267.7" cy="124.4" rx="13.4" ry="7.3" transform="rotate(130.4 267.7 124.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="205.4" cy="170.5" rx="24.3" ry="3.4" transform="rotate(-179.9 205.4 170.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="268.2" cy="160.0" rx="14.3" ry="3.4" transform="rotate(89.9 268.2 160.0)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="268.2" cy="143.6" rx="14.3" ry="3.4" transform="rotate(90.0 268.2 143.6)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="268.2" cy="127.3" rx="14.3" ry="3.4" transform="rotate(90.0 268.2 127.3)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="268.2" cy="110.9" rx="14.3" ry="3.4" transform="rotate(90.0 268.2 110.9)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="255.4" cy="86.7" rx="14.1" ry="12.3" transform="rotate(168.2 255.4 86.7)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="280.9" cy="98.3" rx="10.6" ry="8.9" transform="rotate(157.4 280.9 98.3)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="282.7" cy="171.3" rx="25.7" ry="3.4" transform="rotate(-177.9 282.7 171.3)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="280.8" cy="96.1" rx="18.1" ry="10.0" transform="rotate(-167.4 280.8 96.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="274.6" cy="73.2" rx="17.7" ry="13.0" transform="rotate(147.3 274.6 73.2)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="260.5" cy="85.9" rx="14.8" ry="13.5" transform="rotate(112.3 260.5 85.9)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="257.8" cy="78.3" rx="15.5" ry="14.8" transform="rotate(60.5 257.8 78.3)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="253.0" cy="88.6" rx="16.9" ry="12.8" transform="rotate(167.1 253.0 88.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="263.8" cy="172.2" rx="25.9" ry="3.6" transform="rotate(-178.3 263.8 172.2)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="250.0" cy="90.4" rx="14.0" ry="11.0" transform="rotate(128.3 250.0 90.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="259.3" cy="94.7" rx="17.0" ry="16.3" transform="rotate(91.4 259.3 94.7)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="265.4" cy="90.1" rx="15.5" ry="12.1" transform="rotate(177.1 265.4 90.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="281.2" cy="89.5" rx="18.4" ry="10.2" transform="rotate(119.7 281.2 89.5)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="230.6" cy="83.9" rx="12.0" ry="8.7" transform="rotate(-145.3 230.6 83.9)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="265.8" cy="64.0" rx="19.6" ry="12.9" transform="rotate(144.9 265.8 64.0)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="261.4" cy="62.4" rx="19.4" ry="18.0" transform="rotate(126.6 261.4 62.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="145.3" cy="174.4" rx="27.1" ry="4.0" transform="rotate(178.5 145.3 174.4)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="298.1" cy="82.1" rx="18.1" ry="9.0" transform="rotate(143.8 298.1 82.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="241.9" cy="174.6" rx="27.1" ry="4.0" transform="rotate(-178.8 241.9 174.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="318.8" cy="175.1" rx="29.1" ry="3.9" transform="rotate(-177.0 318.8 175.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="305.4" cy="74.6" rx="16.3" ry="8.0" transform="rotate(80.0 305.4 74.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="240.3" cy="85.5" rx="8.3" ry="7.2" transform="rotate(170.8 240.3 85.5)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="276.7" cy="177.5" rx="29.4" ry="4.5" transform="rotate(-177.8 276.7 177.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="46.7" cy="177.8" rx="32.3" ry="4.2" transform="rotate(176.2 46.7 177.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="385.5" cy="178.1" rx="34.0" ry="4.0" transform="rotate(-175.8 385.5 178.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="160.7" cy="109.1" rx="15.6" ry="11.6" transform="rotate(147.3 160.7 109.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="340.8" cy="178.6" rx="32.3" ry="4.4" transform="rotate(-176.4 340.8 178.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="129.1" cy="72.5" rx="13.5" ry="11.7" transform="rotate(63.6 129.1 72.5)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="258.6" cy="180.7" rx="31.0" ry="5.1" transform="rotate(-178.1 258.6 180.7)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="142.2" cy="76.6" rx="16.1" ry="10.7" transform="rotate(73.8 142.2 76.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="182.0" cy="85.1" rx="20.2" ry="17.3" transform="rotate(58.7 182.0 85.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="121.9" cy="64.2" rx="21.2" ry="19.3" transform="rotate(57.8 121.9 64.2)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="142.0" cy="102.2" rx="21.2" ry="14.9" transform="rotate(-150.5 142.0 102.2)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="130.5" cy="48.7" rx="20.1" ry="17.0" transform="rotate(52.5 130.5 48.7)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="139.6" cy="79.4" rx="16.4" ry="10.9" transform="rotate(-161.6 139.6 79.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="148.6" cy="84.2" rx="20.4" ry="16.6" transform="rotate(137.6 148.6 84.2)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="152.6" cy="183.6" rx="32.6" ry="5.8" transform="rotate(178.4 152.6 183.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="177.3" cy="100.4" rx="15.7" ry="10.4" transform="rotate(48.2 177.3 100.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="125.3" cy="70.4" rx="18.1" ry="16.0" transform="rotate(136.0 125.3 70.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="159.5" cy="93.1" rx="23.8" ry="20.6" transform="rotate(-140.6 159.5 93.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="285.9" cy="185.8" rx="34.9" ry="6.1" transform="rotate(-177.1 285.9 185.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="161.1" cy="87.9" rx="22.0" ry="17.6" transform="rotate(79.2 161.1 87.9)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="160.2" cy="38.2" rx="14.3" ry="11.9" transform="rotate(162.1 160.2 38.2)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="143.8" cy="171.2" rx="19.7" ry="4.6" transform="rotate(90.1 143.8 171.2)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="143.8" cy="148.8" rx="19.7" ry="4.6" transform="rotate(90.0 143.8 148.8)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="143.8" cy="126.2" rx="19.7" ry="4.6" transform="rotate(90.0 143.8 126.2)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="143.8" cy="103.8" rx="19.7" ry="4.6" transform="rotate(89.9 143.8 103.8)" class="fill-time" fill-opacity="0.72"/>
+          <ellipse cx="158.2" cy="99.1" rx="14.5" ry="13.0" transform="rotate(46.7 158.2 99.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="167.6" cy="80.4" rx="25.7" ry="16.0" transform="rotate(-145.7 167.6 80.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="109.4" cy="73.0" rx="13.4" ry="11.3" transform="rotate(101.9 109.4 73.0)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="171.9" cy="189.0" rx="35.6" ry="7.0" transform="rotate(178.9 171.9 189.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="86.8" cy="189.4" rx="38.1" ry="6.7" transform="rotate(176.1 86.8 189.4)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="-32.0" cy="189.5" rx="45.4" ry="5.7" transform="rotate(174.4 -32.0 189.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="-18.3" cy="189.6" rx="44.4" ry="5.8" transform="rotate(174.5 -18.3 189.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="122.1" cy="71.5" rx="24.6" ry="15.6" transform="rotate(179.1 122.1 71.5)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="151.7" cy="85.9" rx="27.2" ry="15.1" transform="rotate(-152.3 151.7 85.9)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="254.9" cy="190.6" rx="37.0" ry="7.3" transform="rotate(-177.9 254.9 190.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="101.2" cy="83.1" rx="27.1" ry="19.3" transform="rotate(-149.4 101.2 83.1)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="146.0" cy="67.4" rx="23.0" ry="13.6" transform="rotate(161.6 146.0 67.4)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="118.8" cy="100.6" rx="25.6" ry="17.8" transform="rotate(-157.2 118.8 100.6)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="171.7" cy="19.8" rx="15.2" ry="12.7" transform="rotate(134.3 171.7 19.8)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="172.4" cy="53.5" rx="25.3" ry="16.4" transform="rotate(94.1 172.4 53.5)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="149.0" cy="56.8" rx="26.6" ry="15.3" transform="rotate(111.4 149.0 56.8)" class="fill-accent" fill-opacity="0.56"/>
+          <ellipse cx="449.0" cy="197.0" rx="52.5" ry="7.0" transform="rotate(-173.6 449.0 197.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="212.5" cy="198.2" rx="41.0" ry="9.4" transform="rotate(-179.4 212.5 198.2)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="5.6" cy="199.0" rx="49.6" ry="8.1" transform="rotate(173.8 5.6 199.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="-43.7" cy="199.1" rx="53.8" ry="7.5" transform="rotate(173.4 -43.7 199.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="147.4" cy="200.8" rx="43.2" ry="10.0" transform="rotate(177.6 147.4 200.8)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="137.5" cy="202.0" rx="44.2" ry="10.2" transform="rotate(177.1 137.5 202.0)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="-52.4" cy="202.4" rx="57.2" ry="8.1" transform="rotate(173.1 -52.4 202.4)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="8.6" cy="202.9" rx="52.2" ry="9.0" transform="rotate(173.5 8.6 202.9)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="238.6" cy="207.6" rx="47.0" ry="12.0" transform="rotate(-178.0 238.6 207.6)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="269.8" cy="214.1" rx="51.9" ry="13.8" transform="rotate(-176.2 269.8 214.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="421.7" cy="218.2" rx="66.5" ry="12.5" transform="rotate(-171.7 421.7 218.2)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="-41.0" cy="226.5" rx="75.2" ry="14.5" transform="rotate(170.7 -41.0 226.5)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="428.3" cy="227.1" rx="74.2" ry="15.0" transform="rotate(-170.8 428.3 227.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="57.5" cy="228.1" rx="65.7" ry="17.3" transform="rotate(172.2 57.5 228.1)" class="fill-ink3" fill-opacity="0.44"/>
+          <ellipse cx="220.7" cy="240.3" rx="66.3" ry="24.3" transform="rotate(-178.3 220.7 240.3)" class="fill-ink3" fill-opacity="0.44"/>
+          </g>
+          <line x1="0" y1="130" x2="400" y2="130" class="ln-dash"/>
+        </svg>
+        <figcaption>115 gaussianas (suelo, dos troncos y sus copas) proyectadas con \(\Sigma' = JW\Sigma W^\top J^\top\) en una cámara a 1,5 m de altura, dibujadas a 1,5σ y de atrás hacia delante. <code>figuras_b3b.py</code>, sección 2.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">3DGS · rasterización</p>
+  <h2>Por qué es tan rápido: ordenar una vez y componer por tiles</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li>Proyectar todas las gaussianas (media y \(\Sigma'\)) y descartar las que caen fuera de la vista.</li>
+        <li>Dividir la imagen en tiles de 16 × 16 píxeles y asignar cada gaussiana a los tiles que toca.</li>
+        <li>Ordenar por (tile, profundidad) con una sola ordenación por radix en GPU.</li>
+        <li>Para cada píxel, componer de delante hacia atrás \(C = \sum_i \mathbf c_i\alpha_i\prod_{j&lt;i}(1-\alpha_j)\), con \(\alpha_i = o_i\exp(-\tfrac12\Delta^\top\Sigma_i'^{-1}\Delta)\), hasta que la opacidad se satura <a class="cite" data-ref="kerbl2023"></a>.</li>
+      </ol>
+      <div class="callout clave"><span class="tag">La misma fórmula que NeRF</span>Es la cuadratura del render volumétrico con las gaussianas como «muestras». La diferencia es que no hay red que evaluar ni rayos que muestrear: solo proyectar, ordenar y mezclar, que es lo que mejor hace una GPU.</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cifras del artículo</span>El artículo promete «≥ 30 fps» a 1080p. En las escenas de Mip-NeRF 360, con una A6000: 27,21 dB de PSNR, 41 min de entrenamiento, 134 FPS y 734 MB, frente a 27,69 dB, 48 h y 0,06 FPS de Mip-NeRF 360. Entrenar escenas grandes puede pasar de 20 GB de memoria de GPU <a class="cite" data-ref="kerbl2023"></a>.</div>
+      <div class="callout realidad"><span class="tag">Ecosistema</span>El código original solo permite uso de investigación no comercial <a class="cite" data-ref="gs3dcode"></a>. gsplat (Apache-2.0) reimplementa el rasterizador con hasta un 10 % menos de tiempo de entrenamiento y 4 veces menos memoria que el original e integra 3DGUT, con cámaras con distorsión y obturador rodante <a class="cite" data-ref="ye2025,gsplat3dgut"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">3DGS · entrenamiento</p>
+  <h2>Cómo se ajustan millones de gaussianas a unas fotos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Inicio:</strong> una gaussiana isótropa por cada punto de COLMAP, con radio igual a la distancia media a sus tres vecinos.</li>
+        <li><strong>Pérdida:</strong> \(\mathcal L = (1-\lambda)\,\mathcal L_1 + \lambda\,\mathcal L_{\text{D-SSIM}}\), con \(\lambda = 0{,}2\). Sigmoide para la opacidad y exponencial para la escala, para que sigan en su rango.</li>
+        <li><strong>Color:</strong> empieza difuso y añade una banda de armónicos cada 1000 iteraciones, hasta las cuatro.</li>
+        <li><strong>Densificación</strong> cada 100 iteraciones, donde el gradiente de la posición en pantalla supera 0,0002: las gaussianas pequeñas se <em>clonan</em> (falta geometría) y las grandes se <em>dividen</em> en dos con la escala entre 1,6 (sobra). Se eliminan las de \(\alpha\) por debajo de un umbral, y cada 3000 iteraciones se lleva \(\alpha\) casi a cero para limpiar los «flotadores» junto a las cámaras <a class="cite" data-ref="kerbl2023"></a>.</li>
+      </ul>
+      <p class="xsmall muted">En Mip-NeRF 360, 7000 iteraciones dan 25,60 dB en 6 min y 30 000, 27,21 dB en 41 min (A6000) <a class="cite" data-ref="kerbl2023"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Por qué el gradiente de posición</span>Tanto donde falta geometría como donde una gaussiana grande cubre detalle fino, la optimización intenta mover las gaussianas para corregir el error: el gradiente de su posición en pantalla es grande. Es la señal que usa el artículo para decidir dónde añadir <a class="cite" data-ref="kerbl2023"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Capturar con cosas que se mueven (personas, coches, la sombra del propio dron) sin enmascararlas: la escena estática no puede explicarlas y acaban como manchas y flotadores.</div>
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>La escena se reconstruye una vez, en minutos o decenas de minutos de GPU. Lo que se repite millones de veces al entrenar la política es el render.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">3DGS · limitaciones</p>
+  <h2>Lo que una escena de gaussianas no es</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>No es geometría:</strong> las gaussianas reproducen la apariencia desde las vistas de entrenamiento, no la superficie. Para colisiones hace falta extraer una malla o un campo de distancias, o una variante orientada a superficies (2DGS, con discos planos: distancia de Chamfer de 0,80 frente a 1,96 de 3DGS en DTU) <a class="cite" data-ref="huang2024"></a>.</li>
+        <li><strong>Es estática:</strong> lo que se movió durante la captura queda borroso o fantasma; personas, vehículos u otros drones hay que añadirlos aparte.</li>
+        <li><strong>La luz está «horneada»:</strong> la iluminación, las sombras y los reflejos del momento de la captura forman parte del color. No se puede cambiar la hora del día sin modelos adicionales.</li>
+        <li><strong>Solo vale cerca de las vistas capturadas:</strong> donde la escena está mal observada aparecen artefactos y gaussianas alargadas <a class="cite" data-ref="kerbl2023"></a>, y lejos de las vistas, huecos y «flotadores» (parte 4).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Medir la calidad</span>PSNR y SSIM comparan píxel a píxel con una foto real retenida; LPIPS compara características de una red profunda y se ajusta mejor a la percepción humana <a class="cite" data-ref="zhang2018"></a>. Todas exigen una foto real desde esa misma pose.</div>
+      <div class="callout tesis"><span class="tag">Para tu política</span>Una métrica de imagen alta no garantiza que la política se comporte igual. La prueba que cuenta es en bucle cerrado: la misma política en la escena reconstruida y en el sitio real, o al menos frente a fotos reales del recorrido.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Real2sim">
+  <p class="num">Parte 4</p>
+  <h2>Real2sim para drones</h2>
+  <p>De un vídeo del sitio a un simulador donde una política aprende a volar en él, y lo que hay que añadir por el camino.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real2sim · la cadena</p>
+  <h2>Seis pasos de un vídeo a un mundo en el que volar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 210" role="img" aria-label="Cadena real2sim">
+      <rect x="10" y="30" width="180" height="100" rx="10" class="box"/>
+      <text x="100" y="58" text-anchor="middle" class="t-bold">1 · Captura</text>
+      <text x="100" y="82" text-anchor="middle" font-size="13">vídeo o fotos, a la</text>
+      <text x="100" y="100" text-anchor="middle" font-size="13">altura a la que volarás</text>
+      <rect x="210" y="30" width="180" height="100" rx="10" class="box"/>
+      <text x="300" y="58" text-anchor="middle" class="t-bold">2 · Poses</text>
+      <text x="300" y="82" text-anchor="middle" font-size="13">SfM (COLMAP) o</text>
+      <text x="300" y="100" text-anchor="middle" font-size="13">VIO del propio dron</text>
+      <rect x="410" y="30" width="180" height="100" rx="10" class="box-tesis"/>
+      <text x="500" y="58" text-anchor="middle" class="t-bold">3 · Reconstrucción</text>
+      <text x="500" y="82" text-anchor="middle" font-size="13">3DGS: minutos</text>
+      <text x="500" y="100" text-anchor="middle" font-size="13">a decenas de minutos</text>
+      <rect x="610" y="30" width="180" height="100" rx="10" class="box"/>
+      <text x="700" y="58" text-anchor="middle" class="t-bold">4 · Alineación</text>
+      <text x="700" y="82" text-anchor="middle" font-size="13">escala, gravedad y</text>
+      <text x="700" y="100" text-anchor="middle" font-size="13">origen del simulador</text>
+      <rect x="810" y="30" width="180" height="100" rx="10" class="box-accent"/>
+      <text x="900" y="58" text-anchor="middle" class="t-bold">5 · Física</text>
+      <text x="900" y="82" text-anchor="middle" font-size="13">malla o campo de</text>
+      <text x="900" y="100" text-anchor="middle" font-size="13">distancias para chocar</text>
+      <rect x="1010" y="30" width="180" height="100" rx="10" class="box-accent"/>
+      <text x="1100" y="58" text-anchor="middle" class="t-bold">6 · Sensores</text>
+      <text x="1100" y="82" text-anchor="middle" font-size="13">cámara del dron con</text>
+      <text x="1100" y="100" text-anchor="middle" font-size="13">ruido, desenfoque (B3a)</text>
+      <line x1="190" y1="80" x2="210" y2="80" class="ln-accent"/>
+      <line x1="390" y1="80" x2="410" y2="80" class="ln-accent"/>
+      <line x1="590" y1="80" x2="610" y2="80" class="ln-accent"/>
+      <line x1="790" y1="80" x2="810" y2="80" class="ln-accent"/>
+      <line x1="990" y1="80" x2="1010" y2="80" class="ln-accent"/>
+      <text x="600" y="170" text-anchor="middle" class="t-muted" font-size="14">el dron del simulador (B1, B2) vuela con su dinámica; la escena solo da imágenes y obstáculos</text>
+      <text x="600" y="194" text-anchor="middle" class="t-time" font-size="14">la cámara se renderiza con la pose de cada instante de exposición y de cada fila (obturador rodante)</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="callout error"><span class="tag">Error frecuente</span>Olvidar el paso 4. COLMAP no conoce la escala ni la vertical: con la escena a escala 0,8, cada metro que vuela el dron en la física son 1,25 m en la imagen, y el flujo óptico y el tamaño de los obstáculos no casan con su velocidad.</div>
+    <div class="callout clave"><span class="tag">Datos que ya tienes</span>Un vuelo previo del propio dron, con su VIO y su IMU, da poses en escala métrica y con gravedad: la mejor captura para reconstruir el sitio donde volverá a volar.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real2sim · poses y escala</p>
+  <h2>Las poses salen de SfM, con siete grados de libertad sin fijar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">COLMAP empareja características entre fotos, registra las imágenes una a una, triangula puntos y refina todo con <em>bundle adjustment</em> <a class="cite" data-ref="schonberger2016"></a>:</p>
+      \[ \min_{\{R_i,\mathbf t_i\},\{\mathbf X_j\}}\ \sum_{i,j}\rho\Big(\big\|\mathbf x_{ij} - \pi\big(K(R_i\mathbf X_j + \mathbf t_i)\big)\big\|^2\Big). \]
+      <details class="deriv"><summary>Derivación: por qué la escala y la gravedad quedan libres</summary>
+        <p class="small">Toma una similitud cualquiera: \(\mathbf X_j' = sQ\mathbf X_j + \mathbf p\), \(R_i' = R_iQ^\top\), \(\mathbf t_i' = s\mathbf t_i - R_iQ^\top\mathbf p\). Entonces</p>
+        \[ R_i'\mathbf X_j' + \mathbf t_i' = s\,(R_i\mathbf X_j + \mathbf t_i), \]
+        <p class="small">y la proyección \(\pi\) no cambia al multiplicar el punto por \(s&gt;0\). El coste es idéntico para \(s\), \(Q\) y \(\mathbf p\): 1 + 3 + 3 = 7 grados de libertad que las fotos no fijan.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Cómo fijarlos</span>Con las poses del VIO del propio dron, la escala y la vertical son observables (A4b): solo quedan la posición y la guiñada, que eliges al poner el origen del simulador. Se alinean los centros de cámara de COLMAP con las posiciones del VIO por una similitud de mínimos cuadrados, como al comparar trayectorias con evo. Sin VIO: una distancia medida en la escena y el plano del suelo, o GNSS RTK.</div>
+      <div class="callout realidad"><span class="tag">Captura con obturador rodante</span>Las fotos de un dron en movimiento tienen obturador rodante y desenfoque; 3DGS supone una cámara estenopeica ideal. 3DGUT proyecta puntos sigma con la pose de cada fila y se entrena directamente con esas imágenes <a class="cite" data-ref="gsplat3dgut"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real2sim · cobertura de vistas</p>
+  <h2>La escena solo es fiable cerca de donde se capturó</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Captura a pie: 120 fotos en un círculo de 5 m de radio a 1,5 m de altura, mirando a un objeto central. El dron vuela el mismo círculo a otras alturas. Ángulo entre su línea de visión al objeto y la de la foto de captura más cercana:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Altura del dron</th><th>1,5 m</th><th>3 m</th><th>5 m</th><th>8 m</th><th>12 m</th></tr></thead>
+          <tbody>
+            <tr><td>Ángulo a la vista más cercana</td><td class="n">0°</td><td class="n">16,1°</td><td class="n">32,9°</td><td class="n">48,8°</td><td class="n">59,8°</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted"><code>figuras_b3b.py</code>, sección 3. La distancia también cuenta: acercarse a 2 m a la misma altura da solo 8,3°, pero pide una resolución 2,5 veces mayor de la capturada.</p>
+      <div class="callout realidad"><span class="tag">Medido</span>En escenas urbanas, con vistas de prueba trasladadas y giradas respecto a las de entrenamiento, el PSNR de 3DGS cae un 29,4 % (de 21,22 a 14,99 dB) <a class="cite" data-ref="han2025"></a>. Y el protocolo habitual, que evalúa una de cada ocho fotos de la propia captura, no ve estos artefactos <a class="cite" data-ref="warburg2023"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Error frecuente</span>Capturar caminando y volar alto. Desde arriba se ven techos y copas que nunca se fotografiaron: la escena se rellena con lo que las gaussianas inventan, y la política aprende de artefactos.</div>
+      <div class="callout clave"><span class="tag">Remedios</span>Capturar desde el dron, a varias alturas; limitar el volumen de vuelo a la zona bien cubierta; medir la calidad en vistas retenidas a lo largo de la trayectoria prevista; y aleatorizar la apariencia encima de la escena para que la política no dependa de sus detalles.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real2sim · drones</p>
+  <h2>Políticas de drones entrenadas y evaluadas en escenas reconstruidas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Escena</th><th>Qué hacen</th><th>Resultado (según sus autores)</th></tr></thead>
+      <tbody>
+        <tr><td>SOUS VIDE, RA-L 2025 <a class="cite" data-ref="low2025"></a></td><td>3DGS</td><td>FiGS: dinámica sencilla + gaussianas, hasta 130 imágenes/s. Un MPC con estado privilegiado enseña a una red (imagen, flujo óptico e IMU) que manda empuje y velocidades angulares a 20 Hz a bordo</td><td>105 ensayos reales; robusta a ±30 % de masa, 60 % de cambio de luz y personas moviéndose</td></tr>
+        <tr><td>GRaD-Nav, IROS 2025 <a class="cite" data-ref="chen2025gradnav"></a></td><td>3DGS</td><td>Gaussianas + dinámica diferenciable: navegación visual por puertas entrenada con gradientes</td><td>Real: 7/10, 7/10 y 6/10 en tres puertas (simulación: 10, 10 y 9); render, 55,7 % de cada paso</td></tr>
+        <tr><td>FalconGym, IROS 2025 <a class="cite" data-ref="miao2025"></a></td><td>NeRF</td><td>Navegación por puertas, transferencia sin ajuste</td><td>95,8 % en 30 vuelos reales y 120 puertas; 10 cm de error medio</td></tr>
+        <tr><td>Splat-Nav, T-RO 2025 <a class="cite" data-ref="chen2025splatnav"></a></td><td>3DGS</td><td>Planificación segura y localización sobre el mapa de gaussianas</td><td>126 vuelos reales; replanifica a &gt; 2 Hz, pose a ≈ 25 Hz</td></tr>
+        <tr><td>SplatSim, ICRA 2025 <a class="cite" data-ref="qureshi2025"></a></td><td>3DGS</td><td>Manipulación con RGB entrenada solo en gaussianas</td><td>86,25 % real, frente a 97,5 % entrenando con datos reales</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">El patrón común</span>Escena reconstruida para la imagen, dinámica sencilla aparte, experto privilegiado o gradientes para entrenar rápido y el sitio real para evaluar.</div>
+    <div class="callout error"><span class="tag">Al leer estas cifras</span>Pocos vuelos, sitios concretos y casi siempre la misma escena que se reconstruyó. Lo que no dicen: cómo se comporta la política en un sitio que no se capturó.</div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hilo de cómputo y frecuencia</p>
+  <h2>¿Cuántas imágenes por segundo da el mundo reconstruido?</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Render (cifras de cada artículo, una GPU)</th><th>Imágenes/s</th><th>10⁷ imágenes</th></tr></thead>
+          <tbody>
+            <tr><td>NeRF original, V100 <a class="cite" data-ref="mildenhall2020"></a></td><td class="n">0,033</td><td class="n">9,5 años</td></tr>
+            <tr><td>Instant-NGP, RTX 3090, HD <a class="cite" data-ref="muller2022"></a></td><td class="n"><span class="hz">60</span></td><td class="n">46 h</td></tr>
+            <tr><td>3DGS-30K, A6000, Mip-NeRF 360 <a class="cite" data-ref="kerbl2023"></a></td><td class="n"><span class="hz">134</span></td><td class="n">21 h</td></tr>
+            <tr><td>FiGS (SOUS VIDE), hasta <a class="cite" data-ref="low2025"></a></td><td class="n"><span class="hz">130</span></td><td class="n">21 h</td></tr>
+            <tr><td>GRaD-Nav, paso completo de 0,07 s <a class="cite" data-ref="chen2025gradnav"></a></td><td class="n"><span class="hz">14</span></td><td class="n">194 h</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Horas sin paralelizar ni bajar la resolución. <code>figuras_b3b.py</code>, sección 4.</p>
+      <ul class="small">
+        <li><strong>Frecuencia:</strong> una cámara a 30 Hz deja 33 ms por imagen. Con obturador rodante en 8 bandas y desenfoque con 4 subimágenes son 32 renders: 1 ms cada uno.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Cómo lo esquivan</span>Ninguno entrena RL puro con millones de imágenes: SOUS VIDE destila un experto MPC con 100 000–300 000 pares imagen-acción <a class="cite" data-ref="low2025"></a>; GRaD-Nav usa gradientes de la dinámica y dice necesitar el 20 % del tiempo de entrenamiento de BPTT sin sus mejoras <a class="cite" data-ref="chen2025gradnav"></a>. Lo verás en A6b y B6.</div>
+      <div class="callout realidad"><span class="tag">Cómputo limitado</span>Renderizar a baja resolución y en lote, y pedir imagen solo cuando la política la usa. En B1 viste que en Aerial Gym el render cuesta del orden de mil veces la física.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un belief que aprende de imágenes renderizadas hereda su coste: un encoder pequeño entrenado aparte, o un world model que prediga en el espacio latente sin renderizar cada paso (A8a), lo reducen.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Reconstruir, simular sensores y generar mundos</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Sensores sobre escenas reconstruidas</h3><p>Cámaras con distorsión y obturador rodante y LiDAR sobre gaussianas, en tiempo real (3DGUT, SimULi en B3a) <a class="cite" data-ref="gsplat3dgut"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Escenas como entornos de entrenamiento</h3><p>Escenas reconstruidas con física aparte para entrenar políticas visuales que transfieren al sitio real (parte 4). Según NVIDIA, Isaac Sim ya renderiza escenas de gaussianas junto con mallas (NuRec) <a class="cite" data-ref="isaacnurec"></a>.</p></div>
+    <div class="card"><span class="meta">PREVISIÓN</span><h3>Mundos generados</h3><p>Modelos generativos de vídeo y de escenas 3D que crean mundos nuevos a partir de texto o de pocas imágenes: el puente entre el render y los world models (A8b). Es una previsión: su consistencia física y geométrica está aún por demostrar.</p></div>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Problema abierto</span>Las vistas lejanas a la captura. Según el benchmark EUVS, ni los priors de difusión ni una geometría mejor arreglan de fondo la síntesis de vistas con grandes cambios de punto de vista <a class="cite" data-ref="han2025"></a>.</div>
+    <div class="callout tesis"><span class="tag">Tu tesis</span>Un render que no sabe cuándo se equivoca es un modelo de observación sin incertidumbre. Saber qué vistas están bien cubiertas (y decírselo al belief) es una pregunta abierta y útil.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El render es el modelo de observación de tu POMDP</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Observación:</strong> renderizador + modelo de sensor \(= p(o\mid s)\). Real2sim te da ese modelo para un sitio concreto; la aleatorización, una familia de modelos.</li>
+        <li><strong>Belief visual:</strong> si tu política infiere su estado de imágenes, todo lo que el render hace mal (escala, iluminación, artefactos) entra en su belief.</li>
+        <li><strong>World model:</strong> un modelo latente que predice imágenes futuras aprende un renderizador implícito. Puedes comparar sus predicciones con el render de la escena reconstruida desde la misma pose: una prueba directa de lo que ha aprendido.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Entrenar en el sitio reconstruido (exacto pero estrecho) o en muchos sitios aleatorizados (amplio pero aproximado)? Un belief podría combinar los dos: prior amplio, adaptación al sitio con las observaciones.</div>
+      <div class="callout clave"><span class="tag">Para el hito H2</span>Tu simulador gana un «modo visual»: la cámara del dron renderizada desde una escena 3DGS con los efectos de B3a, aunque sea a pocos Hz o a baja resolución, para evaluar políticas, no necesariamente para entrenarlas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de B3b</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Tres estrategias: fotorrealismo (motores gráficos), variedad (aleatorización de dominio) y copia de la realidad (real2sim). Se combinan.</li>
+    <li>NeRF: \(\hat C = \sum T_i\alpha_i\mathbf c_i\), con \(\alpha_i = 1 - e^{-\sigma_i\delta_i}\). Diferenciable y lento; su profundidad esperada puede caer en el aire.</li>
+    <li>3DGS: gaussianas con \(\Sigma = RSS^\top R^\top\), proyectadas con \(JW\Sigma W^\top J^\top\), ordenadas por tiles y compuestas: tiempo real con la misma fórmula de imagen.</li>
+    <li>59 parámetros por gaussiana; millones por escena; geometría pobre, escena estática y luz horneada.</li>
+    <li>Real2sim: captura, poses, reconstrucción, alineación (escala y gravedad), física y sensores.</li>
+    <li>La escena solo es fiable cerca de las vistas capturadas: capturar a pie y volar a 5 m pone las vistas a 33° de la captura más cercana.</li>
+    <li>La validación que cuenta es en bucle cerrado, con la política, no solo PSNR.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Render volumétrico</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Tres tramos de un rayo con \(\alpha\) = 0,2; 0,5 y 1,0 y colores 1, 0 y 0,5. ¿Color del píxel?</p>
+      <ol class="opts">
+        <li><button type="button">0,50</button></li>
+        <li><button type="button">0,40</button></li>
+        <li><button type="button">0,20</button></li>
+        <li><button type="button">1,50</button></li>
+      </ol>
+      <p class="explain">Pesos: \(T_1\alpha_1 = 0{,}2\); \(T_2\alpha_2 = 0{,}8\cdot0{,}5 = 0{,}4\); \(T_3\alpha_3 = 0{,}4\cdot1 = 0{,}4\). Color: \(0{,}2\cdot1 + 0{,}4\cdot0 + 0{,}4\cdot0{,}5 = 0{,}4\).</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. ¿Por qué la covarianza de cada gaussiana se parametriza como \(RSS^\top R^\top\) y no directamente?</p>
+      <ol class="opts">
+        <li><button type="button">Porque ocupa menos memoria</button></li>
+        <li><button type="button">Porque se renderiza más rápido</button></li>
+        <li><button type="button">Porque así sigue siendo semidefinida positiva al optimizarla con gradientes</button></li>
+        <li><button type="button">Porque COLMAP la da en esa forma</button></li>
+      </ol>
+      <p class="explain">Optimizar una matriz \(3\times3\) libre con descenso por gradiente puede dar covarianzas no válidas. Con escala y cuaternión, cualquier valor da una covarianza válida.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Real2sim</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Reconstruyes un sitio con COLMAP y 3DGS y metes la escena en tu simulador sin más. ¿Qué falta casi seguro?</p>
+      <ol class="opts">
+        <li><button type="button">El color de las gaussianas</button></li>
+        <li><button type="button">Las poses de las cámaras</button></li>
+        <li><button type="button">La ordenación por profundidad</button></li>
+        <li><button type="button">La escala métrica y la dirección de la gravedad, y una geometría para las colisiones</button></li>
+      </ol>
+      <p class="explain">El SfM monocular da la escena salvo una similitud (escala, rotación y traslación). Sin escala y gravedad, la física del dron y la escena no casan; y las gaussianas no son una superficie para colisionar.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. Capturas un patio caminando (1,5 m de altura) y tu dron volará a 8 m. ¿Qué esperas?</p>
+      <ol class="opts">
+        <li><button type="button">Vistas a unos 50° de cualquier foto: huecos y artefactos que la política verá como reales</button></li>
+        <li><button type="button">La misma calidad: 3DGS generaliza a cualquier vista</button></li>
+        <li><button type="button">Más calidad, porque desde arriba hay menos oclusiones</button></li>
+        <li><button type="button">Nada, si el PSNR de entrenamiento es alto</button></li>
+      </ol>
+      <p class="explain">En el ejemplo de la presentación, a 8 m de altura el ángulo a la vista de captura más cercana es de 48,8°. Lo que no se fotografió (techos, copas) no está en la escena.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Diseño</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. Quieres usar la escena reconstruida para comprobar colisiones del planificador de A5. ¿Qué usas?</p>
+      <ol class="opts">
+        <li><button type="button">La profundidad esperada del render</button></li>
+        <li><button type="button">Las medias de las gaussianas como nube de puntos, sin más</button></li>
+        <li><button type="button">Una malla o un campo de distancias extraído de la reconstrucción (o un LiDAR del sitio), con margen</button></li>
+        <li><button type="button">Nada: las gaussianas ya son sólidas</button></li>
+      </ol>
+      <p class="explain">La profundidad esperada puede caer en el aire y las medias de gaussianas grandes no son la superficie. Hace falta una geometría explícita, y un margen que cubra su error.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña la captura y la cadena para entrenar una política visual que vuele entre los árboles de un parque concreto a 2–6 m de altura.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Captura con el propio dron a 2, 4 y 6 m, en pasadas que cubran las direcciones de vuelo previstas, con VIO para tener escala y gravedad, y algunas fotos de control retenidas a lo largo del recorrido. Reconstrucción con 3DGS (o una variante orientada a superficies) y extracción de un campo de distancias para las colisiones, comprobado con un barrido LiDAR si es posible. En el simulador: dinámica del x500 (B1, B2), cámara renderizada con su modelo de sensor (B3a) y la pose de cada fila, y aleatorización de luz, color y ruido encima. Validación: calidad en las fotos retenidas frente al ángulo a la captura, y después la política en bucle cerrado en la escena y en el parque real, en ese orden.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ARXIV</span>
+      <h3>3D Gaussian Splatting <a class="cite" data-ref="kerbl2023"></a></h3>
+      <p><strong>Lee:</strong> la representación, la proyección, el control adaptativo de densidad y el rasterizador por tiles.</p>
+      <p><strong>Busca:</strong> la tabla de comparación con Mip-NeRF 360 e Instant-NGP: calidad, tiempo de entrenamiento y FPS.</p>
+      <p><strong>Responde:</strong> ¿qué parte del algoritmo cambiarías para renderizar la cámara de un dron con obturador rodante?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · ARXIV</span>
+      <h3>NeRF <a class="cite" data-ref="mildenhall2020"></a></h3>
+      <p><strong>Lee:</strong> el render volumétrico, la codificación posicional y el muestreo jerárquico.</p>
+      <p><strong>Busca:</strong> el estudio de ablación de la codificación y de la dependencia con la dirección.</p>
+      <p><strong>Responde:</strong> ¿qué significaría la densidad \(\sigma\) para un planificador?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ARXIV</span>
+      <h3>SOUS VIDE <a class="cite" data-ref="low2025"></a></h3>
+      <p><strong>Lee:</strong> el simulador FiGS, el experto con estado privilegiado y la arquitectura de la red.</p>
+      <p><strong>Busca:</strong> qué aleatorizan durante el entrenamiento y qué cambian en los ensayos reales.</p>
+      <p><strong>Responde:</strong> ¿qué le falta a esa política para tener un belief? ¿Qué pasaría en un sitio no capturado?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Instant-NGP <a class="cite" data-ref="muller2022"></a>; aleatorización de dominio <a class="cite" data-ref="tobin2017"></a>; COLMAP <a class="cite" data-ref="schonberger2016"></a>; LPIPS <a class="cite" data-ref="zhang2018"></a>; gsplat <a class="cite" data-ref="ye2025"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Observaciones del dron desde una escena 3DGS</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Render volumétrico</strong> en JAX: el rayo de la presentación y su convergencia.</li>
+        <li><strong>Una escena 3DGS real</strong> preentrenada (Mip-NeRF 360), renderizada con gsplat desde las cámaras de captura.</li>
+        <li><strong>La cámara del dron:</strong> alinear la escena, volar el x500 y renderizar con desenfoque, obturador rodante y ruido.</li>
+        <li><strong>Fiabilidad frente al ángulo</strong> a las vistas de captura.</li>
+        <li><strong>Entrenar tu propia escena</strong> con gsplat y medir PSNR, SSIM y LPIPS en vistas retenidas (opcional).</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Color 0,428 y profundidad esperada de 3,57 m en el rayo; 59 parámetros por gaussiana; la caída de calidad al alejarse de la altura de captura.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>gsplat necesita una GPU NVIDIA (local o en la nube). Sin ella, el paso 2 tiene una versión en CPU con tu propio rasterizador en JAX a baja resolución.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b3b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-schonberger2016">Schönberger, J. L., Frahm, J.-M. (2016). Structure-from-motion revisited. <span class="venue">CVPR 2016</span>, 4104–4113. <a href="https://doi.org/10.1109/CVPR.2016.445">doi:10.1109/CVPR.2016.445</a></li>
+    <li id="ref-tobin2017">Tobin, J., Fong, R., Ray, A., Schneider, J., Zaremba, W., Abbeel, P. (2017). Domain randomization for transferring deep neural networks from simulation to the real world. <span class="venue">IROS 2017</span>, 23–30. <a href="https://doi.org/10.1109/IROS.2017.8202133">doi:10.1109/IROS.2017.8202133</a>. <a href="https://arxiv.org/abs/1703.06907">arXiv:1703.06907</a></li>
+    <li id="ref-sadeghi2017">Sadeghi, F., Levine, S. (2017). CAD2RL: Real single-image flight without a single real image. <span class="venue">Robotics: Science and Systems XIII</span>. <a href="https://doi.org/10.15607/RSS.2017.XIII.034">doi:10.15607/RSS.2017.XIII.034</a>. <a href="https://arxiv.org/abs/1611.04201">arXiv:1611.04201</a></li>
+    <li id="ref-guerra2019">Guerra, W., Tal, E., Murali, V., Ryou, G., Karaman, S. (2019). FlightGoggles: Photorealistic sensor simulation for perception-driven robotics using photogrammetry and virtual reality. <span class="venue">IROS 2019</span>, 6941–6948. <a href="https://doi.org/10.1109/IROS40897.2019.8968116">doi:10.1109/IROS40897.2019.8968116</a>. Las citas y la cifra de 960 Hz salen de la versión ampliada, <a href="https://arxiv.org/abs/1905.11377">arXiv:1905.11377</a> (v2, 2021)</li>
+    <li id="ref-mildenhall2020">Mildenhall, B., Srinivasan, P. P., Tancik, M., Barron, J. T., Ramamoorthi, R., Ng, R. (2020). NeRF: Representing scenes as neural radiance fields for view synthesis. <span class="venue">ECCV 2020</span>, LNCS, 405–421. <a href="https://doi.org/10.1007/978-3-030-58452-8_24">doi:10.1007/978-3-030-58452-8_24</a>. <a href="https://arxiv.org/abs/2003.08934">arXiv:2003.08934</a></li>
+    <li id="ref-muller2022">Müller, T., Evans, A., Schied, C., Keller, A. (2022). Instant neural graphics primitives with a multiresolution hash encoding. <span class="venue">ACM Transactions on Graphics</span>, 41(4), 102:1–102:15. <a href="https://doi.org/10.1145/3528223.3530127">doi:10.1145/3528223.3530127</a>. <a href="https://arxiv.org/abs/2201.05989">arXiv:2201.05989</a></li>
+    <li id="ref-kerbl2023">Kerbl, B., Kopanas, G., Leimkühler, T., Drettakis, G. (2023). 3D Gaussian splatting for real-time radiance field rendering. <span class="venue">ACM Transactions on Graphics</span>, 42(4), 1–14. <a href="https://doi.org/10.1145/3592433">doi:10.1145/3592433</a>. <a href="https://arxiv.org/abs/2308.04079">arXiv:2308.04079</a></li>
+    <li id="ref-ye2025">Ye, V., Li, R., Kerr, J., Turkulainen, M., Yi, B., Pan, Z., Seiskari, O., Ye, J., Hu, J., Tancik, M., Kanazawa, A. (2025). gsplat: An open-source library for Gaussian splatting. <span class="venue">Journal of Machine Learning Research</span>, 26(34), 1–17. <a href="https://arxiv.org/abs/2409.06765">arXiv:2409.06765</a>. <a href="https://github.com/nerfstudio-project/gsplat">github.com/nerfstudio-project/gsplat</a></li>
+    <li id="ref-gsplat3dgut">Wu, Q., Martinez Esturo, J., Mirzaei, A., Moenne-Loccoz, N., Gojcic, Z. (2025). 3DGUT: Enabling distorted cameras and secondary rays in Gaussian splatting. <span class="venue">CVPR 2025</span>, 26036–26046. <a href="https://doi.org/10.1109/CVPR52734.2025.02425">doi:10.1109/CVPR52734.2025.02425</a>. <a href="https://arxiv.org/abs/2412.12507">arXiv:2412.12507</a>. Integración en gsplat: <code>docs/3dgut.md</code>, consultado el 7 de noviembre de 2026</li>
+    <li id="ref-low2025">Low, J., Adang, M., Yu, J., Nagami, K., Schwager, M. (2025). SOUS VIDE: Cooking visual drone navigation policies in a Gaussian splatting vacuum. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(5), 5122–5129. <a href="https://doi.org/10.1109/LRA.2025.3553785">doi:10.1109/LRA.2025.3553785</a>. <a href="https://arxiv.org/abs/2412.16346">arXiv:2412.16346</a></li>
+    <li id="ref-chen2025gradnav">Chen, Q., Sun, J., Gao, N., Low, J., Chen, T., Schwager, M. (2025). GRaD-Nav: Efficiently learning visual drone navigation with Gaussian radiance fields and differentiable dynamics. <span class="venue">IROS 2025</span>, 7941–7948. <a href="https://doi.org/10.1109/IROS60139.2025.11247514">doi:10.1109/IROS60139.2025.11247514</a>. <a href="https://arxiv.org/abs/2503.03984">arXiv:2503.03984</a> (cifras de la versión HTML de arXiv)</li>
+    <li id="ref-miao2025">Miao, Y., Shen, W., Mitra, S. (2025). FalconGym: A photorealistic simulation framework for zero-shot sim-to-real vision-based quadrotor navigation. <span class="venue">IROS 2025</span>, 17154–17161. <a href="https://doi.org/10.1109/IROS60139.2025.11247178">doi:10.1109/IROS60139.2025.11247178</a>. <a href="https://arxiv.org/abs/2503.02198">arXiv:2503.02198</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="13">
+    <li id="ref-ue5docs">Epic Games. Documentación de Unreal Engine 5.8: <em>Nanite Virtualized Geometry</em> y <em>Lumen Global Illumination and Reflections</em>, consultado el 7 de noviembre de 2026. Afirmaciones del fabricante. <a href="https://dev.epicgames.com/documentation/en-us/unreal-engine">dev.epicgames.com</a></li>
+    <li id="ref-isaacrtx">NVIDIA. Documentación de Isaac Sim: <em>RTX Sensors</em>, consultado el 7 de noviembre de 2026. Afirmaciones del fabricante. <a href="https://docs.isaacsim.omniverse.nvidia.com/latest/sensors/isaacsim_sensors_rtx.html">docs.isaacsim.omniverse.nvidia.com</a></li>
+    <li id="ref-dimmig2025">Dimmig, C. A., Silano, G., McGuire, K., Gabellieri, C., Hönig, W., Moore, J., Kobilarov, M. (2025). Survey of simulators for aerial robots: An overview and in-depth systematic comparisons. <span class="venue">IEEE Robotics &amp; Automation Magazine</span>, 32(2), 153–166. <a href="https://doi.org/10.1109/MRA.2024.3433171">doi:10.1109/MRA.2024.3433171</a>. <a href="https://arxiv.org/abs/2311.02296">arXiv:2311.02296</a></li>
+    <li id="ref-gs3dcode">Inria y MPII. Código de <em>3D Gaussian Splatting for Real-Time Radiance Field Rendering</em>, <code>LICENSE.md</code> (uso de investigación no comercial), consultado el 7 de noviembre de 2026. <a href="https://github.com/graphdeco-inria/gaussian-splatting">github.com/graphdeco-inria/gaussian-splatting</a></li>
+    <li id="ref-huang2024">Huang, B., Yu, Z., Chen, A., Geiger, A., Gao, S. (2024). 2D Gaussian splatting for geometrically accurate radiance fields. <span class="venue">SIGGRAPH 2024 Conference Papers</span>, 1–11. <a href="https://doi.org/10.1145/3641519.3657428">doi:10.1145/3641519.3657428</a>. <a href="https://arxiv.org/abs/2403.17888">arXiv:2403.17888</a></li>
+    <li id="ref-zhang2018">Zhang, R., Isola, P., Efros, A. A., Shechtman, E., Wang, O. (2018). The unreasonable effectiveness of deep features as a perceptual metric. <span class="venue">CVPR 2018</span>, 586–595. <a href="https://doi.org/10.1109/CVPR.2018.00068">doi:10.1109/CVPR.2018.00068</a>. <a href="https://arxiv.org/abs/1801.03924">arXiv:1801.03924</a></li>
+    <li id="ref-han2025">Han, X., Jia, Z., Li, B., Wang, Y., Ivanovic, B., You, Y., Liu, L., Wang, Y., Pavone, M., Feng, C., Li, Y. (2025). Extrapolated urban view synthesis benchmark. <span class="venue">ICCV 2025</span>, 28718–28728. <a href="https://doi.org/10.1109/ICCV51701.2025.02667">doi:10.1109/ICCV51701.2025.02667</a>. <a href="https://arxiv.org/abs/2412.05256">arXiv:2412.05256</a></li>
+    <li id="ref-warburg2023">Warburg, F., Weber, E., Tancik, M., Holynski, A., Kanazawa, A. (2023). Nerfbusters: Removing ghostly artifacts from casually captured NeRFs. <a href="https://arxiv.org/abs/2304.10532">arXiv:2304.10532</a> (ICCV 2023 según los autores)</li>
+    <li id="ref-chen2025splatnav">Chen, T., Shorinwa, O., Bruno, J., Swann, A., Yu, J., Zeng, W., Nagami, K., Dames, P., Schwager, M. (2025). Splat-Nav: Safe real-time robot navigation in Gaussian splatting maps. <span class="venue">IEEE Transactions on Robotics</span>, 41, 2765–2784. <a href="https://doi.org/10.1109/TRO.2025.3552348">doi:10.1109/TRO.2025.3552348</a>. <a href="https://arxiv.org/abs/2403.02751">arXiv:2403.02751</a></li>
+    <li id="ref-qureshi2025">Qureshi, M. N., Garg, S., Yandun, F., Held, D., Kantor, G., Silwal, A. (2025). SplatSim: Zero-shot sim2real transfer of RGB manipulation policies using Gaussian splatting. <span class="venue">ICRA 2025</span>, 6502–6509. <a href="https://doi.org/10.1109/ICRA55743.2025.11128339">doi:10.1109/ICRA55743.2025.11128339</a>. <a href="https://arxiv.org/abs/2409.10161">arXiv:2409.10161</a></li>
+    <li id="ref-isaacnurec">NVIDIA. Documentación de Isaac Sim: <em>Neural Volume Rendering</em> (NuRec), consultado el 7 de noviembre de 2026. Afirmaciones del fabricante. <a href="https://docs.isaacsim.omniverse.nvidia.com/latest/assets/usd_assets_nurec.html">docs.isaacsim.omniverse.nvidia.com</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
