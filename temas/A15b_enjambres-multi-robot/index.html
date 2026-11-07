@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A15b · Enjambres y multi-robot real</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A15b" data-deck-title="Enjambres y multi-robot real · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 27 · Curso de robótica inteligente</p>
+  <h1>Enjambres y multi-robot real</h1>
+  <p class="subtitle">De las reglas locales de los boids a los enjambres de drones que vuelan sin control central; consenso, subastas y planificación descentralizada con comunicación intermitente; equipos que deben coordinarse con compañeros que no conocen, y compañeros que fallan o mienten. Con los drones de A15a frente a lo que no vieron al entrenar.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A5, A15a</span>
+    <span><b>Prepara</b> H3, B8</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A15b</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar cómo reglas locales producen orden colectivo, y cuándo ese orden se rompe.</li>
+    <li>Derivar la convergencia del consenso lineal y reconocer el papel del grafo de comunicación.</li>
+    <li>Elegir entre subastas, consenso y planificación descentralizada para repartir tareas con comunicación intermitente.</li>
+    <li>Distinguir autojuego, juego cruzado y coordinación sin acuerdo previo, y medir su diferencia.</li>
+    <li>Evaluar un equipo frente a fallos, mensajes retrasados y compañeros que mienten.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>En el mundo real, los compañeros cambian, fallan y no siempre dicen la verdad</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Un enjambre de 30 drones voló al aire libre sin control central, el mayor de su tipo cuando se publicó, con un modelo que tiene en cuenta movimiento y comunicación limitados, retrasos y perturbaciones <a class="cite" data-ref="vasarhelyi2018"></a>.</li>
+        <li>En la final del DARPA SubT, el equipo ganador exploró con cuatro robots cuadrúpedos y dejó que salieran a propósito del alcance de la radio; de sus ocho repetidores, desplegó tres <a class="cite" data-ref="tranzatto2022"></a>.</li>
+        <li>Un agente de Hanabi entrenado por autojuego puntúa 23,97 con copias de sí mismo y 2,52 con otros entrenados igual pero con otra semilla <a class="cite" data-ref="hu2020"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Si tus drones buscan en equipo, cada uno debe mantener su belief con lo que observa y con lo que le cuentan, sabiendo que los mensajes llegan tarde, que un compañero puede caer y que quizá vuele con drones de otro entrenamiento.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Los equipos de A15a frente a compañeros de otra semilla, un dron que cae, uno que miente y mensajes retrasados; y dos remedios: entrenar con condiciones variadas y con una población de compañeros. <code>figuras_a15b.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De las bandadas simuladas a equipos que se coordinan sin conocerse</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1987–2009</span>Boids <a class="cite" data-ref="reynolds1987"></a>. Transición de fase en partículas autopropulsadas <a class="cite" data-ref="vicsek1995"></a>. Consenso en redes de agentes <a class="cite" data-ref="olfatisaber2007"></a>. Subastas con consenso para repartir tareas <a class="cite" data-ref="choi2009"></a>.</div>
+    <div class="ev"><span class="yr">2010–2014</span>Equipos ad hoc: colaborar sin coordinación previa <a class="cite" data-ref="stone2010"></a>. Evitación recíproca de colisiones <a class="cite" data-ref="vandenberg2011"></a>. Revisión de la robótica de enjambre <a class="cite" data-ref="brambilla2013"></a>. Mil robots que se autoensamblan <a class="cite" data-ref="rubenstein2014"></a>.</div>
+    <div class="ev"><span class="yr">2017–2021</span>Crazyswarm <a class="cite" data-ref="preiss2017"></a>. 30 drones sin control central <a class="cite" data-ref="vasarhelyi2018"></a>. Dec-MCTS <a class="cite" data-ref="best2019"></a>. Other-play <a class="cite" data-ref="hu2020"></a>, políticas adversarias <a class="cite" data-ref="gleave2020"></a>, Fictitious Co-Play <a class="cite" data-ref="strouse2021"></a>. Final del DARPA SubT <a class="cite" data-ref="darpa2021"></a>.</div>
+    <div class="ev"><span class="yr">2022–2026</span>Microdrones que vuelan en enjambre en entornos naturales <a class="cite" data-ref="zhou2022"></a>. Revisión del trabajo en equipos ad hoc <a class="cite" data-ref="mirsky2022"></a>. Robótica de enjambre: pasado, presente y futuro <a class="cite" data-ref="dorigo2021"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Enjambres">
+  <p class="num">Parte 1</p>
+  <h2>Orden a partir de reglas locales</h2>
+  <p>Boids, Vicsek, Kilobots y enjambres de drones que vuelan.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · reglas locales</p>
+  <h2>Tres reglas y una transición de fase</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Boids</strong> <a class="cite" data-ref="reynolds1987"></a>: cada pájaro es un actor independiente que navega con su percepción local. Tres reglas, en orden de precedencia decreciente: evitar colisiones con los vecinos, igualar su velocidad y mantenerse cerca de ellos. El coste ingenuo crece como \(O(N^2)\).</p>
+      <p class="small"><strong>Vicsek</strong> <a class="cite" data-ref="vicsek1995"></a>: partículas a velocidad constante que en cada paso toman la dirección media de sus vecinas más un ruido \(\eta\). Al bajar el ruido aparece una transición de fase cinética del desorden al movimiento colectivo, con \(v_a \propto (\eta_c - \eta)^{\beta}\) y \(\beta \simeq 0{,}45\).</p>
+      <div class="callout clave"><span class="tag">Lo que enseña</span>Nadie lleva el mando y el grupo se ordena; pero el orden depende de la densidad y del ruido, y desaparece de golpe al pasar un umbral. El ruido de un dron real (sensores, viento, retrasos) cuenta.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Parámetro de orden del modelo de Vicsek frente al ruido para 100 y 400 partículas">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="244" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <text x="428" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+        <path d="M60.0,30.0 L106.0,32.6 L152.0,40.5 L198.0,53.2 L244.0,70.2 L290.0,91.7 L336.0,115.8 L382.0,141.6 L428.0,175.1 L474.0,208.9 L520.0,222.5" fill="none" class="ln-time" stroke-width="2"/>
+        <path d="M60.0,30.0 L106.0,32.9 L152.0,42.4 L198.0,57.7 L244.0,78.0 L290.0,103.0 L336.0,135.8 L382.0,166.6 L428.0,206.2 L474.0,228.8 L520.0,236.3" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">ruido η (rad)</text>
+        <text x="20" y="140" text-anchor="middle" class="t-muted" font-size="13" transform="rotate(-90 20 140)">orden vₐ</text>
+      </svg>
+      <figcaption>Nuestra simulación del modelo de Vicsek con densidad 4 y radio 1: azul, 400 partículas; naranja, 100. Con más partículas, el orden cae más cerca de cero cuando hay mucho ruido (efecto del tamaño finito). Media de 3 semillas. <code>figuras/vicsek_a15b.py</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enjambres · robots y drones reales</p>
+  <h2>De mil robots en una mesa a enjambres que vuelan sin control central</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Kilobots</strong> <a class="cite" data-ref="rubenstein2014"></a>: autoensamblaje programable de formas en dos dimensiones con un enjambre de mil robots, que solo se comunican con vecinos a unas tres veces su diámetro; robusto a la variabilidad y los errores de un sistema descentralizado grande.</li>
+        <li><strong>Crazyswarm</strong> <a class="cite" data-ref="preiss2017"></a>: hasta 49 microdrones en formación densa en interiores, con captura de movimiento, la mayor parte del cálculo a bordo y menos de 2 cm de error medio de posición.</li>
+        <li><strong>Vásárhelyi et al.</strong> <a class="cite" data-ref="vasarhelyi2018"></a>: 30 drones al aire libre sin control central, con un modelo de bandada cuyos parámetros se ajustan por optimización evolutiva; según la página del grupo, a 8 m/s entre paredes y obstáculos virtuales.</li>
+        <li><strong>Soria et al.</strong> <a class="cite" data-ref="soria2021"></a>: control predictivo que combina campos de potencial locales con la dinámica de los drones; mejora velocidad, orden y seguridad, validado con cinco cuadricópteros entre obstáculos reales.</li>
+        <li><strong>Zhou et al.</strong> <a class="cite" data-ref="zhou2022"></a>: microdrones del tamaño de una mano, con percepción, localización y control a bordo, que planifican en milisegundos y se coordinan en entornos naturales sin infraestructura externa.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Qué tienen en común</span>Reglas o planificadores locales, vecinos cercanos y nada central en vuelo. La robótica de enjambre busca sistemas más robustos, tolerantes a fallos y flexibles que un robot solo <a class="cite" data-ref="dorigo2021"></a>; Brambilla et al. la revisan desde la ingeniería de enjambres <a class="cite" data-ref="brambilla2013"></a>.</div>
+      <div class="callout tesis"><span class="tag">En tu búsqueda</span>Estos enjambres vuelan juntos; los tuyos tendrán que repartirse una zona y separarse, con comunicación que se corta. Es más parecido a la parte 2 que a una bandada.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Coordinación">
+  <p class="num">Parte 2</p>
+  <h2>Coordinarse sin un centro</h2>
+  <p>Consenso, colisiones, subastas, planificación y lo que pasó en el DARPA SubT.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · consenso</p>
+  <h2>Ponerse de acuerdo hablando solo con los vecinos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Cada agente tiene un valor \(x_i\) (una estimación, una posición de encuentro) y lo acerca al de sus vecinos en el grafo de comunicación:</p>
+      \[ \dot x_i = \sum_{j\in\mathcal N_i}(x_j - x_i) \quad\Longleftrightarrow\quad \dot{\mathbf x} = -L\,\mathbf x, \]
+      <p class="small">con \(L = D - A\) el laplaciano del grafo. Olfati-Saber, Fax y Murray dan el marco para analizar estos algoritmos: el papel del flujo de información dirigido, la robustez a cambios de topología por fallos de enlaces o nodos, los retrasos, y la relación entre las propiedades espectrales del grafo y la velocidad con que se difunde la información <a class="cite" data-ref="olfatisaber2007"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: converge a la media, a ritmo \(\lambda_2\)</summary>
+        <p class="small">Con el grafo no dirigido y conexo, \(L\) es simétrica y semidefinida positiva, \(L\mathbf 1 = 0\) y sus autovalores son \(0 = \lambda_1 &lt; \lambda_2 \le \dots\). Como \(\mathbf 1^\top L = 0\), la media \(\bar x = \tfrac1n\mathbf 1^\top\mathbf x\) se conserva. El error \(\mathbf e = \mathbf x - \bar x\mathbf 1\) cumple \(\dot{\mathbf e} = -L\mathbf e\) y es ortogonal a \(\mathbf 1\), así que \(\|\mathbf e(t)\|\le e^{-\lambda_2 t}\|\mathbf e(0)\|\). Un grafo mal conectado (\(\lambda_2\) pequeño) tarda en ponerse de acuerdo; uno roto en dos (\(\lambda_2 = 0\)) no lo consigue nunca.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Para drones</span>Fundir beliefs entre drones es un consenso: con mensajes que se pierden, el grafo cambia en cada paso, y lo que importa es que esté conectado a menudo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · colisiones, tareas y planes</p>
+  <h2>Tres herramientas clásicas para equipos descentralizados</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">COLISIONES</span><h3>ORCA</h3><p>Cada agente asume la mitad de la responsabilidad de evitar cada colisión por parejas; elegir la velocidad se reduce a un programa lineal pequeño, con condiciones suficientes para moverse sin chocar y miles de agentes en milisegundos, según sus autores <a class="cite" data-ref="vandenberg2011"></a>.</p></div>
+    <div class="card"><span class="meta">TAREAS</span><h3>Subastas con consenso</h3><p>CBBA elige tareas con una estrategia de mercado y resuelve conflictos con un consenso local; converge a una asignación sin conflictos con garantías de peor caso y tolera que cada robot vea la situación de forma distinta <a class="cite" data-ref="choi2009"></a>.</p></div>
+    <div class="card"><span class="meta">PLANES</span><h3>Dec-MCTS</h3><p>Cada robot mantiene una distribución sobre planes en el espacio de acciones conjuntas y envía de vez en cuando una versión comprimida de su árbol de búsqueda; con comunicación intermitente, se compara bien con un MCTS centralizado <a class="cite" data-ref="best2019"></a>.</p></div>
+  </div>
+  <div class="callout tesis"><span class="tag">Percepción activa en equipo</span>Dec-MCTS se probó precisamente en percepción activa: decidir dónde mirar entre varios robots. Es la versión planificada de lo que la parte 5 aprende con PPO.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Coordinación · DARPA SubT</p>
+  <h2>La final subterránea: robots que salen del alcance de la radio a propósito</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Final del DARPA SubT (2021)</th><th>Puntos</th></tr></thead>
+          <tbody>
+            <tr><td>CERBERUS</td><td class="n">23</td></tr>
+            <tr><td>CSIRO Data61</td><td class="n">23</td></tr>
+            <tr><td>MARBLE</td><td class="n">18</td></tr>
+            <tr><td>Explorer</td><td class="n">17</td></tr>
+            <tr><td>CoSTAR</td><td class="n">13</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Página oficial de DARPA <a class="cite" data-ref="darpa2021"></a>. Según CERBERUS, 40 objetos escondidos y 60 minutos, y un único supervisor humano podía interactuar con los robots <a class="cite" data-ref="tranzatto2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>CERBERUS</strong> <a class="cite" data-ref="tranzatto2022"></a> (preprint): cuatro ANYmal C; el robot aéreo se aterrizó a mano y no volvió a desplegarse. Desplegaron 3 de sus 8 repetidores de radio y dejaron salir a los robots del alcance un tiempo limitado; un robot se quedó atascado el resto de la ronda. Ganaron el desempate por haber notificado su último objeto antes.</li>
+        <li><strong>CSIRO Data61</strong>, en los circuitos anteriores a la final <a class="cite" data-ref="hudson2022"></a>: SLAM multiagente descentralizado en cada robot, terrestre o aéreo, con comunicación entre pares; pasaron de construir una red de comunicaciones a confiar en la autonomía de cada robot.</li>
+        <li><strong>CoSTAR</strong> <a class="cite" data-ref="agha2021"></a>: razonamiento y decisión en el espacio de beliefs, con razonamiento descentralizado.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">La lección</span>En el equipo ganador, tres de ocho repetidores, un robot atascado y el dron en tierra. La autonomía con comunicación intermitente no es un extra.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Equipos ad hoc">
+  <p class="num">Parte 3</p>
+  <h2>Coordinarse con quien no conoces</h2>
+  <p>Equipos ad hoc, coordinación sin acuerdo previo y poblaciones de compañeros.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · el problema</p>
+  <h2>Colaborar sin coordinación previa</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Stone et al. 2010</strong> <a class="cite" data-ref="stone2010"></a>: los agentes tendrán que formar equipo con compañeros que no conocen; las estrategias de equipo no pueden fijarse de antemano y un agente debe estar preparado para cooperar con muchos tipos de compañeros, «sin coordinación previa».</li>
+        <li><strong>Hoy</strong> <a class="cite" data-ref="mirsky2022"></a>: el trabajo en equipos ad hoc es diseñar agentes que colaboren con compañeros nuevos sin coordinación previa.</li>
+        <li><strong>Coordinación sin acuerdo previo</strong> (<em>zero-shot coordination</em>) <a class="cite" data-ref="hu2020"></a>: construir agentes que se coordinen con compañeros nuevos que nunca han visto. El autojuego puede producir convenciones muy especializadas que no se transfieren.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Autojuego frente a juego cruzado</span><strong>Autojuego:</strong> el agente juega con copias de sí mismo, como se entrenó. <strong>Juego cruzado:</strong> con agentes entrenados con el mismo método y otra semilla. La diferencia mide cuánto depende el equipo de convenciones arbitrarias.</div>
+      <div class="callout tesis"><span class="tag">En tus drones</span>¿Qué pasa si un dron de tu flota se entrenó con otra semilla, otra versión del simulador o es de otro grupo? Si el equipo se reparte la zona por una convención (el dron 1 va al norte), el recién llegado no la conoce.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · other-play</p>
+  <h2>Hanabi: convenciones que no sobreviven a otra semilla</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Hanabi (puntos, máx. 25)</th><th>Juego cruzado</th><th>Autojuego</th></tr></thead>
+          <tbody>
+            <tr><td>SAD</td><td class="n">2,52</td><td class="n">23,97</td></tr>
+            <tr><td>SAD + other-play</td><td class="n">15,32</td><td class="n">23,93</td></tr>
+            <tr><td>SAD + tarea auxiliar</td><td class="n">17,65</td><td class="n">24,09</td></tr>
+            <tr><td>SAD + tarea auxiliar + other-play</td><td class="n">22,07</td><td class="n">24,06</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Tabla 1 de Hu et al. <a class="cite" data-ref="hu2020"></a>: media de las parejas de agentes entrenados con el mismo método.</p>
+      <p class="small">Con personas: 15,75 de media con el agente de other-play frente a 9,15 con el de autojuego.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Other-play</strong> aprovecha las simetrías conocidas del problema: entrena para jugar bien con el compañero transformado por una simetría del problema elegida al azar, lo que impide apoyarse en convenciones arbitrarias que esa simetría cambiaría.</p>
+      <div class="callout clave"><span class="tag">El juego de las palancas</span>Diez palancas: nueve pagan 1 y una paga 0,9, y hay que elegir la misma que el compañero sin hablar. Elegir al azar entre las de 1 da 0,11 de media con un desconocido; other-play elige la de 0,9, la única que no se confunde con otra, y obtiene 0,9.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Equipos ad hoc · poblaciones</p>
+  <h2>Entrenar con muchos compañeros distintos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Fictitious Co-Play</strong> <a class="cite" data-ref="strouse2021"></a>: el agente se entrena como mejor respuesta a una población de agentes de autojuego <em>y a sus puntos de control anteriores</em> (32 agentes, con su inicio, su mitad y su final). Con 114 personas en Overcooked, los equipos con FCP superan a todos los demás agentes, y las personas lo prefieren.</li>
+        <li>Quitar los puntos de control anteriores (inicio y mitad) importa: con compañeros reservados, de 10,6 a 4,7 platos servidos con el modelo de persona y de 8,6 a 1,0 con compañeros aleatorios.</li>
+        <li><strong>Carroll et al.</strong> <a class="cite" data-ref="carroll2019"></a>: los agentes de autojuego y de entrenamiento por poblaciones juegan muy bien consigo mismos y bastante peor con un modelo de persona que los diseñados para jugar con él.</li>
+        <li><strong>Modelar al compañero</strong> <a class="cite" data-ref="papoudakis2021"></a>: aprender una representación de los demás agentes a partir solo de las observaciones propias, sin necesitar su información al ejecutar. Es un belief sobre el compañero.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Belief sobre los compañeros</span>Un equipo ad hoc es un POMDP en el que parte del estado oculto es <em>qué tipo de compañero tienes</em>. Tu dron podría mantener un belief sobre la política de cada compañero, igual que lo mantiene sobre la posición del objetivo.</div>
+      <div class="callout realidad"><span class="tag">En la parte 5</span>Probamos una versión mínima: el dron 0 aprende con una población de 9 compañeros congelados (3 semillas, 3 puntos de control cada una) y se evalúa con compañeros de una semilla nueva.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Adversarios">
+  <p class="num">Parte 4</p>
+  <h2>Compañeros que fallan o engañan</h2>
+  <p>Políticas adversarias, comunicación manipuladora y cómo filtrarla.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Adversarios · robustez</p>
+  <h2>Un adversario no necesita ser fuerte: le basta con ser raro</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Políticas adversarias</strong> <a class="cite" data-ref="gleave2020"></a>: en un juego de dos humanoides simulados, un adversario entrenado unos 20 millones de pasos (menos del 3 % del entrenamiento de la víctima) gana el 86 % de los episodios, frente al 47 % de un rival normal, con un comportamiento que parece aleatorio. Si se oculta a la víctima la posición del adversario, gana ella el 99 %.</li>
+        <li><strong>M3DDPG</strong> <a class="cite" data-ref="li2019"></a>: una política multiagente puede quedarse en un mal óptimo local respecto a sus compañeros de entrenamiento; la extensión minimax de MADDPG entrena contra la peor perturbación de los demás.</li>
+        <li><strong>Comunicación manipuladora</strong> <a class="cite" data-ref="blumenkamp2020"></a>: un solo agente egoísta aprende estrategias de comunicación muy manipuladoras que le permiten superar con mucho a un equipo cooperativo.</li>
+        <li><strong>Filtrar mensajes</strong> <a class="cite" data-ref="mitchell2020"></a> (preprint): cada agente calcula, con procesos gaussianos, la confianza en que cada compañero dice la verdad.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Qué significa para un enjambre</span>Una política entrenada solo con compañeros cooperativos explota lo que le cuentan sin dudar. Un dron con un sensor roto que informa mal hace el mismo daño que uno malicioso: el problema es confiar sin comprobar.</div>
+      <div class="callout tesis"><span class="tag">Belief, otra vez</span>Fundir los mensajes en el belief propio con un peso según la confianza en quien los envía es un filtro bayesiano con un modelo de sensor por compañero, como en A4a: los mensajes son medidas.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 5</p>
+  <h2>Los drones de A15a frente a lo que no vieron</h2>
+  <p>Compañeros de otra semilla, un dron que cae, uno que miente y mensajes que llegan tarde.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>La búsqueda de A15a, ahora con sorpresas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>La tarea</strong> de A15a: tres drones, rejilla de 12 × 12, mapa previo con dos zonas probables, detección con probabilidad 0,7, 80 pasos y la recompensa del belief-MDP.</li>
+        <li><strong>Equipos por autojuego:</strong> MAPPO sin y con comunicación, 4 semillas cada uno, 600 actualizaciones; el crítico ve la verdad.</li>
+        <li><strong>Condiciones de prueba:</strong> normal; el dron 2 cae en el paso 30 (deja de moverse y de mirar); el dron 2 miente (en cada paso anuncia haber mirado la celda más probable según el equipo, sin mirarla); mensajes con 10 pasos de retraso.</li>
+        <li><strong>Remedios:</strong> entrenamiento con esas condiciones al azar (4 semillas) y el dron 0 entrenado con una población de 9 compañeros congelados (2 semillas).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">La referencia sin aprendizaje</span>Voraz descentralizada: cada dron va hacia la celda con más masa de su propio belief, descontada por la distancia, sin saber qué harán los demás. Con mensajes, su belief es el del equipo.</div>
+      <div class="callout realidad"><span class="tag">Cómo se mide</span>P(encontrarlo en 80 pasos) en 2000 episodios con los mismos mapas para todos. <code>figuras_a15b.py</code> (JAX en GPU, determinista; unos 36 minutos).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · juego cruzado</p>
+  <h2>Sin mensajes, una semilla aprendió otra convención; con ellos, el juego cruzado no cuesta nada</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 470 250" role="img" aria-label="Matrices de juego cruzado de los equipos sin y con comunicación">
+        <rect x="30" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.69"/><text x="52" y="57" text-anchor="middle" class="t-mono" font-size="11">0,895</text><rect x="76" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="98" y="57" text-anchor="middle" class="t-mono" font-size="11">0,891</text><rect x="122" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.50"/><text x="144" y="57" text-anchor="middle" class="t-mono" font-size="11">0,864</text><rect x="168" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="190" y="57" text-anchor="middle" class="t-mono" font-size="11">0,891</text><rect x="30" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="52" y="103" text-anchor="middle" class="t-mono" font-size="11">0,891</text><rect x="76" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="98" y="103" text-anchor="middle" class="t-mono" font-size="11">0,892</text><rect x="122" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.48"/><text x="144" y="103" text-anchor="middle" class="t-mono" font-size="11">0,861</text><rect x="168" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="190" y="103" text-anchor="middle" class="t-mono" font-size="11">0,891</text><rect x="30" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.54"/><text x="52" y="149" text-anchor="middle" class="t-mono" font-size="11">0,871</text><rect x="76" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.58"/><text x="98" y="149" text-anchor="middle" class="t-mono" font-size="11">0,877</text><rect x="122" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.69"/><text x="144" y="149" text-anchor="middle" class="t-mono" font-size="11">0,895</text><rect x="168" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.57"/><text x="190" y="149" text-anchor="middle" class="t-mono" font-size="11">0,876</text><rect x="30" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.67"/><text x="52" y="195" text-anchor="middle" class="t-mono" font-size="11">0,891</text><rect x="76" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.66"/><text x="98" y="195" text-anchor="middle" class="t-mono" font-size="11">0,890</text><rect x="122" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.47"/><text x="144" y="195" text-anchor="middle" class="t-mono" font-size="11">0,859</text><rect x="168" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.68"/><text x="190" y="195" text-anchor="middle" class="t-mono" font-size="11">0,893</text><text x="22" y="57" text-anchor="end" class="t-mono t-faint" font-size="12">0</text><text x="52" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text><text x="22" y="103" text-anchor="end" class="t-mono t-faint" font-size="12">1</text><text x="98" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text><text x="22" y="149" text-anchor="end" class="t-mono t-faint" font-size="12">2</text><text x="144" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text><text x="22" y="195" text-anchor="end" class="t-mono t-faint" font-size="12">3</text><text x="190" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+        <rect x="280" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="302" y="57" text-anchor="middle" class="t-mono" font-size="11">0,911</text><rect x="326" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="348" y="57" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="372" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="394" y="57" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="418" y="30" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="440" y="57" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="280" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="302" y="103" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="326" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="348" y="103" text-anchor="middle" class="t-mono" font-size="11">0,911</text><rect x="372" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="394" y="103" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="418" y="76" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="440" y="103" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="280" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="302" y="149" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="326" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="348" y="149" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="372" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.78"/><text x="394" y="149" text-anchor="middle" class="t-mono" font-size="11">0,909</text><rect x="418" y="122" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="440" y="149" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="280" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="302" y="195" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="326" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="348" y="195" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="372" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="394" y="195" text-anchor="middle" class="t-mono" font-size="11">0,910</text><rect x="418" y="168" width="44" height="44" class="fill-accent" fill-opacity="0.79"/><text x="440" y="195" text-anchor="middle" class="t-mono" font-size="11">0,910</text><text x="272" y="57" text-anchor="end" class="t-mono t-faint" font-size="12">0</text><text x="302" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text><text x="272" y="103" text-anchor="end" class="t-mono t-faint" font-size="12">1</text><text x="348" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text><text x="272" y="149" text-anchor="end" class="t-mono t-faint" font-size="12">2</text><text x="394" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text><text x="272" y="195" text-anchor="end" class="t-mono t-faint" font-size="12">3</text><text x="440" y="24" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+        <text x="122" y="232" text-anchor="middle" class="t-bold" font-size="13">Sin comunicación</text>
+        <text x="372" y="232" text-anchor="middle" class="t-bold" font-size="13">Con comunicación</text>
+      </svg>
+      <figcaption>P(encontrarlo) con el dron 0 de la semilla de la fila y los drones 1 y 2 de la semilla de la columna. La diagonal es el autojuego.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>P(encontrarlo)</th><th>Autojuego</th><th>Juego cruzado</th><th>Peor pareja</th></tr></thead>
+          <tbody>
+            <tr><td>Sin comunicación</td><td class="n">0,894</td><td class="n">0,879</td><td class="n">0,859</td></tr>
+            <tr><td>Con comunicación</td><td class="n">0,910</td><td class="n">0,910</td><td class="n">0,909</td></tr>
+            <tr><td>Con comunicación, entrenamiento variado</td><td class="n">0,909</td><td class="n">0,908</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li><strong>Sin comunicación:</strong> el juego cruzado baja de 0,894 a 0,879 de media, y la peor pareja a 0,859. Las parejas malas son las de la semilla 2 (su fila y su columna): se reparte la rejilla de otra manera que las demás.</li>
+        <li><strong>Con comunicación:</strong> cada dron ve dónde están los demás y qué han mirado, así que coordinarse no exige una convención: el juego cruzado iguala al autojuego.</li>
+        <li>La brecha es mucho menor que en Hanabi (de 23,97 a 2,52 puntos): aquí caben pocas convenciones y casi cualquier reparto razonable funciona.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · fallos y mentiras</p>
+  <h2>Un dron caído cuesta unos 5 puntos, mentir algo más de 1, y el retraso se arregla entrenando con él</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>P(encontrarlo en 80 pasos)</th><th>Normal</th><th>Un dron cae (paso 30)</th><th>Un compañero miente</th><th>Mensajes de hace 10 pasos</th></tr></thead>
+      <tbody>
+        <tr><td>Voraz descentralizada, sin mensajes</td><td class="n">0,777</td><td class="n">0,763</td><td class="n">0,777</td><td class="n">0,777</td></tr>
+        <tr><td>Voraz descentralizada, con mensajes</td><td class="n">0,794</td><td class="n">0,779</td><td class="n">0,857</td><td class="n">0,794</td></tr>
+        <tr><td>MAPPO sin comunicación</td><td class="n">0,894</td><td class="n">0,839</td><td class="n">0,894</td><td class="n">0,894</td></tr>
+        <tr><td>MAPPO con comunicación</td><td class="n">0,910</td><td class="n">0,864</td><td class="n">0,898</td><td class="n">0,879</td></tr>
+        <tr><td>MAPPO con comunicación, entrenamiento variado</td><td class="n">0,909</td><td class="n">0,863</td><td class="n">0,898</td><td class="n">0,894</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="stack"><ul class="small">
+      <li><strong>Un dron cae:</strong> todos pierden unos 5 puntos (sin mensajes, de 0,894 a 0,839; con ellos, de 0,910 a 0,864). Entrenar con caídas no lo mejora (0,863): perder un tercio del equipo a mitad de la búsqueda cuesta lo que cuesta.</li>
+      <li><strong>El mentiroso</strong> baja al equipo con mensajes de 0,910 a 0,898, todavía por encima del equipo sin mensajes; entrenar con mentirosos no lo cambia (0,898).</li>
+    </ul></div>
+    <div class="stack"><ul class="small">
+      <li><strong>Retraso:</strong> de 0,910 a 0,879. Entrenado con retrasos, 0,894, el nivel del equipo sin mensajes, sin perder nada en condiciones normales (0,909).</li>
+      <li><strong>Sorpresa:</strong> los voraces con mensajes <em>mejoran</em> con el mentiroso (de 0,794 a 0,857). Sin coordinarse, todos persiguen la misma celda; las miradas falsas a esa celda los dispersan. Un error que ayuda por casualidad sigue siendo un error.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · población de compañeros</p>
+  <h2>Con compañeros parecidos, entrenar con una población no aporta nada</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Dron 0 (sin comunicación) con…</th><th>Compañeros nuevos</th><th>Compañeros voraces</th></tr></thead>
+          <tbody>
+            <tr><td>Autojuego (semillas 0 a 2)</td><td class="n">0,886</td><td class="n">0,832</td></tr>
+            <tr><td>Entrenado con la población</td><td class="n">0,887</td><td class="n">0,833</td></tr>
+            <tr><td><em>Equipo nuevo completo (referencia)</em></td><td class="n">0,893</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Población: los equipos de autojuego sin comunicación de las semillas 0 a 2, en las actualizaciones 150, 300 y 600 (como los puntos de control de Fictitious Co-Play). Compañeros nuevos: los drones 1 y 2 de la semilla 3, que no estaba en la población.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>El dron 0 de autojuego ya funciona con compañeros nuevos (0,886, casi como el equipo nuevo completo, 0,893); el entrenado con la población, igual (0,887).</li>
+        <li>Con compañeros voraces, que no se parecen a nadie de la población, tampoco cambia (0,833 frente a 0,832); los dos mejoran a un equipo de tres voraces (0,777).</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Resultado negativo</span>Fictitious Co-Play brilla cuando el autojuego produce convenciones incompatibles, como en Overcooked o Hanabi. Aquí la brecha del juego cruzado era de 1,5 puntos: había poco que arreglar. Y una población solo prepara para compañeros que se parezcan a alguno de los suyos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura</p>
+  <h2>Lo que arregla cada cosa: mensajes, entrenamiento variado y quién dice qué</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Mensajes:</strong> con el belief y las posiciones compartidos, el equipo deja de depender de la semilla de sus compañeros.</li>
+        <li><strong>Entrenamiento variado:</strong> cura lo que se puede aprender (no fiarse de un mensaje viejo) y no lo que es una pérdida física (un dron menos).</li>
+        <li><strong>El mentiroso:</strong> entrenar con él no ayuda porque nuestra observación suma las miradas anunciadas por todos: el dron no puede saber quién miente. Defenderse exige poder atribuir cada mensaje a quien lo envía y estimar su fiabilidad, como en la parte 4.</li>
+        <li><strong>Poblaciones:</strong> sirven si los compañeros reales se parecen a alguno de los de entrenamiento; la diversidad hay que construirla a propósito.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Cuatro semillas de un mismo método en una rejilla: las convenciones que se pueden formar son pocas. Fallos y mentiras de un solo tipo, en un dron fijo. Los resultados dicen qué medir y cómo, no cuánto valen estos remedios en general.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Prueba siempre con compañeros de otra semilla, con un dron que cae y con mensajes falsos o viejos; y modela la fiabilidad de cada compañero dentro del belief en lugar de confiar en el canal.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Equipos que se adaptan a quien tienen al lado</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Enjambres que vuelan</h3><p>Decenas de drones sin control central, con reglas o planificadores locales y cálculo a bordo <a class="cite" data-ref="vasarhelyi2018,zhou2022"></a>; equipos heterogéneos que exploran bajo tierra con comunicación intermitente <a class="cite" data-ref="tranzatto2022"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Entrenar para lo desconocido</h3><p>Simetrías que impiden convenciones arbitrarias <a class="cite" data-ref="hu2020"></a>, poblaciones de compañeros <a class="cite" data-ref="strouse2021"></a> y modelos del compañero aprendidos de las observaciones propias <a class="cite" data-ref="papoudakis2021"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Confianza y garantías</h3><p>Cuánto creer a un compañero, cómo detectar a uno roto o malicioso <a class="cite" data-ref="mitchell2020"></a> y qué garantías dar a un equipo aprendido cuando cambian sus miembros.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>Un equipo entrenado solo consigo mismo aprende convenciones y confía en todo lo que oye. Para volar de verdad hay que probarlo con compañeros nuevos, con fallos y con mensajes falsos, y entrenarlo para eso.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El belief de cada dron incluye a sus compañeros</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Belief sobre el objetivo:</strong> fundir los mensajes de los compañeros es un consenso sobre beliefs, con un grafo que cambia cuando la radio se corta.</li>
+        <li><strong>Belief sobre los compañeros:</strong> qué política siguen, si siguen activos y cuánto fiarse de lo que dicen. Es estado oculto, y se puede estimar igual que el resto.</li>
+        <li><strong>World model compartido:</strong> si cada dron aprende su modelo (A8a), los modelos de distintos drones pueden diferir; comunicarse en el espacio latente exige que se entiendan.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Puede un dron mantener un belief conjunto sobre el objetivo y sobre la fiabilidad de cada compañero, y usarlo para decidir a quién creer y a dónde ir, con comunicación intermitente?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> mensajes de hace 10 pasos. <strong>Observabilidad parcial:</strong> el tipo de compañero también es oculto. <strong>Sim-to-real:</strong> en real fallan sensores y radios. <strong>Cómputo:</strong> las políticas de enjambre que vuelan son diminutas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A15b</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Reglas locales producen orden colectivo, que depende del ruido y la densidad y puede desaparecer de golpe.</li>
+    <li>El consenso lineal converge a la media a un ritmo que fija \(\lambda_2\) del laplaciano: la conectividad del grafo manda.</li>
+    <li>Subastas con consenso y Dec-MCTS reparten tareas y planes con comunicación intermitente; en el DARPA SubT, la autonomía con radio limitada fue decisiva.</li>
+    <li>El autojuego aprende convenciones; el juego cruzado lo revela; las simetrías y las poblaciones de compañeros lo mitigan.</li>
+    <li>Un compañero que falla o miente es un riesgo para cualquier equipo que confía en lo que oye: hay que entrenar y probar con él.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Enjambres y consenso</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. En el consenso lineal \(\dot{\mathbf x} = -L\mathbf x\) con un grafo no dirigido y conexo, ¿qué se conserva y a qué ritmo converge?</p>
+      <ol class="opts">
+        <li><button type="button">Se conserva el máximo; converge a ritmo \(\lambda_{\max}\)</button></li>
+        <li><button type="button">Se conserva la media; el error cae como \(e^{-\lambda_2 t}\)</button></li>
+        <li><button type="button">No se conserva nada; converge a cero</button></li>
+        <li><button type="button">Se conserva la mediana; converge en tiempo finito</button></li>
+      </ol>
+      <p class="explain">\(\mathbf 1^\top L = 0\) conserva la media, y el error es ortogonal a \(\mathbf 1\), donde el autovalor más lento es \(\lambda_2\).</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">2. En el modelo de Vicsek, ¿qué pasa al aumentar el ruido por encima de un umbral?</p>
+      <ol class="opts">
+        <li><button type="button">Las partículas se paran</button></li>
+        <li><button type="button">El grupo se divide en dos bandadas</button></li>
+        <li><button type="button">Nada: el orden se mantiene</button></li>
+        <li><button type="button">El movimiento colectivo desaparece: el parámetro de orden cae hacia cero</button></li>
+      </ol>
+      <p class="explain">Es una transición de fase cinética; en un sistema finito, la caída es más suave cuanto más pequeño es el grupo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Equipos ad hoc</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. Un agente de Hanabi puntúa 23,97 en autojuego y 2,52 en juego cruzado. ¿Qué indica?</p>
+      <ol class="opts">
+        <li><button type="button">Que su equipo depende de convenciones arbitrarias que otra semilla no comparte</button></li>
+        <li><button type="button">Que el juego cruzado está mal medido</button></li>
+        <li><button type="button">Que necesita más entrenamiento</button></li>
+        <li><button type="button">Que Hanabi no es cooperativo</button></li>
+      </ol>
+      <p class="explain">Cada semilla llega a un acuerdo distinto e igual de bueno consigo misma.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">4. ¿Por qué Fictitious Co-Play entrena también con puntos de control anteriores de sus compañeros?</p>
+      <ol class="opts">
+        <li><button type="button">Para ahorrar cómputo</button></li>
+        <li><button type="button">Porque los finales son peores</button></li>
+        <li><button type="button">Para ver compañeros de distintos niveles de habilidad; sin ellos, el rendimiento con compañeros nuevos cae (de 10,6 a 4,7 con el modelo de persona)</button></li>
+        <li><button type="button">Para que el agente olvide</button></li>
+      </ol>
+      <p class="explain">Diversidad de compañeros: los compañeros reales no son todos expertos.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Fallos y adversarios</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. En el experimento de Gleave et al., ¿qué pasa si se oculta a la víctima la posición del adversario?</p>
+      <ol class="opts">
+        <li><button type="button">La víctima pierde siempre</button></li>
+        <li><button type="button">La víctima gana el 99 %: el adversario funcionaba porque lo que la víctima veía la descolocaba</button></li>
+        <li><button type="button">Nada cambia</button></li>
+        <li><button type="button">El adversario gana el 99 %</button></li>
+      </ol>
+      <p class="explain">El ataque no es físico: explota lo que la política de la víctima hace con observaciones raras.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: uno de tus drones empieza a anunciar que ha mirado zonas que no ha mirado (sensor roto o ataque). ¿Cómo lo detectas y qué haces?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Trata sus mensajes como medidas de un sensor con su propio modelo de error: compara lo que anuncia con lo que es posible (su posición anunciada, la velocidad máxima, si otros drones lo vieron allí) y con lo que observas tú cuando pasas por esas zonas (si encuentras evidencia donde dijo que no había nada). Mantén un belief sobre su fiabilidad y pondera sus mensajes con él; por debajo de un umbral, ignóralos y avisa. Entrena la política con compañeros que fallan y mienten para que no dependa de un canal perfecto, y prueba siempre con ellos.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN · ICML</span>
+      <h3>Other-play <a class="cite" data-ref="hu2020"></a></h3>
+      <p><strong>Lee:</strong> el juego de las palancas y la tabla de Hanabi.</p>
+      <p><strong>Responde:</strong> ¿qué simetrías tiene tu tarea de búsqueda?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · PREPRINT</span>
+      <h3>CERBERUS en la final <a class="cite" data-ref="tranzatto2022"></a></h3>
+      <p><strong>Lee:</strong> la comunicación y los fallos de la ronda final.</p>
+      <p><strong>Responde:</strong> ¿qué decidieron automatizar y qué no?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · NEURIPS</span>
+      <h3>Fictitious Co-Play <a class="cite" data-ref="strouse2021"></a></h3>
+      <p><strong>Lee:</strong> la población y los puntos de control.</p>
+      <p><strong>Responde:</strong> ¿cómo construirías la población para tus drones?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> equipos ad hoc <a class="cite" data-ref="mirsky2022"></a>; consenso <a class="cite" data-ref="olfatisaber2007"></a>; Dec-MCTS <a class="cite" data-ref="best2019"></a>; políticas adversarias <a class="cite" data-ref="gleave2020"></a>; robótica de enjambre <a class="cite" data-ref="dorigo2021"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Compañeros desconocidos en la búsqueda</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Vicsek:</strong> orden frente a ruido y tamaño.</li>
+        <li><strong>Autojuego y juego cruzado</strong> con los drones de A15a.</li>
+        <li><strong>Fallos:</strong> un dron que cae, uno que miente, mensajes retrasados.</li>
+        <li><strong>Entrenamiento variado</strong> con esas condiciones al azar.</li>
+        <li><strong>Población de compañeros</strong> y evaluación con compañeros nuevos.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Si tu equipo depende de convenciones, cuánto le cuesta cada fallo y qué remedio funciona.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo: unos 36 minutos el script de los drones; el de Vicsek, unos minutos en CPU.</div>
+      <p class="xsmall muted">Los scripts que generan las cifras de esta presentación están en <code>figuras/</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-vasarhelyi2018">Vásárhelyi, G., Virágh, C., Somorjai, G., Nepusz, T., Eiben, A. E., Vicsek, T. (2018). Optimized flocking of autonomous drones in confined environments. <span class="venue">Science Robotics</span>, 3(20), eaat3536. <a href="https://doi.org/10.1126/scirobotics.aat3536">doi:10.1126/scirobotics.aat3536</a>. Página del grupo: <a href="https://hal.elte.hu/drones/scirob2018.html">hal.elte.hu</a></li>
+    <li id="ref-tranzatto2022">Tranzatto, M., Dharmadhikari, M., Bernreiter, L., et al. (2022). Team CERBERUS wins the DARPA Subterranean Challenge: Technical overview and lessons learned. <a href="https://arxiv.org/abs/2207.04914">arXiv:2207.04914</a> (preprint)</li>
+    <li id="ref-hu2020">Hu, H., Lerer, A., Peysakhovich, A., Foerster, J. (2020). "Other-play" for zero-shot coordination. <span class="venue">ICML 2020</span>, PMLR 119, 4399–4410. <a href="https://arxiv.org/abs/2003.02979">arXiv:2003.02979</a></li>
+    <li id="ref-reynolds1987">Reynolds, C. W. (1987). Flocks, herds and schools: A distributed behavioral model. <span class="venue">ACM SIGGRAPH Computer Graphics</span>, 21(4), 25–34. <a href="https://doi.org/10.1145/37402.37406">doi:10.1145/37402.37406</a></li>
+    <li id="ref-vicsek1995">Vicsek, T., Czirók, A., Ben-Jacob, E., Cohen, I., Shochet, O. (1995). Novel type of phase transition in a system of self-driven particles. <span class="venue">Physical Review Letters</span>, 75(6), 1226–1229. <a href="https://doi.org/10.1103/PhysRevLett.75.1226">doi:10.1103/PhysRevLett.75.1226</a></li>
+    <li id="ref-olfatisaber2007">Olfati-Saber, R., Fax, J. A., Murray, R. M. (2007). Consensus and cooperation in networked multi-agent systems. <span class="venue">Proceedings of the IEEE</span>, 95(1), 215–233. <a href="https://doi.org/10.1109/JPROC.2006.887293">doi:10.1109/JPROC.2006.887293</a></li>
+    <li id="ref-choi2009">Choi, H.-L., Brunet, L., How, J. P. (2009). Consensus-based decentralized auctions for robust task allocation. <span class="venue">IEEE Transactions on Robotics</span>, 25(4), 912–926. <a href="https://doi.org/10.1109/TRO.2009.2022423">doi:10.1109/TRO.2009.2022423</a></li>
+    <li id="ref-stone2010">Stone, P., Kaminka, G., Kraus, S., Rosenschein, J. (2010). Ad hoc autonomous agent teams: Collaboration without pre-coordination. <span class="venue">AAAI 2010</span>, 24(1), 1504–1509. <a href="https://doi.org/10.1609/aaai.v24i1.7529">doi:10.1609/aaai.v24i1.7529</a></li>
+    <li id="ref-vandenberg2011">van den Berg, J., Guy, S. J., Lin, M., Manocha, D. (2011). Reciprocal n-body collision avoidance. En <span class="venue">Robotics Research (ISRR 2009)</span>, Springer Tracts in Advanced Robotics, 3–19. <a href="https://doi.org/10.1007/978-3-642-19457-3_1">doi:10.1007/978-3-642-19457-3_1</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="10">
+    <li id="ref-brambilla2013">Brambilla, M., Ferrante, E., Birattari, M., Dorigo, M. (2013). Swarm robotics: A review from the swarm engineering perspective. <span class="venue">Swarm Intelligence</span>, 7(1), 1–41. <a href="https://doi.org/10.1007/s11721-012-0075-2">doi:10.1007/s11721-012-0075-2</a></li>
+    <li id="ref-rubenstein2014">Rubenstein, M., Cornejo, A., Nagpal, R. (2014). Programmable self-assembly in a thousand-robot swarm. <span class="venue">Science</span>, 345(6198), 795–799. <a href="https://doi.org/10.1126/science.1254295">doi:10.1126/science.1254295</a></li>
+    <li id="ref-preiss2017">Preiss, J. A., Hönig, W., Sukhatme, G. S., Ayanian, N. (2017). Crazyswarm: A large nano-quadcopter swarm. <span class="venue">ICRA 2017</span>, 3299–3304. <a href="https://doi.org/10.1109/ICRA.2017.7989376">doi:10.1109/ICRA.2017.7989376</a></li>
+    <li id="ref-best2019">Best, G., Cliff, O. M., Patten, T., Mettu, R. R., Fitch, R. (2019). Dec-MCTS: Decentralized planning for multi-robot active perception. <span class="venue">The International Journal of Robotics Research</span>, 38(2–3), 316–337. <a href="https://doi.org/10.1177/0278364918755924">doi:10.1177/0278364918755924</a></li>
+    <li id="ref-gleave2020">Gleave, A., Dennis, M., Wild, C., Kant, N., Levine, S., Russell, S. (2020). Adversarial policies: Attacking deep reinforcement learning. <span class="venue">ICLR 2020</span> (según arXiv). <a href="https://arxiv.org/abs/1905.10615">arXiv:1905.10615</a></li>
+    <li id="ref-strouse2021">Strouse, D. J., McKee, K. R., Botvinick, M., Hughes, E., Everett, R. (2021). Collaborating with humans without human data. <span class="venue">NeurIPS 2021</span> (según arXiv). <a href="https://arxiv.org/abs/2110.08176">arXiv:2110.08176</a></li>
+    <li id="ref-darpa2021">DARPA (2021). Nota de prensa con los ganadores de la final del Subterranean Challenge, 24 de septiembre de 2021. <a href="https://www.darpa.mil/news/2021/subterranean-challenge-winners">darpa.mil</a></li>
+    <li id="ref-zhou2022">Zhou, X., Wen, X., Wang, Z., Gao, Y., Li, H., Wang, Q., Yang, T., Lu, H., Cao, Y., Xu, C., Gao, F. (2022). Swarm of micro flying robots in the wild. <span class="venue">Science Robotics</span>, 7(66), eabm5954. <a href="https://doi.org/10.1126/scirobotics.abm5954">doi:10.1126/scirobotics.abm5954</a></li>
+    <li id="ref-mirsky2022">Mirsky, R., Carlucho, I., Rahman, A., Fosong, E., Macke, W., Sridharan, M., Stone, P., Albrecht, S. V. (2022). A survey of ad hoc teamwork research. En <span class="venue">Multi-Agent Systems (EUMAS 2022)</span>, LNCS, 275–293. <a href="https://doi.org/10.1007/978-3-031-20614-6_16">doi:10.1007/978-3-031-20614-6_16</a>. <a href="https://arxiv.org/abs/2202.10450">arXiv:2202.10450</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="19">
+    <li id="ref-dorigo2021">Dorigo, M., Theraulaz, G., Trianni, V. (2021). Swarm robotics: Past, present, and future. <span class="venue">Proceedings of the IEEE</span>, 109(7), 1152–1165. <a href="https://doi.org/10.1109/JPROC.2021.3072740">doi:10.1109/JPROC.2021.3072740</a></li>
+    <li id="ref-soria2021">Soria, E., Schiano, F., Floreano, D. (2021). Predictive control of aerial swarms in cluttered environments. <span class="venue">Nature Machine Intelligence</span>, 3(6), 545–554. <a href="https://doi.org/10.1038/s42256-021-00341-y">doi:10.1038/s42256-021-00341-y</a></li>
+    <li id="ref-hudson2022">Hudson, N., Talbot, F., Cox, M., et al. (2022). Heterogeneous ground and air platforms, homogeneous sensing: Team CSIRO Data61's approach to the DARPA Subterranean Challenge. <span class="venue">Field Robotics</span>, 2. <a href="https://doi.org/10.55417/fr.2022021">doi:10.55417/fr.2022021</a>. <a href="https://arxiv.org/abs/2104.09053">arXiv:2104.09053</a></li>
+    <li id="ref-agha2021">Agha, A., Otsu, K., Morrell, B., et al. (2021). NeBula: Quest for robotic autonomy in challenging environments; TEAM CoSTAR at the DARPA Subterranean Challenge. <a href="https://arxiv.org/abs/2103.11470">arXiv:2103.11470</a> (en Journal of Field Robotics según arXiv)</li>
+    <li id="ref-carroll2019">Carroll, M., Shah, R., Ho, M. K., Griffiths, T. L., Seshia, S. A., Abbeel, P., Dragan, A. (2019). On the utility of learning about humans for human-AI coordination. <span class="venue">NeurIPS 2019</span> (según arXiv). <a href="https://arxiv.org/abs/1910.05789">arXiv:1910.05789</a></li>
+    <li id="ref-papoudakis2021">Papoudakis, G., Christianos, F., Albrecht, S. V. (2021). Agent modelling under partial observability for deep reinforcement learning. <span class="venue">NeurIPS 2021</span> (según arXiv). <a href="https://arxiv.org/abs/2006.09447">arXiv:2006.09447</a></li>
+    <li id="ref-li2019">Li, S., Wu, Y., Cui, X., Dong, H., Fang, F., Russell, S. (2019). Robust multi-agent reinforcement learning via minimax deep deterministic policy gradient. <span class="venue">AAAI 2019</span>, 33(01), 4213–4220. <a href="https://doi.org/10.1609/aaai.v33i01.33014213">doi:10.1609/aaai.v33i01.33014213</a></li>
+    <li id="ref-blumenkamp2020">Blumenkamp, J., Prorok, A. (2020). The emergence of adversarial communication in multi-agent reinforcement learning. <span class="venue">CoRL 2020</span> (según arXiv). <a href="https://arxiv.org/abs/2008.02616">arXiv:2008.02616</a></li>
+    <li id="ref-mitchell2020">Mitchell, R., Blumenkamp, J., Prorok, A. (2020). Gaussian process based message filtering for robust multi-agent cooperation in the presence of adversarial communication. <a href="https://arxiv.org/abs/2012.00508">arXiv:2012.00508</a> (preprint)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
