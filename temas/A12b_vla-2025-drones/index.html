@@ -25,7 +25,7 @@
   <h1>VLAs en 2025–2026, cross-embodiment y VLAs para drones</h1>
   <p class="subtitle">Los VLA generalistas de 2025–2026 (π0.5, Gemini Robotics, GR00T N1, RDT-1B, π*0.6), cómo una sola política controla robots distintos, qué hay de VLAs para drones, cómo se ajustan con pocos datos y poca memoria (LoRA, QLoRA) y cómo empiezan a combinarse con world models. Con un ajuste fino de SmolVLA para que un dron vuele hasta el objeto que nombra una orden.</p>
   <div class="meta-row">
-    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
     <span><b>Prerrequisitos</b> A10, A11, A12a</span>
     <span><b>Prepara</b> A13, B7</span>
   </div>
@@ -35,10 +35,11 @@
   <p class="kicker">Objetivos de A12b</p>
   <h2>Al terminar esta jornada deberías poder…</h2>
   <ol class="body" style="font-size:20px; gap:10px;">
-    <li>Describir la arquitectura de dos sistemas (lento y rápido) de los VLA de 2025 y sus frecuencias.</li>
+    <li>Describir la arquitectura de dos sistemas (lento y rápido) de los VLA de 2025, sus frecuencias y la condición que deben cumplir sus trozos de acciones.</li>
+    <li>Explicar qué optimiza π*0.6 al condicionar el VLA a que la ventaja sea positiva.</li>
     <li>Explicar cómo se unifican espacios de acción distintos para entrenar una política con muchos robots.</li>
-    <li>Leer con criterio los VLA para drones publicados: dónde corren, a qué frecuencia y cómo se evalúan.</li>
-    <li>Calcular cuántos parámetros entrena LoRA y cuánta memoria necesita un ajuste fino.</li>
+    <li>Leer con criterio los VLA para drones publicados: dónde corren, a qué frecuencia y cuánto se mueve el dron mientras deciden.</li>
+    <li>Calcular cuántos parámetros entrena LoRA y cuánta memoria necesita un ajuste fino, con y sin QLoRA.</li>
     <li>Ajustar un VLA pequeño con datos de un simulador y medir qué aporta frente a una política desde cero.</li>
   </ol>
 </section>
@@ -80,7 +81,118 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Generalistas · dos sistemas</p>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra en un VLA de dos sistemas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo</th></tr>
+      <tr><td>\(o_t\)</td><td>Observación en el instante \(t\): las imágenes de las cámaras</td><td>La imagen de la cámara del dron</td></tr>
+      <tr><td>\(\ell\)</td><td>La orden en lenguaje natural</td><td>«fly to the red object»</td></tr>
+      <tr><td>\(s_t\)</td><td>Estado propio (propiocepción): lo que el robot mide de sí mismo</td><td>Posición y velocidad del dron</td></tr>
+      <tr><td>\(z\)</td><td>Lo que el sistema lento pasa al rápido: un latente, una subtarea o un objetivo</td><td>Un punto de paso; el latente continuo de Helix</td></tr>
+      <tr><td>\(a_t\)</td><td>Acción en el instante \(t\)</td><td>Velocidad deseada \((v_x, v_y)\)</td></tr>
+      <tr><td>\(a_{t:t+H}\)</td><td>Trozo (<em>chunk</em>): las \(H\) acciones \(a_t, \dots, a_{t+H-1}\) que se generan de una vez (A10, parte 2)</td><td>10 acciones, 1 s a 10 Hz</td></tr>
+      <tr><td>\(H\)</td><td>Longitud del trozo, en acciones</td><td>GR00T N1: 16; RDT-1B: 64</td></tr>
+      <tr><td>\(f_L\), \(f_R\), \(f_a\)</td><td>Frecuencias (Hz) del sistema lento, del rápido y de las acciones que llegan al robot</td><td>GR00T N1: \(f_L = 10\), \(f_R = 120\)</td></tr>
+      <tr><td>\(\delta\)</td><td>Latencia: lo que tarda un sistema desde que recibe la imagen hasta que entrega su salida (s)</td><td>GR00T N1: 63,9 ms por trozo</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · dos sistemas · esquema</p>
+  <h2>Qué entra, qué sale y a qué ritmo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 300" style="max-height:290px" role="img" aria-label="El sistema lento recibe la imagen y la orden y pasa z al sistema rápido, que con el estado propio genera acciones; abajo, diez decisiones lentas por segundo frente a ciento veinte rápidas">
+<defs><marker id="a12bm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<rect x="10" y="20" width="150" height="44" rx="6" class="box"/>
+<text x="85" y="48" text-anchor="middle" font-size="15">cámara oₜ</text>
+<rect x="10" y="80" width="150" height="44" rx="6" class="box"/>
+<text x="85" y="108" text-anchor="middle" font-size="15">orden ℓ</text>
+<rect x="220" y="20" width="300" height="104" rx="6" class="box-accent"/>
+<text x="370" y="50" text-anchor="middle" class="t-bold" font-size="16">Sistema lento: un VLM grande</text>
+<text x="370" y="76" text-anchor="middle" font-size="14">interpreta la imagen y la orden</text>
+<text x="370" y="104" text-anchor="middle" class="t-time" font-size="14">f_L = 7–10 Hz · cientos de ms</text>
+<path d="M160,42 L216,56" class="ln" marker-end="url(#a12bm)"/>
+<path d="M160,102 L216,88" class="ln" marker-end="url(#a12bm)"/>
+<path d="M520,72 L636,72" class="ln" marker-end="url(#a12bm)"/>
+<text x="578" y="62" text-anchor="middle" class="t-bold t-mono" font-size="16">z</text>
+<text x="578" y="94" text-anchor="middle" class="t-muted" font-size="12">latente, subtarea</text>
+<text x="578" y="110" text-anchor="middle" class="t-muted" font-size="12">u objetivo</text>
+<rect x="640" y="20" width="280" height="104" rx="6" class="box"/>
+<text x="780" y="50" text-anchor="middle" class="t-bold" font-size="16">Sistema rápido: una red pequeña</text>
+<text x="780" y="76" text-anchor="middle" font-size="14">sigue z con el estado propio</text>
+<text x="780" y="104" text-anchor="middle" class="t-time" font-size="14">f_R = 50–200 Hz · pocos ms</text>
+<rect x="710" y="146" width="140" height="34" rx="6" class="box"/>
+<text x="780" y="168" text-anchor="middle" font-size="14">estado sₜ</text>
+<path d="M780,146 L780,128" class="ln" marker-end="url(#a12bm)"/>
+<path d="M920,72 L986,72" class="ln" marker-end="url(#a12bm)"/>
+<text x="953" y="62" text-anchor="middle" class="t-mono" font-size="15">aₜ</text>
+<rect x="990" y="36" width="180" height="72" rx="6" class="box-soft"/>
+<text x="1080" y="66" text-anchor="middle" class="t-bold" font-size="15">robot</text>
+<text x="1080" y="88" text-anchor="middle" class="t-muted" font-size="13">(o su controlador)</text>
+<path d="M220,250 H1160" class="ln-rule"/>
+<text x="10" y="226" class="t-accent" font-size="14">lento, 10 Hz</text>
+<text x="10" y="262" class="t-time" font-size="14">rápido, 120 Hz</text>
+<path d="M220.0,212 V250" class="ln-accent" stroke-width="2.4"/>
+<text x="226.0" y="222" class="t-accent t-mono" font-size="13">z₁</text>
+<text x="220.0" y="284" text-anchor="middle" class="t-faint t-mono" font-size="12">0</text>
+<path d="M533.3,212 V250" class="ln-accent" stroke-width="2.4"/>
+<text x="539.3" y="222" class="t-accent t-mono" font-size="13">z₂</text>
+<text x="533.3" y="284" text-anchor="middle" class="t-faint t-mono" font-size="12">100 ms</text>
+<path d="M846.7,212 V250" class="ln-accent" stroke-width="2.4"/>
+<text x="852.7" y="222" class="t-accent t-mono" font-size="13">z₃</text>
+<text x="846.7" y="284" text-anchor="middle" class="t-faint t-mono" font-size="12">200 ms</text>
+<path d="M1160.0,212 V250" class="ln-accent" stroke-width="2.4"/>
+<text x="1160.0" y="284" text-anchor="middle" class="t-faint t-mono" font-size="12">300 ms</text>
+<path d="M220.0,244 V262" class="ln-time"/>
+<path d="M246.1,244 V262" class="ln-time"/>
+<path d="M272.2,244 V262" class="ln-time"/>
+<path d="M298.3,244 V262" class="ln-time"/>
+<path d="M324.4,244 V262" class="ln-time"/>
+<path d="M350.6,244 V262" class="ln-time"/>
+<path d="M376.7,244 V262" class="ln-time"/>
+<path d="M402.8,244 V262" class="ln-time"/>
+<path d="M428.9,244 V262" class="ln-time"/>
+<path d="M455.0,244 V262" class="ln-time"/>
+<path d="M481.1,244 V262" class="ln-time"/>
+<path d="M507.2,244 V262" class="ln-time"/>
+<path d="M533.3,244 V262" class="ln-time"/>
+<path d="M559.4,244 V262" class="ln-time"/>
+<path d="M585.6,244 V262" class="ln-time"/>
+<path d="M611.7,244 V262" class="ln-time"/>
+<path d="M637.8,244 V262" class="ln-time"/>
+<path d="M663.9,244 V262" class="ln-time"/>
+<path d="M690.0,244 V262" class="ln-time"/>
+<path d="M716.1,244 V262" class="ln-time"/>
+<path d="M742.2,244 V262" class="ln-time"/>
+<path d="M768.3,244 V262" class="ln-time"/>
+<path d="M794.4,244 V262" class="ln-time"/>
+<path d="M820.6,244 V262" class="ln-time"/>
+<path d="M846.7,244 V262" class="ln-time"/>
+<path d="M872.8,244 V262" class="ln-time"/>
+<path d="M898.9,244 V262" class="ln-time"/>
+<path d="M925.0,244 V262" class="ln-time"/>
+<path d="M951.1,244 V262" class="ln-time"/>
+<path d="M977.2,244 V262" class="ln-time"/>
+<path d="M1003.3,244 V262" class="ln-time"/>
+<path d="M1029.4,244 V262" class="ln-time"/>
+<path d="M1055.6,244 V262" class="ln-time"/>
+<path d="M1081.7,244 V262" class="ln-time"/>
+<path d="M1107.8,244 V262" class="ln-time"/>
+<path d="M1133.9,244 V262" class="ln-time"/>
+<text x="690" y="204" text-anchor="middle" class="t-muted" font-size="13">12 acciones rápidas por cada decisión lenta (GR00T N1)</text>
+</svg>
+    <figcaption>Esquema genérico de los VLA de dos sistemas; la línea de abajo, con las frecuencias de GR00T N1 <a class="cite" data-ref="nvidia2025"></a> (ejemplo 1 de <code>figuras/ejemplos_a12b.py</code>).</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>El lento</strong> recibe la imagen \(o_t\) y la orden \(\ell\) y produce \(z\) unas pocas veces por segundo. Es caro porque es un VLM de miles de millones de parámetros. <strong>El rápido</strong> recibe la última \(z\) y el estado \(s_t\) y produce acciones \(a_t\) a la frecuencia que pide el robot. Entre dos \(z\), el rápido actúa varias veces con la misma.</p>
+    <p><strong>En un dron</strong> sería: el lento lee «busca la mochila roja» y la cámara y propone hacia dónde ir; el rápido convierte eso en velocidades a la frecuencia de la controladora. Lo que no está decidido es qué es \(z\): un punto de paso (fácil de verificar), un trozo de trayectoria o un latente (más rico, pero opaco).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · dos sistemas · cuatro modelos</p>
   <h2>Lento para entender, rápido para mover</h2>
   <div class="table-wrap">
     <table class="t">
@@ -100,19 +212,102 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Generalistas · datos</p>
-  <h2>π0.5 y GR00T N1: casi todos los datos vienen de otro sitio</h2>
+  <p class="kicker">Generalistas · dos sistemas · las cuentas</p>
+  <h2>El trozo tiene que durar más de lo que se tarda en generarlo</h2>
   <div class="cols">
     <div class="stack">
-      <ul>
-        <li><strong>π0.5</strong> <a class="cite" data-ref="pi2025"></a>: unas 400 h de manipuladores móviles en unas 100 casas, pero el 97,6 % de los ejemplos de la primera fase vienen de otros robots o de la web. Preentrena con tokens FAST (A12a) durante 280 000 pasos y después añade un experto de flow matching para generar trozos continuos.</li>
-        <li>Con 104 sitios de entrenamiento, rinde parecido a una versión que incluye las casas de prueba en el entrenamiento; las tareas en casas nuevas duran de 10 a 15 minutos.</li>
-      </ul>
+      <p><strong>De dónde sale.</strong> Mientras se calcula el trozo siguiente, el robot ejecuta el actual. Si el actual se acaba antes de que llegue el siguiente, el robot se queda sin acción que aplicar.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>un trozo dura \(H / f_a\) segundos</td><td>\(H\) acciones, cada una ocupa \(1/f_a\)</td></tr>
+          <tr><td><strong>2</strong></td><td>generar el siguiente tarda \(\delta\)</td><td>La latencia del sistema que genera los trozos</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\delta \le H / f_a\), es decir, \(H \ge \delta\, f_a\)</td><td>El siguiente tiene que llegar antes de que se acabe el actual</td></tr>
+          <tr><td><strong>4</strong></td><td>\(f_R / f_L\) acciones rápidas por cada \(z\)</td><td>Cuántas veces actúa el rápido con la misma salida del lento</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Con las cifras publicadas</th><th>Cuenta</th></tr></thead>
+          <tbody>
+            <tr><td>GR00T N1: \(H = 16\) a 120 Hz</td><td class="n">16/120 = 133,3 ms ≥ 63,9 ms (2,09 veces)</td></tr>
+            <tr><td>Gemini Robotics: ≈ 250 ms a 50 Hz</td><td class="n">H ≥ 0,25 × 50 = 12,5 → 13 o más</td></tr>
+            <tr><td>RDT-1B: 6 trozos/s, 381 acciones/s</td><td class="n">381/6 = 63,5 acciones por trozo</td></tr>
+            <tr><td>GR00T N1: \(f_R / f_L\)</td><td class="n">120/10 = 12</td></tr>
+            <tr><td>Helix: \(f_R / f_L\)</td><td class="n">200/9 a 200/7 = 22 a 29</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Comprobación</span><p>El 63,5 de RDT-1B cuadra con su trozo de \(H = 64\) acciones <a class="cite" data-ref="liu2025"></a>. El 13 de Gemini es nuestra cota, no un dato del informe. Ejemplo 1.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · datos · π0.5</p>
+  <h2>π0.5: dos fases y casi todos los datos de otro sitio</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 230" style="max-height:230px" role="img" aria-label="Dos fases de entrenamiento de pi 0.5 y una barra con el 97,6 por ciento de ejemplos de otras fuentes">
+<defs><marker id="a12bm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<rect x="10" y="14" width="240" height="110" rx="6" class="box-soft"/>
+<text x="130" y="42" text-anchor="middle" class="t-bold" font-size="15">Fase 1 · preentrenar</text>
+<text x="130" y="68" text-anchor="middle" font-size="14">acciones como tokens FAST</text>
+<text x="130" y="90" text-anchor="middle" class="t-muted" font-size="13">(A12a)</text>
+<text x="130" y="112" text-anchor="middle" class="t-mono" font-size="13">280 000 pasos</text>
+<path d="M250,69 L306,69" class="ln" marker-end="url(#a12bm2)"/>
+<rect x="310" y="14" width="240" height="110" rx="6" class="box-accent"/>
+<text x="430" y="42" text-anchor="middle" class="t-bold" font-size="15">Fase 2 · añadir</text>
+<text x="430" y="68" text-anchor="middle" font-size="14">un experto de flow matching</text>
+<text x="430" y="90" text-anchor="middle" class="t-muted" font-size="13">trozos continuos (A10)</text>
+<text x="430" y="112" text-anchor="middle" class="t-time" font-size="13">velocidades de la base a 50 Hz</text>
+<rect x="10" y="160" width="527.04" height="30" rx="3" class="box-soft"/>
+<rect x="537.04" y="160" width="12.96" height="30" rx="0" class="fill-accent"/>
+<text x="16" y="214" font-size="13">97,6 % de los ejemplos de la fase 1: otros robots y la web</text>
+<text x="550" y="152" text-anchor="end" class="t-accent" font-size="13">2,4 %: su robot</text>
+</svg>
+      <figcaption>Las dos fases de π0.5 y la procedencia de los ejemplos de la primera <a class="cite" data-ref="pi2025"></a>.</figcaption>
+    </figure>
+    <div class="stack">
       <ul>
-        <li><strong>GR00T N1</strong> <a class="cite" data-ref="nvidia2025"></a>: una pirámide de datos (web y vídeo de personas abajo, datos sintéticos en medio, datos de robot arriba). Con vídeo generado amplía 88 h de teleoperación a 827 h, y genera 780 000 trayectorias en simulación en 11 h. Unas 50 000 horas de H100 de preentrenamiento.</li>
-        <li>En el humanoide GR-1 real: 42,6 % de éxito medio con el 10 % de los datos y 76,8 % con todos, frente al 10,2 % y el 46,4 % de Diffusion Policy.</li>
+        <li><strong>Sus datos:</strong> unas 400 h de manipuladores móviles en unas 100 casas, pero el 97,6 % de los ejemplos de la primera fase vienen de otros robots o de la web <a class="cite" data-ref="pi2025"></a>.</li>
+        <li><strong>Fase 1:</strong> preentrena con tokens FAST (A12a) durante 280 000 pasos. <strong>Fase 2:</strong> añade un experto de flow matching para generar trozos continuos.</li>
+        <li><strong>Generaliza:</strong> con 104 sitios de entrenamiento, rinde parecido a una versión que incluye las casas de prueba en el entrenamiento; las tareas en casas nuevas duran de 10 a 15 minutos.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · datos · GR00T N1</p>
+  <h2>GR00T N1: una pirámide de datos</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 640 280" style="max-height:280px" role="img" aria-label="Pirámide de datos de GR00T N1: web y vídeo de personas abajo, datos sintéticos en medio y datos reales de robot arriba">
+<defs><marker id="a12bm3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<polygon points="170,20 350,20 398,96 122,96" class="box-accent"/>
+<text x="260" y="52" text-anchor="middle" class="t-bold" font-size="14">datos reales de robot</text>
+<text x="260" y="76" text-anchor="middle" class="t-mono" font-size="13">teleoperación: 88 h</text>
+<polygon points="118,102 402,102 450,178 70,178" class="box-time"/>
+<text x="260" y="132" text-anchor="middle" class="t-bold" font-size="14">sintéticos: simulación y vídeo generado</text>
+<text x="260" y="158" text-anchor="middle" class="t-mono" font-size="13">780 000 tray. en 11 h · 88 h → 827 h</text>
+<polygon points="66,184 454,184 502,260 18,260" class="box-soft"/>
+<text x="260" y="216" text-anchor="middle" class="t-bold" font-size="14">web y vídeo de personas</text>
+<text x="260" y="240" text-anchor="middle" class="t-muted" font-size="13">sin acciones de robot</text>
+<path d="M540,250 L540,30" class="ln" marker-end="url(#a12bm3)"/>
+<text x="552" y="40" class="t-muted" font-size="13">más parecido</text>
+<text x="552" y="58" class="t-muted" font-size="13">al robot</text>
+<text x="552" y="232" class="t-muted" font-size="13">más</text>
+<text x="552" y="250" class="t-muted" font-size="13">cantidad</text>
+</svg>
+      <figcaption>La pirámide de datos de GR00T N1 <a class="cite" data-ref="nvidia2025"></a>: abajo, mucho y lejano; arriba, poco y del propio robot.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Sintéticos:</strong> con vídeo generado amplía 88 h de teleoperación a 827 h, y genera 780 000 trayectorias en simulación en 11 h. Unas 50 000 horas de H100 de preentrenamiento <a class="cite" data-ref="nvidia2025"></a>.</li>
+        <li><strong>En el humanoide GR-1 real:</strong> 42,6 % de éxito medio con el 10 % de los datos y 76,8 % con todos, frente al 10,2 % y el 46,4 % de Diffusion Policy.</li>
       </ul>
       <div class="callout tesis"><span class="tag">Para un dron</span>La pirámide es la estrategia que te queda: muchos datos del simulador (fase 2), algunos reales públicos y el conocimiento general de un VLM.</div>
     </div>
@@ -133,7 +328,107 @@
       <ul>
         <li><strong>π*0.6 con RECAP</strong> (preprint) <a class="cite" data-ref="pi2025b"></a>: aprende de demostraciones, de sus propios intentos y de correcciones de un operador. Entrena una función de valor y condiciona el VLA a si la ventaja es positiva. En las tareas más difíciles, más que duplica el rendimiento y reduce los fallos a la mitad; preparó cafés durante 13 horas seguidas.</li>
       </ul>
-      <div class="callout clave"><span class="tag">La lección</span>La imitación pone el techo de la demostración; el RL sobre el VLA (A2–A4, A9b) lo supera. Es la misma idea que el ajuste con RL de los LLM (A11), aplicada a acciones.</div>
+      <div class="callout clave"><span class="tag">La lección</span>La imitación pone el techo de la demostración; el RL sobre el VLA (A6a, A9b) lo supera. Es la misma idea que el ajuste con RL de los LLM (A11), aplicada a acciones. Las tres hojas siguientes la desmontan.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · π*0.6 · 1 · esquema</p>
+  <h2>RECAP: un bucle de datos, valor y política</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 250" style="max-height:250px" role="img" aria-label="Bucle de RECAP: datos, función de valor, ventaja e indicador, VLA condicionado y vuelta a los datos con nuevos intentos">
+<defs><marker id="a12bm4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<rect x="10" y="30" width="262" height="112" rx="6" class="box"/>
+<text x="141" y="58" text-anchor="middle" class="t-bold" font-size="15">1 · Datos</text>
+<text x="141" y="84" text-anchor="middle" font-size="14">demostraciones</text>
+<text x="141" y="106" text-anchor="middle" font-size="14">intentos propios del VLA</text>
+<text x="141" y="128" text-anchor="middle" font-size="14">correcciones del operador</text>
+<rect x="300" y="30" width="262" height="112" rx="6" class="box-time"/>
+<text x="431" y="58" text-anchor="middle" class="t-bold" font-size="15">2 · Función de valor</text>
+<text x="431" y="84" text-anchor="middle" font-size="14">V(oₜ, ℓ): cuántos pasos</text>
+<text x="431" y="106" text-anchor="middle" font-size="14">faltan para el éxito</text>
+<text x="431" y="128" text-anchor="middle" font-size="14">(distribucional)</text>
+<rect x="590" y="30" width="262" height="112" rx="6" class="box"/>
+<text x="721" y="58" text-anchor="middle" class="t-bold" font-size="15">3 · Ventaja e indicador</text>
+<text x="721" y="84" text-anchor="middle" class="t-mono" font-size="14">A = lo que salió − V</text>
+<text x="721" y="106" text-anchor="middle" class="t-mono" font-size="14">Iₜ = 1 si A > ε_ℓ</text>
+<text x="721" y="128" text-anchor="middle" font-size="14">correcciones: siempre 1</text>
+<rect x="880" y="30" width="262" height="112" rx="6" class="box-accent"/>
+<text x="1011" y="58" text-anchor="middle" class="t-bold" font-size="15">4 · VLA condicionado</text>
+<text x="1011" y="84" text-anchor="middle" font-size="14">«Advantage: positive»</text>
+<text x="1011" y="106" text-anchor="middle" font-size="14">o «negative» en el texto,</text>
+<text x="1011" y="128" text-anchor="middle" font-size="14">antes de las acciones</text>
+<path d="M272,86 L296,86" class="ln" marker-end="url(#a12bm4)"/>
+<path d="M562,86 L586,86" class="ln" marker-end="url(#a12bm4)"/>
+<path d="M852,86 L876,86" class="ln" marker-end="url(#a12bm4)"/>
+<path d="M1011,142 V196 H141 V146" class="ln-dash ln" marker-end="url(#a12bm4)"/>
+<text x="585" y="216" text-anchor="middle" class="t-accent" font-size="14">desplegar con «positive»: nuevos intentos y correcciones; se reentrenan V y el VLA desde el preentrenado</text>
+</svg>
+    <figcaption>El bucle de RECAP (<em>RL with Experience and Corrections via Advantage-conditioned Policies</em>) según el preprint de π*0.6 <a class="cite" data-ref="pi2025b"></a>.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Qué problema resuelve.</strong> Clonar (A10) copia todas las acciones de los datos por igual, las buenas y las malas. Con intentos propios, muchos son malos. RECAP sigue usando la pérdida de imitación del VLA, pero le da la información de qué acciones salieron mejor de lo esperado. Un gradiente de política (A6a) necesitaría \(\log \pi_\theta(a \mid o)\), que con flow matching no se calcula directamente.</p>
+    <p><strong>Entra:</strong> trayectorias de tres fuentes, con su resultado (éxito o fallo). <strong>Sale:</strong> un VLA al que se le puede pedir «haz lo que haría tu versión con ventaja positiva». En cada vuelta del bucle, el valor y el VLA se reentrenan desde el modelo preentrenado, no desde la vuelta anterior.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · π*0.6 · 2 · qué se optimiza</p>
+  <h2>Imitar, pero sabiendo qué acciones fueron mejores</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ A^{\pi_{\mathrm{ref}}}(o_t, a_t) = \mathbb E\Big[\sum_{t'=t}^{t+N-1} r_{t'} + V(o_{t+N})\Big] - V(o_t) \]
+      \[ I_t = \mathbb 1\big[A^{\pi_{\mathrm{ref}}}(o_t, a_t) > \varepsilon_\ell\big] \]
+      \[ \min_\theta\ \mathbb E\big[-\log \pi_\theta(a_t \mid o_t, \ell) - \alpha \log \pi_\theta(a_t \mid I_t, o_t, \ell)\big] \]
+      <p>Es la ventaja de RL de siempre (A6a, parte 1), estimada con \(N\) pasos de recompensa y el valor al final; el indicador la convierte en una etiqueta binaria, y la pérdida es la de imitación con esa etiqueta como una entrada más.</p>
+      <p class="small">Para las acciones continuas, cada \(-\log \pi_\theta\) se entrena con la pérdida de flow matching (A10); para los tokens, con su verosimilitud. Todo según el preprint <a class="cite" data-ref="pi2025b"></a>; el texto no fija el \(N\) que usan.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:24%">Símbolo</th><th>Qué es</th></tr>
+        <tr><td>\(r_t\)</td><td>Recompensa: −1 por paso; al final, 0 si hay éxito y \(-C_{\mathrm{fail}}\) (grande) si falla</td></tr>
+        <tr><td>\(V(o_t, \ell)\)</td><td>Valor: retorno esperado desde \(o_t\), es decir, menos los pasos que faltan para el éxito. Una red distribucional, normalizada a \((-1, 0)\) por tarea</td></tr>
+        <tr><td>\(\pi_{\mathrm{ref}}\)</td><td>La política que generó los datos (demostraciones e intentos)</td></tr>
+        <tr><td>\(A^{\pi_{\mathrm{ref}}}\)</td><td>Ventaja: cuánto mejor salió \(a_t\) que lo esperado en \(o_t\). <em>No es la \(A\) de LoRA</em></td></tr>
+        <tr><td>\(I_t\), \(\varepsilon_\ell\)</td><td>Indicador de mejora y umbral por tarea (en el preentrenamiento, el percentil 30 de los valores predichos). Las correcciones del operador llevan siempre \(I_t = 1\)</td></tr>
+        <tr><td>\(\pi_\theta\), \(\alpha\)</td><td>El VLA y el peso del término condicionado. \(I_t\) entra como texto («Advantage: positive» o «negative») y a veces se omite</td></tr>
+      </table>
+    </div>
+  </div>
+
+</section>
+
+<section class="slide">
+  <p class="kicker">Generalistas · π*0.6 · 3 · por qué mejora</p>
+  <h2>Condicionar a «ventaja positiva» da una política mejor que la de los datos</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\hat\pi(a \mid o) \propto \pi_{\mathrm{ref}}(a \mid o)\; p(I \mid A^{\pi_{\mathrm{ref}}})^{\beta}\)</td><td>La política mejorada que define el artículo; con \(p(I\mid A)\) creciente en \(A\), cumple \(J(\hat\pi) \ge J(\pi_{\mathrm{ref}})\) (resultado que citan de trabajo previo)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(p(I \mid a, o) = \dfrac{\pi_{\mathrm{ref}}(a \mid I, o)\, p(I \mid o)}{\pi_{\mathrm{ref}}(a \mid o)}\)</td><td>Bayes; \(p(I\mid o)\) no depende de \(a\) y se va con la normalización</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\hat\pi \propto \pi_{\mathrm{ref}}(a \mid o) \Big[\dfrac{\pi_{\mathrm{ref}}(a\mid I, o)}{\pi_{\mathrm{ref}}(a\mid o)}\Big]^{\beta}\)</td><td>Sustituir 2 en 1</td></tr>
+          <tr><td><strong>4</strong></td><td>con \(\beta = 1\): \(\hat\pi = \pi_{\mathrm{ref}}(a \mid I = 1, o)\)</td><td>Se cancela \(\pi_{\mathrm{ref}}(a\mid o)\): basta muestrear el VLA con «positive». Es lo que hacen por defecto</td></tr>
+          <tr><td><strong>5</strong></td><td>el VLA aprende \(\pi_{\mathrm{ref}}(a \mid I, o)\)</td><td>El segundo término de la pérdida imita los datos con su etiqueta \(I_t\)</td></tr>
+        </table>
+      </div>
+      <p class="small">\(J\): retorno esperado de una política. \(\beta\): peso de la guía; \(\beta > 1\) es <em>classifier-free guidance</em>, posible porque a veces se omite \(I_t\) al entrenar.</p>
+    </div>
+    <div class="stack">
+      <p><strong>A mano, un estado con tres acciones.</strong> \(\pi_{\mathrm{ref}} = (0{,}5;\ 0{,}3;\ 0{,}2)\); tras cada una faltan 4, 6 y 12 pasos, así que \(R = (-4, -6, -12)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>\(a_1\)</th><th>\(a_2\)</th><th>\(a_3\)</th></tr></thead>
+          <tbody>
+            <tr><td>\(A = R - V\), con \(V = -6{,}2\)</td><td class="n">2,2</td><td class="n">0,2</td><td class="n">−5,8</td></tr>
+            <tr><td>\(I\) con \(\varepsilon = 0\)</td><td class="n">1</td><td class="n">1</td><td class="n">0</td></tr>
+            <tr><td>\(\pi_{\mathrm{ref}}(a \mid I = 1)\)</td><td class="n">0,625</td><td class="n">0,375</td><td class="n">0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>El retorno esperado pasa de \(-6{,}2\) a \(-4{,}75\). Con \(\varepsilon = 1\) solo queda \(a_1\) y sale \(-4\): un umbral más alto mejora más, a cambio de alejarse más de los datos. Ejemplo 2.</p>
     </div>
   </div>
 </section>
@@ -148,7 +443,7 @@
 <section class="slide">
   <p class="kicker">Cross-embodiment · unificar acciones</p>
   <h2>Rellenar, asignar huecos con significado o poner una cabeza por robot</h2>
-  <div class="cols">
+  <div class="cols w60">
     <div class="table-wrap">
       <table class="t">
         <thead><tr><th>Estrategia</th><th>Ejemplo</th></tr></thead>
@@ -162,14 +457,255 @@
       </table>
     </div>
     <div class="stack">
-      <div class="aparte"><span class="rotulo">Cómo se rellena sin estropear el entrenamiento</span><p>Si el robot \(r\) tiene acciones \(a \in \mathbb R^{d_r}\) y el modelo usa \(D \ge d_r\) dimensiones, se rellena con ceros, \(\tilde a = (a, 0, \dots, 0)\), y la pérdida se pondera con una máscara \(m_j\) que vale 1 si \(j \le d_r\) y 0 si no: las dimensiones de relleno no aportan gradiente. Lo que no resuelve es el significado: la dimensión 3 puede ser la pinza de un robot y la guiñada de otro; por eso RDT asigna cada hueco a una magnitud física.</p></div>
+      <p><strong>El problema.</strong> Un brazo manda 7 números (6 articulaciones y la pinza); un dron, 4 (\(v_x, v_y, v_z, \omega\)); un robot con ruedas, 3. Una red tiene una salida de tamaño fijo. Las cuatro hojas siguientes dibujan las tres primeras estrategias.</p>
       <div class="callout realidad"><span class="tag">Y la dinámica</span>Unificar el formato no unifica la física: un cuadricóptero y un brazo responden de forma distinta a la misma «velocidad». Por eso los resultados entre cuerpos muy distintos son todavía modestos.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Cross-embodiment · CrossFormer y HPT</p>
+  <p class="kicker">Cross-embodiment · rellenar · 1</p>
+  <h2>Rellenar con ceros y que el relleno no cuente en la pérdida</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 640 240" style="max-height:240px" role="img" aria-label="Vector de acción de 8 posiciones: un brazo llena 7 y deja una a cero; un dron llena 4 y deja cuatro a cero; la máscara del dron vale 1 en sus cuatro posiciones">
+<text x="198.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">1</text>
+<text x="254.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">2</text>
+<text x="310.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">3</text>
+<text x="366.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">4</text>
+<text x="422.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">5</text>
+<text x="478.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">6</text>
+<text x="534.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">7</text>
+<text x="590.0" y="22" text-anchor="middle" class="t-faint t-mono" font-size="12">8</text>
+<text x="10" y="54" font-size="14">brazo, d_r = 7</text>
+<rect x="172" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="198.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art1</text>
+<rect x="228" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="254.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art2</text>
+<rect x="284" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="310.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art3</text>
+<rect x="340" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="366.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art4</text>
+<rect x="396" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="422.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art5</text>
+<rect x="452" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="478.0" y="54" text-anchor="middle" class="t-mono" font-size="13">art6</text>
+<rect x="508" y="32" width="52" height="34" rx="4" class="box-accent"/>
+<text x="534.0" y="54" text-anchor="middle" class="t-mono" font-size="13">pinza</text>
+<rect x="564" y="32" width="52" height="34" rx="4" class="box-soft"/>
+<text x="590.0" y="54" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<text x="10" y="110" font-size="14">dron, d_r = 4</text>
+<rect x="172" y="88" width="52" height="34" rx="4" class="box-accent"/>
+<text x="198.0" y="110" text-anchor="middle" class="t-mono" font-size="13">v_x</text>
+<rect x="228" y="88" width="52" height="34" rx="4" class="box-accent"/>
+<text x="254.0" y="110" text-anchor="middle" class="t-mono" font-size="13">v_y</text>
+<rect x="284" y="88" width="52" height="34" rx="4" class="box-accent"/>
+<text x="310.0" y="110" text-anchor="middle" class="t-mono" font-size="13">v_z</text>
+<rect x="340" y="88" width="52" height="34" rx="4" class="box-accent"/>
+<text x="366.0" y="110" text-anchor="middle" class="t-mono" font-size="13">ω</text>
+<rect x="396" y="88" width="52" height="34" rx="4" class="box-soft"/>
+<text x="422.0" y="110" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="452" y="88" width="52" height="34" rx="4" class="box-soft"/>
+<text x="478.0" y="110" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="508" y="88" width="52" height="34" rx="4" class="box-soft"/>
+<text x="534.0" y="110" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="564" y="88" width="52" height="34" rx="4" class="box-soft"/>
+<text x="590.0" y="110" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<text x="10" y="166" class="t-tesis" font-size="14">máscara m_j</text>
+<rect x="172" y="144" width="52" height="34" rx="4" class="box-tesis"/>
+<text x="198.0" y="166" text-anchor="middle" class="t-mono" font-size="13">1</text>
+<rect x="228" y="144" width="52" height="34" rx="4" class="box-tesis"/>
+<text x="254.0" y="166" text-anchor="middle" class="t-mono" font-size="13">1</text>
+<rect x="284" y="144" width="52" height="34" rx="4" class="box-tesis"/>
+<text x="310.0" y="166" text-anchor="middle" class="t-mono" font-size="13">1</text>
+<rect x="340" y="144" width="52" height="34" rx="4" class="box-tesis"/>
+<text x="366.0" y="166" text-anchor="middle" class="t-mono" font-size="13">1</text>
+<rect x="396" y="144" width="52" height="34" rx="4" class="box-soft"/>
+<text x="422.0" y="166" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="452" y="144" width="52" height="34" rx="4" class="box-soft"/>
+<text x="478.0" y="166" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="508" y="144" width="52" height="34" rx="4" class="box-soft"/>
+<text x="534.0" y="166" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="564" y="144" width="52" height="34" rx="4" class="box-soft"/>
+<text x="590.0" y="166" text-anchor="middle" class="t-mono t-faint" font-size="13">0</text>
+<rect x="336" y="26" width="60" height="102" rx="6" class="ln-tesis ln-dash"/>
+<text x="366.0" y="218" text-anchor="middle" class="t-tesis" font-size="13">posición 4: una articulación en un robot, la guiñada en otro</text>
+</svg>
+      <figcaption>Con \(D = 8\) para que se lea; SmolVLA usa \(D = 32\). «art1…art6»: las seis articulaciones del brazo. La disposición de las magnitudes es de juguete.</figcaption>
+    </figure>
+    <div class="stack">
+      \[ \tilde a = (a_1, \dots, a_{d_r}, 0, \dots, 0) \in \mathbb R^D, \qquad m_j = \begin{cases} 1 & j \le d_r \\ 0 & j > d_r \end{cases} \]
+      \[ \mathcal L = \frac{\sum_{j=1}^{D} m_j\,(\hat a_j - \tilde a_j)^2}{\sum_{j=1}^{D} m_j} \]
+      <p>\(r\): el robot (<em>en la parte 4, \(r\) será el rango de LoRA</em>). \(d_r\): cuántos números manda el robot \(r\). \(D \ge d_r\): la dimensión común de la salida del modelo. \(a\): la acción del robot; \(\tilde a\), la misma rellenada con ceros. \(\hat a\): lo que predice el modelo. \(m_j\): la máscara, 1 en las posiciones reales.</p>
+      <p>El denominador cuenta las posiciones reales: la pérdida es la media del error cuadrático sobre ellas, sea cual sea \(D\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · rellenar · 2</p>
+  <h2>La máscara anula el gradiente del relleno, pero no le da significado</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\dfrac{\partial \mathcal L}{\partial \hat a_j} = \dfrac{2\, m_j\,(\hat a_j - \tilde a_j)}{\sum_i m_i}\)</td><td>Derivar el cuadrado; solo el término \(j\) depende de \(\hat a_j\)</td></tr>
+          <tr><td><strong>2</strong></td><td>si \(m_j = 0\), el gradiente es 0</td><td>La red no recibe ninguna señal sobre la salida \(j\): puede devolver ahí lo que sea</td></tr>
+          <tr><td><strong>3</strong></td><td>al actuar, se descartan las salidas \(j > d_r\)</td><td>Nadie las ha entrenado para este robot</td></tr>
+        </table>
+      </div>
+      <p><strong>A mano, con \(D = 4\) y \(d_r = 2\).</strong> \(\tilde a = (1;\ -0{,}5;\ 0;\ 0)\), \(\hat a = (0{,}8;\ -0{,}2;\ 0{,}3;\ -0{,}1)\), \(m = (1, 1, 0, 0)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>\(\mathcal L\)</th><th>\(\partial\mathcal L / \partial \hat a\)</th></tr></thead>
+          <tbody>
+            <tr><td>con máscara</td><td class="n">0,0650</td><td class="n">(−0,2; 0,3; 0; 0)</td></tr>
+            <tr><td>sin máscara</td><td class="n">0,0575</td><td class="n">(−0,1; 0,15; 0,15; −0,05)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Sin máscara, la red gasta capacidad en predecir ceros falsos en las posiciones 3 y 4. Ejemplo 3.</p>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">El mismo truco en el tiempo</span>
+        <p>Un trozo que empieza cerca del final del episodio no tiene \(H\) acciones de verdad. En el experimento de la parte 6 (\(H = 10\), episodios de 120 pasos), uno que empieza en el paso 115 tiene 5 reales; las otras 5 se rellenan repitiendo la última y una máscara temporal \(m_h = (1,1,1,1,1,0,0,0,0,0)\) las saca de la pérdida. Le pasa al 7,5 % de los instantes de partida. Ejemplo 4.</p>
+      </div>
+      <p>En LeRobot (la versión que usa el experimento), SmolVLA hace las dos cosas: recorta la pérdida a las \(d_r\) posiciones reales, 2 de 32 para el dron, y la multiplica por la máscara temporal.</p>
+      <div class="callout error"><span class="tag">Lo que no resuelve</span>La posición 4 puede ser una articulación de un robot y la guiñada de otro: la red tiene que adivinar qué significa cada salida a partir del resto de la entrada. De ahí la estrategia de la hoja siguiente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · huecos con significado</p>
+  <h2>RDT-1B: cada posición del vector de 128 es una magnitud física</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 260" style="max-height:260px" role="img" aria-label="Vector de acción unificado de RDT-1B, 128 posiciones: brazo derecho, brazo izquierdo, base y reservado; ampliación del brazo derecho y qué posiciones llena un brazo de seis articulaciones">
+<defs><marker id="a12bm5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<rect x="40.0" y="20" width="427.7" height="32" rx="3" class="box-accent"/>
+<text x="254.8" y="41" text-anchor="middle" font-size="13">brazo derecho [0, 50)</text>
+<rect x="469.7" y="20" width="427.7" height="32" rx="3" class="box"/>
+<text x="684.5" y="41" text-anchor="middle" font-size="13">brazo izquierdo [50, 100): lo mismo</text>
+<rect x="899.4" y="20" width="23.8" height="32" rx="3" class="box-time"/>
+<rect x="925.2" y="20" width="212.8" height="32" rx="3" class="box-soft"/>
+<text x="1032.6" y="41" text-anchor="middle" font-size="13">reservado</text>
+<text x="912.3" y="70" text-anchor="middle" class="t-time" font-size="12">base [100, 103)</text>
+<path d="M40,52 L40,104 M469.7,52 L1140.0,104" class="ln-rule ln-dash"/>
+<rect x="40.0" y="106" width="218.0" height="34" rx="3" class="box-accent"/>
+<text x="150.0" y="128" text-anchor="middle" font-size="12">articulaciones</text>
+<text x="42.0" y="154" class="t-faint t-mono" font-size="11">0</text>
+<rect x="260.0" y="106" width="108.0" height="34" rx="3" class="box-accent"/>
+<text x="315.0" y="128" text-anchor="middle" font-size="12">pinza</text>
+<text x="262.0" y="154" class="t-faint t-mono" font-size="11">10</text>
+<rect x="370.0" y="106" width="218.0" height="34" rx="3" class="box-accent"/>
+<text x="480.0" y="128" text-anchor="middle" font-size="12">vel. articulaciones</text>
+<text x="372.0" y="154" class="t-faint t-mono" font-size="11">15</text>
+<rect x="590.0" y="106" width="108.0" height="34" rx="3" class="box-accent"/>
+<text x="645.0" y="128" text-anchor="middle" font-size="12">vel. pinza</text>
+<text x="592.0" y="154" class="t-faint t-mono" font-size="11">25</text>
+<rect x="700.0" y="106" width="64.0" height="34" rx="3" class="box-accent"/>
+<text x="733.0" y="128" text-anchor="middle" font-size="12">pos. ef.</text>
+<text x="702.0" y="154" class="t-faint t-mono" font-size="11">30</text>
+<rect x="766.0" y="106" width="130.0" height="34" rx="3" class="box-accent"/>
+<text x="832.0" y="128" text-anchor="middle" font-size="12">pose 6D ef.</text>
+<text x="768.0" y="154" class="t-faint t-mono" font-size="11">33</text>
+<rect x="898.0" y="106" width="64.0" height="34" rx="3" class="box-accent"/>
+<text x="931.0" y="128" text-anchor="middle" font-size="12">vel. ef.</text>
+<text x="900.0" y="154" class="t-faint t-mono" font-size="11">39</text>
+<rect x="964.0" y="106" width="64.0" height="34" rx="3" class="box-accent"/>
+<text x="997.0" y="128" text-anchor="middle" font-size="12">ω ef.</text>
+<text x="966.0" y="154" class="t-faint t-mono" font-size="11">42</text>
+<rect x="1030.0" y="106" width="108.0" height="34" rx="3" class="box-soft"/>
+<text x="1085.0" y="128" text-anchor="middle" font-size="12">reservado</text>
+<text x="1032.0" y="154" class="t-faint t-mono" font-size="11">45</text>
+<text x="40" y="186" class="t-muted" font-size="13">un brazo de 6 articulaciones con pinza llena:</text>
+<rect x="41.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="63.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="85.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="107.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="129.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="151.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="173.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="195.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="217.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="239.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="261.0" y="196" width="19.0" height="22" rx="2" class="box-tesis"/>
+<rect x="283.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="305.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="327.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<rect x="349.0" y="196" width="19.0" height="22" rx="2" class="box-soft"/>
+<text x="380.0" y="212" class="t-tesis" font-size="13">las 6 primeras de [0, 10) y la primera de [10, 15); el resto, relleno</text>
+<text x="40" y="248" class="t-faint" font-size="12">Fuente: tabla 4 de RDT-1B (apéndice C). «ef.»: efector final.</text>
+</svg>
+  </figure>
+  <div class="cols">
+    <p><strong>Cómo se llena.</strong> Cada número de la acción de un robot va a la posición de su magnitud física; un brazo solo se asigna al «derecho»; las demás posiciones quedan de relleno <a class="cite" data-ref="liu2025"></a>. Así, «velocidad lineal de la base» es la misma posición para todos los robots que la tienen. Un dron a altura fija que mande \(v_x, v_y, \omega\) encajaría en las tres de la base (lectura nuestra: RDT-1B no tiene drones).</p>
+    <div class="aparte"><span class="rotulo">El cero también significa algo</span><p>Una velocidad 0 es «quieto», no «sin dato». Para que la red distinga, RDT-1B concatena a la acción (y a la propiocepción) un vector de 0 y 1 que dice qué posiciones están disponibles: 128 + 128 = 256 números de entrada <a class="cite" data-ref="liu2025"></a>.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · cabezas y troncos</p>
+  <h2>CrossFormer y HPT: compartir el tronco, separar las puntas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 290" style="max-height:280px" role="img" aria-label="CrossFormer: observaciones y tokens de lectura entran a un transformer compartido con cuatro cabezas de acción. HPT: una entrada por robot, un tronco compartido y una salida por robot">
+<defs><marker id="a12bm6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<text x="280" y="20" text-anchor="middle" class="t-bold t-accent" font-size="15">CrossFormer: una cabeza por tipo de acción</text>
+<rect x="20" y="36" width="250" height="44" rx="6" class="box"/>
+<text x="145" y="63" text-anchor="middle" font-size="13">observaciones de cualquier robot</text>
+<rect x="290" y="36" width="250" height="44" rx="6" class="box-soft"/>
+<text x="415" y="63" text-anchor="middle" font-size="13">tokens de lectura, uno por tipo</text>
+<path d="M145,80 L145,104" class="ln" marker-end="url(#a12bm6)"/>
+<path d="M415,80 L415,104" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="20" y="108" width="520" height="48" rx="6" class="box-accent"/>
+<text x="280" y="138" text-anchor="middle" class="t-bold" font-size="14">transformer compartido (130 M)</text>
+<path d="M82,156 L82,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="20" y="194" width="124" height="44" rx="6" class="box"/>
+<text x="82" y="221" text-anchor="middle" font-size="13">brazo</text>
+<path d="M214,156 L214,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="152" y="194" width="124" height="44" rx="6" class="box-tesis"/>
+<text x="214" y="221" text-anchor="middle" font-size="13">puntos de paso 2D</text>
+<path d="M346,156 L346,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="284" y="194" width="124" height="44" rx="6" class="box"/>
+<text x="346" y="221" text-anchor="middle" font-size="13">dos brazos</text>
+<path d="M478,156 L478,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="416" y="194" width="124" height="44" rx="6" class="box"/>
+<text x="478" y="221" text-anchor="middle" font-size="13">cuadrúpedo</text>
+<text x="214" y="266" text-anchor="middle" class="t-tesis" font-size="13">↑ la que usó el Tello, a altura fija</text>
+<text x="900" y="20" text-anchor="middle" class="t-bold t-accent" font-size="15">HPT: entradas y salidas por robot</text>
+<rect x="640" y="36" width="164" height="44" rx="6" class="box"/>
+<text x="722" y="63" text-anchor="middle" font-size="13">entrada del robot 1</text>
+<path d="M722,80 L722,104" class="ln" marker-end="url(#a12bm6)"/>
+<path d="M722,156 L722,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="640" y="194" width="164" height="44" rx="6" class="box"/>
+<text x="722" y="221" text-anchor="middle" font-size="13">salida del robot 1</text>
+<rect x="816" y="36" width="164" height="44" rx="6" class="box"/>
+<text x="898" y="63" text-anchor="middle" font-size="13">entrada del robot 2</text>
+<path d="M898,80 L898,104" class="ln" marker-end="url(#a12bm6)"/>
+<path d="M898,156 L898,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="816" y="194" width="164" height="44" rx="6" class="box"/>
+<text x="898" y="221" text-anchor="middle" font-size="13">salida del robot 2</text>
+<rect x="992" y="36" width="164" height="44" rx="6" class="box"/>
+<text x="1074" y="63" text-anchor="middle" font-size="13">entrada del robot 3</text>
+<path d="M1074,80 L1074,104" class="ln" marker-end="url(#a12bm6)"/>
+<path d="M1074,156 L1074,190" class="ln" marker-end="url(#a12bm6)"/>
+<rect x="992" y="194" width="164" height="44" rx="6" class="box"/>
+<text x="1074" y="221" text-anchor="middle" font-size="13">salida del robot 3</text>
+<rect x="640" y="108" width="516" height="48" rx="6" class="box-accent"/>
+<text x="898" y="138" text-anchor="middle" class="t-bold" font-size="14">tronco compartido (hasta 1B)</text>
+<text x="898" y="266" text-anchor="middle" class="t-muted" font-size="13">solo el tronco se comparte; cada robot trae sus puntas</text>
+</svg>
+    <figcaption>CrossFormer <a class="cite" data-ref="doshi2024"></a> y HPT <a class="cite" data-ref="wang2024"></a>, esquematizados.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>CrossFormer</strong> no alinea las acciones a mano: añade a la secuencia un token de lectura por tipo de acción, y la salida del transformer en ese token pasa a la cabeza de ese tipo. Cada cabeza tiene la dimensión de su acción, así que no hay relleno.</p>
+    <p><strong>HPT</strong> lleva la idea a la entrada: cada robot tiene su propia capa de entrada (sus cámaras y su estado) y su propia salida, y solo el tronco se preentrena con todos. Ajustar a un robot nuevo es entrenar sus dos puntas.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cross-embodiment · CrossFormer y HPT · resultados</p>
   <h2>Un cuadricóptero sin datos de cuadricóptero, en tres pruebas</h2>
   <div class="cols">
     <div class="stack">
@@ -181,6 +717,7 @@
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Lectura crítica</span>Tres ensayos no son una estimación: con 3 intentos, una diferencia de 0,82 a 0,68 cabe en el azar. Y volar a altura fija con puntos de paso 2D es navegar como un robot con ruedas: la dinámica del dron la resuelve su controlador.</div>
+      <div class="aparte"><span class="rotulo">Una cuenta rápida</span><p>Si cada ensayo fuera una medida independiente de una tasa \(p\), el error típico de la media de 3 sería \(\sqrt{p(1-p)/3}\): 0,22 con \(p = 0{,}82\) y 0,27 con \(p = 0{,}68\). Los dos son mayores que la diferencia, 0,14. Ejemplo 5.</p></div>
       <div class="callout clave"><span class="tag">Lo que sí enseña</span>Si la acción es de alto nivel (puntos de paso, velocidades), el dron puede compartir política con otros robots. Si es de bajo nivel (CTBR, motores), no.</div>
     </div>
   </div>
@@ -190,7 +727,7 @@
 <section class="slide divider" data-section="Drones">
   <p class="num">Parte 3</p>
   <h2>VLAs para drones</h2>
-  <p>Lo que hay publicado, dónde corre y cómo se evalúa.</p>
+  <p>Lo que hay publicado, dónde corre y cuánto se mueve el dron mientras decide.</p>
 </section>
 
 <section class="slide">
@@ -207,27 +744,175 @@
       </tbody>
     </table>
   </div>
-  <div class="cols" style="margin-top:8px">
+  <p class="small">\(v_x, v_y, v_z\): velocidades lineales de referencia (m/s); \(\omega\): velocidad de guiñada (rad/s). Las sigue la controladora del dron.</p>
+  <div class="cols" style="margin-top:4px">
     <div class="callout realidad"><span class="tag">Lectura crítica</span>Todos menos CrossFormer son preprints del mismo grupo o de grupos pequeños; las evaluaciones son cortas, la mayoría en simulación, y la inferencia se hace en una GPU de sobremesa, no a bordo.</div>
-    <div class="callout clave"><span class="tag">Lo común</span>Velocidades de referencia a 4–10 Hz que sigue la controladora del dron (A6): el VLA hace de piloto lento, no de controlador.</div>
+    <div class="callout clave"><span class="tag">Lo común</span>Velocidades de referencia a 4–10 Hz que sigue la controladora del dron (A2): el VLA hace de piloto lento, no de controlador.</div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Drones · presupuesto de tiempo</p>
+  <p class="kicker">Drones · presupuesto de tiempo · 1 · esquema</p>
+  <h2>Qué pasa mientras el VLA piensa</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 330" style="max-height:310px" role="img" aria-label="Arriba, sin trozos: el VLA tarda 0,25 s y aplica la acción calculada con una imagen vieja. Abajo, con trozos: mientras SmolVLA calcula el trozo nuevo, el dron sigue con el anterior">
+<defs><marker id="a12bm7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<text x="10" y="18" class="t-bold" font-size="14">Sin trozos (RaceVLA, 4 Hz)</text>
+<text x="10" y="48" class="t-muted" font-size="13">cámara</text>
+<text x="10" y="80" class="t-muted" font-size="13">VLA</text>
+<text x="10" y="116" class="t-muted" font-size="13">acción</text>
+<circle cx="150.0" cy="44" r="6" class="fill-accent"/>
+<rect x="152.0" y="66" width="246" height="22" rx="4" class="box-accent"/>
+<text x="275.0" y="82" text-anchor="middle" font-size="12">piensa δ = 0,25 s</text>
+<path d="M398.0,88 L398.0,104" class="ln" marker-end="url(#a12bm7)"/>
+<path d="M398.0,106 V122" class="ln-time" stroke-width="3"/>
+<circle cx="400.0" cy="44" r="6" class="fill-accent"/>
+<rect x="402.0" y="66" width="246" height="22" rx="4" class="box-accent"/>
+<text x="525.0" y="82" text-anchor="middle" font-size="12">piensa δ = 0,25 s</text>
+<path d="M648.0,88 L648.0,104" class="ln" marker-end="url(#a12bm7)"/>
+<path d="M648.0,106 V122" class="ln-time" stroke-width="3"/>
+<circle cx="650.0" cy="44" r="6" class="fill-accent"/>
+<rect x="652.0" y="66" width="246" height="22" rx="4" class="box-accent"/>
+<text x="775.0" y="82" text-anchor="middle" font-size="12">piensa δ = 0,25 s</text>
+<path d="M898.0,88 L898.0,104" class="ln" marker-end="url(#a12bm7)"/>
+<path d="M898.0,106 V122" class="ln-time" stroke-width="3"/>
+<circle cx="900.0" cy="44" r="6" class="fill-accent"/>
+<rect x="902.0" y="66" width="246" height="22" rx="4" class="box-accent"/>
+<text x="1025.0" y="82" text-anchor="middle" font-size="12">piensa δ = 0,25 s</text>
+<path d="M1148.0,88 L1148.0,104" class="ln" marker-end="url(#a12bm7)"/>
+<path d="M1148.0,106 V122" class="ln-time" stroke-width="3"/>
+<text x="164" y="49" class="t-accent" font-size="12">imagen de t = 0</text>
+<text x="392.0" y="118" text-anchor="end" class="t-accent" font-size="12">acción calculada con la imagen de t = 0</text>
+<text x="775.0" y="146" text-anchor="middle" class="t-time" font-size="13">en esos δ segundos, el dron avanza e = v δ = 0,5 m a 2,02 m/s</text>
+<text x="10" y="182" class="t-bold" font-size="14">Con trozos (un dron real con el SmolVLA del experimento)</text>
+<text x="10" y="212" class="t-muted" font-size="13">trozo 1</text>
+<text x="10" y="246" class="t-muted" font-size="13">SmolVLA</text>
+<text x="10" y="280" class="t-muted" font-size="13">trozo 2</text>
+<rect x="152.0" y="196" width="96" height="24" rx="3" class="box-accent"/>
+<text x="200.0" y="213" text-anchor="middle" class="t-mono" font-size="12">1</text>
+<rect x="252.0" y="196" width="96" height="24" rx="3" class="box-accent"/>
+<text x="300.0" y="213" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="352.0" y="196" width="96" height="24" rx="3" class="box-accent"/>
+<text x="400.0" y="213" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="452.00000000000006" y="196" width="96" height="24" rx="3" class="box-accent"/>
+<text x="500.00000000000006" y="213" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="552.0" y="196" width="96" height="24" rx="3" class="box-accent"/>
+<text x="600.0" y="213" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<rect x="652.0" y="196" width="96" height="24" rx="3" class="box-time"/>
+<text x="700.0" y="213" text-anchor="middle" class="t-mono" font-size="12">6</text>
+<rect x="752.0000000000001" y="196" width="96" height="24" rx="3" class="box-soft"/>
+<text x="800.0000000000001" y="213" text-anchor="middle" class="t-mono t-faint" font-size="12">7</text>
+<rect x="852.0000000000001" y="196" width="96" height="24" rx="3" class="box-soft"/>
+<text x="900.0000000000001" y="213" text-anchor="middle" class="t-mono t-faint" font-size="12">8</text>
+<rect x="952.0" y="196" width="96" height="24" rx="3" class="box-soft"/>
+<text x="1000.0" y="213" text-anchor="middle" class="t-mono t-faint" font-size="12">9</text>
+<rect x="1052.0" y="196" width="96" height="24" rx="3" class="box-soft"/>
+<text x="1100.0" y="213" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+<circle cx="650.0" cy="242" r="6" class="fill-accent"/>
+<rect x="652.0" y="232" width="103" height="22" rx="4" class="box-time"/>
+<text x="764.0" y="248" class="t-time" font-size="12">δ = 0,105 s, con la imagen de t = 0,5 s</text>
+<rect x="652.0" y="264" width="96" height="24" rx="3" class="box-soft"/>
+<text x="700.0" y="281" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+<rect x="752.0" y="264" width="96" height="24" rx="3" class="box-accent"/>
+<text x="800.0" y="281" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="852.0" y="264" width="96" height="24" rx="3" class="box-accent"/>
+<text x="900.0" y="281" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="952.0" y="264" width="96" height="24" rx="3" class="box-accent"/>
+<text x="1000.0" y="281" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="1052.0" y="264" width="96" height="24" rx="3" class="box-accent"/>
+<text x="1100.0" y="281" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<path d="M150,300 H1150.0" class="ln-rule"/>
+<text x="150" y="314" text-anchor="middle" class="t-faint t-mono" font-size="11">0,0 s</text>
+<text x="650.0" y="314" text-anchor="middle" class="t-faint t-mono" font-size="11">0,5 s</text>
+<text x="1150.0" y="314" text-anchor="middle" class="t-faint t-mono" font-size="11">1,0 s</text>
+<rect x="620" y="170" width="16" height="14" rx="2" class="box-accent"/>
+<text x="642" y="182" font-size="12">se ejecuta</text>
+<rect x="800" y="170" width="16" height="14" rx="2" class="box-time"/>
+<text x="822" y="182" font-size="12">cubre la espera</text>
+<rect x="980" y="170" width="16" height="14" rx="2" class="box-soft"/>
+<text x="1002" y="182" font-size="12">descartada o ya pasada</text>
+</svg>
+    <figcaption>Arriba, un VLA sin trozos con la latencia de RaceVLA <a class="cite" data-ref="serpiva2025"></a>. Abajo, trozos de 10 acciones a 10 Hz de los que se ejecutan 5, con los 105 ms de SmolVLA en la GPU del experimento.</figcaption>
+  </figure>
+  <p>Hay dos preguntas distintas. <strong>Sin trozos:</strong> ¿cuánto se ha movido la escena entre la imagen y la acción? <strong>Con trozos:</strong> ¿llega el trozo nuevo antes de que se acabe lo que se puede ejecutar del viejo? Las dos hojas siguientes hacen las cuentas.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · presupuesto de tiempo · 2</p>
   <h2>Cuánto se mueve el dron mientras el VLA piensa</h2>
-  <p><strong>Notación:</strong> \(\delta\), tiempo que tarda el VLA en decidir (s); \(v\), velocidad del dron (m/s); \(e\), desplazamiento de la escena entre la imagen y la acción (m).</p>
-  <div class="table-wrap">
-    <table class="t">
-      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
-      <tr><td><strong>1</strong></td><td>la acción se calcula con la imagen de hace \(\delta\) segundos</td><td>La cámara capta, el modelo tarda \(\delta\), y entonces se aplica la acción</td></tr>
-      <tr><td><strong>2</strong></td><td>\(e = v\,\delta\)</td><td>Lo que avanza el dron, a velocidad constante, en ese tiempo</td></tr>
-      <tr><td><strong>3</strong></td><td>con trozos de acciones, el dron sigue el trozo anterior durante \(\delta\)</td><td>El error ya no es \(e\), sino lo que el trozo se equivoque al predecir esos \(\delta\) segundos</td></tr>
-    </table>
+  <p><strong>Notación:</strong> \(\delta\), tiempo que tarda el VLA en decidir (s), el mismo de la parte 1; \(v\), velocidad del dron (m/s); \(e\), desplazamiento de la escena entre la imagen y la acción (m); \(f\), frecuencia de decisión (Hz).</p>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>la acción se calcula con la imagen de hace \(\delta\) segundos</td><td>La cámara capta, el modelo tarda \(\delta\), y entonces se aplica la acción</td></tr>
+        <tr><td><strong>2</strong></td><td>\(e = v\,\delta\)</td><td>Lo que avanza el dron, a velocidad constante, en ese tiempo</td></tr>
+        <tr><td><strong>3</strong></td><td>entre dos decisiones avanza \(v / f\)</td><td>Si decide en cuanto acaba, \(f = 1/\delta\) y las dos distancias coinciden</td></tr>
+        <tr><td><strong>4</strong></td><td>con trozos de acciones, el dron sigue el trozo anterior durante \(\delta\)</td><td>El error ya no es \(e\), sino lo que el trozo se equivoque al predecir esos \(\delta\) segundos</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Caso</th><th>\(\delta\)</th><th>\(v\)</th><th>\(e = v\delta\)</th></tr></thead>
+          <tbody>
+            <tr><td>RaceVLA, velocidad media</td><td class="n">0,25 s</td><td class="n">1,04 m/s</td><td class="n">0,26 m</td></tr>
+            <tr><td>RaceVLA, velocidad máxima</td><td class="n">0,25 s</td><td class="n">2,02 m/s</td><td class="n">0,51 m</td></tr>
+            <tr><td>RaceVLA a 10 m/s</td><td class="n">0,25 s</td><td class="n">10 m/s</td><td class="n">2,5 m</td></tr>
+            <tr><td>SmolVLA a 3 m/s</td><td class="n">0,105 s</td><td class="n">3 m/s</td><td class="n">0,32 m</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>RaceVLA decide a 4 Hz, es decir, cada 0,25 s: \(v/f = 2{,}02/4 \approx 0{,}5\) m entre decisiones, lo mismo que \(e\). Un dron de carreras va a más de 10 m/s: con esta latencia, la imagen con la que decide tendría 2,5 m de antigüedad. Ejemplo 6.</p>
+    </div>
   </div>
-  <div class="cols" style="margin-top:6px">
-    <div class="aparte"><span class="rotulo">Con los números de RaceVLA</span><p>\(\delta = 0{,}25\) s y \(v = 2{,}02\) m/s, su velocidad máxima: \(e \approx 0{,}5\) m. A 10 m/s serían 2,5 m.</p></div>
-    <div class="callout realidad"><span class="tag">Memoria a bordo</span>OpenVLA en int4 ocupa 7,0 GB (A12a) y CognitiveDrone pide 10 GB; un Jetson Orin NX, habitual a bordo, tiene 8 o 16 GB compartidos entre CPU, GPU y todo lo demás (B5).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · presupuesto de tiempo · 3</p>
+  <h2>Con trozos, el límite es que el siguiente llegue a tiempo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Notación:</strong> \(N_{\mathrm{ejec}}\), cuántas acciones de cada trozo se ejecutan antes de pedir otro; \(f\), frecuencia de las acciones; \(H\), longitud del trozo, como en la parte 1.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>se pide un trozo cada \(N_{\mathrm{ejec}}/f\) segundos</td><td>\(N_{\mathrm{ejec}}\) acciones de \(1/f\) cada una</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\delta \le N_{\mathrm{ejec}}/f\)</td><td>Si no, las peticiones se acumulan: el modelo no da abasto</td></tr>
+          <tr><td><strong>3</strong></td><td>durante \(\delta\), el dron sigue con las acciones \(N_{\mathrm{ejec}}+1, \dots\) del trozo viejo</td><td>Por eso conviene predecir más de las que se ejecutan: \(H > N_{\mathrm{ejec}}\)</td></tr>
+          <tr><td><strong>4</strong></td><td>del trozo nuevo no sirven las acciones de sus primeros \(\delta\) segundos, unas \(\delta f\)</td><td>Se predijeron para instantes que ya han pasado</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Con el experimento</strong> (\(H = 10\), \(N_{\mathrm{ejec}} = 5\), \(f = 10\) Hz, \(\delta = 0{,}105\) s): \(N_{\mathrm{ejec}}/f = 0{,}5\) s, casi cinco veces \(\delta\); durante la espera se usa la acción 6 del trozo viejo. Del nuevo, \(\delta f = 1{,}05\): la primera acción ya no sirve y la segunda llega con 5 ms de retraso. Son 24 decisiones por vuelo de 12 s.</p>
+      <p><strong>Sin trozos, a 50 Hz:</strong> habría que decidir cada 20 ms, y 105 ms son 5,25 periodos: imposible. Ejemplo 7.</p>
+      <div class="callout realidad"><span class="tag">Lo que el experimento no mide</span>En el simulador de la parte 6, el tiempo se detiene mientras SmolVLA calcula (<code>evaluar()</code> es síncrono). Sus tasas de éxito no incluyen la latencia; en un dron real, sí contaría.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · memoria a bordo</p>
+  <h2>Cuántos bytes ocupa un VLA y cuántos hay en el dron</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cada peso ocupa 4 bytes en fp32, 2 en bf16, 1 en int8 y medio en int4. La memoria de los pesos es el número de parámetros por esos bytes:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Pesos</th><th>fp32</th><th>bf16</th><th>int8</th><th>int4</th></tr></thead>
+          <tbody>
+            <tr><td>OpenVLA, 7B</td><td class="n">28 GB</td><td class="n">14 GB</td><td class="n">7 GB</td><td class="n">3,5 GB</td></tr>
+            <tr><td>SmolVLA, 450 M</td><td class="n">1,8 GB</td><td class="n">0,9 GB</td><td class="n">0,45 GB</td><td class="n">0,23 GB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Ejemplo 8. Es solo la cuenta de los pesos: las activaciones, los búferes y las partes que no se cuantizan van aparte.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Memoria a bordo</span>OpenVLA en int4 ocupa 7,0 GB medidos (A12a), el doble de lo que dan sus pesos, y CognitiveDrone pide 10 GB; un Jetson Orin NX, habitual a bordo, tiene 8 o 16 GB compartidos entre CPU, GPU y todo lo demás (C1).</div>
+      <div class="callout clave"><span class="tag">Lo que cabe</span>Un VLA de 7B cabe a bordo a duras penas y sin margen para la percepción ni la estimación. Uno de cientos de millones, como SmolVLA, cabe holgado; la pregunta es si basta para la tarea (parte 6).</div>
+    </div>
   </div>
 </section>
 
@@ -236,6 +921,24 @@
   <p class="num">Parte 4</p>
   <h2>Ajustar con pocos datos y poca memoria</h2>
   <p>LoRA, QLoRA y cuántas demostraciones hacen falta.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Qué es cada letra en LoRA y QLoRA</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo</th></tr>
+      <tr><td>\(W_0\)</td><td>Matriz de pesos preentrenada de una capa lineal, \(d \times k\); se congela</td><td>Proyección \(q\) de la atención del VLM de SmolVLA</td></tr>
+      <tr><td>\(x\), \(h\)</td><td>Entrada (\(\in \mathbb R^k\)) y salida (\(\in \mathbb R^d\)) de la capa: \(h = W_0 x\)</td><td>\(k = d = 960\)</td></tr>
+      <tr><td>\(r\)</td><td>Rango de la corrección, \(r \ll \min(d, k)\). <em>En la parte 2, \(r\) era el robot</em></td><td>RaceVLA: \(r = 32\)</td></tr>
+      <tr><td>\(B\), \(A\)</td><td>Las dos matrices que se entrenan: \(B\) de \(d \times r\) y \(A\) de \(r \times k\). <em>Esta \(A\) no es la ventaja de π*0.6</em></td><td>\(960 \times 32\) y \(32 \times 960\)</td></tr>
+      <tr><td>\(\Delta W = BA\)</td><td>La corrección: una matriz \(d \times k\) de rango \(r\) como mucho</td><td>Ver las dos hojas siguientes</td></tr>
+      <tr><td>\(\alpha\)</td><td>Escala fija de la corrección, que se aplica como \(\alpha/r\). <em>No es la \(\alpha\) de RECAP</em></td><td>Se fija al primer \(r\) que se prueba</td></tr>
+      <tr><td>\(c\)</td><td>Constante de cuantización de un bloque de pesos: su máximo valor absoluto</td><td>Un bloque de 64 pesos, una \(c\)</td></tr>
+      <tr><td>\(q_i\)</td><td>Los 16 niveles del formato NF4, \(i = 0, \dots, 15\), entre −1 y 1</td><td>\(q_7 = 0\), \(q_{15} = 1\)</td></tr>
+    </table>
+  </div>
 </section>
 
 <section class="slide">
@@ -251,7 +954,7 @@
           <rect class="box-accent" x="120" y="140" width="60" height="70" rx="5"/><text x="150" y="172" text-anchor="middle">A</text><text x="150" y="190" text-anchor="middle" font-size="11">r × k</text>
           <rect class="box-accent" x="220" y="150" width="60" height="50" rx="5"/><text x="250" y="172" text-anchor="middle">B</text><text x="250" y="190" text-anchor="middle" font-size="11">d × r</text>
           <circle cx="340" cy="115" r="16" class="box"/><text x="340" y="120" text-anchor="middle">+</text>
-          <rect class="box" x="390" y="95" width="80" height="40" rx="5"/><text x="430" y="120" text-anchor="middle">salida</text>
+          <rect class="box" x="390" y="95" width="80" height="40" rx="5"/><text x="430" y="120" text-anchor="middle">h</text>
         </g>
         <g class="ln" marker-end="url(#fl2)"><path d="M70,110 C 95,110 95,55 118,55"/><path d="M70,120 C 95,120 95,175 118,175"/><path d="M180,175 L218,175"/><path d="M280,55 C 310,55 320,90 330,102"/><path d="M280,175 C 310,175 320,140 330,128"/><path d="M356,115 L388,115"/></g>
       </svg>
@@ -259,7 +962,7 @@
     </figure>
     <div class="stack">
       <ul>
-        <li>Ajustar todo un modelo exige guardar gradientes y dos momentos de Adam por cada peso: varias veces la memoria del modelo.</li>
+        <li>Ajustar todo un modelo exige guardar gradientes y dos momentos de Adam por cada peso: varias veces la memoria del modelo (la cuenta, dos hojas más adelante).</li>
         <li>LoRA congela los pesos \(W_0\) y aprende una corrección de rango bajo: con GPT-3 (175B), 10 000 veces menos parámetros entrenables y 3 veces menos memoria que el ajuste completo con Adam, sin latencia añadida.</li>
       </ul>
       <div class="callout clave"><span class="tag">En la práctica</span>RaceVLA ajusta OpenVLA con LoRA de rango 32 en una A100 <a class="cite" data-ref="serpiva2025"></a>; la receta por defecto de SmolVLA congela el VLM y entrena solo el experto de acciones.</div>
@@ -268,23 +971,243 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Ajuste fino · LoRA paso a paso</p>
+  <p class="kicker">Ajuste fino · LoRA · 1 · por qué un producto</p>
+  <h2>Una matriz de rango bajo: pocas direcciones, pocos números</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 200" style="max-height:200px" role="img" aria-label="La corrección Delta W, de d por k, es el producto de B, alto y estrecho, por A, bajo y ancho">
+<rect x="10" y="20" width="150" height="150" rx="4" class="box-soft"/>
+<text x="85" y="92" text-anchor="middle" class="t-bold" font-size="18">ΔW</text>
+<text x="85" y="116" text-anchor="middle" class="t-mono t-muted" font-size="14">d × k</text>
+<text x="185" y="102" text-anchor="middle" class="t-bold" font-size="22">=</text>
+<rect x="210" y="20" width="30" height="150" rx="4" class="box-accent"/>
+<text x="225" y="192" text-anchor="middle" class="t-mono" font-size="13">B: d × r</text>
+<text x="262" y="102" text-anchor="middle" class="t-bold" font-size="20">×</text>
+<rect x="285" y="20" width="150" height="30" rx="4" class="box-accent"/>
+<text x="360" y="40" text-anchor="middle" class="t-mono" font-size="13">A: r × k</text>
+<text x="285" y="90" class="t-muted" font-size="14">dk números</text>
+<text x="285" y="112" class="t-muted" font-size="14">frente a r(d + k)</text>
+<text x="285" y="146" class="t-mono" font-size="13">d = k = 960, r = 32:</text>
+<text x="285" y="166" class="t-mono" font-size="13">921 600 frente a 61 440</text>
+</svg>
+        <figcaption>\(\Delta W\) no se guarda: se guardan \(B\) y \(A\).</figcaption>
+      </figure>
+      <p>Una matriz de rango \(r\) es una suma de \(r\) productos «columna por fila»:</p>
+      \[ \Delta W = BA = \sum_{i=1}^{r} B_{:,i}\, A_{i,:} \]
+      <p>Cada término dice «cuando la entrada se parece al patrón \(A_{i,:}\), empuja la salida en la dirección \(B_{:,i}\)». Con \(r\) pequeño, la corrección solo cambia la capa en \(r\) direcciones.</p>
+    </div>
+    <div class="stack">
+      <p><strong>A mano, con \(d = k = 4\) y \(r = 1\).</strong> \(B = (1, 0, 2, -1)^\top\), \(A = (0{,}5;\ 1;\ 0;\ -0{,}5)\):</p>
+      \[ BA = \begin{bmatrix} 0{,}5 & 1 & 0 & -0{,}5\\ 0&0&0&0\\ 1 & 2 & 0 & -1\\ -0{,}5 & -1 & 0 & 0{,}5 \end{bmatrix} \]
+      <p>16 números, pero salen de 8: todas las filas son múltiplos de \(A\). Rango 1. Ejemplo 9.</p>
+      <div class="aparte"><span class="rotulo">Por qué debería bastar</span><p>La hipótesis de LoRA es que el cambio de los pesos al adaptar un modelo tiene un «rango intrínseco» bajo. En GPT-3, un rango de 1 bastó para adaptar \(W_q\) y \(W_v\) en WikiSQL y MultiNLI; los autores avisan de que no esperan que un \(r\) pequeño sirva para cualquier tarea <a class="cite" data-ref="hu2022"></a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · LoRA · 2 · la pasada y el arranque</p>
+  <h2>Comprimir a \(r\) números, expandir y sumar</h2>
+  \[ h = W_0\,x + \frac{\alpha}{r}\, B\,(A\,x) \]
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(Ax \in \mathbb R^r\)</td><td>\(A\) comprime la entrada a \(r\) números: el cuello de botella</td></tr>
+          <tr><td><strong>2</strong></td><td>\(B(Ax) \in \mathbb R^d\)</td><td>\(B\) lo expande a la salida; cuesta \(r(d + k)\) productos, no \(dk\)</td></tr>
+          <tr><td><strong>3</strong></td><td>al empezar, \(A\) aleatoria gaussiana y \(B = 0\)</td><td>\(\Delta W = 0\): el modelo parte exactamente del preentrenado</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\partial \mathcal L/\partial B = \tfrac{\alpha}{r}\, g\,(Ax)^\top\)</td><td>Regla de la cadena, con \(g = \partial\mathcal L/\partial h\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\partial \mathcal L/\partial A = \tfrac{\alpha}{r}\, B^\top g\, x^\top\)</td><td>Igual, pasando por \(B\)</td></tr>
+          <tr><td><strong>6</strong></td><td>con \(B = 0\), solo \(B\) se mueve en el primer paso; luego, las dos</td><td>Si \(A\) y \(B\) empezaran a cero, los dos gradientes serían 0 para siempre</td></tr>
+          <tr><td><strong>7</strong></td><td>al acabar, \(W = W_0 + \frac{\alpha}{r} BA\)</td><td>Una sola matriz: la inferencia no cuesta más</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Con el ejemplo anterior</strong> y \(x = (1, 1, 1, 1)\): \(Ax = 0{,}5 + 1 + 0 - 0{,}5 = 1\), un solo número, y \(B(Ax) = (1, 0, 2, -1)\). Con \(\alpha/r = 1\), eso es lo que se suma a \(W_0 x\). Ejemplo 9.</p>
+      <div class="aparte"><span class="rotulo">Por qué \(\alpha / r\)</span><p>Los autores fijan \(\alpha\) al primer \(r\) que prueban y no lo ajustan: con Adam, ajustar \(\alpha\) es casi como ajustar la tasa de aprendizaje, y dividir por \(r\) evita reajustar los hiperparámetros al cambiar el rango. La inicialización gaussiana de \(A\) y nula de \(B\) también es la suya <a class="cite" data-ref="hu2022"></a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · LoRA · 3 · cuántos parámetros</p>
   <h2>Cuántos parámetros entrena LoRA</h2>
   \[ W = W_0 + \frac{\alpha}{r}\, B A, \qquad B \in \mathbb R^{d\times r},\; A \in \mathbb R^{r\times k} \]
-  <p><strong>Notación:</strong> \(W_0\), matriz de pesos preentrenada, \(d \times k\), congelada; \(r\), rango de la corrección, \(r \ll \min(d, k)\); \(A, B\), las matrices que se entrenan; \(\alpha\), escala fija.</p>
-  <div class="table-wrap">
-    <table class="t">
-      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
-      <tr><td><strong>1</strong></td><td>\(B = 0\) al empezar, así que \(W = W_0\)</td><td>El modelo ajustado parte exactamente del preentrenado</td></tr>
-      <tr><td><strong>2</strong></td><td>ajuste completo: \(dk\) parámetros entrenables</td><td>Uno por entrada de \(W\)</td></tr>
-      <tr><td><strong>3</strong></td><td>LoRA: \(dr + rk = r(d + k)\)</td><td>Las entradas de \(B\) y de \(A\)</td></tr>
-      <tr><td><strong>4</strong></td><td>fracción \(= r(d+k)/(dk)\)</td><td>Cociente de los pasos 3 y 2</td></tr>
-      <tr><td><strong>5</strong></td><td>la memoria del optimizador baja en la misma proporción</td><td>Adam guarda dos números por parámetro entrenable</td></tr>
-    </table>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>ajuste completo: \(dk\) parámetros entrenables</td><td>Uno por entrada de \(W\)</td></tr>
+        <tr><td><strong>2</strong></td><td>LoRA: \(dr + rk = r(d + k)\)</td><td>Las entradas de \(B\) y de \(A\)</td></tr>
+        <tr><td><strong>3</strong></td><td>fracción \(= r(d+k)/(dk)\)</td><td>Cociente de los pasos 2 y 1</td></tr>
+        <tr><td><strong>4</strong></td><td>la memoria del optimizador baja en la misma proporción</td><td>Adam guarda dos números por parámetro entrenable</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p><strong>Con SmolVLA.</strong> Una proyección de atención de su VLM es de \(960 \times 960\) (<code>ajuste_smolvla.py</code>): \(dk = 921\,600\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(r\)</th><th>\(r(d + k)\)</th><th>Fracción</th></tr></thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="n">1 920</td><td class="n">0,21 %</td></tr>
+            <tr><td class="n">8</td><td class="n">15 360</td><td class="n">1,67 %</td></tr>
+            <tr><td class="n">32</td><td class="n">61 440</td><td class="n">6,67 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Ejemplo 10. Con \(d = k\), la fracción es \(2r/d\): crece lineal con el rango.</p>
+    </div>
   </div>
-  <div class="cols" style="margin-top:6px">
-    <div class="aparte"><span class="rotulo">Ejemplo con SmolVLA</span><p>Una proyección de atención de su VLM es de \(960 \times 960\) (<code>ajuste_smolvla.py</code>). Con \(r = 32\): \(32 \times 1920 = 61\,440\) parámetros frente a \(921\,600\), un 6,7 %. Con \(r = 8\), un 1,7 %.</p></div>
-    <div class="aparte"><span class="rotulo">QLoRA</span><p>Guarda los pesos congelados en 4 bits <a class="cite" data-ref="dettmers2023"></a>: \(65 \cdot 10^9 \times 0{,}5\) bytes \(\approx 32{,}5\) GB. Con adaptadores en 16 bits y optimizadores paginados, un modelo de 65B se ajusta en una GPU de 48 GB.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · memoria</p>
+  <h2>Por qué ajustar todo ocupa tanto: 16 bytes por parámetro entrenable</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Por cada parámetro, en fp32</th><th>Entrenable</th><th>Congelado</th></tr></thead>
+          <tbody>
+            <tr><td>el peso</td><td class="n">4 B</td><td class="n">4 B</td></tr>
+            <tr><td>su gradiente</td><td class="n">4 B</td><td class="n">—</td></tr>
+            <tr><td>primer momento de Adam, \(m\)</td><td class="n">4 B</td><td class="n">—</td></tr>
+            <tr><td>segundo momento de Adam, \(v\)</td><td class="n">4 B</td><td class="n">—</td></tr>
+            <tr><td><strong>total</strong></td><td class="n"><strong>16 B</strong></td><td class="n"><strong>4 B</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Una matriz de 960 × 960:</strong> ajustarla entera son \(921\,600 \times 16\) B = 14,75 MB. Con LoRA de \(r = 32\): \(921\,600 \times 4 + 61\,440 \times 16\) B = 4,67 MB, 3,2 veces menos. Ejemplo 11.</p>
+    </div>
+    <div class="stack">
+      <p><strong>El ajuste del experimento</strong> (parte 6) carga SmolVLA en fp32 y entrena 100 M de sus 450 M parámetros:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tbody>
+            <tr><td>pesos, 450 M × 4 B</td><td class="n">1,68 GiB</td></tr>
+            <tr><td>gradientes, 100 M × 4 B</td><td class="n">0,37 GiB</td></tr>
+            <tr><td>AdamW, 2 × 100 M × 4 B</td><td class="n">0,75 GiB</td></tr>
+            <tr><td>suma</td><td class="n">2,79 GiB</td></tr>
+            <tr><td>medido (memoria máxima)</td><td class="n">4,4 GiB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Ejemplo 18. Los 1,6 GiB que faltan son lo que no son parámetros: sobre todo activaciones guardadas para el gradiente y copias en bfloat16 del <em>autocast</em>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · QLoRA · 1 · esquema</p>
+  <h2>QLoRA: qué se guarda en 4 bits y qué no</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 250" style="max-height:250px" role="img" aria-label="Qué guarda QLoRA en memoria (pesos en NF4, constantes, adaptadores en BF16) y qué hace al calcular cada capa">
+<defs><marker id="a12bm8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<rect x="10" y="10" width="560" height="232" rx="8" class="box-soft"/>
+<text x="30" y="38" class="t-bold" font-size="15">En memoria</text>
+<rect x="30" y="54" width="150" height="30" rx="4" class="box"/>
+<text x="105" y="74" text-anchor="middle" class="t-mono" font-size="13">W₀ · NF4</text>
+<text x="196" y="74" font-size="14">4 bits por peso, en bloques de 64</text>
+<rect x="30" y="94" width="150" height="30" rx="4" class="box"/>
+<text x="105" y="114" text-anchor="middle" class="t-mono" font-size="13">c₂ · FP8</text>
+<text x="196" y="114" font-size="14">una constante por bloque de 64 pesos</text>
+<rect x="30" y="134" width="150" height="30" rx="4" class="box"/>
+<text x="105" y="154" text-anchor="middle" class="t-mono" font-size="13">c₁ · FP32</text>
+<text x="196" y="154" font-size="14">una por cada 256 constantes c₂</text>
+<rect x="30" y="174" width="150" height="30" rx="4" class="box-accent"/>
+<text x="105" y="194" text-anchor="middle" class="t-mono" font-size="13">L₁, L₂ · BF16</text>
+<text x="196" y="194" font-size="14">adaptadores LoRA: lo único que se entrena</text>
+<text x="30" y="228" class="t-muted" font-size="13">estados de Adam, paginados: pasan a la RAM de la CPU si la GPU se queda sin memoria</text>
+<path d="M572,95 L728,95" class="ln" marker-end="url(#a12bm8)"/>
+<text x="650" y="85" text-anchor="middle" class="t-mono" font-size="13">doubleDequant</text>
+<rect x="730" y="10" width="440" height="232" rx="8" class="box-soft"/>
+<text x="750" y="38" class="t-bold" font-size="15">Al calcular cada capa</text>
+<rect x="750" y="78" width="190" height="34" rx="6" class="box"/>
+<text x="845" y="100" text-anchor="middle" class="t-mono" font-size="14">W₀ en BF16</text>
+<text x="952" y="100" class="t-muted" font-size="13">solo mientras se usa</text>
+<text x="750" y="150" class="t-mono t-bold" font-size="17">Y = X W + X L₁ L₂</text>
+<text x="750" y="184" class="t-accent" font-size="14">gradiente: solo para L₁ y L₂</text>
+<text x="750" y="208" class="t-muted" font-size="13">pasa por W en BF16; W no se actualiza</text>
+</svg>
+    <figcaption>QLoRA <a class="cite" data-ref="dettmers2023"></a>: un formato para guardar (NF4) y otro para calcular (BF16). El artículo escribe la capa como \(Y = XW\) (las entradas por filas) y llama \(L_1, L_2\) a los adaptadores: es el mismo \(BA\) de LoRA, traspuesto.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Qué resuelve.</strong> Con LoRA, el optimizador ya es pequeño, pero los pesos congelados siguen ocupando 2 bytes cada uno en bf16: 130 GB para un modelo de 65B. QLoRA los guarda en 4 bits y los descomprime capa a capa, solo mientras los usa.</p>
+    <p><strong>Tres piezas:</strong> el formato NF4 para los pesos, la doble cuantización (cuantizar también las constantes de cada bloque) y los optimizadores paginados, que evitan quedarse sin memoria en los picos.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ajuste fino · QLoRA · 2 · cuantizar un bloque</p>
+  <h2>Cuantizar un bloque a mano: absmax y los 16 niveles de NF4</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 150" style="max-height:150px" role="img" aria-label="Los 16 niveles de NF4 entre menos uno y uno, más juntos cerca de cero, y los cuatro valores del bloque llevados a su nivel más cercano">
+<path d="M70,70 H1130" class="ln"/>
+<path d="M70.0,62 V78" class="ln" stroke-width="2"/>
+<text x="70.0" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">−1,00</text>
+<path d="M231.0,62 V78" class="ln" stroke-width="2"/>
+<text x="231.0" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,70</text>
+<path d="M321.7,62 V78" class="ln" stroke-width="2"/>
+<text x="321.7" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,53</text>
+<path d="M390.7,62 V78" class="ln" stroke-width="2"/>
+<text x="390.7" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,39</text>
+<path d="M449.2,62 V78" class="ln" stroke-width="2"/>
+<text x="449.2" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,28</text>
+<path d="M502.1,62 V78" class="ln" stroke-width="2"/>
+<text x="502.1" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,18</text>
+<path d="M551.7,62 V78" class="ln" stroke-width="2"/>
+<text x="551.7" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">−0,09</text>
+<path d="M600.0,62 V78" class="ln" stroke-width="2"/>
+<text x="600.0" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">0,00</text>
+<path d="M642.2,62 V78" class="ln" stroke-width="2"/>
+<text x="642.2" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">0,08</text>
+<path d="M685.3,62 V78" class="ln" stroke-width="2"/>
+<text x="685.3" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">0,16</text>
+<path d="M730.4,62 V78" class="ln" stroke-width="2"/>
+<text x="730.4" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">0,25</text>
+<path d="M779.1,62 V78" class="ln" stroke-width="2"/>
+<text x="779.1" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">0,34</text>
+<path d="M833.6,62 V78" class="ln" stroke-width="2"/>
+<text x="833.6" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">0,44</text>
+<path d="M898.2,62 V78" class="ln" stroke-width="2"/>
+<text x="898.2" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">0,56</text>
+<path d="M983.2,62 V78" class="ln" stroke-width="2"/>
+<text x="983.2" y="52" text-anchor="middle" class="t-mono t-faint" font-size="11">0,72</text>
+<path d="M1130.0,62 V78" class="ln" stroke-width="2"/>
+<text x="1130.0" y="36" text-anchor="middle" class="t-mono t-faint" font-size="11">1,00</text>
+<circle cx="727.2" cy="124" r="6" class="fill-accent"/>
+<path d="M727.2,117 L730.4,80" class="ln-accent"/>
+<text x="727.2" y="146" text-anchor="middle" class="t-accent t-mono" font-size="12">0,24</text>
+<circle cx="70.0" cy="124" r="6" class="fill-accent"/>
+<path d="M70.0,117 L70.0,80" class="ln-accent"/>
+<text x="70.0" y="146" text-anchor="middle" class="t-accent t-mono" font-size="12">−1,00</text>
+<circle cx="918.0" cy="124" r="6" class="fill-accent"/>
+<path d="M918.0,117 L898.2,80" class="ln-accent"/>
+<text x="918.0" y="146" text-anchor="middle" class="t-accent t-mono" font-size="12">0,60</text>
+<circle cx="653.0" cy="124" r="6" class="fill-accent"/>
+<path d="M653.0,117 L642.2,80" class="ln-accent"/>
+<text x="653.0" y="146" text-anchor="middle" class="t-accent t-mono" font-size="12">0,10</text>
+<text x="10" y="128" class="t-accent" font-size="13">w / c</text>
+</svg>
+    <figcaption>Los 16 niveles \(q_i\) de NF4 (valores del apéndice E de <a class="cite" data-ref="dettmers2023"></a>), más juntos cerca de 0, y los cuatro valores del bloque del ejemplo llevados a su nivel más cercano.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:50%">Paso, con \(w = (0{,}12;\ -0{,}50;\ 0{,}30;\ 0{,}05)\)</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(c = \max_j |w_j| = 0{,}5\)</td><td>La constante del bloque (absmax)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(w/c = (0{,}24;\ -1;\ 0{,}6;\ 0{,}1)\)</td><td>Así el bloque cabe en \([-1, 1]\)</td></tr>
+        <tr><td><strong>3</strong></td><td>nivel más cercano: índices \((10, 0, 13, 8)\)</td><td>Se guardan 4 bits por peso (16 niveles)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(c\,q_i = (0{,}1231;\ -0{,}5;\ 0{,}2813;\ 0{,}0398)\)</td><td>Descuantizar; error máximo 0,019. Ejemplo 12</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p><strong>Por qué esos niveles.</strong> Los pesos preentrenados se parecen a una normal centrada; NF4 pone los niveles en sus cuantiles, para que a cada uno le toque el mismo número esperado de pesos, y asimétrico para tener un 0 exacto. <strong>Por qué bloques pequeños:</strong> un valor atípico en un bloque grande dejaría a los demás en pocos niveles.</p>
+      <p><strong>Bits por peso:</strong> \(4 + 32/64 = 4{,}5\) con una \(c\) en fp32 por bloque de 64; con la doble cuantización, \(4 + 8/64 + 32/(64 \cdot 256) = 4{,}127\). Un modelo de 65B: 36,6 GB y 33,5 GB, frente a 130 GB en bf16; la doble cuantización ahorra unos 3 GB. Ejemplo 13.</p>
+    </div>
   </div>
 </section>
 
@@ -317,6 +1240,75 @@
   <p class="num">Parte 5</p>
   <h2>VLAs que imaginan y VLAs seguros</h2>
   <p>World models dentro del VLA y bancos de prueba de seguridad.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · esquema</p>
+  <h2>Tres maneras de meter la predicción en un VLA, y la que falta</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 250" style="max-height:240px" role="img" aria-label="Cuatro esquemas: un VLA solo de acciones; WorldVLA, que genera acciones e imágenes futuras; DreamVLA, que predice un resumen del futuro; y un belief recurrente sobre el que se planifica">
+<defs><marker id="a12bm9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<text x="150" y="22" text-anchor="middle" class="t-bold" font-size="15">solo acciones</text>
+<rect x="90" y="36" width="120" height="34" rx="6" class="box-soft"/>
+<text x="150" y="58" text-anchor="middle" class="t-mono" font-size="14">oₜ, ℓ</text>
+<path d="M150,70 L150,96" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="20" y="100" width="260" height="40" rx="6" class="box"/>
+<text x="150" y="125" text-anchor="middle" font-size="14">VLA</text>
+<path d="M150.0,140 L150.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="25" y="174" width="250" height="34" rx="6" class="box-accent"/>
+<text x="150.0" y="196" text-anchor="middle" font-size="13">aₜ</text>
+<text x="442" y="22" text-anchor="middle" class="t-bold" font-size="15">WorldVLA</text>
+<rect x="382" y="36" width="120" height="34" rx="6" class="box-soft"/>
+<text x="442" y="58" text-anchor="middle" class="t-mono" font-size="14">oₜ, ℓ</text>
+<path d="M442,70 L442,96" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="312" y="100" width="260" height="40" rx="6" class="box"/>
+<text x="442" y="125" text-anchor="middle" font-size="14">un modelo autorregresivo</text>
+<path d="M378.0,140 L378.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="317" y="174" width="122" height="34" rx="6" class="box-accent"/>
+<text x="378.0" y="196" text-anchor="middle" font-size="13">aₜ</text>
+<path d="M506.0,140 L506.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="445" y="174" width="122" height="34" rx="6" class="box-time"/>
+<text x="506.0" y="196" text-anchor="middle" font-size="13">imagen futura</text>
+<text x="734" y="22" text-anchor="middle" class="t-bold" font-size="15">DreamVLA</text>
+<rect x="674" y="36" width="120" height="34" rx="6" class="box-soft"/>
+<text x="734" y="58" text-anchor="middle" class="t-mono" font-size="14">oₜ, ℓ</text>
+<path d="M734,70 L734,96" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="604" y="100" width="260" height="40" rx="6" class="box"/>
+<text x="734" y="125" text-anchor="middle" font-size="14">VLA</text>
+<path d="M670.0,140 L670.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="609" y="174" width="122" height="34" rx="6" class="box-accent"/>
+<text x="670.0" y="196" text-anchor="middle" font-size="13">aₜ</text>
+<path d="M798.0,140 L798.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="737" y="174" width="122" height="34" rx="6" class="box-time"/>
+<text x="798.0" y="196" text-anchor="middle" font-size="13">resumen del futuro</text>
+<text x="1026" y="22" text-anchor="middle" class="t-bold" font-size="15">lo que falta (A8a)</text>
+<rect x="966" y="36" width="120" height="34" rx="6" class="box-soft"/>
+<text x="1026" y="58" text-anchor="middle" class="t-mono" font-size="14">oₜ, ℓ</text>
+<path d="M1026,70 L1026,96" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="896" y="100" width="260" height="40" rx="6" class="box-tesis"/>
+<text x="1026" y="125" text-anchor="middle" font-size="14">belief zₜ recurrente</text>
+<path d="M1026.0,140 L1026.0,170" class="ln" marker-end="url(#a12bm9)"/>
+<rect x="901" y="174" width="250" height="34" rx="6" class="box-tesis"/>
+<text x="1026.0" y="196" text-anchor="middle" font-size="13">planificar imaginando</text>
+<path d="M1156,112 C 1186,92 1186,140 1158,128" class="ln-tesis" marker-end="url(#a12bm9)"/>
+<path d="M1026,208 L1026,222" class="ln" marker-end="url(#a12bm9)"/>
+<text x="1026" y="240" text-anchor="middle" class="t-mono" font-size="13">→ aₜ</text>
+<text x="1026" y="82" text-anchor="end" class="t-tesis t-mono" font-size="12">zₜ₋₁, aₜ₋₁</text>
+<text x="160" y="236" class="t-muted" font-size="13">(b) y (c): la predicción solo entra en la pérdida</text>
+</svg>
+    <figcaption>Esquemas simplificados de WorldVLA <a class="cite" data-ref="cen2025"></a> y DreamVLA <a class="cite" data-ref="zhang2025"></a>; el cuarto es el world model latente de A8a, que ningún VLA de esta lista usa.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>La forma común</strong> de (b) y (c), escrita de forma genérica (no la de un artículo concreto):</p>
+      \[ \mathcal L = \mathcal L_{\mathrm{acc}} + \lambda\, \mathcal L_{\mathrm{pred}} \]
+      <p>\(\mathcal L_{\mathrm{acc}}\): la pérdida de imitación de las acciones. \(\mathcal L_{\mathrm{pred}}\): el error al predecir el futuro (la imagen siguiente, o su resumen). \(\lambda\): cuánto pesa la segunda.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Qué cambia y qué no.</strong> Predecir el futuro obliga a la red a representar la dinámica de la escena, y eso ayuda a elegir acciones. Pero al actuar, la predicción no se usa: el VLA decide con la imagen actual, sin memoria y sin probar alternativas.</p>
+      <p><strong>Lo que falta</strong> (d): un latente \(z_t\) que se actualice con cada observación, \(z_t = f(z_{t-1}, a_{t-1}, o_t)\), y sobre el que se pueda imaginar y planificar (A8a). <em>Esta \(z_t\) no es la \(z\) de la parte 1.</em></p>
+    </div>
+  </div>
 </section>
 
 <section class="slide">
@@ -388,6 +1380,269 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 6</p>
+  <h2>Qué es cada letra en el simulador y en las políticas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:30%">Valor en el experimento</th></tr>
+      <tr><td>\(t\), \(\Delta t\)</td><td>Paso de tiempo (entero) y su duración</td><td>\(\Delta t = 0{,}1\) s; 120 pasos = 12 s</td></tr>
+      <tr><td>\(p_t\), \(v_t\)</td><td>Posición y velocidad horizontales del dron, en \(\mathbb R^2\) (m, m/s)</td><td>\(p_0\) a más de 6 m del objetivo</td></tr>
+      <tr><td>\(u_t\)</td><td>La acción: velocidad pedida, en \(\mathbb R^2\) (m/s)</td><td>\(|u_t| \le 3\) m/s</td></tr>
+      <tr><td>\(\tau\)</td><td>Constante de tiempo con la que el dron sigue \(u_t\)</td><td>0,3 s</td></tr>
+      <tr><td>\(p^\star\), \(K_p\), \(v_{\max}\)</td><td>Posición del objeto pedido, ganancia del experto y velocidad máxima</td><td>\(K_p = 1{,}5\) s⁻¹, \(v_{\max} = 3\) m/s</td></tr>
+      <tr><td>\(H\), \(N_{\mathrm{ejec}}\)</td><td>Longitud del trozo y acciones que se ejecutan de cada uno (parte 3)</td><td>10 y 5</td></tr>
+      <tr><td>\(\gamma_c\), \(\beta_c\)</td><td>Escala y desplazamiento de FiLM para el canal \(c\). <em>Esta \(\beta\) no es la de RECAP</em></td><td>Una fila por color, aprendida</td></tr>
+      <tr><td>\(m_h\)</td><td>Máscara temporal del trozo, \(h = 1, \dots, H\) (parte 2)</td><td>0 en lo que pasa del final del episodio</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · la dinámica y el experto</p>
+  <h2>Un dron de primer orden y un experto que va recto</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ v_{t+1} = v_t + \frac{\Delta t}{\tau}\,(u_t - v_t), \qquad p_{t+1} = p_t + \Delta t\, v_{t+1} \]
+      \[ u_t = \mathrm{recorte}_{v_{\max}}\big(K_p\,(p^\star - p_t)\big) \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(u - v_{t+1} = (1 - \Delta t/\tau)(u - v_t)\)</td><td>Restar la primera ecuación de \(u\): el error de velocidad se multiplica por \(2/3\) en cada paso</td></tr>
+          <tr><td><strong>2</strong></td><td>tras 3 pasos (0,3 s) queda \((2/3)^3 = 0{,}30\) del error</td><td>Un retraso de primer orden (A1), discretizado con Euler</td></tr>
+          <tr><td><strong>3</strong></td><td>satura mientras \(|p^\star - p_t| > v_{\max}/K_p = 2\) m</td><td>\(K_p \cdot 2 = 3\): más lejos, el recorte manda</td></tr>
+          <tr><td><strong>4</strong></td><td>a menos de 2 m, \(u\) es proporcional a la distancia</td><td>Frena al acercarse</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 640 290" style="max-height:270px" role="img" aria-label="Distancia al objeto y rapidez del dron con el experto, de 0 a 6 segundos: acelera hasta 3 m/s, va recto y frena por debajo de 2 m">
+<path d="M60,30 V230 H540" class="ln"/>
+<path d="M540,30 V230" class="ln-rule"/>
+<path d="M60,230 V236" class="ln"/>
+<text x="60" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+<path d="M140,230 V236" class="ln"/>
+<text x="140" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+<path d="M220,230 V236" class="ln"/>
+<text x="220" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+<path d="M300,230 V236" class="ln"/>
+<text x="300" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+<path d="M380,230 V236" class="ln"/>
+<text x="380" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+<path d="M460,230 V236" class="ln"/>
+<text x="460" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">5</text>
+<path d="M540,230 V236" class="ln"/>
+<text x="540" y="252" text-anchor="middle" class="t-mono t-faint" font-size="12">6</text>
+<text x="300" y="274" text-anchor="middle" class="t-muted" font-size="13">tiempo (s)</text>
+<text x="52" y="234" text-anchor="end" class="t-mono t-accent" font-size="12">0</text>
+<text x="52" y="134" text-anchor="end" class="t-mono t-accent" font-size="12">5</text>
+<text x="52" y="34" text-anchor="end" class="t-mono t-accent" font-size="12">10</text>
+<text x="548" y="234.0" class="t-mono t-time" font-size="12">0</text>
+<text x="548" y="134.0" class="t-mono t-time" font-size="12">1,5</text>
+<text x="548" y="34.0" class="t-mono t-time" font-size="12">3</text>
+<text x="14" y="22" class="t-accent" font-size="13">distancia (m)</text>
+<text x="626" y="22" text-anchor="end" class="t-time" font-size="13">rapidez (m/s)</text>
+<path d="M60,200 H540" class="ln-rule ln-dash"/>
+<text x="470" y="194" class="t-faint" font-size="12">1,5 m: éxito</text>
+<path d="M308,30 V230" class="ln-rule ln-dash"/>
+<text x="302" y="140" text-anchor="end" class="t-faint t-mono" font-size="12">3,1 s</text>
+<polyline points="60,30.0 68,32.0 76,35.3 84,39.6 92,44.4 100,49.6 108,55.1 116,60.7 124,66.5 132,72.3 140,78.2 148,84.1 156,90.1 164,96.1 172,102.0 180,108.0 188,114.0 196,120.0 204,126.0 212,132.0 220,138.0 228,144.0 236,150.0 244,156.0 252,162.0 260,168.0 268,174.0 276,180.0 284,186.0 292,192.0 300,197.9 308,203.4 316,208.5 324,212.9 332,216.7 340,219.9 348,222.5 356,224.7 364,226.4 372,227.7 380,228.7 388,229.4 396,229.9 404,229.8 412,229.5 420,229.4 428,229.4 436,229.4 444,229.4 452,229.4 460,229.5 468,229.6 476,229.6 484,229.7 492,229.8 500,229.8 508,229.8 516,229.9 524,229.9 532,229.9 540,230.0" class="ln-accent" stroke-width="2.4" fill="none"/>
+<polyline points="60,230.0 68,163.3 76,118.9 84,89.3 92,69.5 100,56.3 108,47.6 116,41.7 124,37.8 132,35.2 140,33.5 148,32.3 156,31.5 164,31.0 172,30.7 180,30.5 188,30.3 196,30.2 204,30.1 212,30.1 220,30.1 228,30.0 236,30.0 244,30.0 252,30.0 260,30.0 268,30.0 276,30.0 284,30.0 292,30.0 300,33.3 308,45.4 316,62.7 324,82.5 332,103.2 340,123.3 348,142.0 356,158.9 364,173.7 372,186.4 380,197.0 388,205.8 396,212.8 404,218.4 412,222.6 420,225.9 428,228.2 436,229.9 444,229.0 452,228.3 460,227.9 468,227.8 476,227.8 484,227.9 492,228.1 500,228.3 508,228.5 516,228.8 524,229.0 532,229.2 540,229.3" class="ln-time" stroke-width="2.4" fill="none"/>
+<text x="150" y="22" class="t-time" font-size="12">saturado: 3 m/s en línea recta</text>
+<text x="380" y="100" class="t-muted" font-size="12">a menos de 2 m: frena</text>
+</svg>
+        <figcaption>El experto desde \(p_0 = (4, 4)\) hasta \(p^\star = (12, 10)\), a 10 m. Primeros pasos: \(|v| = 1{,}00\); \(1{,}67\); \(2{,}11\) m/s. Llega a menos de 1,5 m en 3,1 s. Ejemplo 14.</figcaption>
+      </figure>
+      <p class="small">En las demostraciones se ejecuta \(u_t\) más un ruido gaussiano de desviación 0,3 m/s, pero se guarda \(u_t\) limpio como etiqueta: así hay datos fuera de la trayectoria ideal con la acción correcta, lo que reduce el desplazamiento de covariables (A10).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · trozos</p>
+  <h2>Qué se predice y qué se ejecuta: trozos de 10, se usan 5</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 230" style="max-height:200px" role="img" aria-label="Cada 0,5 s SmolVLA predice un trozo de 10 acciones de 0,1 s; se ejecutan las 5 primeras y se descartan las otras 5">
+<text x="10" y="35" class="t-muted" font-size="13">trozo 1 (t = 0,0 s)</text>
+<rect x="151.0" y="14" width="48" height="28" rx="3" class="box-accent"/>
+<text x="175.0" y="33" text-anchor="middle" class="t-mono" font-size="12">1</text>
+<rect x="201.0" y="14" width="48" height="28" rx="3" class="box-accent"/>
+<text x="225.0" y="33" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="251.0" y="14" width="48" height="28" rx="3" class="box-accent"/>
+<text x="275.0" y="33" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="301.0" y="14" width="48" height="28" rx="3" class="box-accent"/>
+<text x="325.0" y="33" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="351.0" y="14" width="48" height="28" rx="3" class="box-accent"/>
+<text x="375.0" y="33" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<rect x="401.0" y="14" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="451.0" y="14" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="501.0" y="14" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="551.0" y="14" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="601.0" y="14" width="48" height="28" rx="3" class="box-soft"/>
+<text x="10" y="77" class="t-muted" font-size="13">trozo 2 (t = 0,5 s)</text>
+<rect x="401.0" y="56" width="48" height="28" rx="3" class="box-accent"/>
+<text x="425.0" y="75" text-anchor="middle" class="t-mono" font-size="12">1</text>
+<rect x="451.0" y="56" width="48" height="28" rx="3" class="box-accent"/>
+<text x="475.0" y="75" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="501.0" y="56" width="48" height="28" rx="3" class="box-accent"/>
+<text x="525.0" y="75" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="551.0" y="56" width="48" height="28" rx="3" class="box-accent"/>
+<text x="575.0" y="75" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="601.0" y="56" width="48" height="28" rx="3" class="box-accent"/>
+<text x="625.0" y="75" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<rect x="651.0" y="56" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="701.0" y="56" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="751.0" y="56" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="801.0" y="56" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="851.0" y="56" width="48" height="28" rx="3" class="box-soft"/>
+<text x="10" y="119" class="t-muted" font-size="13">trozo 3 (t = 1,0 s)</text>
+<rect x="651.0" y="98" width="48" height="28" rx="3" class="box-accent"/>
+<text x="675.0" y="117" text-anchor="middle" class="t-mono" font-size="12">1</text>
+<rect x="701.0" y="98" width="48" height="28" rx="3" class="box-accent"/>
+<text x="725.0" y="117" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="751.0" y="98" width="48" height="28" rx="3" class="box-accent"/>
+<text x="775.0" y="117" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="801.0" y="98" width="48" height="28" rx="3" class="box-accent"/>
+<text x="825.0" y="117" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="851.0" y="98" width="48" height="28" rx="3" class="box-accent"/>
+<text x="875.0" y="117" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<rect x="901.0" y="98" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="951.0" y="98" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="1001.0" y="98" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="1051.0" y="98" width="48" height="28" rx="3" class="box-soft"/>
+<rect x="1101.0" y="98" width="48" height="28" rx="3" class="box-soft"/>
+<text x="10" y="161" class="t-muted" font-size="13">trozo 4 (t = 1,5 s)</text>
+<rect x="901.0" y="140" width="48" height="28" rx="3" class="box-accent"/>
+<text x="925.0" y="159" text-anchor="middle" class="t-mono" font-size="12">1</text>
+<rect x="951.0" y="140" width="48" height="28" rx="3" class="box-accent"/>
+<text x="975.0" y="159" text-anchor="middle" class="t-mono" font-size="12">2</text>
+<rect x="1001.0" y="140" width="48" height="28" rx="3" class="box-accent"/>
+<text x="1025.0" y="159" text-anchor="middle" class="t-mono" font-size="12">3</text>
+<rect x="1051.0" y="140" width="48" height="28" rx="3" class="box-accent"/>
+<text x="1075.0" y="159" text-anchor="middle" class="t-mono" font-size="12">4</text>
+<rect x="1101.0" y="140" width="48" height="28" rx="3" class="box-accent"/>
+<text x="1125.0" y="159" text-anchor="middle" class="t-mono" font-size="12">5</text>
+<path d="M150,190 H1150.0" class="ln"/>
+<path d="M150.0,184 V196" class="ln" stroke-width="2"/>
+<text x="150.0" y="212" text-anchor="middle" class="t-mono t-faint" font-size="12">0,0 s</text>
+<circle cx="150.0" cy="190" r="5" class="fill-accent"/>
+<path d="M400.0,184 V196" class="ln" stroke-width="2"/>
+<text x="400.0" y="212" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5 s</text>
+<circle cx="400.0" cy="190" r="5" class="fill-accent"/>
+<path d="M650.0,184 V196" class="ln" stroke-width="2"/>
+<text x="650.0" y="212" text-anchor="middle" class="t-mono t-faint" font-size="12">1,0 s</text>
+<circle cx="650.0" cy="190" r="5" class="fill-accent"/>
+<path d="M900.0,184 V196" class="ln" stroke-width="2"/>
+<text x="900.0" y="212" text-anchor="middle" class="t-mono t-faint" font-size="12">1,5 s</text>
+<circle cx="900.0" cy="190" r="5" class="fill-accent"/>
+<path d="M1150.0,184 V196" class="ln" stroke-width="2"/>
+<text x="1150.0" y="212" text-anchor="middle" class="t-mono t-faint" font-size="12">2,0 s</text>
+<text x="1150.0" y="212" font-size="12"></text>
+<text x="10" y="194" class="t-accent" font-size="13">decisiones</text>
+</svg>
+    <figcaption>\(H = 10\) acciones de 0,1 s (1 s); se ejecutan \(N_{\mathrm{ejec}} = 5\) y se vuelve a decidir con la imagen nueva. Las dos políticas usan el mismo esquema.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Qué aprende cada política:</strong> a partir de la imagen, la orden y la posición en el instante \(t\), las 10 acciones del experto \(u_t, \dots, u_{t+9}\). Cada muestra de entrenamiento es un episodio y un instante al azar.</p>
+      <p><strong>La pérdida de la política pequeña</strong> es el error cuadrático con la máscara temporal de la parte 2: \(\mathcal L = \sum_{h=1}^{H} m_h \|\hat u_h - u_{t+h-1}\|^2 / \sum_h m_h\).</p>
+    </div>
+    <div class="aparte"><span class="rotulo">Escalas</span>
+      <p>Las redes ven números de orden 1. La posición entra como \((p - L/2)/(L/4)\), con \(L = 20\) m: el centro de la zona es 0 y los bordes, ±2. Las acciones se dividen por \(v_{\max}\): 3 m/s es 1 y 1,5 m/s es 0,5. Ejemplo 16.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · qué entra a cada política</p>
+  <h2>Dos políticas, mismos datos, entradas distintas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 310" style="max-height:300px" role="img" aria-label="Qué entra y qué sale de SmolVLA ajustado y de la política pequeña">
+<defs><marker id="a12bm10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+<text x="10" y="20" class="t-bold t-accent" font-size="15">SmolVLA ajustado (450 M; se entrenan 100 M)</text>
+<rect x="10" y="34" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="54" text-anchor="middle" font-size="13">imagen 256 × 256</text>
+<rect x="10" y="72" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="92" text-anchor="middle" font-size="13">orden en inglés (≤ 16 tokens)</text>
+<rect x="10" y="110" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="130" text-anchor="middle" font-size="13">posición (2, rellena hasta 32)</text>
+<rect x="290" y="34" width="230" height="68" rx="6" class="box-soft"/>
+<text x="405" y="62" text-anchor="middle" font-size="13">VLM (SmolVLM2, 16 capas)</text>
+<text x="405" y="84" text-anchor="middle" class="t-muted" font-size="13">congelado</text>
+<rect x="290" y="110" width="230" height="30" rx="6" class="box-accent"/>
+<text x="405" y="130" text-anchor="middle" font-size="13">proyección del estado</text>
+<path d="M250,49 L286,56" class="ln" marker-end="url(#a12bm10)"/>
+<path d="M250,87 L286,80" class="ln" marker-end="url(#a12bm10)"/>
+<path d="M250,125 L286,125" class="ln" marker-end="url(#a12bm10)"/>
+<rect x="560" y="34" width="260" height="106" rx="6" class="box-accent"/>
+<text x="690" y="64" text-anchor="middle" class="t-bold" font-size="14">experto de acciones</text>
+<text x="690" y="88" text-anchor="middle" font-size="13">se entrena</text>
+<text x="690" y="112" text-anchor="middle" class="t-muted" font-size="13">flow matching (A10)</text>
+<path d="M520,68 L556,74" class="ln" marker-end="url(#a12bm10)"/>
+<path d="M520,125 L556,116" class="ln" marker-end="url(#a12bm10)"/>
+<rect x="860" y="60" width="310" height="54" rx="6" class="box"/>
+<text x="1015" y="84" text-anchor="middle" class="t-mono" font-size="13">trozo de 10 × 32</text>
+<text x="1015" y="104" text-anchor="middle" font-size="13">se toman 2 columnas: (v_x, v_y)</text>
+<path d="M820,87 L856,87" class="ln" marker-end="url(#a12bm10)"/>
+<text x="10" y="170" class="t-bold t-tesis" font-size="15">Política pequeña desde cero (1,12 M, se entrena todo)</text>
+<rect x="10" y="184" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="204" text-anchor="middle" font-size="13">imagen 64 × 64 + coordenadas</text>
+<rect x="10" y="222" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="242" text-anchor="middle" font-size="13">color pedido: índice 0–3</text>
+<rect x="10" y="260" width="240" height="30" rx="6" class="box"/>
+<text x="130" y="280" text-anchor="middle" font-size="13">posición (2)</text>
+<rect x="290" y="184" width="230" height="68" rx="6" class="box-tesis"/>
+<text x="405" y="212" text-anchor="middle" font-size="13">3 capas convolucionales</text>
+<text x="405" y="234" text-anchor="middle" font-size="13">con FiLM</text>
+<path d="M250,199 L286,206" class="ln" marker-end="url(#a12bm10)"/>
+<path d="M250,237 L286,232" class="ln" marker-end="url(#a12bm10)"/>
+<rect x="560" y="184" width="260" height="106" rx="6" class="box-tesis"/>
+<text x="690" y="214" text-anchor="middle" font-size="13">aplanar: 4096 + posición</text>
+<text x="690" y="238" text-anchor="middle" font-size="13">capa de 256</text>
+<text x="690" y="262" text-anchor="middle" class="t-muted" font-size="13">regresión (error cuadrático)</text>
+<path d="M520,218 L556,222" class="ln" marker-end="url(#a12bm10)"/>
+<path d="M250,275 L556,275" class="ln" marker-end="url(#a12bm10)"/>
+<rect x="860" y="210" width="310" height="54" rx="6" class="box"/>
+<text x="1015" y="242" text-anchor="middle" class="t-mono" font-size="13">trozo de 10 × 2: (v_x, v_y)</text>
+<path d="M820,237 L856,237" class="ln" marker-end="url(#a12bm10)"/>
+</svg>
+  </figure>
+  <div class="cols">
+    <p><strong>SmolVLA</strong> recibe la frase entera: «yellow» es una palabra que su VLM ya representa. Su salida tiene 32 columnas, de las que se usan 2 (parte 2). Se entrenan el experto de acciones y la proyección del estado; el VLM no se toca.</p>
+    <p><strong>La pequeña</strong> recibe el color como un índice de 0 a 3, no como palabra: no sabe nada de los colores más allá de lo que vea en las demostraciones. A cambio, es 400 veces más pequeña y se entrena entera.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · la política pequeña por dentro</p>
+  <h2>Dónde están sus 1,12 M parámetros y qué hace FiLM</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Capa</th><th>Tamaños</th><th>Parámetros</th></tr></thead>
+          <tbody>
+            <tr><td>conv 5 × 5, paso 2</td><td class="n">64²·5 → 32²·32</td><td class="n">4 032</td></tr>
+            <tr><td>conv 3 × 3, paso 2</td><td class="n">32²·32 → 16²·64</td><td class="n">18 496</td></tr>
+            <tr><td>conv 3 × 3, paso 2</td><td class="n">16²·64 → 8²·64</td><td class="n">36 928</td></tr>
+            <tr><td>tabla FiLM, 4 colores</td><td class="n">color → γ, β</td><td class="n">1 280</td></tr>
+            <tr><td>lineal</td><td class="n">4096 + 2 → 256</td><td class="n">1 049 344</td></tr>
+            <tr><td>lineal</td><td class="n">256 → 10 × 2</td><td class="n">5 140</td></tr>
+            <tr><td><strong>total</strong></td><td></td><td class="n"><strong>1 115 220</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Una conv de \(k \times k\) con \(C_{in}\) entradas y \(C_{out}\) salidas tiene \(k^2 C_{in} C_{out} + C_{out}\) parámetros; la primera recibe 5 canales: RGB y las dos coordenadas. El 94 % está en la primera lineal. Ejemplo 15.</p>
+    </div>
+    <div class="stack">
+      \[ x_c \leftarrow \mathrm{ReLU}\big(\mathrm{conv}(x)_c\,(1 + \gamma_c) + \beta_c\big) \]
+      <p><strong>FiLM:</strong> el color pedido elige una fila de una tabla aprendida, con un \(\gamma_c\) y un \(\beta_c\) por canal \(c\) de cada capa; así el color decide qué rasgos pasan. A mano, un canal que vale 0,8: con \(\gamma = 0{,}5\), \(\beta = -0{,}2\), sale \(\mathrm{ReLU}(1{,}2 - 0{,}2) = 1{,}0\); con \(\gamma = -0{,}9\), \(\beta = 0{,}1\), sale 0,18.</p>
+      <div class="callout error"><span class="tag">El amarillo, en el código</span>El amarillo nunca es el objetivo, así que su fila de la tabla FiLM nunca recibe gradiente y se queda con su valor inicial aleatorio. Pedirle el amarillo es modular la red con ruido.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Experimento · qué se compara</p>
   <h2>El mismo problema, con y sin un VLM preentrenado</h2>
   <div class="table-wrap">
@@ -396,20 +1651,20 @@
       <tbody>
         <tr><td>SmolVLA base</td><td>nada (control: su salida es la de un brazo)</td><td>imagen, orden, posición</td></tr>
         <tr><td>SmolVLA ajustado</td><td>experto de acciones y proyección del estado, 100 M de 450 M, con el VLM congelado; 4000 pasos de lote 16</td><td>imagen, orden en inglés, posición</td></tr>
-        <tr><td>Política pequeña</td><td>todo desde cero, 1,12 M: CNN con canales de coordenadas y FiLM (la palabra del color modula cada capa); 8000 pasos de lote 64</td><td>imagen a 64 × 64, color, posición</td></tr>
+        <tr><td>Política pequeña</td><td>todo desde cero, 1,12 M: CNN con canales de coordenadas y FiLM (el color pedido modula cada capa); 8000 pasos de lote 64</td><td>imagen a 64 × 64, color, posición</td></tr>
         <tr><td>Ablación</td><td>la política pequeña con 200 demostraciones</td><td>además, la velocidad</td></tr>
       </tbody>
     </table>
   </div>
   <div class="cols" style="margin-top:8px">
     <div class="aparte"><span class="rotulo">Por qué solo la posición</span><p>Con la velocidad en la entrada, durante la aproximación la acción del experto apunta casi igual que la velocidad, y una red puede aprender a copiarla en vez de mirar la imagen: es la confusión causal de la imitación (A10). La ablación lo mide.</p></div>
-    <p class="xsmall muted">Cada política se evalúa en las mismas 100 escenas con color visto y 100 con el amarillo; una semilla por condición. El experto acierta en 100 % y 100 %. <code>ajuste_smolvla.py</code>.</p>
+    <p class="small muted">Cada política se evalúa en las mismas 100 escenas con color visto y 100 con el amarillo; una semilla por condición. El experto acierta en 100 % y 100 %. <code>ajuste_smolvla.py</code>.</p>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Experimento · resultados</p>
-  <h2>Con 1000 demostraciones, la política pequeña acierta el 95 % y SmolVLA el 63 %; con el amarillo, ninguna</h2>
+  <p class="kicker">Experimento · resultados · 1</p>
+  <h2>Con 1000 demostraciones, la política pequeña acierta el 95 % y SmolVLA el 63 %; con el amarillo, ninguna</h2>
   <div class="cols">
     <div class="stack">
       <div class="table-wrap">
@@ -420,11 +1675,84 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">Azar: 1/3 si el dron acabara junto a un objeto cualquiera.</p>
-      <div class="callout clave"><span class="tag">Lo que el preentrenamiento no da gratis</span>El VLM congelado representa «yellow», pero el experto de acciones solo aprendió las palabras de las demostraciones. Para generalizar hacen falta demostraciones con lenguaje variado o ajustar también el VLM.</div>
+      <p class="small">Azar: 1/3 si el dron acabara junto a un objeto cualquiera, porque hay tres. Un vuelo que acaba lejos de todos no cuenta ni como acierto ni como error de objeto.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 330" style="max-height:310px" role="img" aria-label="Barras apiladas: éxito, junto a otro objeto y junto a ninguno, con color visto y con amarillo, para las cuatro políticas ajustadas">
+<text x="42" y="266.0" text-anchor="end" class="t-mono t-faint" font-size="11">0 %</text>
+<path d="M48,262.0 H550" class="ln-rule"/>
+<text x="42" y="166.0" text-anchor="end" class="t-mono t-faint" font-size="11">50 %</text>
+<path d="M48,162.0 H550" class="ln-rule"/>
+<text x="42" y="66.0" text-anchor="end" class="t-mono t-faint" font-size="11">100 %</text>
+<path d="M48,62.0 H550" class="ln-rule"/>
+<rect x="64" y="214.0" width="44" height="48.0" class="fill-accent"/>
+<rect x="64" y="178.0" width="44" height="36.0" class="fill-tesis"/>
+<rect x="64" y="62.0" width="44" height="116.0" class="box-soft"/>
+<text x="86" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">24 %</text>
+<text x="86" y="277" text-anchor="middle" class="t-faint" font-size="11">visto</text>
+<rect x="116" y="252.0" width="44" height="10.0" class="fill-accent"/>
+<rect x="116" y="212.0" width="44" height="40.0" class="fill-tesis"/>
+<rect x="116" y="62.0" width="44" height="150.0" class="box-soft"/>
+<text x="138" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">5 %</text>
+<text x="138" y="277" text-anchor="middle" class="t-faint" font-size="11">amar.</text>
+<text x="112" y="296" text-anchor="middle" font-size="13">SmolVLA · 200</text>
+<rect x="186" y="186.0" width="44" height="76.0" class="fill-accent"/>
+<rect x="186" y="182.0" width="44" height="4.0" class="fill-tesis"/>
+<rect x="186" y="62.0" width="44" height="120.0" class="box-soft"/>
+<text x="208" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">38 %</text>
+<text x="208" y="277" text-anchor="middle" class="t-faint" font-size="11">visto</text>
+<rect x="238" y="262.0" width="44" height="0.0" class="fill-accent"/>
+<rect x="238" y="262.0" width="44" height="0.0" class="fill-tesis"/>
+<rect x="238" y="62.0" width="44" height="200.0" class="box-soft"/>
+<text x="260" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">0 %</text>
+<text x="260" y="277" text-anchor="middle" class="t-faint" font-size="11">amar.</text>
+<text x="234" y="296" text-anchor="middle" font-size="13">pequeña · 200</text>
+<rect x="308" y="136.0" width="44" height="126.0" class="fill-accent"/>
+<rect x="308" y="126.0" width="44" height="10.0" class="fill-tesis"/>
+<rect x="308" y="62.0" width="44" height="64.0" class="box-soft"/>
+<text x="330" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">63 %</text>
+<text x="330" y="277" text-anchor="middle" class="t-faint" font-size="11">visto</text>
+<rect x="360" y="250.0" width="44" height="12.0" class="fill-accent"/>
+<rect x="360" y="144.0" width="44" height="106.0" class="fill-tesis"/>
+<rect x="360" y="62.0" width="44" height="82.0" class="box-soft"/>
+<text x="382" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">6 %</text>
+<text x="382" y="277" text-anchor="middle" class="t-faint" font-size="11">amar.</text>
+<text x="356" y="296" text-anchor="middle" font-size="13">SmolVLA · 1000</text>
+<rect x="430" y="72.0" width="44" height="190.0" class="fill-accent"/>
+<rect x="430" y="72.0" width="44" height="0.0" class="fill-tesis"/>
+<rect x="430" y="62.0" width="44" height="10.0" class="box-soft"/>
+<text x="452" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">95 %</text>
+<text x="452" y="277" text-anchor="middle" class="t-faint" font-size="11">visto</text>
+<rect x="482" y="262.0" width="44" height="0.0" class="fill-accent"/>
+<rect x="482" y="262.0" width="44" height="0.0" class="fill-tesis"/>
+<rect x="482" y="62.0" width="44" height="200.0" class="box-soft"/>
+<text x="504" y="56.0" text-anchor="middle" class="t-mono t-bold t-accent" font-size="12">0 %</text>
+<text x="504" y="277" text-anchor="middle" class="t-faint" font-size="11">amar.</text>
+<text x="478" y="296" text-anchor="middle" font-size="13">pequeña · 1000</text>
+<rect x="60" y="8" width="14" height="14" class="fill-accent"/>
+<text x="80" y="20" font-size="13">éxito</text>
+<rect x="220" y="8" width="14" height="14" class="fill-tesis"/>
+<text x="240" y="20" font-size="13">junto a otro objeto</text>
+<rect x="380" y="8" width="14" height="14" class="box-soft"/>
+<text x="400" y="20" font-size="13">junto a ninguno</text>
+<text x="300" y="322" text-anchor="middle" class="t-faint" font-size="12">100 escenas por barra; una semilla (salida.txt)</text>
+<path d="M48,262 H550" class="ln"/>
+</svg>
+      <figcaption>Dónde acaba el dron: junto al objeto pedido, junto a otro o junto a ninguno (ejemplo 19, con las cifras de <code>salida.txt</code>).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · resultados · 2 · lectura</p>
+  <h2>SmolVLA aprendió a ir a un objeto; la pequeña, a ir al de cada índice</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul><li><strong>Color visto:</strong> con 200 demostraciones, SmolVLA ajustado 24 % y la pequeña 38 %; con 1000, 63 % y 95 %. En una tarea así de concreta, una red de 1,12 M entrenada desde cero aprende antes que un VLA con el VLM congelado y 4000 pasos de ajuste.</li><li><strong>Amarillo, que nunca fue objetivo:</strong> SmolVLA (1000 demostraciones) acaba junto al amarillo en el 6 % de los vuelos y junto a otro objeto en el 53 %: aprendió a ir a un objeto, no qué palabra corresponde a cada uno. La pequeña no tiene nada que hacer con un color que nunca vio y se aleja (34,2 m de mediana): su fila FiLM del amarillo es la inicial.</li><li><strong>Con la velocidad en la entrada</strong> (200 demostraciones): del 38 % al 29 %, del orden de lo que varía con una semilla.</li></ul>
     </div>
     <div class="stack">
-      <ul><li><strong>Color visto:</strong> con 200 demostraciones, SmolVLA ajustado 24 % y la pequeña 38 %; con 1000, 63 % y 95 %. En una tarea así de concreta, una red de 1,12 M entrenada desde cero aprende antes que un VLA con el VLM congelado y 4000 pasos de ajuste.</li><li><strong>Amarillo, que nunca fue objetivo:</strong> SmolVLA (1000 demostraciones) acaba junto al amarillo en el 6 % de los vuelos y junto a otro objeto en el 53 %: aprendió a ir a un objeto, no qué palabra corresponde a cada uno. La pequeña no tiene nada que hacer con un color que nunca vio y se aleja (34,2 m de mediana).</li><li><strong>Con la velocidad en la entrada</strong> (200 demostraciones): del 38 % al 29 %, del orden de lo que varía con una semilla.</li></ul>
+      <div class="callout clave"><span class="tag">Lo que el preentrenamiento no da gratis</span>El VLM congelado representa «yellow», pero el experto de acciones solo aprendió las palabras de las demostraciones. Para generalizar hacen falta demostraciones con lenguaje variado o ajustar también el VLM.</div>
+      <div class="callout realidad"><span class="tag">Una semilla</span>Cada cifra es una sola ejecución con 100 escenas: con \(p = 0{,}3\), el error típico de una tasa de 100 ensayos es \(\sqrt{0{,}3 \cdot 0{,}7/100} \approx 0{,}05\). Diferencias de 9 puntos, como la de la ablación, no se pueden afirmar. Ejemplo 20.</div>
     </div>
   </div>
 </section>
@@ -446,12 +1774,35 @@
       </table>
     </div>
     <div class="stack">
-      <p>El ajuste cabe en una GPU de consumo: 4,4 GiB con el VLM congelado y bfloat16. Un trozo de acciones tarda 105 ms: con trozos de 1 s de los que se ejecuta la mitad, sobra tiempo; para mandar a 50 Hz sin trozos, no.</p>
+      <p>El ajuste cabe en una GPU de consumo: 4,4 GiB con el VLM congelado y bfloat16 (de dónde salen, en la parte 4). Un trozo de acciones tarda 105 ms: con trozos de 1 s de los que se ejecuta la mitad, sobra tiempo; para mandar a 50 Hz sin trozos, no (parte 3).</p>
       <div class="callout realidad"><span class="tag">Límites de este experimento</span>Una tarea sencilla y totalmente observable, imágenes sintéticas, órdenes en inglés, una semilla y unos miles de pasos de ajuste, por debajo de los 20 000 que pone de ejemplo la guía de LeRobot. Mide lo que da un ajuste corto en una GPU de consumo, no el techo de SmolVLA.</div>
     </div>
   </div>
 </section>
 
+<section class="slide">
+  <p class="kicker">Experimento · coste · cuántos ejemplos ve cada una</p>
+  <h2>Con 1000 demostraciones, SmolVLA no llega a ver cada instante una vez</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Cuántas muestras hay:</strong> cada demostración tiene 120 instantes de partida para un trozo, así que 200 demostraciones son 24 000 y 1000 son 120 000. <strong>Cuántas ve cada política:</strong> pasos por tamaño de lote.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>Muestras vistas</th><th>Pasadas, 200 demos</th><th>Pasadas, 1000 demos</th></tr></thead>
+          <tbody>
+            <tr><td>SmolVLA: 4000 × 16</td><td class="n">64 000</td><td class="n">2,67</td><td class="n">0,53</td></tr>
+            <tr><td>Pequeña: 8000 × 64</td><td class="n">512 000</td><td class="n">21,3</td><td class="n">4,27</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Ejemplo 17. Tiempos: \(4000 \times 0{,}25\) s ≈ 16,7 min (la salida da 16,9 con 0,2535 s por paso) y \(8000 \times 8{,}3\) ms ≈ 1,1 min.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lectura</span>La comparación no es a igual número de ejemplos vistos: la política pequeña ve ocho veces más. Con 1000 demostraciones, SmolVLA ve la mitad de los instantes una vez; es una razón más para leer su 63 % como el resultado de un ajuste corto, no como su techo.</div>
+      <p>Igualar las muestras costaría 8 veces más tiempo de SmolVLA: unas 2 h y cuarto en la misma GPU, en vez de 17 minutos (ejemplo 20). Medirlo es una extensión natural del paso 3 del laboratorio.</p>
+    </div>
+  </div>
+</section>
 <!-- ============ CIERRE ============ -->
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
@@ -485,11 +1836,13 @@
 <section class="slide">
   <p class="kicker">Resumen</p>
   <h2>Lo que te llevas de A12b</h2>
-  <ul class="body" style="font-size:19px; gap:9px;">
+  <ul class="body" style="font-size:19px; gap:8px;">
     <li>Los VLA de 2025 separan un sistema lento (7–10 Hz, cientos de ms) y uno rápido (50–200 Hz) que genera trozos o sigue un latente.</li>
     <li>Se entrenan con datos de muchos robots: rellenando dimensiones, asignando huecos con significado o con entradas y salidas por robot.</li>
     <li>Los VLA para drones mandan velocidades a 4–10 Hz desde una GPU en tierra o en simulación; las evaluaciones son cortas.</li>
-    <li>LoRA entrena \(r(d+k)\) parámetros en vez de \(dk\); QLoRA guarda los pesos congelados en 4 bits.</li>
+    <li>π*0.6 imita sus datos con una etiqueta de ventaja positiva o negativa; con \(\beta = 1\), pedir «positive» da \(\pi_{\mathrm{ref}}(a \mid I = 1, o)\), mejor que la política de los datos.</li>
+    <li>Un trozo de \(H\) acciones a \(f_a\) tiene que durar más que su latencia, \(H \ge \delta f_a\); sin trozos, el dron avanza \(v\delta\) con una imagen vieja.</li>
+    <li>LoRA entrena \(r(d+k)\) parámetros en vez de \(dk\), con 16 B por parámetro entrenable en vez de por cada peso; QLoRA guarda los pesos congelados en NF4, unos 4,13 bits por peso.</li>
     <li>En nuestro experimento, SmolVLA ajustado acierta el 63 % frente al 95 % de una red de 1,12 M, y ninguno va al color nuevo: el preentrenamiento no sustituye a datos que cubran lo que se quiere generalizar.</li>
   </ul>
 </section>
@@ -659,48 +2012,121 @@
 
 </main>
 <aside id="glosario" hidden>
+<h3>Dos sistemas</h3>
+<p>Parte 1: el VLA lento y el rápido.</p>
+<dl>
+<dt>\(o_t\)</dt><dd data-hojas="6,7">Observación en el instante \(t\): las imágenes de las cámaras.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="6,14">Orden en lenguaje natural («fly to the red object»).</dd>
+<dt>\(s_t\)</dt><dd data-hojas="6,7">Estado propio (propiocepción): lo que el robot mide de sí mismo.</dd>
+<dt>\(z\)</dt><dd data-hojas="6,7">Lo que el sistema lento pasa al rápido: un latente, una subtarea o un objetivo (en la parte 5, \(z_t\) es otra cosa).</dd>
+<dt>\(a_t\)</dt><dd data-hojas="6">Acción en el instante \(t\).</dd>
+<dt>\(a_{t:t+H}\)</dt><dd data-hojas="6">Trozo (<em>chunk</em>) de \(H\) acciones \(a_t, \dots, a_{t+H-1}\) que se generan de una vez.</dd>
+<dt>\(H\)</dt><dd data-hojas="6,9">Longitud del trozo, en acciones (GR00T N1: 16; RDT-1B: 64; el experimento: 10).</dd>
+<dt>\(f_L, f_R\)</dt><dd data-hojas="6,9">Frecuencias del sistema lento y del rápido (Hz).</dd>
+<dt>\(f_a\)</dt><dd data-hojas="6,9">Frecuencia de las acciones que llegan al robot (Hz).</dd>
+<dt>\(\delta\)</dt><dd data-hojas="6,9,26">Latencia: lo que tarda un sistema desde la imagen hasta su salida (s). Condición de los trozos: \(\delta \le H/f_a\).</dd>
+</dl>
+<h3>π*0.6 y RECAP</h3>
+<p>Parte 1: RL sobre el VLA.</p>
+<dl>
+<dt>\(r_t\)</dt><dd data-hojas="14">Recompensa: −1 por paso; al final, 0 si hay éxito y \(-C_{\mathrm{fail}}\) si falla.</dd>
+<dt>\(C_{\mathrm{fail}}\)</dt><dd data-hojas="14">Constante grande que penaliza un episodio fallido.</dd>
+<dt>\(V(o_t, \ell)\)</dt><dd data-hojas="14,15">Función de valor: retorno esperado desde \(o_t\), menos los pasos que faltan para el éxito; distribucional y normalizada a \((-1, 0)\).</dd>
+<dt>\(\pi_{\mathrm{ref}}\)</dt><dd data-hojas="14,15">Política que generó los datos.</dd>
+<dt>\(A^{\pi_{\mathrm{ref}}}(o_t, a_t)\)</dt><dd data-hojas="14,15">Ventaja: cuánto mejor salió la acción que lo esperado. No es la \(A\) de LoRA.</dd>
+<dt>\(N\)</dt><dd data-hojas="14">Número de pasos de recompensa en la estimación de la ventaja.</dd>
+<dt>\(I_t\)</dt><dd data-hojas="14,15">Indicador de mejora, \(\mathbb 1[A > \varepsilon_\ell]\); entra al VLA como «Advantage: positive» o «negative».</dd>
+<dt>\(\varepsilon_\ell\)</dt><dd data-hojas="14">Umbral de ventaja por tarea.</dd>
+<dt>\(\pi_\theta\)</dt><dd data-hojas="14">El VLA, con pesos \(\theta\).</dd>
+<dt>\(\alpha\) (RECAP)</dt><dd data-hojas="14">Peso del término condicionado de la pérdida. No es la \(\alpha\) de LoRA.</dd>
+<dt>\(\hat\pi\)</dt><dd data-hojas="15">Política mejorada, \(\hat\pi \propto \pi_{\mathrm{ref}}\, p(I\mid A)^\beta\).</dd>
+<dt>\(\beta\) (RECAP)</dt><dd data-hojas="15">Peso de la guía; \(\beta = 1\) es muestrear con «positive», \(\beta > 1\) es classifier-free guidance.</dd>
+<dt>\(J\)</dt><dd data-hojas="15">Retorno esperado de una política.</dd>
+</dl>
 <h3>Varios cuerpos</h3>
 <p>Parte 2: cómo comparte una política robots con acciones distintas.</p>
 <dl>
-<dt>\(r\) (robot)</dt><dd data-hojas="10">Índice del robot en la hoja del relleno (en la de LoRA, \(r\) es el rango).</dd>
-<dt>\(a\)</dt><dd data-hojas="10">Acción del robot.</dd>
-<dt>\(d_r\)</dt><dd data-hojas="10">Dimensión de la acción del robot \(r\).</dd>
-<dt>\(D\)</dt><dd data-hojas="10">Dimensión común de acción que usa el modelo, \(D \ge d_r\).</dd>
-<dt>\(\tilde a\)</dt><dd data-hojas="10">Acción rellenada con ceros hasta \(D\) dimensiones.</dd>
-<dt>\(m_j\)</dt><dd data-hojas="10">Máscara de la pérdida: 1 en las dimensiones reales, 0 en las de relleno.</dd>
+<dt>\(r\) (robot)</dt><dd data-hojas="18">Índice del robot en las hojas del relleno (en la parte 4, \(r\) es el rango).</dd>
+<dt>\(a\)</dt><dd data-hojas="18">Acción del robot, con \(d_r\) números.</dd>
+<dt>\(d_r\)</dt><dd data-hojas="18,19">Dimensión de la acción del robot \(r\).</dd>
+<dt>\(D\)</dt><dd data-hojas="18">Dimensión común de acción que usa el modelo, \(D \ge d_r\) (SmolVLA: 32; RDT-1B: 128).</dd>
+<dt>\(\tilde a\)</dt><dd data-hojas="18,19">Acción rellenada con ceros hasta \(D\) dimensiones.</dd>
+<dt>\(\hat a\)</dt><dd data-hojas="18,19">Acción que predice el modelo.</dd>
+<dt>\(m_j\)</dt><dd data-hojas="18,19">Máscara de la pérdida: 1 en las dimensiones reales, 0 en las de relleno.</dd>
+<dt>\(\mathcal L\)</dt><dd data-hojas="18,47">Pérdida: media del error cuadrático sobre las posiciones que cuentan.</dd>
+<dt>\(m_h\)</dt><dd data-hojas="19,47">Máscara temporal: 0 en las acciones del trozo que pasan del final del episodio.</dd>
 </dl>
 <h3>Drones</h3>
 <p>Parte 3.</p>
 <dl>
-<dt>\(v_x, v_y, v_z, \omega\)</dt><dd data-hojas="13">Velocidades lineales y de guiñada que manda un VLA de dron.</dd>
-<dt>\(\delta\)</dt><dd data-hojas="14">Tiempo que tarda el VLA en decidir (s).</dd>
-<dt>\(v\)</dt><dd data-hojas="14">Velocidad del dron (m/s).</dd>
-<dt>\(e\)</dt><dd data-hojas="14">Desplazamiento de la escena entre la imagen y la acción, \(e = v\,\delta\) (m).</dd>
+<dt>\(v_x, v_y, v_z, \omega\)</dt><dd data-hojas="24">Velocidades lineales de referencia (m/s) y de guiñada (rad/s) que manda un VLA de dron.</dd>
+<dt>\(v\)</dt><dd data-hojas="26">Velocidad del dron (m/s).</dd>
+<dt>\(e\)</dt><dd data-hojas="26">Desplazamiento de la escena entre la imagen y la acción, \(e = v\,\delta\) (m).</dd>
+<dt>\(f\)</dt><dd data-hojas="26,27">Frecuencia de decisión o de las acciones (Hz).</dd>
+<dt>\(N_{\mathrm{ejec}}\)</dt><dd data-hojas="27,47">Acciones de cada trozo que se ejecutan antes de pedir otro; condición \(\delta \le N_{\mathrm{ejec}}/f\).</dd>
 </dl>
 <h3>LoRA</h3>
 <p>Parte 4: ajuste fino con pocos parámetros.</p>
 <dl>
-<dt>\(W_0\)</dt><dd data-hojas="17">Matriz de pesos preentrenada, de tamaño \(d \times k\), congelada.</dd>
-<dt>\(d, k\)</dt><dd data-hojas="17">Dimensiones de \(W_0\) (salida y entrada).</dd>
-<dt>\(r\) (rango)</dt><dd data-hojas="17">Rango de la corrección de LoRA, \(r \ll \min(d, k)\).</dd>
-<dt>\(A, B\)</dt><dd data-hojas="17">Matrices que se entrenan: \(B\) de \(d \times r\) y \(A\) de \(r \times k\); la corrección es \(BA\).</dd>
-<dt>\(\alpha\)</dt><dd data-hojas="17">Escala fija que multiplica la corrección de LoRA.</dd>
-<dt>\(W\)</dt><dd data-hojas="17">Pesos efectivos, \(W = W_0 + BA\) (con la escala).</dd>
+<dt>\(W_0\)</dt><dd data-hojas="30,34">Matriz de pesos preentrenada, de tamaño \(d \times k\), congelada.</dd>
+<dt>\(x\), \(h\)</dt><dd data-hojas="30,33">Entrada (\(\in\mathbb R^k\)) y salida (\(\in\mathbb R^d\)) de la capa.</dd>
+<dt>\(d, k\)</dt><dd data-hojas="30,34">Dimensiones de \(W_0\) (salida y entrada).</dd>
+<dt>\(r\) (rango)</dt><dd data-hojas="30,34">Rango de la corrección de LoRA, \(r \ll \min(d, k)\).</dd>
+<dt>\(A, B\)</dt><dd data-hojas="30,32">Matrices que se entrenan: \(B\) de \(d \times r\) y \(A\) de \(r \times k\). Esta \(A\) no es la ventaja.</dd>
+<dt>\(\Delta W\)</dt><dd data-hojas="30,32">Corrección \(BA = \sum_i B_{:,i} A_{i,:}\), de rango \(r\) como mucho.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="30,33">Escala fija de la corrección, aplicada como \(\alpha/r\).</dd>
+<dt>\(W\)</dt><dd data-hojas="33,34">Pesos efectivos, \(W = W_0 + \frac{\alpha}{r} BA\).</dd>
+<dt>\(g\)</dt><dd data-hojas="33">Gradiente de la pérdida respecto a la salida de la capa, \(\partial\mathcal L/\partial h\).</dd>
+<dt>\(m\), \(v\) (Adam)</dt><dd data-hojas="35">Primer y segundo momento que Adam guarda por parámetro entrenable (en la parte 3, \(v\) es la velocidad).</dd>
+</dl>
+<h3>QLoRA</h3>
+<dl>
+<dt>\(c\)</dt><dd data-hojas="30,37">Constante de cuantización de un bloque: su máximo valor absoluto (absmax).</dd>
+<dt>\(q_i\)</dt><dd data-hojas="30,37">Los 16 niveles de NF4, entre −1 y 1, en los cuantiles de una normal y con un 0 exacto.</dd>
+<dt>\(w\)</dt><dd data-hojas="37">Un bloque de pesos (64 en QLoRA; 4 en el ejemplo).</dd>
+<dt>\(c_1, c_2\)</dt><dd data-hojas="36">Constantes de la doble cuantización: \(c_2\) en FP8, una por bloque de 64; \(c_1\) en FP32, una por cada 256 \(c_2\).</dd>
+<dt>\(L_1, L_2\)</dt><dd data-hojas="36">Adaptadores LoRA en la notación de QLoRA (el \(BA\) de LoRA, traspuesto), en BF16.</dd>
+<dt>\(X, Y\)</dt><dd data-hojas="36">Entrada y salida de la capa en la notación de QLoRA, \(Y = XW + XL_1L_2\).</dd>
+</dl>
+<h3>World models en el VLA</h3>
+<p>Parte 5.</p>
+<dl>
+<dt>\(\mathcal L_{\mathrm{acc}}\)</dt><dd data-hojas="40">Pérdida de imitación de las acciones.</dd>
+<dt>\(\mathcal L_{\mathrm{pred}}\)</dt><dd data-hojas="40">Error al predecir el futuro (imagen o resumen).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="40">Peso de la pérdida de predicción.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="40">Latente recurrente de un world model (A8a), \(z_t = f(z_{t-1}, a_{t-1}, o_t)\); no es la \(z\) de la parte 1.</dd>
+</dl>
+<h3>Experimento</h3>
+<p>Parte 6: el simulador y las dos políticas.</p>
+<dl>
+<dt>\(\Delta t\)</dt><dd data-hojas="45,46">Duración de un paso: 0,1 s.</dd>
+<dt>\(p_t, v_t\)</dt><dd data-hojas="45,46">Posición y velocidad horizontales del dron (m, m/s).</dd>
+<dt>\(u_t\)</dt><dd data-hojas="45,46">Acción: velocidad pedida (m/s).</dd>
+<dt>\(\hat u_h\)</dt><dd data-hojas="47">Acción \(h\) del trozo que predice la política.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="45,46">Constante de tiempo con la que el dron sigue \(u_t\): 0,3 s.</dd>
+<dt>\(p^\star\)</dt><dd data-hojas="45,46">Posición del objeto pedido.</dd>
+<dt>\(K_p\)</dt><dd data-hojas="45,46">Ganancia proporcional del experto: 1,5 s⁻¹.</dd>
+<dt>\(v_{\max}\)</dt><dd data-hojas="45,46">Velocidad máxima: 3 m/s; el experto satura a más de \(v_{\max}/K_p = 2\) m.</dd>
+<dt>\(L\)</dt><dd data-hojas="47">Lado de la zona: 20 m.</dd>
+<dt>\(\gamma_c, \beta_c\)</dt><dd data-hojas="45,49">Escala y desplazamiento de FiLM para el canal \(c\), una fila por color.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
 <dt>VLA</dt><dd data-hojas="1">Vision-language-action model: modelo de visión, lenguaje y acción.</dd>
-<dt>VLM</dt><dd data-hojas="3">Vision-language model: modelo de visión y lenguaje.</dd>
-<dt>LoRA</dt><dd data-hojas="1">Low-rank adaptation: ajuste con una corrección de rango bajo.</dd>
-<dt>QLoRA</dt><dd data-hojas="1">LoRA sobre un modelo cuantizado a 4 bits.</dd>
+<dt>VLM</dt><dd data-hojas="3,7">Vision-language model: modelo de visión y lenguaje.</dd>
+<dt>LoRA</dt><dd data-hojas="1,31">Low-rank adaptation: ajuste con una corrección de rango bajo.</dd>
+<dt>QLoRA</dt><dd data-hojas="1,36">LoRA sobre un modelo cuantizado a 4 bits.</dd>
+<dt>NF4</dt><dd data-hojas="36,37">4-bit NormalFloat: formato de 4 bits con los niveles en los cuantiles de una normal.</dd>
+<dt>FP8, FP32, BF16</dt><dd data-hojas="36">Coma flotante de 8, 32 y 16 bits (BF16 = bfloat16).</dd>
 <dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>FiLM</dt><dd data-hojas="24">Feature-wise linear modulation: la orden escala y desplaza cada canal de la red.</dd>
-<dt>CNN</dt><dd data-hojas="24">Convolutional neural network: red convolucional.</dd>
-<dt>HPT</dt><dd data-hojas="4">Heterogeneous pre-trained transformers.</dd>
-<dt>RDT</dt><dd data-hojas="1">Robotics diffusion transformer (RDT-1B).</dd>
-<dt>ASIMOV</dt><dd data-hojas="21">Banco de pruebas de seguridad semántica de Google DeepMind.</dd>
-<dt>int8</dt><dd data-hojas="13">Pesos cuantizados a enteros de 8 bits.</dd>
-<dt>bf16</dt><dd data-hojas="26">bfloat16: coma flotante de 16 bits con el rango de fp32.</dd>
+<dt>RECAP</dt><dd data-hojas="13">RL with Experience and Corrections via Advantage-conditioned Policies (π*0.6).</dd>
+<dt>FiLM</dt><dd data-hojas="50,49">Feature-wise linear modulation: la orden escala y desplaza cada canal de la red.</dd>
+<dt>CNN</dt><dd data-hojas="50">Convolutional neural network: red convolucional.</dd>
+<dt>HPT</dt><dd data-hojas="4,21">Heterogeneous pre-trained transformers.</dd>
+<dt>RDT</dt><dd data-hojas="1,20">Robotics diffusion transformer (RDT-1B).</dd>
+<dt>ASIMOV</dt><dd data-hojas="42">Banco de pruebas de seguridad semántica de Google DeepMind.</dd>
+<dt>int8, int4</dt><dd data-hojas="24,28">Pesos cuantizados a enteros de 8 o 4 bits.</dd>
+<dt>bf16</dt><dd data-hojas="8,53">bfloat16: coma flotante de 16 bits con el rango de fp32.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>

@@ -36,7 +36,7 @@ Evalúa el modelo sin ajustar. ¿Por qué no sirve de nada? Mira qué representa
 
 ## 4. Política pequeña (45 min)
 
-1. CNN sobre la imagen a 64 × 64 con canales de coordenadas y FiLM (la palabra del color modula cada capa), más la posición; regresión del trozo.
+1. CNN sobre la imagen a 64 × 64 con canales de coordenadas y FiLM (el color pedido, como índice, modula cada capa), más la posición; regresión del trozo.
 2. Repite con la velocidad en la entrada. ¿Qué pasa y por qué? Relaciónalo con la confusión causal (A10).
 
 ## 5. Generalizar (30 min)
