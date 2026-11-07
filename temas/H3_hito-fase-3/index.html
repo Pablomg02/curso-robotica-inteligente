@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>H3 · Hito 3 y examen de la fase 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="H3" data-deck-title="Hito 3 y examen de la fase 3 · Curso de robótica inteligente">
+<main class="deck">
+
+<section class="slide title-slide" data-section="Hito">
+  <p class="kicker">Fase 3 · Jornada 28 · Curso de robótica inteligente</p>
+  <h1>Hito 3 y examen de la fase 3</h1>
+  <p class="subtitle">Juntar en el simulador de la fase 2 (el hito H2, construido en los laboratorios B2 a B6) lo que la fase 3 ha construido por separado: un belief (exacto o aprendido), una política que decide con él, un world model, adaptación a la carga y al viento, aprendizaje continuo con prueba de regresión, una política destilada que cabe a bordo y un equipo de drones con un canal imperfecto. Después, el examen de la fase.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 2 semanas de proyecto + 90 min de examen</span>
+    <span><b>Prerrequisitos</b> A6a a A15b, B2 a B6</span>
+    <span><b>Prepara</b> fase 4</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de H3</p>
+  <h2>Al terminar este hito deberías tener…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Una tarea de búsqueda con observabilidad parcial en tu simulador, con la recompensa del belief-MDP y su prueba unitaria.</li>
+    <li>Tres agentes intercambiables tras la misma interfaz: belief exacto con política, política recurrente y world model con planificador y política previa.</li>
+    <li>Un estimador de fuerza y masa que se adapta en vuelo, y un protocolo de actualización del modelo con matriz de resultados.</li>
+    <li>Una política destilada del mejor agente, medida en tiempo de cálculo en CPU.</li>
+    <li>Un equipo de tres drones entrenado con MAPPO y probado con mensajes retrasados, un dron caído y compañeros de otra semilla.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Punto de partida</p>
+  <h2>Lo que ya tienes de los laboratorios</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th style="width:9%">Tema</th><th>Pieza</th><th style="width:38%">Lo que mediste</th></tr></thead>
+      <tbody>
+        <tr><td><a href="../A6a_deep-rl-control/index.html">A6a</a></td><td>PPO en JAX con el x500 en CTBR</td><td>5 de 5 semillas en estacionario, 2–5 cm</td></tr>
+        <tr><td><a href="../A6b_rl-robots-reales/index.html">A6b</a></td><td>Crítico asimétrico, maestro privilegiado y alumno con DAgger</td><td>87 % frente a 0,2 % de choques con crítico simétrico o asimétrico</td></tr>
+        <tr><td><a href="../A7a_teoria-pomdps/index.html">A7a</a> · <a href="../A7b_rl-observabilidad-parcial/index.html">A7b</a></td><td>Belief exacto en rejilla; PPO recurrente</td><td>GRU 32,3 pasos frente a 31,9 con el belief exacto</td></tr>
+        <tr><td><a href="../A8a_world-models-latentes/index.html">A8a</a> · <a href="../A8b_world-models-fundacionales/index.html">A8b</a></td><td>RSSM del x500; MPPI en el latente con política previa</td><td>26 cm a 0,5 s; MPPI puro diverge, con política previa 2 de 64</td></tr>
+        <tr><td><a href="../A9a_adaptacion-meta-learning/index.html">A9a</a> · <a href="../A9b_continual-learning/index.html">A9b</a></td><td>Kalman de fuerza y masa; repetición contra el olvido</td><td>error unas 10 veces menor estimando la fuerza</td></tr>
+        <tr><td><a href="../A10_imitation-learning/index.html">A10</a></td><td>MPPI destilado en BC y en flow matching</td><td>10 ms frente a 0,02 ms por decisión</td></tr>
+        <tr><td><a href="../A15a_marl/index.html">A15a</a> · <a href="../A15b_enjambres-multi-robot/index.html">A15b</a></td><td>MAPPO con tres drones; canal degradado y compañeros nuevos</td><td>0,910 con mensajes, 0,820 si desaparecen</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="xsmall muted">Cifras de las presentaciones de cada tema, medidas con sus scripts en una RTX 4060 Ti; en tu máquina pueden variar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Arquitectura</p>
+  <h2>El sistema del hito: el belief en el centro</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="Diagrama de bloques del hito 3: simulador, belief, política, adaptación, world model y canal entre drones">
+        <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box-time" x="20" y="232" width="300" height="54" rx="6"/><text x="170" y="254" text-anchor="middle">Simulador de la fase 2: x500, viento, IMU,</text><text x="170" y="273" text-anchor="middle">cámara hacia abajo, latencias</text>
+          <rect class="box-tesis" x="20" y="146" width="300" height="54" rx="6"/><text x="170" y="168" text-anchor="middle">Belief: ESKF + rejilla de búsqueda</text><text x="170" y="187" text-anchor="middle">o estado latente del RSSM</text>
+          <rect class="box-accent" x="20" y="60" width="300" height="54" rx="6"/><text x="170" y="82" text-anchor="middle">Política (PPO recurrente, MPPI con</text><text x="170" y="101" text-anchor="middle">política previa o destilada) · 50 Hz</text>
+          <rect class="box" x="380" y="60" width="245" height="54" rx="6"/><text x="502" y="82" text-anchor="middle">Adaptación: Kalman de</text><text x="502" y="101" text-anchor="middle">fuerza y masa · 50 Hz</text>
+          <rect class="box" x="380" y="146" width="245" height="54" rx="6"/><text x="502" y="168" text-anchor="middle">World model y memoria</text><text x="502" y="187" text-anchor="middle">de vuelos (repetición)</text>
+          <rect class="box" x="380" y="232" width="245" height="54" rx="6"/><text x="502" y="254" text-anchor="middle">Canal entre drones: retraso,</text><text x="502" y="273" text-anchor="middle">pérdidas, compañeros nuevos</text>
+          <rect class="box" x="20" y="6" width="300" height="34" rx="6"/><text x="170" y="28" text-anchor="middle">Rate loop (A2) · CTBR · 800 Hz</text>
+        </g>
+        <g class="ln" marker-end="url(#fl)">
+          <path d="M170,232 L170,202"/><path d="M170,146 L170,116"/><path d="M170,60 L170,42"/>
+          <path d="M380,87 L322,87"/><path d="M380,173 L322,173"/><path d="M380,259 L322,180"/>
+          <path d="M320,259 L378,259"/>
+        </g>
+      </svg>
+      <figcaption>Cada dron ejecuta su pila; el canal lleva mensajes entre beliefs. El crítico centralizado y el maestro privilegiado solo existen en el entrenamiento.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Idea clave</span>Todo lo aprendido en la fase 3 entra o sale del belief: la política lo lee, la adaptación lo amplía con parámetros, el world model lo predice y los mensajes lo actualizan.</div>
+      <div class="callout realidad"><span class="tag">Frecuencias</span>Política y adaptación a 50 Hz sobre el lazo de rate a 800 Hz; cámara a 20–30 Hz; mensajes entre drones a unos pocos Hz, con retraso.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Enunciado</p>
+  <h2>Buscar un objetivo en equipo, con lo que cada dron ve y le cuentan</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li><strong>Tarea.</strong> Una zona de 20 × 20 m con un mapa previo de dos zonas probables; el objetivo en una celda de 1 m; una cámara hacia abajo que lo detecta con probabilidad 0,7 si está en su huella. Recompensa del belief-MDP (A15a).</li>
+        <li><strong>Un dron.</strong> Tres agentes con la misma firma: belief exacto en rejilla + PPO; PPO recurrente solo con observaciones; RSSM + MPPI con política previa. Todos mandan CTBR al lazo de rate.</li>
+        <li><strong>Perturbaciones.</strong> Carga de 0 a 0,6 kg que cambia en vuelo y viento constante por episodio; el Kalman de fuerza y masa alimenta al agente.</li>
+        <li><strong>Actualizar.</strong> Tras cada tanda de vuelos, reentrenar el world model con repetición y aceptar o rechazar con la matriz de resultados.</li>
+        <li><strong>Destilar</strong> el mejor agente en una política que quepa en CPU.</li>
+        <li><strong>Equipo.</strong> Tres drones con MAPPO, con y sin mensajes; pruebas con retraso, un dron caído y compañeros de otra semilla.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Por qué esta tarea</span>Es la tesis en pequeño: observabilidad parcial (el objetivo y la propia dinámica), un belief que guía la decisión, un modelo aprendido, cómputo limitado a bordo y varios drones con un canal real.</div>
+      <div class="callout realidad"><span class="tag">Entregables</span>Repositorio con los módulos y sus tests, un script que regenera todas las tablas en una GPU de consumo y un informe de 6–10 páginas con los criterios de las dos hojas siguientes.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Interfaces</p>
+  <h2>Las firmas del hito 1, ampliadas</h2>
+  <div class="cols">
+    <div class="stack">
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:14px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere;"><code># creencia/
+actualizar(belief, obs, accion, mensajes) -&gt; belief
+# politica/
+actuar(params, belief, memoria, clave)
+    -&gt; (accion_ctbr, memoria)
+# modelo/
+paso_latente(params, z, accion, clave) -&gt; z
+# adaptacion/
+estimar(estimador, s, y, dt) -&gt; estimador  # Kalman (m, f)
+# equipo/
+mensaje(belief) -&gt; m
+fundir(belief, [m_j, edad_j]) -&gt; belief</code></pre>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong><code>belief</code></strong> es un pytree: la media y covarianza del ESKF, la rejilla de búsqueda y, si lo hay, el estado latente del RSSM y la estimación de fuerza y masa.</li>
+        <li><strong><code>params</code></strong> siempre como argumento, nunca dentro de la función compilada: así no se recompila y no se llena la memoria (la lección de A8b).</li>
+        <li><strong><code>fundir</code></strong> recibe la edad de cada mensaje: con retraso, un mensaje viejo pesa menos o se descarta.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Idea clave</span>Si los tres agentes y la política destilada tienen la misma firma <code>actuar</code>, cambiar de uno a otro en el simulador, en el SITL de la fase 5 o en la Pixhawk de la fase 6 es cambiar un argumento.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Criterios de aceptación · 1 de 2</p>
+  <h2>Belief, política y world model</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:5%">#</th><th style="width:22%">Criterio</th><th>Cómo se mide</th><th style="width:30%">Umbral</th></tr>
+      <tr><td>1</td><td>Belief exacto</td><td>Test unitario: dos celdas, P(A) = 0,5, \(P_D\) = 0,7, una mirada a A sin detección; y la suma de la recompensa del belief-MDP frente a 10 000 episodios simulados</td><td>P(A) = 0,2308; la suma dentro del intervalo de confianza al 95 % de la simulación</td></tr>
+      <tr><td>2</td><td>Política con memoria</td><td>Pasos esperados hasta encontrar el objetivo con PPO recurrente frente al agente con belief exacto, 3 semillas</td><td>A menos de un 5 % (en A7b, 32,3 frente a 31,9)</td></tr>
+      <tr><td>3</td><td>World model</td><td>Error de posición en bucle abierto a 0,5 s con acciones de los datos y con las del planificador</td><td>Con las de los datos, por debajo de 30 cm (en A8b, 26); las dos cifras en el informe</td></tr>
+      <tr><td>4</td><td>Planificar en el modelo</td><td>MPPI en el latente con la política previa, 64 episodios como los de A8b</td><td>Menos de un 5 % de episodios divergentes (en A8b, 2 de 64)</td></tr>
+      <tr><td>5</td><td>Latencia</td><td>Tiempo por decisión de cada agente en GPU y en un núcleo de CPU, tras compilar</td><td>La política que vuela, por debajo de 2 ms en CPU (un 10 % del periodo de 50 Hz)</td></tr>
+    </table>
+  </div>
+  <p class="xsmall muted">Los umbrales son del curso: orientativos, sacados de lo medido en cada tema y pensados para que un sistema bien integrado los pase con margen. Si uno no se cumple, el informe dice por qué.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Criterios de aceptación · 2 de 2</p>
+  <h2>Adaptación, actualización, destilación y equipo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:5%">#</th><th style="width:22%">Criterio</th><th>Cómo se mide</th><th style="width:30%">Umbral</th></tr>
+      <tr><td>6</td><td>Adaptación</td><td>Error de seguimiento con la carga que cambia y viento, con y sin el Kalman de fuerza; error de masa flotando y en el ocho</td><td>Al menos 5 veces menos error con el estimador; la masa, solo identificable con excitación (dilo y mídelo)</td></tr>
+      <tr><td>7</td><td>Actualizar sin olvidar</td><td>Matriz de resultados del world model tras cada tanda de vuelos, con y sin repetición</td><td>Con repetición, ningún régimen empeora más de un 20 %; BWT en el informe</td></tr>
+      <tr><td>8</td><td>Destilación</td><td>Política destilada frente al agente experto: éxito, reparto de modos y tiempo</td><td>Al menos el 95 % del éxito del experto y 100 veces más rápida</td></tr>
+      <tr><td>9</td><td>Equipo</td><td>MAPPO con mensajes frente a la heurística voraz centralizada; con mensajes de hace 10 pasos, sin mensajes y con compañeros de otra semilla</td><td>Supera a la voraz; con retraso pierde menos de 5 puntos; sin mensajes, no peor que el equipo entrenado sin ellos (o el informe explica por qué)</td></tr>
+      <tr><td>10</td><td>Reproducibilidad y memoria</td><td>Misma semilla y mismo resultado con XLA determinista; ejecución con <code>ulimit -v</code>; tablas regeneradas por script</td><td>Bit a bit igual en la misma GPU; ninguna función compilada lleva arrays grandes dentro</td></tr>
+    </table>
+  </div>
+  <p class="xsmall muted">El criterio 9 es exigente a propósito: en A15a, la política entrenada con mensajes perfectos bajó a 0,820 sin ellos, peor que la entrenada sin comunicación (0,892). En A15b, entrenar con condiciones variadas devolvió a 0,894 el equipo con mensajes de hace 10 pasos.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lo que rompe una integración</p>
+  <h2>Errores típicos al juntar los laboratorios de la fase 3</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Información privilegiada en el actor:</strong> la posición del objetivo, la masa verdadera o el belief del equipo cuando no hay mensajes. El crítico y el maestro pueden verla; el actor nunca (A6b).</li>
+        <li><strong>Evaluar con las semillas de entrenamiento:</strong> claves de evaluación fijas y distintas, y los mismos episodios para todos los agentes.</li>
+        <li><strong>Comparar presupuestos distintos:</strong> mismos pasos de entorno, mismo número de semillas y el tiempo de cálculo en la tabla.</li>
+        <li><strong>Planificar donde el modelo no sabe:</strong> el MPPI encuentra los errores del world model (A8b); vigila el error con las acciones del planificador.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Funciones compiladas que llevan arrays dentro:</strong> recompilan en cada llamada y llenan la memoria; pásalo todo como argumento.</li>
+        <li><strong>Reinicios mal hechos en la memoria recurrente:</strong> el estado oculto se reinicia al terminar el episodio y se guarda al inicio de cada tramo (A7b).</li>
+        <li><strong>Un canal perfecto en el entrenamiento:</strong> la política aprende a depender de él (A15a).</li>
+        <li><strong>Sondeos que no prueban nada:</strong> compara siempre con una red sin entrenar con las mismas entradas (A7b).</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Regla</span>Cada pieza con su test antes de juntarla, y cada resultado con su referencia: el belief exacto, el oráculo o la heurística.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plan de trabajo</p>
+  <h2>Un orden que evita depurar todo a la vez</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">Días 1–2</span>Tarea de búsqueda en el simulador con la recompensa del belief-MDP y su test (criterio 1); belief exacto con una heurística como referencia.</div>
+    <div class="ev"><span class="yr">Días 3–5</span>PPO con belief exacto y PPO recurrente (criterio 2). Kalman de fuerza y masa en el lazo (criterio 6).</div>
+    <div class="ev"><span class="yr">Días 6–8</span>RSSM con datos de los agentes anteriores; MPPI con política previa (criterios 3 y 4); protocolo de actualización con repetición (criterio 7).</div>
+    <div class="ev"><span class="yr">Días 9–10</span>Destilar el mejor agente y medir tiempos en CPU (criterios 5 y 8).</div>
+    <div class="ev"><span class="yr">Días 11–13</span>Tres drones con MAPPO, canal degradado, un dron caído y juego cruzado (criterio 9).</div>
+    <div class="ev"><span class="yr">Día 14</span>Reproducibilidad (criterio 10), informe y examen.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Instrucciones</p>
+  <h2>Cómo hacer el examen</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>90 minutos</strong>, sin apuntes ni presentaciones. Calculadora y papel sí.</li>
+        <li>Opción múltiple (7): al pulsar se corrige y aparece la explicación. Decide antes de pulsar.</li>
+        <li>Cuentas (5): escribe el resultado y después despliega la respuesta.</li>
+        <li>Abiertas (2): escribe al menos media página antes de mirar la respuesta propuesta. No hay una única respuesta buena; compara el razonamiento.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Puntuación</span>Un punto por pregunta de opción múltiple o de cuentas; dos por cada abierta, si tu respuesta cubre lo que cubre la propuesta. Sobre 16. Con 11 o más, la fase está superada.</div>
+      <div class="callout realidad"><span class="tag">Al terminar</span>La última hoja dice qué tema repasar para cada pregunta fallada. Anota en <code>ESTADO.md</code> la nota y los temas que repasas. Las cifras de las cuentas salen de <code>figuras/calculos_h3.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 1 y 2 · A6a y A6b</p>
+  <h2>Deep RL y robots reales</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. En PPO con \(\varepsilon = 0{,}2\), una acción tiene ventaja \(A = -1\) y cociente \(r = 0{,}7\). ¿Empuja el gradiente de ese término a bajar aún más su probabilidad?</p>
+      <ol class="opts">
+        <li><button type="button">Sí, con fuerza \(-0{,}7\)</button></li>
+        <li><button type="button">Sí, con fuerza \(-0{,}8\)</button></li>
+        <li><button type="button">No: el mínimo es \(\mathrm{clip}(r)A = -0{,}8\), constante en \(r\), y su gradiente es cero</button></li>
+        <li><button type="button">No, porque la ventaja es negativa</button></li>
+      </ol>
+      <p class="explain">\(\min(rA, \mathrm{clip}(r, 0{,}8, 1{,}2)A) = \min(-0{,}7, -0{,}8) = -0{,}8\). Con ventaja negativa, el recorte actúa cuando \(r &lt; 1-\varepsilon\): la política ya se alejó bastante en esa dirección.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. Un maestro con la posición del objetivo y un alumno con la cámara. Clonas al maestro y la pérdida de validación es bajísima, pero el alumno choca. ¿Qué haces primero?</p>
+      <ol class="opts">
+        <li><button type="button">Una red más grande</button></li>
+        <li><button type="button">DAgger: que el maestro etiquete los estados que visita el alumno</button></li>
+        <li><button type="button">Más épocas de clonación</button></li>
+        <li><button type="button">Darle al alumno la posición del objetivo</button></li>
+      </ol>
+      <p class="explain">La pérdida baja en los estados del maestro no dice nada de los del alumno (\(T^2\varepsilon\) frente a \(uT\varepsilon\), A6b). La última opción es la trampa de la información privilegiada en el actor.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 3 y 4 · A7a y A7b</p>
+  <h2>POMDP y memoria</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">3. Cuenta: el objetivo está en la celda A o en la B con la misma probabilidad. Tu cámara lo detecta con probabilidad 0,7 si miras su celda y nunca da falsas alarmas. Miras A dos veces sin detectarlo. ¿P(A) tras cada mirada? ¿Cuántas miradas sin detección hacen falta para que baje del 1 %?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Bayes con la detección negativa: \(P(A\mid\neg d) = \frac{P(A)\cdot 0{,}3}{P(A)\cdot 0{,}3 + (1 - P(A))}\). Primera: \(0{,}15/0{,}65 = 0{,}2308\). Segunda: \(0{,}0692/0{,}8385 = 0{,}0826\). Después 0,0263 y 0,0080: hacen falta 4. No ver también es información: es la actualización de la búsqueda de A7a.</p>
+      </details>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. Un sondeo lineal recupera el belief del estado oculto de tu GRU con una variación total de 0,064. ¿Qué compruebas antes de concluir que la GRU ha aprendido un belief?</p>
+      <ol class="opts">
+        <li><button type="button">Que el sondeo tenga más capas</button></li>
+        <li><button type="button">Que la GRU tenga más unidades</button></li>
+        <li><button type="button">Que la política gane más recompensa</button></li>
+        <li><button type="button">El mismo sondeo sobre una GRU sin entrenar con las mismas observaciones</button></li>
+      </ol>
+      <p class="explain">En A7b, la GRU sin entrenar daba 0,073: casi lo mismo. Las observaciones pasadas ya contienen la información; el sondeo mide lo que una red aleatoria conserva de ellas.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 5 y 6 · A8a y A8b</p>
+  <h2>World models</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">5. En la pérdida del RSSM, ¿qué hace el término KL entre el posterior y el prior?</p>
+      <ol class="opts">
+        <li><button type="button">Obliga al prior, que solo ve el pasado y la acción, a predecir lo que el posterior infiere al ver la observación</button></li>
+        <li><button type="button">Reconstruye la imagen</button></li>
+        <li><button type="button">Hace que el latente sea gaussiano estándar</button></li>
+        <li><button type="button">Estima la recompensa</button></li>
+      </ol>
+      <p class="explain">Es la cota de evidencia de A8a: reconstruir con el posterior y que el prior lo prediga, que es lo que permite imaginar sin observaciones.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">6. Con el RSSM, el error a 0,5 s es de 26 cm con acciones de los datos y de 193 cm con las que elige el MPPI. ¿Por qué?</p>
+      <ol class="opts">
+        <li><button type="button">El MPPI usa menos muestras</button></li>
+        <li><button type="button">Las acciones del MPPI son más suaves</button></li>
+        <li><button type="button">El planificador busca acciones donde el modelo se equivoca a su favor: fuera de los datos</button></li>
+        <li><button type="button">El RSSM está mal entrenado</button></li>
+      </ol>
+      <p class="explain">Optimizar contra un modelo explota sus errores (A8b). Una política previa y datos de la propia política lo mitigan.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 7 y 8 · A9a y A9b</p>
+  <h2>Adaptación y aprendizaje continuo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">7. Flotando, estimas a la vez la masa y una fuerza externa vertical con \(y = m\,s - f\). ¿Por qué la masa deriva?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el filtro de Kalman está mal ajustado</button></li>
+        <li><button type="button">Porque, con \(s\) casi constante, \(m\,s\) y \(f_z\) no se distinguen: solo es identificable su diferencia</button></li>
+        <li><button type="button">Porque la masa cambia</button></li>
+        <li><button type="button">Porque el viento es horizontal</button></li>
+      </ol>
+      <p class="explain">Falta excitación persistente. En el ocho se identifica, y con \(f_z \approx 0\) supuesto también flotando (A9a).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">8. Cuenta: errores de un modelo tras entrenar en tres regímenes seguidos (fila: tras el régimen \(i\); columna: error en el \(j\)): [0,10 0,80 0,90], [0,30 0,12 0,85], [0,45 0,20 0,11]. Calcula ACC y BWT con la convención de A9b.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">ACC es la media de la última fila: \((0{,}45 + 0{,}20 + 0{,}11)/3 = 0{,}2533\). BWT, la media de \(R_{T,j} - R_{j,j}\) para los regímenes anteriores: \(((0{,}45 - 0{,}10) + (0{,}20 - 0{,}12))/2 = 0{,}215\). Con errores, positiva es olvido: el primer régimen ha pasado de 0,10 a 0,45.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 9 y 10 · A10 y A15a</p>
+  <h2>Imitación y RL multiagente</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">9. Cuenta: en flow matching con el camino lineal, ruido \(x_0 = (0{,}5, -1)\), dato \(x_1 = (1, 1)\) y \(t = 0{,}25\). ¿Qué punto \(x_t\) ve la red y qué velocidad debe predecir?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">\(x_t = (1-t)x_0 + t\,x_1 = 0{,}75\,(0{,}5, -1) + 0{,}25\,(1, 1) = (0{,}625, -0{,}5)\). Objetivo \(x_1 - x_0 = (0{,}5, 2)\), el mismo para cualquier \(t\) a lo largo de ese camino recto (A10).</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">10. Cuenta: dos agentes con 3 acciones y 2 observaciones posibles. ¿Cuántas políticas deterministas de horizonte 3 tiene cada uno, y cuántas conjuntas?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">El árbol tiene \(1 + 2 + 4 = 7\) nodos y cada uno elige una de 3 acciones: \(3^7 = 2187\) por agente y \(2187^2 = 4\,782\,969\) conjuntas. Con horizonte 6 serían \(3^{63}\) por agente: por eso los Dec-POMDP exactos no escalan (A15a).</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 11 y 12 · A15b y A15a</p>
+  <h2>Consenso y comunicación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">11. Cuenta: tres drones funden una estimación con el consenso lineal \(\dot{\mathbf x} = -L\mathbf x\). Compara el tiempo para dividir el desacuerdo por 100 si se comunican en línea (1–2–3) o todos con todos.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">En línea, \(L\) tiene autovalores 0, 1 y 3: \(\lambda_2 = 1\). Todos con todos: 0, 3 y 3: \(\lambda_2 = 3\). El desacuerdo cae como \(e^{-\lambda_2 t}\): \(t = \ln 100/\lambda_2\), 4,61 s frente a 1,54 s. Tres veces más rápido con el grafo completo (A15b).</p>
+      </details>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">12. Tu equipo entrenado con mensajes perfectos encuentra el objetivo el 91 % de las veces; sin mensajes, el 82 %, menos que uno entrenado sin comunicación (89 %). ¿Qué concluyes?</p>
+      <ol class="opts">
+        <li><button type="button">Que la comunicación no sirve</button></li>
+        <li><button type="button">Que hay que entrenar más tiempo</button></li>
+        <li><button type="button">Que la política aprendió a depender del canal: hay que entrenarla con el canal que habrá, con retrasos y pérdidas</button></li>
+        <li><button type="button">Que el crítico centralizado falla</button></li>
+      </ol>
+      <p class="explain">Son las cifras de A15a (0,910, 0,820 y 0,892). En A15b, entrenar con retrasos al azar recuperó al equipo con mensajes viejos (de 0,879 a 0,894).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Examen · preguntas 13 y 14 · abiertas</p>
+  <h2>Diseño del sistema</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:17px;">13. Diseña el agente de búsqueda de tu tesis para un dron con cámara en un edificio desconocido: qué es el belief (y qué parte es exacta y qué parte aprendida), cómo se actualiza con las detecciones negativas, qué decide la política y qué ve el crítico al entrenar. Justifica cada elección con lo medido en la fase.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Un belief en dos partes: la estimación del propio dron (ESKF con la IMU y la odometría visual) y un mapa de probabilidad del objetivo sobre una rejilla, actualizado con Bayes también con lo que no se ve (A7a); lo que no se puede modelar a mano (la apariencia, la geometría del edificio) en el latente de un world model (A8a) comprobado con sondeos frente a una red sin entrenar (A7b). La política decide hacia dónde ir y mirar a 5–50 Hz y manda CTBR al lazo de rate (A6b); se entrena con PPO y un crítico asimétrico que ve el estado verdadero y la posición del objetivo (A6b), con la recompensa del belief-MDP. Si se planifica en el modelo, con una política previa (A8b). Adaptación de fuerza con un Kalman (A9a). Referencias en el informe: el agente con belief exacto, la heurística voraz y POMCP.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:17px;">14. Tienes tres candidatos para volar a bordo, con una CPU modesta: MPPI en el world model con política previa, PPO recurrente y una política de flow matching destilada del MPPI. ¿Cuál vuelas, y qué medirías para comprobarlo?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Una elección defendible: la política destilada o la PPO recurrente, porque deciden en microsegundos (0,02–0,08 ms en GPU en A10; la política de A8b, 0,07 ms en CPU) frente a los 67 ms en CPU del MPPI en el RSSM (A8b), que no cabe a 50 Hz. Entre las dos: flow matching si hay varias maneras buenas de buscar y quieres conservarlas (A10); PPO recurrente si la memoria importa y el experto no es mejor. Mediría el éxito y los pasos hasta encontrar el objetivo frente al experto, el tiempo por decisión en el hardware de a bordo con su peor caso, la robustez con carga, viento y 40 ms de retardo añadido, y el comportamiento fuera de los mapas de entrenamiento.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Después del examen</p>
+  <h2>Qué repasar según lo que hayas fallado</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:16%">Preguntas</th><th style="width:16%">Tema</th><th>Qué repasar</th></tr>
+      <tr><td>1</td><td><a href="../A6a_deep-rl-control/index.html">A6a</a></td><td>Objetivo recortado de PPO; GAE; detalles de implementación</td></tr>
+      <tr><td>2, 13</td><td><a href="../A6b_rl-robots-reales/index.html">A6b</a></td><td>Información privilegiada; crítico asimétrico; DAgger y brecha de imitación</td></tr>
+      <tr><td>3, 13</td><td><a href="../A7a_teoria-pomdps/index.html">A7a</a></td><td>Actualización del belief con detecciones negativas; búsqueda</td></tr>
+      <tr><td>4</td><td><a href="../A7b_rl-observabilidad-parcial/index.html">A7b</a></td><td>PPO recurrente; sondeos y su referencia sin entrenar</td></tr>
+      <tr><td>5, 6, 14</td><td><a href="../A8a_world-models-latentes/index.html">A8a</a> · <a href="../A8b_world-models-fundacionales/index.html">A8b</a></td><td>Cota de evidencia del RSSM; explotación del modelo; política previa; latencias</td></tr>
+      <tr><td>7, 8</td><td><a href="../A9a_adaptacion-meta-learning/index.html">A9a</a> · <a href="../A9b_continual-learning/index.html">A9b</a></td><td>Excitación persistente e identificabilidad; matriz de resultados, ACC y BWT</td></tr>
+      <tr><td>9, 14</td><td><a href="../A10_imitation-learning/index.html">A10</a></td><td>Flow matching; multimodalidad; destilación y tiempos</td></tr>
+      <tr><td>10, 11, 12</td><td><a href="../A15a_marl/index.html">A15a</a> · <a href="../A15b_enjambres-multi-robot/index.html">A15b</a></td><td>Dec-POMDP; consenso y \(\lambda_2\); comunicación y canal degradado</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Siguiente</span>Con el hito y el examen superados, empieza la fase 4: razonar con modelos fundacionales (LLMs, VLMs y VLAs), arquitecturas jerárquicas con un sistema lento y otro rápido, y garantías de seguridad sobre la política aprendida.</div>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
