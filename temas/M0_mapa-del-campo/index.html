@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<link rel="stylesheet" href="../../assets/curso.css?v=11">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -33,21 +33,20 @@
 
 <section class="slide">
   <p class="kicker">Cómo usar estas presentaciones</p>
-  <h2>Dos modos, cuatro tipos de aviso y derivaciones plegables</h2>
+  <h2>Dos modos, cuatro avisos y un recuadro para lo secundario</h2>
   <div class="cols w40">
-    <div class="stack small">
-      <p><strong>Modo presentación</strong>: una hoja cada vez. Flechas, espacio o RePág/AvPág para moverte; Inicio y Fin para saltar.</p>
-      <p><strong>Modo lectura</strong> (tecla <code>L</code>): todas las hojas en scroll. Se activa solo en pantallas estrechas.</p>
-      <p><strong>Índice</strong> (tecla <code>I</code>), <strong>glosario</strong> de símbolos y siglas (tecla <code>G</code>) y <strong>tema claro/oscuro</strong> (tecla <code>T</code>).</p>
-      <p>Las <span class="hz">frecuencias y latencias</span> van siempre en este color: son el hilo del curso.</p>
-      <p>Los números entre corchetes <a class="cite" data-ref="swift"></a> llevan a la referencia completa, al final.</p>
+    <div class="stack">
+      <p><strong>Modo presentación</strong>: una hoja cada vez. Flechas, espacio o RePág/AvPág; Inicio y Fin para saltar. <strong>Modo lectura</strong> (tecla <code>L</code>): todas las hojas en scroll; se activa solo en pantallas estrechas.</p>
+      <p><strong>Índice</strong> (<code>I</code>), <strong>glosario</strong> de símbolos y siglas (<code>G</code>) y <strong>tema claro/oscuro</strong> (<code>T</code>).</p>
+      <p>Las <span class="hz">frecuencias y latencias</span> van siempre en este color: son el hilo del curso. Los números entre corchetes <a class="cite" data-ref="swift"></a> llevan a la referencia completa, al final.</p>
+      <p>Las fórmulas se derivan en la propia hoja, paso a paso. Solo van plegadas las <strong>respuestas</strong> de la autoevaluación, para que intentes la pregunta antes de mirar.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Idea clave</span>Lo que tienes que poder explicar sin mirar.</div>
       <div class="callout realidad"><span class="tag">Realidad</span>Cifras de sistemas reales: hercios, milisegundos, gramos, parámetros.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Qué significa esto para belief states y world models en drones.</div>
       <div class="callout error"><span class="tag">Error frecuente</span>Ideas intuitivas que fallan en el robot real.</div>
-      <details class="deriv"><summary>Derivación</summary>Las demostraciones y cuentas completas están plegadas así. Ábrelas cuando quieras el detalle.</details>
+      <div class="aparte"><span class="rotulo">Secundario</span><p>Lo que amplía sin ser imprescindible (una comprobación, un caso particular) va en este recuadro punteado, siempre abierto.</p></div>
     </div>
   </div>
 </section>
@@ -145,7 +144,7 @@
 <section class="slide">
   <p class="kicker">Definición operativa</p>
   <h2>Percibir, estimar, decidir y actuar mientras el mundo sigue moviéndose</h2>
-  <div class="cols w60 center">
+  <div class="cols center">
     <figure class="fig">
       <svg viewBox="0 0 660 400" role="img" aria-label="Lazo cerrado: mundo, sensores, estimación, decisión, actuadores y de vuelta al mundo, con retardos en cada tramo">
         <defs>
@@ -187,7 +186,7 @@
       </svg>
     </figure>
     <div class="stack">
-      <p>Todo robot responde, una y otra vez, a cuatro preguntas:</p>
+      <p>Cuatro preguntas que todo robot responde una y otra vez:</p>
       <table class="t">
         <tr><th>Pregunta</th><th>Capa</th><th>Temas</th></tr>
         <tr><td>¿Cómo está el mundo y dónde estoy?</td><td>Estimación, percepción</td><td>A4, A7</td></tr>
@@ -195,7 +194,7 @@
         <tr><td>¿Cómo llego?</td><td>Planificación</td><td>A3, A5</td></tr>
         <tr><td>¿Qué hago ahora mismo?</td><td>Control</td><td>A2, A6</td></tr>
       </table>
-      <p class="small muted">Cada tramo del lazo añade retardo. El robot siempre actúa sobre un mundo que ya ha cambiado.</p>
+      <p>En la figura, \(s(t)\) es el <strong>estado</strong> del mundo en el instante \(t\) (posición, velocidad, viento…), que el robot no ve entero; \(b(s)\), el <strong>belief</strong>, la distribución de probabilidad sobre ese estado que mantiene el estimador, y \(\tau_s, \tau_e, \tau_d, \tau_a\), los retardos de sensar, estimar, decidir y actuar.</p>
     </div>
   </div>
 </section>
@@ -278,18 +277,67 @@
 <section class="slide">
   <p class="kicker">Escalas de tiempo · lectura</p>
   <h2>El lazo más rápido es el de velocidad angular, no el de actitud</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 292" role="img" aria-label="Cascada de lazos de un multirrotor: posición manda la actitud deseada, actitud manda la velocidad angular deseada, rate manda el par al mezclador y a los motores; cada lazo se cierra con su propia medida, más rápida cuanto más dentro">
+      <defs>
+        <marker id="arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <text x="8" y="100" class="t-muted" font-size="14">posición</text>
+      <text x="8" y="118" class="t-muted" font-size="14">deseada</text>
+      <path class="ln" d="M70 125 H88" marker-end="url(#arc)"/>
+      <g font-size="16">
+        <rect class="box" x="90" y="70" width="190" height="80" rx="4"/>
+        <text x="185" y="102" text-anchor="middle" class="t-bold">Posición</text>
+        <text x="185" y="132" text-anchor="middle" class="t-mono t-time" font-size="14">20–100 Hz</text>
+        <rect class="box" x="370" y="70" width="190" height="80" rx="4"/>
+        <text x="465" y="102" text-anchor="middle" class="t-bold">Actitud</text>
+        <text x="465" y="132" text-anchor="middle" class="t-mono t-time" font-size="14">100–500 Hz</text>
+        <rect class="box-accent" x="650" y="70" width="190" height="80" rx="4"/>
+        <text x="745" y="102" text-anchor="middle" class="t-bold">Velocidad angular</text>
+        <text x="745" y="132" text-anchor="middle" class="t-mono t-time" font-size="14">0,4–8 kHz</text>
+        <rect class="box-soft" x="930" y="70" width="210" height="80" rx="4"/>
+        <text x="1035" y="102" text-anchor="middle" class="t-bold">Mezclador y motores</text>
+        <text x="1035" y="132" text-anchor="middle" class="t-muted" font-size="14">el dron se mueve</text>
+      </g>
+      <path class="ln" d="M280 110 H368" marker-end="url(#arc)"/>
+      <path class="ln" d="M560 110 H648" marker-end="url(#arc)"/>
+      <path class="ln" d="M840 110 H928" marker-end="url(#arc)"/>
+      <g class="t-mono t-accent" font-size="13" text-anchor="middle">
+        <text x="324" y="50">actitud</text><text x="324" y="64">deseada</text>
+        <text x="604" y="50">rate</text><text x="604" y="64">deseado</text>
+        <text x="884" y="50">par</text><text x="884" y="64">deseado</text>
+      </g>
+      <path class="ln-time" d="M1035 150 V185 H745 V152" marker-end="url(#arc)"/>
+      <path class="ln-time" d="M1060 150 V225 H465 V152" marker-end="url(#arc)"/>
+      <path class="ln-time" d="M1085 150 V265 H185 V152" marker-end="url(#arc)"/>
+      <g class="t-mono t-muted" font-size="13">
+        <text x="755" y="203">velocidad angular medida (giróscopo)</text>
+        <text x="480" y="245">actitud estimada (EKF)</text>
+        <text x="200" y="284">posición y velocidad estimadas (EKF)</text>
+      </g>
+    </svg>
+    <figcaption>Cascada: cada lazo da la consigna al de dentro y se cierra con su propia medida. Frecuencias orientativas, las de la escalera anterior.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="callout error"><span class="tag">Error frecuente</span>Pensar que la actitud es el lazo más rápido y que basta con unos 50 Hz. El lazo de <em>rate</em> (velocidad angular) va por dentro, a cientos o miles de hercios.</div>
+    <p>Regla de diseño: <strong>separación de escalas</strong>. Cada lazo exterior va varias veces más lento que el interior, para que el de dentro le parezca instantáneo y pueda tratarlo como «lo que pido, ocurre». A2 (parte 2) lo cuantifica.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas de tiempo · cifras reales</p>
+  <h2>A qué ritmo corre de verdad el lazo de rate</h2>
   <div class="cols">
     <div class="stack">
-      <div class="callout error"><span class="tag">Error frecuente</span>Pensar que la actitud es el lazo más rápido y que basta con unos 50 Hz. En los autopilotos reales, el lazo de <em>rate</em> (velocidad angular) va por dentro, a cientos o miles de hercios. La actitud genera la consigna de rate y la posición genera la de actitud.</div>
-      <ul class="small">
+      <ul>
         <li><strong>Betaflight</strong> fija el giróscopo a su tasa nativa (8 kHz en el MPU6000, 3,2 kHz en el BMI270) y por defecto corre el PID a esa misma tasa <a class="cite" data-ref="betaflight"></a>.</li>
         <li><strong>PX4</strong> publica el giróscopo para control a <code>IMU_GYRO_RATEMAX</code>: 400 Hz por defecto, 800 Hz en la configuración de multirrotor, hasta 2 kHz <a class="cite" data-ref="px4params"></a>.</li>
-        <li>La regla de diseño es la <strong>separación de escalas</strong>: cada lazo exterior debe ser varias veces más lento que el interior, para que este parezca instantáneo.</li>
       </ul>
+      <p>El PID (proporcional-integral-derivativo) del lazo de rate compara la velocidad angular deseada con la medida y pide un par; A2 lo desarrolla término a término.</p>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Realidad</span>Las redes neuronales ya entran en los lazos rápidos, pero muy pequeñas. MonoRace sustituye todos los lazos internos por una red de 3×64 neuronas que corre en la controladora a <span class="hz">500 Hz</span> y manda directamente los motores <a class="cite" data-ref="monorace"></a>. Los modelos de miles de millones de parámetros se quedan arriba, a <span class="hz">7–10 Hz</span> <a class="cite" data-ref="helix,groot"></a>.</div>
-      <p class="small">Esta escalera es el esqueleto de todo el curso. Cuando aparezca un método nuevo, la primera pregunta es: <strong>¿en qué peldaño corre y cuánto tarda?</strong></p>
+      <p>Esta escalera es el esqueleto de todo el curso. Cuando aparezca un método nuevo, la primera pregunta es: <strong>¿en qué peldaño corre y cuánto tarda?</strong></p>
     </div>
   </div>
 </section>
@@ -364,7 +412,7 @@
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Idea que sobrevive</span>Organizar la inteligencia <strong>por escalas de tiempo</strong>. La arquitectura de tres capas de 1998 es, casi punto por punto, el System 1 / System 2 de Helix (2025) o GR00T N1 (2025) <a class="cite" data-ref="helix,groot"></a>.</div>
-      <p class="small">Lo nuevo en 2025 no es la jerarquía, sino que <strong>cada capa es una red aprendida</strong> y la comunicación entre capas es un vector latente en lugar de un símbolo.</p>
+      <p>Lo nuevo en 2025 no es la jerarquía, sino que <strong>cada capa es una red aprendida</strong> y la comunicación entre capas es un vector latente en lugar de un símbolo.</p>
     </div>
   </div>
 </section>
@@ -403,7 +451,7 @@
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Idea que sobrevive</span>El MPC y la optimización de trayectorias siguen siendo la referencia en control de drones. Además, son la forma de <strong>planificar con un world model</strong>: TD-MPC2 usa MPC por muestreo dentro de su espacio latente <a class="cite" data-ref="tdmpc2"></a>.</div>
-      <p class="small">Por eso el MPC (A3) está "a fondo" en este curso: es la herramienta que une el control clásico con tu tesis.</p>
+      <p>Por eso el MPC (<em>model predictive control</em>, A3) está "a fondo" en este curso: es la herramienta que une el control clásico con tu tesis.</p>
     </div>
   </div>
 </section>
@@ -621,9 +669,9 @@
         </g>
       </svg>
     </figure>
-    <div class="stack small">
+    <div class="stack">
       <p>Ejes logarítmicos. Frecuencia = acciones por segundo que entrega cada sistema <a class="cite" data-ref="monorace,helix,groot,pi0"></a>.</p>
-      <p>MonoRace: unas 10⁴ conexiones (3 capas de 64). GR00T S1: ≈0,9 B, estimado como 2,2 B del modelo menos 1,34 B del VLM. π0: 3,3 B.</p>
+      <p>S1 y S2: System 1 (la red rápida que actúa) y System 2 (el modelo lento que razona). k, M y B: miles, millones y miles de millones. MonoRace: unas 10⁴ conexiones (3 capas de 64). GR00T S1: ≈0,9 B, estimado como 2,2 B del modelo menos 1,34 B del VLM. π0: 3,3 B.</p>
       <div class="callout error"><span class="tag">Ojo con la tendencia</span>Los VLAs "hacen trampa" con el <em>action chunking</em>: GR00T N1 tarda <span class="hz">63,9 ms</span> en generar 16 acciones, así que infiere a unos <span class="hz">16 Hz</span> pero entrega <span class="hz">120 Hz</span>. Las acciones de un chunk se ejecutan en lazo abierto.</div>
     </div>
   </div>
@@ -750,50 +798,247 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Modular, de extremo a extremo o jerárquico</p>
+  <p class="kicker">Modular, de extremo a extremo o jerárquico · 1</p>
   <h2>Tres formas de montar la pila</h2>
-  <div class="cols c3 body cards-sm">
-    <div class="card">
-      <span class="meta">MODULAR</span>
-      <h3>Una caja por función</h3>
-      <p class="small">Estimación, planificación y control separados, con interfaces definidas por humanos (estado, trayectoria, consigna).</p>
-      <p class="small"><strong>A favor:</strong> depurable, verificable, cada módulo se prueba por separado.</p>
-      <p class="small"><strong>En contra:</strong> los errores se acumulan y las interfaces tiran información útil.</p>
-      <p class="xsmall muted">PX4 + planificador clásico. Swift es modular con piezas aprendidas.</p>
-    </div>
-    <div class="card">
-      <span class="meta">DE EXTREMO A EXTREMO</span>
-      <h3>Una red de sensores a acciones</h3>
-      <p class="small">Todo se aprende junto, optimizando directamente el objetivo final.</p>
-      <p class="small"><strong>A favor:</strong> no hay cuellos de botella de diseño; aprovecha datos masivos.</p>
-      <p class="small"><strong>En contra:</strong> opaca, difícil de certificar, y necesita muchísimos datos y cómputo.</p>
-      <p class="xsmall muted">VLAs de manipulación (π0, OpenVLA).</p>
-    </div>
-    <div class="card">
-      <span class="meta">JERÁRQUICO</span>
-      <h3>Capas aprendidas por escala de tiempo</h3>
-      <p class="small">Un modelo grande y lento razona; uno pequeño y rápido actúa; se comunican por un latente o un subobjetivo.</p>
-      <p class="small"><strong>A favor:</strong> inteligencia y reactividad a la vez, con presupuestos de latencia por capa.</p>
-      <p class="small"><strong>En contra:</strong> la interfaz entre capas es un problema abierto.</p>
-      <p class="xsmall muted">Helix, GR00T N1, Gemini Robotics 2 + ER 2.</p>
-    </div>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 330" style="max-height:330px" role="img" aria-label="Tres arquitecturas: modular con tres cajas en serie e interfaces fijadas por humanos; de extremo a extremo con una sola red; jerárquica con un modelo grande y lento sobre una red pequeña y rápida">
+      <defs>
+        <marker id="arm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <g font-size="15">
+        <text x="190" y="20" text-anchor="middle" class="t-mono t-accent" font-size="13">MODULAR</text>
+        <text x="190" y="44" text-anchor="middle" class="t-muted" font-size="14">sensores</text>
+        <path class="ln" d="M190 50 V66" marker-end="url(#arm)"/>
+        <rect class="box" x="90" y="68" width="200" height="44" rx="4"/>
+        <text x="190" y="96" text-anchor="middle" class="t-bold">Estimación</text>
+        <path class="ln" d="M190 112 V142" marker-end="url(#arm)"/>
+        <text x="200" y="132" class="t-mono t-accent" font-size="13">estado</text>
+        <rect class="box" x="90" y="144" width="200" height="44" rx="4"/>
+        <text x="190" y="172" text-anchor="middle" class="t-bold">Planificación</text>
+        <path class="ln" d="M190 188 V218" marker-end="url(#arm)"/>
+        <text x="200" y="208" class="t-mono t-accent" font-size="13">trayectoria</text>
+        <rect class="box" x="90" y="220" width="200" height="44" rx="4"/>
+        <text x="190" y="248" text-anchor="middle" class="t-bold">Control</text>
+        <path class="ln" d="M190 264 V290" marker-end="url(#arm)"/>
+        <text x="190" y="310" text-anchor="middle" class="t-muted" font-size="14">motores</text>
+
+        <text x="575" y="20" text-anchor="middle" class="t-mono t-accent" font-size="13">DE EXTREMO A EXTREMO</text>
+        <text x="575" y="44" text-anchor="middle" class="t-muted" font-size="14">sensores</text>
+        <path class="ln" d="M575 50 V66" marker-end="url(#arm)"/>
+        <rect class="box-accent" x="475" y="68" width="200" height="196" rx="4"/>
+        <text x="575" y="160" text-anchor="middle" class="t-bold">Una sola red</text>
+        <text x="575" y="184" text-anchor="middle" class="t-muted" font-size="14">todo se aprende junto</text>
+        <path class="ln" d="M575 264 V290" marker-end="url(#arm)"/>
+        <text x="575" y="310" text-anchor="middle" class="t-muted" font-size="14">acciones</text>
+
+        <text x="960" y="20" text-anchor="middle" class="t-mono t-accent" font-size="13">JERÁRQUICO</text>
+        <text x="960" y="44" text-anchor="middle" class="t-muted" font-size="14">sensores</text>
+        <path class="ln" d="M960 50 V66" marker-end="url(#arm)"/>
+        <rect class="box-tesis" x="845" y="68" width="230" height="74" rx="4"/>
+        <text x="960" y="94" text-anchor="middle" class="t-bold">Modelo grande, lento</text>
+        <text x="960" y="116" text-anchor="middle" class="t-muted" font-size="14">razona (System 2)</text>
+        <text x="960" y="134" text-anchor="middle" class="t-mono t-time" font-size="13">7–10 Hz</text>
+        <path class="ln-tesis" d="M960 142 V186" marker-end="url(#arm)"/>
+        <text x="970" y="164" class="t-mono t-tesis" font-size="13">latente o</text>
+        <text x="970" y="180" class="t-mono t-tesis" font-size="13">subobjetivo</text>
+        <rect class="box" x="870" y="188" width="180" height="76" rx="4"/>
+        <text x="960" y="214" text-anchor="middle" class="t-bold">Red pequeña, rápida</text>
+        <text x="960" y="236" text-anchor="middle" class="t-muted" font-size="14">actúa (System 1)</text>
+        <text x="960" y="254" text-anchor="middle" class="t-mono t-time" font-size="13">120–200 Hz</text>
+        <path class="ln" d="M920 40 H820 V226 H868" marker-end="url(#arm)"/>
+        <path class="ln" d="M960 264 V290" marker-end="url(#arm)"/>
+        <text x="960" y="310" text-anchor="middle" class="t-muted" font-size="14">acciones</text>
+      </g>
+    </svg>
+    <figcaption>Lo que cambia es dónde se fijan las interfaces. En la modular, «estado» y «trayectoria» las define un humano; en la de extremo a extremo no hay ninguna; en la jerárquica, el mensaje entre capas también se aprende. Frecuencias de Helix y GR00T N1 <a class="cite" data-ref="helix,groot"></a>.</figcaption>
+  </figure>
+  <p>La red pequeña de la jerarquía recibe también los sensores directamente: así puede reaccionar entre dos mensajes del modelo grande.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modular, de extremo a extremo o jerárquico · 2</p>
+  <h2>Qué gana y qué pierde cada forma</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%"></th><th style="width:28%">A favor</th><th style="width:31%">En contra</th><th>Ejemplos</th></tr>
+      <tr><td><strong>Modular</strong></td><td>Depurable y verificable: cada módulo se prueba por separado.</td><td>Los errores se acumulan y las interfaces tiran información útil.</td><td>PX4 + planificador clásico. Swift es modular con piezas aprendidas.</td></tr>
+      <tr><td><strong>De extremo a extremo</strong></td><td>Sin cuellos de botella de diseño: optimiza directamente el objetivo final y aprovecha datos masivos.</td><td>Opaca, difícil de certificar, y necesita muchísimos datos y cómputo.</td><td>VLAs de manipulación (π0, OpenVLA).</td></tr>
+      <tr><td><strong>Jerárquico</strong></td><td>Inteligencia y reactividad a la vez, con un presupuesto de latencia por capa.</td><td>La interfaz entre capas es un problema abierto.</td><td>Helix, GR00T N1, Gemini Robotics 2 + ER 2.</td></tr>
+    </table>
   </div>
   <div class="callout clave"><span class="tag">Idea clave</span>La pregunta útil no es "modular o de extremo a extremo", sino <strong>qué interfaces se aprenden y cuáles se fijan</strong>, y a qué frecuencia corre cada lado.</div>
 </section>
 
 <section class="slide">
-  <p class="kicker">La trampa de la latencia</p>
-  <h2>Un retardo se come margen de fase</h2>
+  <p class="kicker">La trampa de la latencia · 1</p>
+  <h2>Qué es el margen de fase, antes de meter un retardo</h2>
   <div class="cols">
     <div class="stack">
-      <p>Por qué un modelo lento no puede cerrar un lazo rápido. Un retardo puro \(\tau\) es \(e^{-s\tau}\): no cambia la ganancia, pero resta una fase \(\omega\tau\) a cada frecuencia. Si el lazo cruza en \(\omega_c\) con margen \(\mathrm{PM}\):</p>
-      \[ \mathrm{PM}' = \mathrm{PM} - \omega_c\,\tau \quad\Rightarrow\quad \tau_{\max} = \frac{\mathrm{PM}}{2\pi f_c} \]
-      <p class="small">Con \(\mathrm{PM}=45^\circ\) (0,785 rad): \(\tau_{\max}\approx 0{,}125/f_c\).</p>
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">Sea \(L(s)\) la ganancia de lazo y \(\omega_c\) tal que \(|L(j\omega_c)|=1\). El margen de fase es \(\mathrm{PM}=\pi+\angle L(j\omega_c)\). Con retardo, \(L_\tau(s)=L(s)\,e^{-s\tau}\) y \(|e^{-j\omega\tau}|=1\), así que el cruce no se mueve y \(\angle L_\tau(j\omega_c)=\angle L(j\omega_c)-\omega_c\tau\). Por tanto \(\mathrm{PM}'=\mathrm{PM}-\omega_c\tau\). El lazo cerrado pierde la estabilidad cuando \(\mathrm{PM}'\le 0\), es decir, cuando \(\tau\ge \mathrm{PM}/\omega_c\). En la práctica se exige \(\mathrm{PM}'\gtrsim 30^\circ\), así que el retardo admisible es aún menor.</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 560 250" role="img" aria-label="Lazo realimentado: la consigna menos la medida da el error, el controlador C da el mando, el dron G da la salida y el retardo vuelve a la resta">
+          <defs>
+            <marker id="arl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          </defs>
+          <text x="6" y="84" class="t-muted" font-size="14">consigna</text>
+          <path class="ln" d="M22 92 H76" marker-end="url(#arl)"/>
+          <circle cx="92" cy="92" r="15" class="box"/>
+          <text x="92" y="98" text-anchor="middle" font-size="16">Σ</text>
+          <text x="70" y="128" class="t-bold" font-size="18">−</text>
+          <path class="ln" d="M107 92 H158" marker-end="url(#arl)"/>
+          <text x="124" y="84" class="t-mono t-muted" font-size="13">e</text>
+          <rect class="box" x="160" y="62" width="120" height="60" rx="4"/>
+          <text x="220" y="88" text-anchor="middle" class="t-bold" font-size="15">C(s)</text>
+          <text x="220" y="108" text-anchor="middle" class="t-muted" font-size="13">controlador</text>
+          <path class="ln" d="M280 92 H328" marker-end="url(#arl)"/>
+          <text x="300" y="84" class="t-mono t-muted" font-size="13">u</text>
+          <rect class="box" x="330" y="62" width="120" height="60" rx="4"/>
+          <text x="390" y="88" text-anchor="middle" class="t-bold" font-size="15">G(s)</text>
+          <text x="390" y="108" text-anchor="middle" class="t-muted" font-size="13">dron</text>
+          <path class="ln" d="M450 92 H540" />
+          <text x="480" y="84" class="t-mono t-muted" font-size="13">y</text>
+          <path class="ln" d="M520 92 V190 H452" marker-end="url(#arl)"/>
+          <rect class="box-time" x="330" y="162" width="120" height="56" rx="4"/>
+          <text x="390" y="187" text-anchor="middle" class="t-bold" font-size="15">e<tspan baseline-shift="super" font-size="11">−sτ</tspan></text>
+          <text x="390" y="207" text-anchor="middle" class="t-time" font-size="13">retardo τ</text>
+          <path class="ln" d="M330 190 H92 V109" marker-end="url(#arl)"/>
+          <path class="ln-dash ln-tesis" d="M150 50 H462 M150 50 V140 M462 50 V140" fill="none"/>
+          <text x="306" y="40" text-anchor="middle" class="t-tesis" font-size="14">L(s) = C(s) G(s): una vuelta sin retardo</text>
+        </svg>
+      </figure>
+      <p>Abre el lazo y mete una senoide de frecuencia \(\omega\): tras una vuelta sale otra senoide de la <strong>misma frecuencia</strong>, multiplicada por \(|L(j\omega)|\) y desfasada \(\angle L(j\omega)\).</p>
     </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:22%">Símbolo</th><th>Qué es</th><th style="width:24%">Ejemplo</th></tr>
+        <tr><td>\(s\), \(j\)</td><td>Variable de Laplace (las funciones de transferencia dependen de ella) y unidad imaginaria, \(j^2=-1\); \(s=j\omega\) da la respuesta a una senoide</td><td>—</td></tr>
+        <tr><td>\(\omega\), \(f\)</td><td>Frecuencia en rad/s y en Hz, \(\omega = 2\pi f\)</td><td class="n">10 Hz = 62,8 rad/s</td></tr>
+        <tr><td>\(L(s)\)</td><td>Ganancia de lazo: el producto de todo lo que hay en una vuelta</td><td>\(C(s)\,G(s)\)</td></tr>
+        <tr><td>\(|L(j\omega)|\), \(\angle L(j\omega)\)</td><td>Cuánto amplifica y cuánto desfasa una vuelta a la frecuencia \(\omega\)</td><td>—</td></tr>
+        <tr><td>\(\omega_c\), \(f_c\)</td><td>Cruce: la frecuencia en la que \(|L(j\omega_c)|=1\)</td><td class="n">actitud ≈ 10 Hz</td></tr>
+        <tr><td>\(\mathrm{PM}\)</td><td>Margen de fase: \(\mathrm{PM} = 180^\circ + \angle L(j\omega_c)\)</td><td class="n">45°</td></tr>
+        <tr><td>\(\tau\)</td><td>Retardo puro, en segundos</td><td class="n">Swift: 40 ms</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="small muted">A2 (parte 1) escribe el margen de fase como \(\varphi_m\) y lo desarrolla con el diagrama de Nyquist. Ojo: esta \(s\) no es el estado \(s(t)\) de la parte 1.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">La trampa de la latencia · 2</p>
+  <h2>Un retardo no cambia la ganancia, pero resta fase</h2>
+  <div class="cols w60 center">
+    <figure class="fig">
+      <svg viewBox="0 0 600 380" role="img" aria-label="Diagrama de Bode de un lazo con cruce a 10 Hz y margen de fase de 45 grados: el módulo no cambia con el retardo; la fase con 12,5 ms de retardo llega a menos 180 grados justo en el cruce">
+        <g class="ln-rule">
+          <path d="M70 20 V160 M192.5 20 V160 M315 20 V160 M437.5 20 V160 M560 20 V160"/>
+          <path d="M70 200 V340 M192.5 200 V340 M315 200 V340 M437.5 200 V340 M560 200 V340"/>
+          <path d="M70 200 H560 M70 270 H560 M70 340 H560"/>
+        </g>
+        <path class="ln" d="M70 80 H560"/>
+        <path class="ln" d="M70 20 V160 M70 200 V340"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="64" y="38">+30 dB</text><text x="64" y="84">0 dB</text><text x="64" y="164">−40 dB</text>
+          <text x="64" y="204">−90°</text><text x="64" y="274">−180°</text><text x="64" y="344">−270°</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="70" y="362">1 Hz</text><text x="192.5" y="362">3,2</text><text x="315" y="362">10 Hz</text><text x="437.5" y="362">32</text><text x="560" y="362">100 Hz</text>
+        </g>
+        <text x="80" y="14" class="t-muted" font-size="13">módulo |L(jω)|: igual con y sin retardo</text>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M70.0 34.1 L82.2 36.1 L94.5 38.1 L106.8 40.2 L119.0 42.2 L131.2 44.2 L143.5 46.3 L155.8 48.4 L168.0 50.5 L180.2 52.6 L192.5 54.8 L204.8 57.0 L217.0 59.3 L229.2 61.6 L241.5 63.9 L253.8 66.4 L266.0 68.9 L278.2 71.5 L290.5 74.2 L302.8 77.1 L315.0 80.0 L327.2 83.1 L339.5 86.2 L351.8 89.5 L364.0 92.9 L376.2 96.4 L388.5 99.9 L400.8 103.6 L413.0 107.3 L425.3 111.0 L437.5 114.8 L449.8 118.6 L462.0 122.5 L474.3 126.4 L486.5 130.3 L498.8 134.2 L511.0 138.2 L523.2 142.2 L535.5 146.1 L547.8 150.1 L560.0 154.1"/>
+        <text x="80" y="194" class="t-muted" font-size="13">fase ∠L(jω)</text>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M70.0 204.4 L82.2 205.0 L94.5 205.6 L106.8 206.3 L119.0 207.0 L131.2 207.8 L143.5 208.8 L155.8 209.8 L168.0 211.0 L180.2 212.2 L192.5 213.6 L204.8 215.2 L217.0 216.9 L229.2 218.7 L241.5 220.7 L253.8 222.8 L266.0 225.1 L278.2 227.5 L290.5 229.9 L302.8 232.4 L315.0 235.0 L327.2 237.6 L339.5 240.1 L351.8 242.5 L364.0 244.9 L376.2 247.2 L388.5 249.3 L400.8 251.3 L413.0 253.1 L425.3 254.8 L437.5 256.4 L449.8 257.8 L462.0 259.0 L474.3 260.2 L486.5 261.2 L498.8 262.2 L511.0 263.0 L523.2 263.7 L535.5 264.4 L547.8 265.0 L560.0 265.6"/>
+        <path class="ln-time" fill="none" stroke-width="2.4" d="M70.0 207.9 L81.2 208.8 L92.4 209.8 L103.6 210.9 L114.8 212.1 L126.0 213.4 L137.2 214.9 L148.4 216.5 L159.6 218.3 L170.8 220.3 L182.0 222.5 L193.2 224.9 L204.4 227.5 L215.6 230.4 L226.8 233.6 L237.9 237.1 L249.1 240.9 L260.3 245.0 L271.5 249.4 L282.7 254.2 L293.9 259.3 L305.1 264.8 L316.3 270.7 L327.5 277.0 L338.7 283.7 L349.9 290.8 L361.1 298.4 L372.3 306.4 L383.5 315.1 L394.7 324.3 L405.9 334.3 L411.8 340.0"/>
+        <path class="ln-dash ln" d="M315 80 V270"/>
+        <circle cx="315" cy="80" r="5" class="fill-time"/>
+        <text x="322" y="72" class="t-mono t-time" font-size="13">cruce f_c = 10 Hz</text>
+        <circle cx="315" cy="235" r="5" class="fill-ink3"/>
+        <path class="ln-tesis" d="M307 235 V270" stroke-width="2.4"/>
+        <path class="ln-tesis" d="M300 290 L306 274"/>
+        <text x="300" y="304" text-anchor="end" class="t-mono t-tesis" font-size="13">PM = 45°</text>
+        <text x="450" y="246" class="t-mono t-accent" font-size="13">sin retardo</text>
+        <text x="420" y="320" class="t-mono t-time" font-size="13">con τ = 12,5 ms</text>
+      </svg>
+    </figure>
     <div class="stack">
+      <p><strong>Por qué −180° es la frontera.</strong> La realimentación resta. Si una senoide vuelve de la vuelta desfasada −180°, ese signo menos la deja en fase con la original; si además vuelve con la misma amplitud (en el cruce), se sostiene sola: el lazo oscila sin que nadie lo excite. \(\mathrm{PM}\) es cuánta fase falta para llegar ahí.</p>
+      <p>El lazo de la figura cruza a 10 Hz con fase −135°: \(\mathrm{PM}=45^\circ\). Un retardo de 12,5 ms resta \(360^\circ\cdot f\cdot\tau\), es decir, \(4{,}5^\circ\) por cada hercio de \(f\); en el cruce, 45°. El margen se queda en cero.</p>
+      <p class="xsmall muted">\(L(s)=K/(s(s/p+1))\) con \(p=2\pi\cdot 10\) rad/s y \(K=\sqrt2\,p\), elegido para cruzar a 10 Hz con 45°. <code>figuras/ejemplos_m0.py</code>, ejemplo 3.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La trampa de la latencia · 3</p>
+  <h2>De dónde sale \(\tau_{\max} = \mathrm{PM}/(2\pi f_c)\)</h2>
+  <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(y(t)=x(t-\tau)\ \Rightarrow\ Y(s)=e^{-s\tau}X(s)\)</td><td>Teorema del desplazamiento de Laplace: retrasar \(\tau\) multiplica por \(e^{-s\tau}\)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(L_\tau(s)=L(s)\,e^{-s\tau}\)</td><td>Bloques en serie se multiplican; \(L_\tau\) es el lazo con retardo</td></tr>
+        <tr><td><strong>3</strong></td><td>\(e^{-j\omega\tau}=\cos\omega\tau - j\sin\omega\tau\)</td><td>Fórmula de Euler con \(s=j\omega\)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(|e^{-j\omega\tau}|=1,\ \ \angle e^{-j\omega\tau}=-\omega\tau\)</td><td>\(\cos^2+\sin^2=1\): un punto del círculo unidad girado \(-\omega\tau\)</td></tr>
+        <tr><td><strong>5</strong></td><td>\(|L_\tau(j\omega)|=|L(j\omega)|\): el cruce \(\omega_c\) no se mueve</td><td>El módulo de un producto es el producto de módulos</td></tr>
+        <tr><td><strong>6</strong></td><td>\(\angle L_\tau(j\omega_c)=\angle L(j\omega_c)-\omega_c\tau\)</td><td>La fase de un producto es la suma de fases</td></tr>
+        <tr><td><strong>7</strong></td><td>\(\mathrm{PM}'=\pi+\angle L_\tau(j\omega_c)=\mathrm{PM}-\omega_c\tau\)</td><td>Definición de margen (\(180^\circ=\pi\)); \(\mathrm{PM}'\) es el margen con retardo</td></tr>
+        <tr><td><strong>8</strong></td><td>\(\mathrm{PM}'=0 \iff \tau=\mathrm{PM}/\omega_c=\mathrm{PM}/(2\pi f_c)\equiv\tau_{\max}\)</td><td>Frontera de estabilidad: margen nulo</td></tr>
+        <tr><td><strong>9</strong></td><td>\(\mathrm{PM}=\pi/4\ \Rightarrow\ \tau_{\max}=1/(8f_c)\approx 0{,}125/f_c\)</td><td>45° son \(\pi/4\) rad, y los \(\pi\) se cancelan</td></tr>
+      </table>
+  </div>
+  <div class="cols">
+      <div class="callout clave"><span class="tag">Lo que dice</span><strong>Cuanto más rápido el lazo, menos latencia tolera</strong>: diez veces más rápido, diez veces menos retardo.</div>
+      <div class="aparte"><span class="rotulo">En la práctica</span><p>Margen cero es oscilar: se exige \(\mathrm{PM}'\gtrsim 30^\circ\), así que el retardo admisible es aún menor.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La trampa de la latencia · 4</p>
+  <h2>Compruébalo: un integrador con retardo, el lazo del laboratorio 0</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p>Un integrador \(\dot x = u\) controlado por un P, \(u=-K\,x\), con la medida retrasada \(\tau\): \(\dot x(t) = -K\,x(t-\tau)\), con \(K\) la ganancia (en 1/s).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Cuenta</th><th>Con \(K=10\ \mathrm{s^{-1}}\)</th></tr>
+          <tr><td>\(L(s)=K/s\): \(|L(j\omega)|=K/\omega\) ⇒ \(\omega_c=K\)</td><td class="n">10 rad/s (1,59 Hz)</td></tr>
+          <tr><td>\(\angle (K/j\omega) = -90^\circ\) ⇒ \(\mathrm{PM}\)</td><td class="n">90° = π/2</td></tr>
+          <tr><td>\(\tau_{\max} = \mathrm{PM}/\omega_c = \pi/(2K)\)</td><td class="n">157 ms</td></tr>
+          <tr><td>Periodo de la oscilación en el límite, \(2\pi/\omega_c\)</td><td class="n">0,63 s</td></tr>
+        </table>
+      </div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 600 290" role="img" aria-label="Respuesta del integrador con retardo partiendo de x igual a 1: con 100 ms se amortigua, con 157 ms oscila con amplitud constante y con 200 ms la oscilación crece hasta salirse">
+        <g class="ln-rule">
+          <path d="M60 20 V220 M185 20 V220 M310 20 V220 M435 20 V220 M560 20 V220"/>
+          <path d="M60 20 H560 M60 70 H560 M60 170 H560 M60 220 H560"/>
+        </g>
+        <path class="ln" d="M60 120 H560 M60 20 V220"/>
+        <g class="t-mono t-faint" font-size="12">
+          <text x="54" y="24" text-anchor="end">2</text><text x="54" y="74" text-anchor="end">1</text><text x="54" y="124" text-anchor="end">0</text><text x="54" y="174" text-anchor="end">−1</text><text x="54" y="224" text-anchor="end">−2</text>
+          <text x="60" y="240" text-anchor="middle">0</text><text x="185" y="240" text-anchor="middle">0,5</text><text x="310" y="240" text-anchor="middle">1</text><text x="435" y="240" text-anchor="middle">1,5</text><text x="560" y="240" text-anchor="middle">2 s</text>
+          <text x="70" y="14">x(t)</text>
+        </g>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M60.0 70.0 L65.0 80.0 L70.0 90.0 L75.0 100.0 L80.0 110.0 L85.0 120.0 L90.0 129.0 L95.0 136.0 L100.0 141.0 L105.0 144.0 L110.0 145.0 L115.0 144.1 L120.0 141.6 L125.0 137.8 L130.0 133.3 L135.0 128.4 L140.0 123.4 L145.0 118.8 L150.0 114.9 L155.0 111.7 L160.0 109.6 L165.0 108.4 L170.0 108.2 L175.0 108.8 L180.0 110.2 L185.0 112.1 L190.0 114.3 L195.0 116.6 L200.0 118.9 L205.0 121.1 L210.0 122.8 L215.0 124.2 L220.0 125.1 L225.0 125.6 L230.0 125.6 L235.0 125.2 L240.0 124.5 L245.0 123.5 L250.0 122.4 L255.0 121.3 L260.0 120.2 L265.0 119.3 L270.0 118.5 L275.0 117.9 L280.0 117.5 L285.0 117.3 L290.0 117.4 L295.0 117.6 L300.0 118.0 L305.0 118.5 L310.0 119.0 L315.0 119.5 L320.0 120.0 L325.0 120.4 L330.0 120.8 L335.0 121.1 L340.0 121.2 L345.0 121.3 L350.0 121.2 L355.0 121.1 L360.0 120.9 L365.0 120.7 L370.0 120.4 L375.0 120.2 L380.0 119.9 L385.0 119.7 L390.0 119.6 L395.0 119.5 L400.0 119.4 L405.0 119.4 L410.0 119.4 L415.0 119.5 L420.0 119.6 L425.0 119.7 L430.0 119.8 L435.0 119.9 L440.0 120.1 L445.0 120.1 L450.0 120.2 L455.0 120.3 L460.0 120.3 L465.0 120.3 L470.0 120.3 L475.0 120.2 L480.0 120.2 L485.0 120.1 L490.0 120.1 L495.0 120.0 L500.0 120.0 L505.0 119.9 L510.0 119.9 L515.0 119.9 L520.0 119.9 L525.0 119.9 L530.0 119.9 L535.0 119.9 L540.0 119.9 L545.0 119.9 L550.0 120.0 L555.0 120.0 L560.0 120.0"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M60.0 70.0 L65.0 80.0 L70.0 90.0 L75.0 100.0 L80.0 110.0 L85.0 120.0 L90.0 130.0 L95.0 140.0 L100.0 150.0 L105.0 158.7 L110.0 165.4 L115.0 170.1 L120.0 172.8 L125.0 173.6 L130.0 172.3 L135.0 169.0 L140.0 163.7 L145.0 156.6 L150.0 147.9 L155.0 138.2 L160.0 127.8 L165.0 117.1 L170.0 106.5 L175.0 96.5 L180.0 87.3 L185.0 79.5 L190.0 73.3 L195.0 68.9 L200.0 66.6 L205.0 66.4 L210.0 68.4 L215.0 72.3 L220.0 78.2 L225.0 85.8 L230.0 94.7 L235.0 104.7 L240.0 115.2 L245.0 126.0 L250.0 136.5 L255.0 146.3 L260.0 155.1 L265.0 162.5 L270.0 168.2 L275.0 172.0 L280.0 173.7 L285.0 173.3 L290.0 170.7 L295.0 166.2 L300.0 159.8 L305.0 151.8 L310.0 142.5 L315.0 132.4 L320.0 121.7 L325.0 111.0 L330.0 100.6 L335.0 91.0 L340.0 82.6 L345.0 75.7 L350.0 70.5 L355.0 67.3 L360.0 66.2 L365.0 67.2 L370.0 70.3 L375.0 75.5 L380.0 82.4 L385.0 90.8 L390.0 100.3 L395.0 110.7 L400.0 121.4 L405.0 132.1 L410.0 142.2 L415.0 151.5 L420.0 159.6 L425.0 166.1 L430.0 170.7 L435.0 173.3 L440.0 173.8 L445.0 172.1 L450.0 168.4 L455.0 162.8 L460.0 155.4 L465.0 146.6 L470.0 136.8 L475.0 126.3 L480.0 115.5 L485.0 104.9 L490.0 95.0 L495.0 86.0 L500.0 78.4 L505.0 72.4 L510.0 68.3 L515.0 66.3 L520.0 66.4 L525.0 68.7 L530.0 73.0 L535.0 79.2 L540.0 87.0 L545.0 96.1 L550.0 106.2 L555.0 116.8 L560.0 127.6"/>
+        <path class="ln-time" fill="none" stroke-width="2.2" d="M60.0 70.0 L65.0 80.0 L70.0 90.0 L75.0 100.0 L80.0 110.0 L85.0 120.0 L90.0 130.0 L95.0 140.0 L100.0 150.0 L105.0 160.0 L110.0 170.0 L115.0 179.0 L120.0 186.0 L125.0 191.0 L130.0 194.0 L135.0 195.0 L140.0 194.0 L145.0 191.0 L150.0 186.0 L155.0 179.0 L160.0 170.1 L165.0 159.1 L170.0 146.6 L175.0 132.9 L180.0 118.3 L185.0 103.4 L190.0 88.4 L195.0 73.9 L200.0 60.2 L205.0 47.6 L210.0 36.7 L215.0 27.7 L220.0 21.1"/>
+        <g class="t-mono" font-size="13">
+          <path class="ln-accent" d="M60 276 H78" stroke-width="2.2"/><text x="84" y="281" class="t-accent">100 ms: se amortigua</text>
+          <path class="ln-tesis" d="M262 276 H280" stroke-width="2.2"/><text x="286" y="281" class="t-tesis">157 ms: oscila igual</text>
+          <path class="ln-time" d="M464 276 H482" stroke-width="2.2"/><text x="488" y="281" class="t-time">200 ms: crece</text>
+        </g>
+      </svg>
+      <figcaption>Simulación desde \(x=1\) (Euler con paso de 0,1 ms), <code>figuras/ejemplos_m0.py</code>, ejemplo 4. En el límite el periodo es 0,63 s, como predice la cuenta.</figcaption>
+    </figure>
+  </div>
+  <div class="callout realidad"><span class="tag">Resultado</span>Con \(\tau=100\) ms el margen es \(90^\circ-57{,}3^\circ=32{,}7^\circ\) y la oscilación muere; con 200 ms el margen sería \(-24{,}6^\circ\) y crece. La frontera cae justo en \(\tau_{\max}=157\) ms.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La trampa de la latencia · 5</p>
+  <h2>Cuánto retardo admite cada lazo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>\(\tau_{\max}\approx 0{,}125/f_c\) con un margen de 45°, para cruces ilustrativos de cada peldaño de la escalera:</p>
       <table class="t">
         <tr><th>Lazo (cruce ilustrativo)</th><th>\(f_c\)</th><th>\(\tau_{\max}\) con PM 45°</th></tr>
         <tr><td>Velocidad angular</td><td class="n">30 Hz</td><td class="n">4 ms</td></tr>
@@ -801,26 +1046,80 @@
         <tr><td>Posición</td><td class="n">1 Hz</td><td class="n">125 ms</td></tr>
         <tr><td>Misión</td><td class="n">0,1 Hz</td><td class="n">1,25 s</td></tr>
       </table>
-      <div class="callout realidad"><span class="tag">Realidad</span>Con los <span class="hz">250 ms</span> de Gemini Robotics <a class="cite" data-ref="gemrob"></a>, solo cabe cerrar lazos con cruce por debajo de unos <span class="hz">0,5 Hz</span>. Con los <span class="hz">40 ms</span> de Swift, un lazo de actitud a 10 Hz perdería 144° de fase: por eso Swift deja el lazo de rate a Betaflight.</div>
+      <p class="xsmall muted"><code>figuras/ejemplos_m0.py</code>, ejemplos 1 y 2.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Realidad</span>Con los <span class="hz">250 ms</span> de Gemini Robotics <a class="cite" data-ref="gemrob"></a>, solo cabe cerrar lazos con cruce por debajo de unos <span class="hz">0,5 Hz</span>. Con los <span class="hz">40 ms</span> de Swift, un lazo de actitud a 10 Hz perdería \(2\pi\cdot 10\cdot 0{,}04 = 2{,}51\) rad = 144° de fase: por eso Swift deja el lazo de rate a Betaflight.</div>
+      <p>Por eso los modelos grandes no cierran los lazos rápidos: no es cuestión de lo listos que sean, sino de cuánto tardan.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Cómo se esquiva la latencia</p>
-  <h2>Chunks, ejecución asíncrona y jerarquías</h2>
+  <p class="kicker">Cómo se esquiva la latencia · 1</p>
+  <h2>Action chunking y ejecución asíncrona, en una línea temporal</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 250" role="img" aria-label="Dos líneas temporales: en la ejecución síncrona el robot espera 250 ms a cada consulta y luego ejecuta el chunk; en la asíncrona la consulta siguiente se calcula mientras se ejecuta el chunk actual y no hay esperas">
+      <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+        <text x="150" y="240">0</text><text x="400" y="240">250</text><text x="650" y="240">500</text><text x="900" y="240">750</text><text x="1140" y="240">990 ms</text>
+      </g>
+      <path class="ln" d="M150 222 H1140"/>
+      <text x="10" y="70" class="t-bold" font-size="15">Síncrona</text>
+      <text x="10" y="90" class="t-muted" font-size="13">consulta, espera,</text>
+      <text x="10" y="106" class="t-muted" font-size="13">ejecuta</text>
+      <rect class="box-time" x="150" y="50" width="250" height="34" rx="3"/>
+      <text x="275" y="72" text-anchor="middle" class="t-time" font-size="13">inferencia 1 · el robot espera</text>
+      <rect class="box-accent" x="400" y="50" width="260" height="34" rx="3"/>
+      <text x="530" y="72" text-anchor="middle" font-size="13">chunk 1: 13 acciones a 50 Hz</text>
+      <rect class="box-time" x="660" y="50" width="250" height="34" rx="3"/>
+      <text x="785" y="72" text-anchor="middle" class="t-time" font-size="13">inferencia 2 · espera</text>
+      <rect class="box-accent" x="910" y="50" width="230" height="34" rx="3"/>
+      <text x="1025" y="72" text-anchor="middle" font-size="13">chunk 2 …</text>
+
+      <text x="10" y="160" class="t-bold" font-size="15">Asíncrona</text>
+      <text x="10" y="180" class="t-muted" font-size="13">la siguiente se</text>
+      <text x="10" y="196" class="t-muted" font-size="13">calcula a la vez</text>
+      <rect class="box-time" x="150" y="122" width="250" height="28" rx="3"/>
+      <text x="275" y="141" text-anchor="middle" class="t-time" font-size="13">inferencia 1</text>
+      <rect class="box-time" x="400" y="122" width="250" height="28" rx="3"/>
+      <text x="525" y="141" text-anchor="middle" class="t-time" font-size="13">inferencia 2</text>
+      <rect class="box-time" x="650" y="122" width="250" height="28" rx="3"/>
+      <text x="775" y="141" text-anchor="middle" class="t-time" font-size="13">inferencia 3</text>
+      <rect class="box-time" x="900" y="122" width="240" height="28" rx="3"/>
+      <text x="1020" y="141" text-anchor="middle" class="t-time" font-size="13">inferencia 4</text>
+      <rect class="box-accent" x="400" y="160" width="250" height="28" rx="3"/>
+      <text x="525" y="179" text-anchor="middle" font-size="13">chunk 1</text>
+      <rect class="box-accent" x="650" y="160" width="250" height="28" rx="3"/>
+      <text x="775" y="179" text-anchor="middle" font-size="13">chunk 2</text>
+      <rect class="box-accent" x="900" y="160" width="240" height="28" rx="3"/>
+      <text x="1020" y="179" text-anchor="middle" font-size="13">chunk 3</text>
+      <g class="ln-rule">
+        <path d="M400 178 V188 M420 178 V188 M440 178 V188 M460 178 V188 M480 178 V188 M500 178 V188 M520 178 V188 M540 178 V188 M560 178 V188 M580 178 V188 M600 178 V188 M620 178 V188 M640 178 V188"/>
+      </g>
+      <circle cx="400" cy="136" r="5" class="fill-tesis"/>
+      <text x="408" y="114" class="t-mono t-tesis" font-size="12">observación que usa la inferencia 2</text>
+      <path class="ln-tesis ln-dash" d="M400 205 H890"/>
+      <text x="645" y="218" text-anchor="middle" class="t-mono t-tesis" font-size="12">la última acción del chunk 2 se decide con una observación de ≈490 ms</text>
+    </svg>
+    <figcaption>Cifras de Gemini Robotics (≈250 ms por consulta, 50 Hz efectivos) <a class="cite" data-ref="gemrob"></a>. El tamaño de chunk de 13 es nuestra cuenta mínima (\(H\ge\tau f\)), no una cifra publicada. <code>figuras/ejemplos_m0.py</code>, ejemplo 5.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Action chunking</strong>: cada consulta devuelve \(H\) acciones futuras. Si tarda \(\tau\) y el control va a \(f\) Hz, para no quedarse sin acciones hace falta \(H\ge\tau f\): con 0,25 s y 50 Hz, al menos 13 <a class="cite" data-ref="act"></a>.</p>
+    <p><strong>Asíncrona</strong>: mientras se ejecuta un chunk se calcula el siguiente. <em>Real-time chunking</em> lo trata como inpainting: congela las acciones que se van a ejecutar seguro y rellena el resto, sin reentrenar <a class="cite" data-ref="rtc"></a>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cómo se esquiva la latencia · 2</p>
+  <h2>Jerarquías, y por qué en drones el lazo rápido no se delega</h2>
   <div class="cols">
     <div class="stack">
-      <h3>Action chunking</h3>
-      <p class="small">La política predice una secuencia de acciones futuras en lugar de una sola. Gemini Robotics tarda <span class="hz">≈250 ms</span> por consulta pero entrega una frecuencia de control efectiva de <span class="hz">50 Hz</span> porque cada respuesta trae un chunk de acciones <a class="cite" data-ref="gemrob,act"></a>.</p>
-      <h3>Ejecución asíncrona</h3>
-      <p class="small">Mientras se ejecuta un chunk, ya se calcula el siguiente. <em>Real-time chunking</em> lo plantea como un problema de inpainting: congela las acciones que se van a ejecutar seguro y rellena el resto, sin reentrenar <a class="cite" data-ref="rtc"></a>.</p>
-      <h3>Jerarquía</h3>
-      <p class="small">El modelo grande no cierra el lazo: entrega un latente o un subobjetivo a una red pequeña que sí lo cierra a 120–200 Hz <a class="cite" data-ref="helix,groot"></a>.</p>
+      <p><strong>El precio del chunk.</strong> La acción \(i\) de un chunk se decide con una observación de edad \(\tau + (i-1)/f\). Con los 250 ms de Gemini Robotics y el chunk mínimo de 13 acciones a 50 Hz, de 250 ms la primera a 490 ms la última: dentro del chunk, el robot va en <strong>lazo abierto</strong>.</p>
+      <p><strong>Jerarquía.</strong> El modelo grande no cierra el lazo: entrega un latente o un subobjetivo a una red pequeña que sí lo cierra, a 120–200 Hz <a class="cite" data-ref="helix,groot"></a>, con observaciones frescas.</p>
     </div>
     <div class="stack">
-      <div class="callout error"><span class="tag">El límite en drones</span>Un chunk se ejecuta en lazo abierto. Para un brazo casi estático sirve; un multirrotor es inestable en lazo abierto, y unas décimas de segundo sin corrección pueden bastar para perderlo. Por eso en drones el lazo rápido siempre queda en manos de un controlador clásico o de una red pequeña que corre en tiempo real.</div>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>Esto respondía a tu intuición del sondeo: <strong>predecir dónde estará el dron cuando actúe</strong>. Es la idea del predictor de Smith y de la compensación de retardo. Un world model puede hacerlo de forma aprendida: imaginar el estado en \(t+\tau\) antes de decidir.</div>
+      <div class="callout error"><span class="tag">El límite en drones</span>Para un brazo casi estático, el lazo abierto sirve; un multirrotor es inestable en lazo abierto, y unas décimas de segundo sin corrección pueden bastar para perderlo. Por eso en drones el lazo rápido siempre queda en manos de un controlador clásico o de una red pequeña que corre en tiempo real.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Esto respondía a tu intuición del sondeo: <strong>predecir dónde estará el dron cuando actúe</strong>. Es la idea del predictor de Smith (usar un modelo para adelantar el estado al final del retardo y controlar sobre esa predicción; A2 y B4). Un world model puede hacerlo de forma aprendida: imaginar el estado en \(t+\tau\) antes de decidir.</div>
     </div>
   </div>
 </section>
@@ -839,15 +1138,15 @@
     <div class="card">
       <span class="meta">ENTRENAR · TEMAS B6, A6</span>
       <h3>Rendimiento: millones de pasos por segundo</h3>
-      <p class="small">Miles de entornos en paralelo en GPU, física simplificada, sin render o con render barato. Se mide en pasos por segundo y en tiempo hasta una política útil.</p>
-      <p class="small">Swift: 10⁸ interacciones en 50 min <a class="cite" data-ref="swift"></a>. Locomoción de ANYmal: políticas en minutos con miles de robots en paralelo <a class="cite" data-ref="rudin2021"></a>.</p>
+      <p>Miles de entornos en paralelo en GPU, física simplificada, sin render o con render barato. Se mide en pasos por segundo y en tiempo hasta una política útil.</p>
+      <p>Swift: 10⁸ interacciones en 50 min <a class="cite" data-ref="swift"></a>. Locomoción de ANYmal: políticas en minutos con miles de robots en paralelo <a class="cite" data-ref="rudin2021"></a>.</p>
       <p class="xsmall muted">Isaac Lab, MuJoCo MJX, Genesis, Aerial Gym, OmniDrones, tus entornos en JAX <a class="cite" data-ref="aerialgym,omnidrones"></a>.</p>
     </div>
     <div class="card">
       <span class="meta">VALIDAR · TEMAS B2–B5</span>
       <h3>Fidelidad: que lo que pasa allí pase aquí</h3>
-      <p class="small">Sensores con ruido realista, render fotorrealista, latencias, el firmware real del autopiloto (SITL) o incluso su hardware (HIL). Se mide por la diferencia con los datos de vuelo.</p>
-      <p class="small">Más lento, a menudo en tiempo real, con una sola instancia.</p>
+      <p>Sensores con ruido realista, render fotorrealista, latencias, el firmware real del autopiloto (SITL) o incluso su hardware (HIL). Se mide por la diferencia con los datos de vuelo.</p>
+      <p>Más lento, a menudo en tiempo real, con una sola instancia.</p>
       <p class="xsmall muted">Gazebo + PX4 SITL, Isaac Sim, simuladores sobre Unreal (herederos de AirSim), Flightmare <a class="cite" data-ref="gazebo,airsim,flightmare"></a>.</p>
     </div>
   </div>
@@ -869,7 +1168,7 @@
       <tr><td>Otros agentes</td><td>Compañeros y adversarios, comunicación con pérdidas</td><td>Coordinación que se rompe fuera del simulador</td><td>A15</td></tr>
     </table>
   </div>
-  <p class="small muted">Tu respuesta del sondeo ya acertaba con el tiempo, el ruido de la IMU y los parámetros físicos. Faltaban sobre todo los actuadores, el firmware real y las convenciones de ejes (NED/ENU, FRD/FLU), que causan más fallos de los que parece.</p>
+  <p class="muted">Tu respuesta del sondeo ya acertaba con el tiempo, el ruido de la IMU y los parámetros físicos. Faltaban sobre todo los actuadores, el firmware real y las convenciones de ejes (NED/ENU, FRD/FLU), que causan más fallos de los que parece.</p>
 </section>
 
 <section class="slide">
@@ -879,22 +1178,22 @@
     <div class="card">
       <span class="meta">MICROCONTROLADOR · TEMAS C4, C6</span>
       <h3>Controladora de vuelo</h3>
-      <p class="small">STM32 de cientos de MHz: 216 MHz en Swift, STM32H743 a 480 MHz en MonoRace <a class="cite" data-ref="swift,monorace"></a>.</p>
-      <p class="small">RTOS (NuttX en PX4, ChibiOS en ArduPilot) o planificador propio sin sistema operativo (Betaflight). Tiempo real duro.</p>
-      <p class="small">IMU por SPI; ESC por DShot.</p>
+      <p>STM32 de cientos de MHz: 216 MHz en Swift, STM32H743 a 480 MHz en MonoRace <a class="cite" data-ref="swift,monorace"></a>.</p>
+      <p>RTOS (sistema operativo de tiempo real: NuttX en PX4, ChibiOS en ArduPilot) o planificador propio sin sistema operativo (Betaflight). Tiempo real duro.</p>
+      <p>IMU por SPI; ESC por DShot.</p>
     </div>
     <div class="card">
       <span class="meta">SOC CON GPU · TEMAS C1, C5</span>
       <h3>Ordenador de a bordo</h3>
-      <p class="small">Jetson TX2 en Swift (2023), Orin NX en MonoRace (2025) <a class="cite" data-ref="swift,monorace"></a>. Para humanoides, Jetson AGX Thor.</p>
-      <p class="small">Linux, que desde la versión 6.12 incluye PREEMPT_RT en el kernel principal <a class="cite" data-ref="linux612"></a>. Tiempo real blando o firme.</p>
-      <p class="small">Habla con la controladora por MAVLink o uXRCE-DDS.</p>
+      <p>Jetson TX2 en Swift (2023), Orin NX en MonoRace (2025) <a class="cite" data-ref="swift,monorace"></a>. Para humanoides, Jetson AGX Thor.</p>
+      <p>Linux, que desde la versión 6.12 incluye PREEMPT_RT en el kernel principal <a class="cite" data-ref="linux612"></a>. Tiempo real blando o firme.</p>
+      <p>Habla con la controladora por MAVLink o uXRCE-DDS.</p>
     </div>
     <div class="card">
       <span class="meta">FUERA DEL ROBOT · TEMAS C2, C3</span>
       <h3>Estación de tierra o nube</h3>
-      <p class="small">Modelos que no caben a bordo: el backbone de Gemini Robotics corre en la nube <a class="cite" data-ref="gemrob"></a>.</p>
-      <p class="small">Sin garantías temporales: radio, 4G/5G, pérdidas. Solo para capas lentas y con plan B a bordo.</p>
+      <p>Modelos que no caben a bordo: el backbone de Gemini Robotics corre en la nube <a class="cite" data-ref="gemrob"></a>.</p>
+      <p>Sin garantías temporales: radio, 4G/5G, pérdidas. Solo para capas lentas y con plan B a bordo.</p>
     </div>
   </div>
   <div class="callout clave"><span class="tag">Idea clave</span>La pregunta de despliegue siempre es la misma: <strong>¿qué pasa si esta capa no responde a tiempo?</strong> Cuanto más abajo en la pila, más dura tiene que ser la garantía.</div>
@@ -911,12 +1210,12 @@
   <p class="kicker">Problemas abiertos</p>
   <h2>Seis tensiones sin resolver</h2>
   <div class="cols c3 body">
-    <div class="card"><h3>Capacidad frente a latencia</h3><p class="small">Los modelos que razonan no caben en los lazos rápidos. La interfaz entre capas sigue siendo artesanal.</p></div>
-    <div class="card"><h3>Datos de robot</h3><p class="small">No hay un internet de acciones. Se combinan teleoperación, simulación, vídeo y experiencia propia con fallos <a class="cite" data-ref="pi07"></a>.</p></div>
-    <div class="card"><h3>Generalidad frente a fiabilidad</h3><p class="small">Un VLA generalista hace muchas tareas, pero con tasas de éxito por debajo de lo que exige un producto.</p></div>
-    <div class="card"><h3>Evaluación</h3><p class="small">Pocos benchmarks reales comparables. Muchos resultados son demos de la propia empresa, sin verificación independiente.</p></div>
-    <div class="card"><h3>Garantías</h3><p class="small">Las redes no ofrecen certificados de estabilidad ni de seguridad. Se recurre a filtros de seguridad y monitores.</p></div>
-    <div class="card"><h3>Memoria y observabilidad parcial</h3><p class="small">Recordar lo que no se ve durante minutos, con compañeros y adversarios que también actúan. El terreno de tu tesis.</p></div>
+    <div class="card"><h3>Capacidad frente a latencia</h3><p>Los modelos que razonan no caben en los lazos rápidos. La interfaz entre capas sigue siendo artesanal.</p></div>
+    <div class="card"><h3>Datos de robot</h3><p>No hay un internet de acciones. Se combinan teleoperación, simulación, vídeo y experiencia propia con fallos <a class="cite" data-ref="pi07"></a>.</p></div>
+    <div class="card"><h3>Generalidad frente a fiabilidad</h3><p>Un VLA generalista hace muchas tareas, pero con tasas de éxito por debajo de lo que exige un producto.</p></div>
+    <div class="card"><h3>Evaluación</h3><p>Pocos benchmarks reales comparables. Muchos resultados son demos de la propia empresa, sin verificación independiente.</p></div>
+    <div class="card"><h3>Garantías</h3><p>Las redes no ofrecen certificados de estabilidad ni de seguridad. Se recurre a filtros de seguridad y monitores.</p></div>
+    <div class="card"><h3>Memoria y observabilidad parcial</h3><p>Recordar lo que no se ve durante minutos, con compañeros y adversarios que también actúan. El terreno de tu tesis.</p></div>
   </div>
 </section>
 
@@ -924,12 +1223,12 @@
   <p class="kicker">Tendencias verificadas 2025–2026</p>
   <h2>Lo que ha cambiado en el último año</h2>
   <div class="cols">
-    <ul class="small">
+    <ul>
       <li><strong>VLAs más dirigibles y con memoria.</strong> π0.7 (abril de 2026): 5 B parámetros, backbone Gemma 3 4B, experto de acción de 860 M y codificador de historia de vídeo. Aprende de demostraciones, de datos autónomos con fallos y de fuentes que no son de robot <a class="cite" data-ref="pi07"></a>.</li>
       <li><strong>Razonamiento separado de la acción.</strong> Gemini Robotics 2 (julio de 2026) se presenta con ER 2, que planifica, sigue el progreso y llama a herramientas, y con un modelo On-Device 2 que corre sin red <a class="cite" data-ref="gemrob2"></a>.</li>
       <li><strong>Entrenar dentro del world model.</strong> Dreamer 4 consigue diamantes en Minecraft solo con datos offline, entrenando la política en imaginación <a class="cite" data-ref="dreamer4"></a>. Las revisiones de 2025–2026 consolidan el área <a class="cite" data-ref="wmsurvey"></a>.</li>
     </ul>
-    <ul class="small">
+    <ul>
       <li><strong>Redes pequeñas en el autopiloto.</strong> RAPTOR entra en PX4 y MonoRace vuela con la red en el microcontrolador <a class="cite" data-ref="px4raptor,monorace"></a>.</li>
       <li><strong>Ejecución asíncrona como estándar.</strong> Real-time chunking (NeurIPS 2025) permite usar políticas de difusión y flow con latencia real <a class="cite" data-ref="rtc"></a>.</li>
       <li><strong>VLAs para drones, un área joven.</strong> Las revisiones de 2026 recogen la evolución de la navegación visión-lenguaje para UAVs hacia sistemas agénticos y VLAs, y señalan como retos el sim-to-real y el hardware limitado <a class="cite" data-ref="uavvln,vlauav"></a>.</li>
@@ -942,12 +1241,12 @@
   <p class="kicker">Hacia dónde va (previsión, no hechos)</p>
   <h2>Qué cabe esperar en 2027 y después</h2>
   <div class="cols">
-    <ol class="small">
+    <ol>
       <li><strong>World models como banco de evaluación.</strong> Evaluar políticas en un modelo aprendido antes de volar, como complemento del simulador físico.</li>
       <li><strong>Modelos fundacionales en el dispositivo.</strong> La línea On-Device y la cuantización agresiva acercan los VLAs al ordenador de a bordo de un dron mediano.</li>
       <li><strong>Redes estandarizadas en los autopilotos</strong>, con interfaces, verificación y modos de fallo definidos.</li>
     </ol>
-    <ol class="small" start="4">
+    <ol start="4">
       <li><strong>Aprendizaje durante el despliegue.</strong> Políticas que mejoran con su propia experiencia, lo que obliga a resolver el olvido y la seguridad del aprendizaje online (A9).</li>
       <li><strong>Equipos heterogéneos.</strong> Coordinación entre drones y con robots de tierra, con compañeros que no se conocen de antemano (A15).</li>
       <li><strong>Más peso de la evaluación honesta</strong>: protocolos sim-to-real reproducibles y comparables (D1).</li>
@@ -967,7 +1266,7 @@
   <p class="kicker">Grupos, empresas y dónde se publica</p>
   <h2>Los nombres que vas a ver citados en todo el curso</h2>
   <div class="cols c3 body">
-    <div class="stack small">
+    <div class="stack">
       <h3>Grupos de robótica aérea</h3>
       <ul>
         <li>UZH Robotics and Perception Group: Swift, vuelo ágil</li>
@@ -977,7 +1276,7 @@
         <li>UPenn GRASP, ETH Zürich, CMU AirLab</li>
       </ul>
     </div>
-    <div class="stack small">
+    <div class="stack">
       <h3>Foundation models y aprendizaje</h3>
       <ul>
         <li>Physical Intelligence: π0 a π0.7, real-time chunking</li>
@@ -987,7 +1286,7 @@
         <li>UC Berkeley, Stanford, CMU, MIT</li>
       </ul>
     </div>
-    <div class="stack small">
+    <div class="stack">
       <h3>Dónde se publica</h3>
       <ul>
         <li>Conferencias: ICRA, IROS, RSS, CoRL</li>
@@ -1066,10 +1365,10 @@
         <path class="ln-accent ln-dash" d="M360 100 V138" marker-end="url(#ar5)"/>
       </svg>
     </figure>
-    <div class="stack small">
+    <div class="stack">
       <p>Un esquema posible, no el único: el <strong>filtro físico</strong> (EKF) da el estado del dron a la velocidad de los lazos; el <strong>belief latente</strong> resume lo que no se ve (dónde puede estar el objetivo, qué hará un compañero) a la velocidad de la percepción; el <strong>world model</strong> lo entrena y permite imaginar antes de decidir.</p>
       <div class="callout tesis"><span class="tag">Preguntas abiertas</span>
-        <ol class="small">
+        <ol>
           <li>¿Cómo se combina un filtro físico con un belief aprendido sin que se contradigan?</li>
           <li>¿A qué frecuencia tiene que correr un world model para un dron?</li>
           <li>¿Cómo se adapta online sin perder la seguridad?</li>
@@ -1191,33 +1490,33 @@
     <div class="card">
       <span class="meta">ESENCIAL 1 · 45 MIN</span>
       <h3>Swift, Nature 2023 <a class="cite" data-ref="swift"></a></h3>
-      <p class="small"><strong>Lee:</strong> resumen, figura 2 y la sección de métodos sobre política y residuales.</p>
-      <p class="small"><strong>Busca:</strong> espacio de observación y de acción, cómo se identifican los residuales y qué hace Betaflight.</p>
-      <p class="small"><strong>Responde:</strong> ¿qué parte del éxito se debe al aprendizaje y qué parte al autopiloto clásico?</p>
+      <p><strong>Lee:</strong> resumen, figura 2 y la sección de métodos sobre política y residuales.</p>
+      <p><strong>Busca:</strong> espacio de observación y de acción, cómo se identifican los residuales y qué hace Betaflight.</p>
+      <p><strong>Responde:</strong> ¿qué parte del éxito se debe al aprendizaje y qué parte al autopiloto clásico?</p>
     </div>
     <div class="card">
       <span class="meta">ESENCIAL 2 · 45 MIN</span>
       <h3>MonoRace, 2026 <a class="cite" data-ref="monorace"></a></h3>
-      <p class="small"><strong>Lee:</strong> resumen, vista general de métodos y la sección de la G&amp;CNet.</p>
-      <p class="small"><strong>Busca:</strong> por qué se eliminan los lazos internos y cómo maneja el EKF la saturación del acelerómetro.</p>
-      <p class="small"><strong>Responde:</strong> ¿qué ganas y qué pierdes al mandar comandos de motor directamente?</p>
+      <p><strong>Lee:</strong> resumen, vista general de métodos y la sección de la G&amp;CNet.</p>
+      <p><strong>Busca:</strong> por qué se eliminan los lazos internos y cómo maneja el EKF la saturación del acelerómetro.</p>
+      <p><strong>Responde:</strong> ¿qué ganas y qué pierdes al mandar comandos de motor directamente?</p>
     </div>
     <div class="card">
       <span class="meta">ESENCIAL 3 · 40 MIN</span>
       <h3>GR00T N1, 2025 <a class="cite" data-ref="groot"></a></h3>
-      <p class="small"><strong>Lee:</strong> introducción y sección 2 (arquitectura).</p>
-      <p class="small"><strong>Busca:</strong> cómo se conectan System 2 y System 1, el tamaño del chunk y los tiempos de inferencia.</p>
-      <p class="small"><strong>Responde:</strong> ¿podría esta arquitectura controlar un multirrotor? ¿Qué capa tendrías que cambiar?</p>
+      <p><strong>Lee:</strong> introducción y sección 2 (arquitectura).</p>
+      <p><strong>Busca:</strong> cómo se conectan System 2 y System 1, el tamaño del chunk y los tiempos de inferencia.</p>
+      <p><strong>Responde:</strong> ¿podría esta arquitectura controlar un multirrotor? ¿Qué capa tendrías que cambiar?</p>
     </div>
   </div>
-  <p class="small"><strong>Para profundizar:</strong> la revisión de carreras autónomas de Hanover et al. <a class="cite" data-ref="hanover2024"></a>, la de foundation models en robótica de Firoozi et al. <a class="cite" data-ref="firoozi"></a>, la de world models para IA encarnada <a class="cite" data-ref="wmsurvey"></a> y el artículo original de Brooks <a class="cite" data-ref="brooks1986"></a>.</p>
+  <p><strong>Para profundizar:</strong> la revisión de carreras autónomas de Hanover et al. <a class="cite" data-ref="hanover2024"></a>, la de foundation models en robótica de Firoozi et al. <a class="cite" data-ref="firoozi"></a>, la de world models para IA encarnada <a class="cite" data-ref="wmsurvey"></a> y el artículo original de Brooks <a class="cite" data-ref="brooks1986"></a>.</p>
 </section>
 
 <section class="slide">
   <p class="kicker">Laboratorio 0 · ≈ 3 h</p>
   <h2>Prepara el banco de trabajo del proyecto hilo</h2>
   <div class="cols w60">
-    <ol class="small">
+    <ol>
       <li>Crea el proyecto con <code>uv</code> e instala JAX con soporte CUDA para tu GPU (o en CPU, si no hay GPU). Comprueba que <code>jax.devices()</code> ve la GPU.</li>
       <li>Monta la estructura del repositorio: <code>dinamica/</code>, <code>control/</code>, <code>estimacion/</code>, <code>sim/</code>, <code>experimentos/</code>, con tests desde el primer día.</li>
       <li>Escribe un integrador RK4 genérico y pruébalo con un péndulo simple: compara con la solución analítica para ángulos pequeños.</li>
@@ -1226,7 +1525,7 @@
     </ol>
     <div class="stack">
       <div class="callout clave"><span class="tag">Entregable</span>Un repositorio con tests en verde, una tabla de pasos por segundo y una gráfica de estabilidad frente a retardo comparada con la teoría.</div>
-      <p class="small">El enunciado completo está en <code>temas/M0_mapa-del-campo/lab/README.md</code>.</p>
+      <p>El enunciado completo está en <code>temas/M0_mapa-del-campo/lab/README.md</code>.</p>
     </div>
   </div>
 </section>
@@ -1237,7 +1536,7 @@
   <div class="cols">
     <div class="stack">
       <p>PX4, ROS 2 y casi todo el código de tiempo real están en C++. No es un tema del curso, pero en la Fase 5 lo necesitarás para leer y modificar código real.</p>
-      <ul class="small">
+      <ul>
         <li><strong>learncpp.com</strong>: curso gratuito y muy completo para empezar desde cero.</li>
         <li><strong><em>A Tour of C++</em></strong> (Stroustrup, 3.ª ed., 2022): visión compacta de C++ moderno, ideal tras lo básico.</li>
         <li><strong>C++ Core Guidelines</strong> (isocpp.github.io/CppCoreGuidelines): cómo escribirlo bien.</li>
@@ -1349,44 +1648,55 @@
 <h3>Notación general</h3>
 <p>Aquí hay poca matemática: casi todo el tema son nombres de sistemas y siglas, que están en el grupo «Siglas». Para las fórmulas, el tiempo se mide en segundos y la frecuencia en hercios.</p>
 <dl>
-<dt>\(\Rightarrow\), \('\)</dt><dd data-hojas="29">En la hoja del retardo, \(\Rightarrow\) significa «por tanto»; la prima en \(\mathrm{PM}'\) marca el valor con retardo, distinto del original.</dd>
-<dt>\(\approx\), \(\gtrsim\)</dt><dd data-hojas="29">«Aproximadamente igual» y «algo mayor o igual que», en las cuentas del retardo admisible.</dd>
-<dt>\(|\cdot|\)</dt><dd data-hojas="29">Módulo (valor absoluto) de un número complejo, como en \(|L(j\omega_c)|=1\).</dd>
-<dt>\(\angle\)</dt><dd data-hojas="29">Fase (argumento) de un número complejo: \(\angle L(j\omega_c)\) es la fase de la ganancia de lazo.</dd>
-<dt>\(\pi\)</dt><dd data-hojas="29">Constante 3,14159…; \(2\pi f_c\) pasa de hercios a rad/s y \(\pi\) rad son 180°.</dd>
+<dt>\(\Rightarrow\), \('\)</dt><dd data-hojas="33">En las hojas del retardo, \(\Rightarrow\) significa «por tanto»; la prima en \(\mathrm{PM}'\) marca el valor con retardo, distinto del original.</dd>
+<dt>\(\approx\), \(\gtrsim\)</dt><dd data-hojas="33">«Aproximadamente igual» y «algo mayor o igual que», en las cuentas del retardo admisible.</dd>
+<dt>\(|\cdot|\)</dt><dd data-hojas="33">Módulo (valor absoluto) de un número complejo, como en \(|L(j\omega_c)|=1\).</dd>
+<dt>\(\angle\)</dt><dd data-hojas="31,33">Fase (argumento) de un número complejo: \(\angle L(j\omega_c)\) es la fase de la ganancia de lazo.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="33">Constante 3,14159…; \(2\pi f_c\) pasa de hercios a rad/s y \(\pi\) rad son 180°.</dd>
 </dl>
 <h3>Parte 1: el robot como lazo cerrado</h3>
 <dl>
 <dt>\(s(t)\)</dt><dd data-hojas="6">Estado oculto del mundo físico en el instante \(t\), en el esquema del lazo (figura). Lo que el robot no ve directamente.</dd>
 <dt>\(b(s)\)</dt><dd data-hojas="6">Belief: distribución sobre el estado oculto \(s\) que mantiene el bloque de estimación (figura del lazo).</dd>
 <dt>\(\tau_s\), \(\tau_e\), \(\tau_d\), \(\tau_a\)</dt><dd data-hojas="6">Retardos de cada tramo del lazo: sensores, estimación, decisión y actuadores. Su suma es \(\tau = \tau_s + \tau_e + \tau_d + \tau_a\), el tiempo que el mundo evoluciona durante una vuelta del lazo.</dd>
-<dt>\(\tau\)</dt><dd data-hojas="6,29">Retardo total del lazo (hoja 6) o retardo puro en la hoja de la latencia (escalar, en segundos).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="6,31">Retardo total del lazo (hoja 6) o retardo puro en las hojas de la latencia (escalar, en segundos).</dd>
 </dl>
-<h3>Parte 4: la trampa de la latencia</h3>
+<h3>Parte 4: la trampa de la latencia y el action chunking</h3>
 <dl>
-<dt>\(s\) (Laplace)</dt><dd data-hojas="29">Variable compleja de Laplace de las funciones de transferencia. No es el estado \(s\) de la hoja 6.</dd>
-<dt>\(j\)</dt><dd data-hojas="29">Unidad imaginaria, en \(L(j\omega)\): evaluar la ganancia de lazo en una frecuencia real.</dd>
-<dt>\(e^{-s\tau}\)</dt><dd data-hojas="29">Función de transferencia de un retardo puro \(\tau\): no cambia la ganancia (\(|e^{-j\omega\tau}|=1\)) y resta una fase \(\omega\tau\) a cada frecuencia.</dd>
-<dt>\(L(s)\)</dt><dd data-hojas="29">Ganancia de lazo del sistema sin retardo, función de transferencia en lazo abierto.</dd>
-<dt>\(L_\tau(s)\)</dt><dd data-hojas="29">Ganancia de lazo con retardo: \(L_\tau(s)=L(s)\,e^{-s\tau}\).</dd>
-<dt>\(\omega\)</dt><dd data-hojas="29">Frecuencia angular en rad/s (\(\omega = 2\pi f\)). El retardo resta la fase \(\omega\tau\).</dd>
-<dt>\(\omega_c\)</dt><dd data-hojas="29">Frecuencia angular de cruce: aquella en la que \(|L(j\omega_c)|=1\).</dd>
-<dt>\(f_c\)</dt><dd data-hojas="29">Frecuencia de cruce en hercios, \(f_c = \omega_c/2\pi\).</dd>
-<dt>\(\mathrm{PM}\)</dt><dd data-hojas="29">Margen de fase del lazo: \(\mathrm{PM}=\pi+\angle L(j\omega_c)\). Cuánta fase sobra antes de perder la estabilidad.</dd>
-<dt>\(\mathrm{PM}'\)</dt><dd data-hojas="29">Margen de fase con retardo: \(\mathrm{PM}'=\mathrm{PM}-\omega_c\tau\). El lazo cerrado pierde la estabilidad cuando \(\mathrm{PM}'\le 0\).</dd>
-<dt>\(\tau_{\max}\)</dt><dd data-hojas="29">Retardo máximo admisible, \(\mathrm{PM}/(2\pi f_c)\); con \(\mathrm{PM}=45^\circ\), \(\approx 0{,}125/f_c\).</dd>
-<dt>\(t+\tau\)</dt><dd data-hojas="30">Instante futuro en el que actuará el dron; un world model puede imaginar el estado en \(t+\tau\) antes de decidir.</dd>
-<dt>\(k\) (pasos de retardo)</dt><dd data-hojas="50">Número de pasos de retardo del lazo de prueba del laboratorio 0 (un integrador con un P).</dd>
+<dt>\(s\) (Laplace)</dt><dd data-hojas="31">Variable compleja de Laplace de las funciones de transferencia. No es el estado \(s\) de la hoja 6.</dd>
+<dt>\(j\)</dt><dd data-hojas="31">Unidad imaginaria, en \(L(j\omega)\): evaluar la ganancia de lazo en una frecuencia real.</dd>
+<dt>\(e^{-s\tau}\)</dt><dd data-hojas="33,31">Función de transferencia de un retardo puro \(\tau\): no cambia la ganancia (\(|e^{-j\omega\tau}|=1\)) y resta una fase \(\omega\tau\) a cada frecuencia.</dd>
+<dt>\(L(s)\)</dt><dd data-hojas="31">Ganancia de lazo del sistema sin retardo, función de transferencia en lazo abierto.</dd>
+<dt>\(L_\tau(s)\)</dt><dd data-hojas="33">Ganancia de lazo con retardo: \(L_\tau(s)=L(s)\,e^{-s\tau}\).</dd>
+<dt>\(\omega\)</dt><dd data-hojas="31">Frecuencia angular en rad/s (\(\omega = 2\pi f\)). El retardo resta la fase \(\omega\tau\).</dd>
+<dt>\(\omega_c\)</dt><dd data-hojas="31">Frecuencia angular de cruce: aquella en la que \(|L(j\omega_c)|=1\).</dd>
+<dt>\(f_c\)</dt><dd data-hojas="31,35">Frecuencia de cruce en hercios, \(f_c = \omega_c/2\pi\).</dd>
+<dt>\(\mathrm{PM}\)</dt><dd data-hojas="31,32">Margen de fase del lazo: \(\mathrm{PM}=\pi+\angle L(j\omega_c)\). Cuánta fase sobra antes de perder la estabilidad.</dd>
+<dt>\(\mathrm{PM}'\)</dt><dd data-hojas="33">Margen de fase con retardo: \(\mathrm{PM}'=\mathrm{PM}-\omega_c\tau\). El lazo cerrado pierde la estabilidad cuando \(\mathrm{PM}'\le 0\).</dd>
+<dt>\(\tau_{\max}\)</dt><dd data-hojas="33,35">Retardo máximo admisible, \(\mathrm{PM}/(2\pi f_c)\); con \(\mathrm{PM}=45^\circ\), \(\approx 0{,}125/f_c\).</dd>
+<dt>\(C(s)\), \(G(s)\)</dt><dd data-hojas="31">Funciones de transferencia del controlador y del dron (la planta) en el lazo de ejemplo; su producto es \(L(s)\).</dd>
+<dt>\(e\), \(u\), \(y\)</dt><dd data-hojas="31">Señales del lazo de ejemplo: error (consigna menos medida), mando del controlador y salida del dron.</dd>
+<dt>\(|L(j\omega)|\), \(\angle L(j\omega)\)</dt><dd data-hojas="31,32">Cuánto amplifica y cuánto desfasa una vuelta del lazo a una senoide de frecuencia \(\omega\); en el diagrama de Bode, módulo en dB y fase en grados.</dd>
+<dt>\(f\)</dt><dd data-hojas="31,36">Frecuencia en hercios, \(f=\omega/2\pi\). En las hojas del action chunking, frecuencia de control: acciones por segundo que se ejecutan.</dd>
+<dt>\(\varphi_m\)</dt><dd data-hojas="31">Margen de fase con la notación de A2; es el mismo \(\mathrm{PM}\).</dd>
+<dt>\(x(t)\), \(y(t)\), \(X(s)\), \(Y(s)\)</dt><dd data-hojas="33,34">En el paso 1 de la derivación, una señal cualquiera, su versión retrasada \(y(t)=x(t-\tau)\) y sus transformadas de Laplace. En el integrador con retardo, \(x\) es la variable controlada.</dd>
+<dt>\(K\)</dt><dd data-hojas="32,34">Ganancia del lazo de ejemplo, en 1/s: \(\sqrt2\,p\) en el Bode de la hoja 32; \(10\ \mathrm{s^{-1}}\) en el integrador con un P de la hoja 34, donde fija el cruce \(\omega_c=K\).</dd>
+<dt>\(p\)</dt><dd data-hojas="32">Polo del lazo de ejemplo del Bode (rad/s), colocado en el cruce para que aporte −45°.</dd>
+<dt>\(\dot x\), \(u=-K\,x\)</dt><dd data-hojas="34">Derivada temporal de \(x\) y ley de control proporcional del integrador con retardo, \(\dot x(t)=-K\,x(t-\tau)\).</dd>
+<dt>\(H\)</dt><dd data-hojas="36">Número de acciones de un chunk. Para no quedarse sin acciones con una latencia \(\tau\) y control a \(f\) Hz, \(H\ge\tau f\).</dd>
+<dt>\(i\) (acción del chunk)</dt><dd data-hojas="37">Índice de una acción dentro del chunk; se decide con una observación de edad \(\tau+(i-1)/f\).</dd>
+<dt>\(t+\tau\)</dt><dd data-hojas="37">Instante futuro en el que actuará el dron; un world model puede imaginar el estado en \(t+\tau\) antes de decidir.</dd>
+<dt>\(k\) (pasos de retardo)</dt><dd data-hojas="57">Número de pasos de retardo del lazo de prueba del laboratorio 0 (un integrador con un P).</dd>
 </dl>
 <h3>Parte 8 y autoevaluación: belief y RSSM</h3>
 <dl>
-<dt>\(b_t(s)\)</dt><dd data-hojas="48">Belief en el instante \(t\): \(b_t(s)=p(s_t\mid o_{1:t},a_{1:t-1})\), la distribución a posteriori del estado oculto dada la historia.</dd>
-<dt>\(s_t\)</dt><dd data-hojas="48">Estado oculto en el instante \(t\).</dd>
-<dt>\(o_{1:t}\)</dt><dd data-hojas="48">Observaciones desde el instante 1 hasta \(t\).</dd>
-<dt>\(a_{1:t-1}\)</dt><dd data-hojas="48">Acciones desde el instante 1 hasta \(t-1\).</dd>
-<dt>\(h_t\)</dt><dd data-hojas="48">Estado determinista recurrente del RSSM que resume la historia.</dd>
-<dt>\(z_t\)</dt><dd data-hojas="48">Latente estocástico del RSSM en el instante \(t\).</dd>
-<dt>\(q(z_t\mid h_t,o_t)\)</dt><dd data-hojas="48">Posterior del latente dado \(h_t\) y la observación \(o_t\); se entrena con un objetivo variacional (ELBO).</dd>
+<dt>\(b_t(s)\)</dt><dd data-hojas="55">Belief en el instante \(t\): \(b_t(s)=p(s_t\mid o_{1:t},a_{1:t-1})\), la distribución a posteriori del estado oculto dada la historia.</dd>
+<dt>\(s_t\)</dt><dd data-hojas="55">Estado oculto en el instante \(t\).</dd>
+<dt>\(o_{1:t}\)</dt><dd data-hojas="55">Observaciones desde el instante 1 hasta \(t\).</dd>
+<dt>\(a_{1:t-1}\)</dt><dd data-hojas="55">Acciones desde el instante 1 hasta \(t-1\).</dd>
+<dt>\(h_t\)</dt><dd data-hojas="55">Estado determinista recurrente del RSSM que resume la historia.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="55">Latente estocástico del RSSM en el instante \(t\).</dd>
+<dt>\(q(z_t\mid h_t,o_t)\)</dt><dd data-hojas="55">Posterior del latente dado \(h_t\) y la observación \(o_t\); se entrena con un objetivo variacional (ELBO).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
@@ -1398,87 +1708,88 @@
 <dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
 <dt>MARL</dt><dd data-hojas="4">Multi-agent reinforcement learning: refuerzo con varios agentes.</dd>
 <dt>JAX</dt><dd data-hojas="4">Biblioteca de cálculo numérico con diferenciación automática y compilación para GPU; el proyecto hilo del curso está escrito en ella.</dd>
-<dt>PID</dt><dd data-hojas="9">Controlador proporcional-integral-derivativo; en Betaflight, el lazo de velocidad angular.</dd>
-<dt>P</dt><dd data-hojas="50">Controlador proporcional, el del lazo con retardo del laboratorio 0.</dd>
-<dt>INDI</dt><dd data-hojas="27">Incremental nonlinear dynamic inversion: control por inversión de dinámica incremental, solución clásica del lazo de rate.</dd>
-<dt>LQR</dt><dd data-hojas="27">Linear-quadratic regulator: control óptimo lineal-cuadrático.</dd>
-<dt>NMPC</dt><dd data-hojas="27">Nonlinear model predictive control: control predictivo con modelo no lineal.</dd>
-<dt>MPC</dt><dd data-hojas="15">Model predictive control: control que optimiza sobre un horizonte con un modelo.</dd>
-<dt>MPCC</dt><dd data-hojas="27">Model predictive contouring control: MPC de seguimiento de contorno, listado como planificación clásica.</dd>
-<dt>TD-MPC2</dt><dd data-hojas="15">World model con MPC por muestreo dentro de su espacio latente.</dd>
+<dt>PID</dt><dd data-hojas="10">Controlador proporcional-integral-derivativo; en Betaflight y PX4, el lazo de velocidad angular.</dd>
+<dt>P</dt><dd data-hojas="57">Controlador proporcional, el del lazo con retardo del laboratorio 0.</dd>
+<dt>INDI</dt><dd data-hojas="28">Incremental nonlinear dynamic inversion: control por inversión de dinámica incremental, solución clásica del lazo de rate.</dd>
+<dt>LQR</dt><dd data-hojas="28">Linear-quadratic regulator: control óptimo lineal-cuadrático.</dd>
+<dt>NMPC</dt><dd data-hojas="28">Nonlinear model predictive control: control predictivo con modelo no lineal.</dd>
+<dt>MPC</dt><dd data-hojas="16">Model predictive control: control que optimiza sobre un horizonte con un modelo.</dd>
+<dt>MPCC</dt><dd data-hojas="28">Model predictive contouring control: MPC de seguimiento de contorno, listado como planificación clásica.</dd>
+<dt>TD-MPC2</dt><dd data-hojas="16">World model con MPC por muestreo dentro de su espacio latente.</dd>
+<dt>ESKF</dt><dd data-hojas="4">Error-state Kalman filter: filtro de Kalman que estima el error respecto a un estado nominal; el estimador del hito H1.</dd>
 <dt>EKF</dt><dd data-hojas="8">Extended Kalman filter: filtro de Kalman aplicado al modelo linealizado; estimador de estado en la pila del dron.</dd>
 <dt>VIO</dt><dd data-hojas="8">Visual-inertial odometry: estimación del movimiento con cámara e IMU.</dd>
-<dt>SLAM</dt><dd data-hojas="14">Simultaneous localization and mapping: localizarse y construir el mapa a la vez.</dd>
+<dt>SLAM</dt><dd data-hojas="15">Simultaneous localization and mapping: localizarse y construir el mapa a la vez.</dd>
 <dt>IMU</dt><dd data-hojas="8">Inertial measurement unit: acelerómetro y giróscopo.</dd>
-<dt>PnP</dt><dd data-hojas="22">Perspective-n-point: cálculo de la pose de la cámara a partir de puntos conocidos, aquí las esquinas de puerta.</dd>
-<dt>RSSM</dt><dd data-hojas="18">Recurrent state-space model: el modelo latente de Dreamer, con parte determinista y parte estocástica; mantiene un belief aprendido.</dd>
-<dt>ELBO</dt><dd data-hojas="48">Evidence lower bound: objetivo variacional con el que se entrena el posterior del latente.</dd>
-<dt>PPO</dt><dd data-hojas="21">Proximal policy optimization: algoritmo de RL con el que se entrenó la política de Swift.</dd>
-<dt>MLP</dt><dd data-hojas="21">Multilayer perceptron: red neuronal densa, como la 2×128 de Swift.</dd>
-<dt>G&amp;CNet</dt><dd data-hojas="22">Red de guiado y control de MonoRace (3×64) que corre en la controladora y manda los motores.</dd>
-<dt>U-Net</dt><dd data-hojas="21">Red convolucional de segmentación; el detector de puertas de Swift.</dd>
-<dt>GPU, CPU</dt><dd data-hojas="21">Unidad de procesamiento gráfico y unidad central de proceso; en la hoja 21 se indica dónde corre cada red de Swift.</dd>
-<dt>MCU</dt><dd data-hojas="27">Microcontrolador: la capa de la controladora de vuelo.</dd>
-<dt>RTOS</dt><dd data-hojas="34">Real-time operating system: sistema operativo de tiempo real (NuttX, ChibiOS).</dd>
-<dt>PREEMPT_RT</dt><dd data-hojas="26">Conjunto de parches de tiempo real de Linux, incluido en el kernel principal desde la versión 6.12.</dd>
-<dt>STM32, STM32H7, STM32H743</dt><dd data-hojas="21,22">Familia de microcontroladores de las controladoras de vuelo; el H743 va a 480 MHz en MonoRace.</dd>
-<dt>Jetson TX2, Orin NX, AGX Thor</dt><dd data-hojas="21,22,34">Ordenadores de a bordo con GPU de NVIDIA: TX2 en Swift, Orin NX en MonoRace, AGX Thor para humanoides.</dd>
-<dt>RTX 3090</dt><dd data-hojas="16">GPU de consumo con la que se entrenó Swift.</dd>
-<dt>NED/ENU, FRD/FLU</dt><dd data-hojas="33">Convenciones de ejes (norte-este-abajo, este-norte-arriba; delante-derecha-abajo, delante-izquierda-arriba) que causan fallos al cambiar de software.</dd>
-<dt>SE(3)</dt><dd data-hojas="15">Grupo de movimientos rígidos en 3D (rotación y traslación); el control geométrico y el cuerpo rígido se formulan en él.</dd>
+<dt>PnP</dt><dd data-hojas="23">Perspective-n-point: cálculo de la pose de la cámara a partir de puntos conocidos, aquí las esquinas de puerta.</dd>
+<dt>RSSM</dt><dd data-hojas="19">Recurrent state-space model: el modelo latente de Dreamer, con parte determinista y parte estocástica; mantiene un belief aprendido.</dd>
+<dt>ELBO</dt><dd data-hojas="55">Evidence lower bound: objetivo variacional con el que se entrena el posterior del latente.</dd>
+<dt>PPO</dt><dd data-hojas="22">Proximal policy optimization: algoritmo de RL con el que se entrenó la política de Swift.</dd>
+<dt>MLP</dt><dd data-hojas="22">Multilayer perceptron: red neuronal densa, como la 2×128 de Swift.</dd>
+<dt>G&amp;CNet</dt><dd data-hojas="23">Red de guiado y control de MonoRace (3×64) que corre en la controladora y manda los motores.</dd>
+<dt>U-Net</dt><dd data-hojas="22">Red convolucional de segmentación; el detector de puertas de Swift.</dd>
+<dt>GPU, CPU</dt><dd data-hojas="22">Unidad de procesamiento gráfico y unidad central de proceso; en la hoja 22 se indica dónde corre cada red de Swift.</dd>
+<dt>MCU</dt><dd data-hojas="28">Microcontrolador: la capa de la controladora de vuelo.</dd>
+<dt>RTOS</dt><dd data-hojas="41">Real-time operating system: sistema operativo de tiempo real (NuttX, ChibiOS).</dd>
+<dt>PREEMPT_RT</dt><dd data-hojas="27">Conjunto de parches de tiempo real de Linux, incluido en el kernel principal desde la versión 6.12.</dd>
+<dt>STM32, STM32H7, STM32H743</dt><dd data-hojas="22,23">Familia de microcontroladores de las controladoras de vuelo; el H743 va a 480 MHz en MonoRace.</dd>
+<dt>Jetson TX2, Orin NX, AGX Thor</dt><dd data-hojas="22,23,41">Ordenadores de a bordo con GPU de NVIDIA: TX2 en Swift, Orin NX en MonoRace, AGX Thor para humanoides.</dd>
+<dt>RTX 3090</dt><dd data-hojas="17">GPU de consumo con la que se entrenó Swift.</dd>
+<dt>NED/ENU, FRD/FLU</dt><dd data-hojas="40">Convenciones de ejes (norte-este-abajo, este-norte-arriba; delante-derecha-abajo, delante-izquierda-arriba) que causan fallos al cambiar de software.</dd>
+<dt>SE(3)</dt><dd data-hojas="16">Grupo de movimientos rígidos en 3D (rotación y traslación); el control geométrico y el cuerpo rígido se formulan en él.</dd>
 <dt>ESC</dt><dd data-hojas="6">Electronic speed controller: electrónica que regula cada motor.</dd>
-<dt>DShot</dt><dd data-hojas="26">Protocolo digital entre controladora y ESC, con telemetría de RPM.</dd>
-<dt>SPI, UART, MIPI CSI</dt><dd data-hojas="26">Buses de la pila: SPI para la IMU, UART (o Ethernet) con el ordenador de a bordo, MIPI CSI o USB para las cámaras.</dd>
-<dt>MAVLink</dt><dd data-hojas="26">Protocolo de mensajes entre el ordenador de a bordo y la controladora.</dd>
-<dt>uXRCE-DDS</dt><dd data-hojas="26">Puente de PX4 hacia ROS 2 para comunicarse con el ordenador de a bordo.</dd>
-<dt>ROS, ROS 2</dt><dd data-hojas="15">Robot Operating System: software de investigación y, en su segunda versión, estándar de producción.</dd>
-<dt>PX4</dt><dd data-hojas="9">Autopiloto abierto de arquitectura de nodos; publica el giróscopo para control a IMU_GYRO_RATEMAX.</dd>
-<dt>IMU_GYRO_RATEMAX</dt><dd data-hojas="9">Parámetro de PX4 con la tasa de publicación del giróscopo para control (400 Hz por defecto).</dd>
-<dt>ArduPilot</dt><dd data-hojas="26">Autopiloto abierto alternativo, con ChibiOS.</dd>
-<dt>NuttX, ChibiOS</dt><dd data-hojas="26">Sistemas operativos de tiempo real de PX4 y de ArduPilot.</dd>
-<dt>Betaflight</dt><dd data-hojas="9">Firmware de controladora de carreras; fija el giróscopo a su tasa nativa y corre el PID a esa tasa.</dd>
-<dt>BLHeli32</dt><dd data-hojas="21">Firmware de los ESC en Swift.</dd>
-<dt>MPU6000, BMI270</dt><dd data-hojas="9">IMUs citadas con sus tasas de giróscopo (8 kHz y 3,2 kHz).</dd>
-<dt>SITL, HIL</dt><dd data-hojas="32">Software-in-the-loop (firmware real en simulación) y hardware-in-the-loop (con su hardware).</dd>
-<dt>Gazebo, Isaac Sim, Isaac Lab, MuJoCo MJX, Genesis</dt><dd data-hojas="32">Simuladores citados como ejemplos de entrenamiento o de validación.</dd>
-<dt>Aerial Gym, OmniDrones, Flightmare, AirSim</dt><dd data-hojas="32">Simuladores y entornos de drones citados en la hoja de simulación.</dd>
-<dt>A2RL</dt><dd data-hojas="20">Competición de carreras autónomas de drones de Abu Dabi, ganada por MonoRace.</dd>
-<dt>FPV</dt><dd data-hojas="20">First-person view: pilotaje desde la cámara del dron.</dd>
-<dt>STARMAC</dt><dd data-hojas="20">Plataforma de cuadricópteros de laboratorio (2007).</dd>
-<dt>PIXHAWK</dt><dd data-hojas="20">Diseño de dron con visión a bordo y origen de la controladora y de PX4.</dd>
-<dt>CAD2RL</dt><dd data-hojas="16">Política de vuelo entrenada solo en simulación con domain randomization.</dd>
-<dt>Swift</dt><dd data-hojas="16">Sistema de UZH que gana a campeones humanos de carreras de drones.</dd>
-<dt>MonoRace</dt><dd data-hojas="20">Sistema de TU Delft con una sola cámara y una red en la controladora a 500 Hz.</dd>
-<dt>RAPTOR</dt><dd data-hojas="20">Política fundacional diminuta para cuadricópteros, en PX4 como módulo experimental.</dd>
-<dt>Neural-Fly</dt><dd data-hojas="20">Método de adaptación rápida en viento fuerte.</dd>
-<dt>ANYmal</dt><dd data-hojas="16">Robot cuadrúpedo cuya locomoción se aprendió en GPU.</dd>
-<dt>Shakey</dt><dd data-hojas="12">Primer robot móvil que razona sobre sus acciones (SRI).</dd>
-<dt>STRIPS</dt><dd data-hojas="12">Planificación simbólica con precondiciones y efectos.</dd>
-<dt>A*</dt><dd data-hojas="12">Búsqueda heurística de caminos de coste mínimo, nacida en Shakey.</dd>
-<dt>SayCan, Code as Policies</dt><dd data-hojas="12,17">LLMs como planificadores de robots (2022).</dd>
-<dt>RT-1, RT-2</dt><dd data-hojas="17">Primeros VLAs a escala.</dd>
-<dt>ACT</dt><dd data-hojas="17">Action chunking with transformers: política que predice secuencias de acciones.</dd>
-<dt>Diffusion Policy</dt><dd data-hojas="17">Política generativa por difusión.</dd>
-<dt>OpenVLA</dt><dd data-hojas="17">VLA abierto.</dd>
-<dt>\(\pi_0\), \(\pi_{0.7}\)</dt><dd data-hojas="17,37">Modelos VLA de Physical Intelligence; en la hoja 37 se dan sus tamaños, como afirmación de la empresa.</dd>
+<dt>DShot</dt><dd data-hojas="27">Protocolo digital entre controladora y ESC, con telemetría de RPM.</dd>
+<dt>SPI, UART, MIPI CSI</dt><dd data-hojas="27">Buses de la pila: SPI para la IMU, UART (o Ethernet) con el ordenador de a bordo, MIPI CSI o USB para las cámaras.</dd>
+<dt>MAVLink</dt><dd data-hojas="27">Protocolo de mensajes entre el ordenador de a bordo y la controladora.</dd>
+<dt>uXRCE-DDS</dt><dd data-hojas="27">Puente de PX4 hacia ROS 2 para comunicarse con el ordenador de a bordo.</dd>
+<dt>ROS, ROS 2</dt><dd data-hojas="16">Robot Operating System: software de investigación y, en su segunda versión, estándar de producción.</dd>
+<dt>PX4</dt><dd data-hojas="10">Autopiloto abierto de arquitectura de nodos; publica el giróscopo para control a IMU_GYRO_RATEMAX.</dd>
+<dt>IMU_GYRO_RATEMAX</dt><dd data-hojas="10">Parámetro de PX4 con la tasa de publicación del giróscopo para control (400 Hz por defecto).</dd>
+<dt>ArduPilot</dt><dd data-hojas="27">Autopiloto abierto alternativo, con ChibiOS.</dd>
+<dt>NuttX, ChibiOS</dt><dd data-hojas="27">Sistemas operativos de tiempo real de PX4 y de ArduPilot.</dd>
+<dt>Betaflight</dt><dd data-hojas="10">Firmware de controladora de carreras; fija el giróscopo a su tasa nativa y corre el PID a esa tasa.</dd>
+<dt>BLHeli32</dt><dd data-hojas="22">Firmware de los ESC en Swift.</dd>
+<dt>MPU6000, BMI270</dt><dd data-hojas="10">IMUs citadas con sus tasas de giróscopo (8 kHz y 3,2 kHz).</dd>
+<dt>SITL, HIL</dt><dd data-hojas="39">Software-in-the-loop (firmware real en simulación) y hardware-in-the-loop (con su hardware).</dd>
+<dt>Gazebo, Isaac Sim, Isaac Lab, MuJoCo MJX, Genesis</dt><dd data-hojas="39">Simuladores citados como ejemplos de entrenamiento o de validación.</dd>
+<dt>Aerial Gym, OmniDrones, Flightmare, AirSim</dt><dd data-hojas="39">Simuladores y entornos de drones citados en la hoja de simulación.</dd>
+<dt>A2RL</dt><dd data-hojas="21">Competición de carreras autónomas de drones de Abu Dabi, ganada por MonoRace.</dd>
+<dt>FPV</dt><dd data-hojas="21">First-person view: pilotaje desde la cámara del dron.</dd>
+<dt>STARMAC</dt><dd data-hojas="21">Plataforma de cuadricópteros de laboratorio (2007).</dd>
+<dt>PIXHAWK</dt><dd data-hojas="21">Diseño de dron con visión a bordo y origen de la controladora y de PX4.</dd>
+<dt>CAD2RL</dt><dd data-hojas="17">Política de vuelo entrenada solo en simulación con domain randomization.</dd>
+<dt>Swift</dt><dd data-hojas="17">Sistema de UZH que gana a campeones humanos de carreras de drones.</dd>
+<dt>MonoRace</dt><dd data-hojas="21">Sistema de TU Delft con una sola cámara y una red en la controladora a 500 Hz.</dd>
+<dt>RAPTOR</dt><dd data-hojas="21">Política fundacional diminuta para cuadricópteros, en PX4 como módulo experimental.</dd>
+<dt>Neural-Fly</dt><dd data-hojas="21">Método de adaptación rápida en viento fuerte.</dd>
+<dt>ANYmal</dt><dd data-hojas="17">Robot cuadrúpedo cuya locomoción se aprendió en GPU.</dd>
+<dt>Shakey</dt><dd data-hojas="13">Primer robot móvil que razona sobre sus acciones (SRI).</dd>
+<dt>STRIPS</dt><dd data-hojas="13">Planificación simbólica con precondiciones y efectos.</dd>
+<dt>A*</dt><dd data-hojas="13">Búsqueda heurística de caminos de coste mínimo, nacida en Shakey.</dd>
+<dt>SayCan, Code as Policies</dt><dd data-hojas="13,18">LLMs como planificadores de robots (2022).</dd>
+<dt>RT-1, RT-2</dt><dd data-hojas="18">Primeros VLAs a escala.</dd>
+<dt>ACT</dt><dd data-hojas="18">Action chunking with transformers: política que predice secuencias de acciones.</dd>
+<dt>Diffusion Policy</dt><dd data-hojas="18">Política generativa por difusión.</dd>
+<dt>OpenVLA</dt><dd data-hojas="18">VLA abierto.</dd>
+<dt>\(\pi_0\), \(\pi_{0.7}\)</dt><dd data-hojas="18,44">Modelos VLA de Physical Intelligence; en la hoja 44 se dan sus tamaños, como afirmación de la empresa.</dd>
 <dt>Helix</dt><dd data-hojas="8">VLA de Figure con System 2 lento (7–9 Hz) y System 1 rápido (200 Hz).</dd>
 <dt>GR00T N1</dt><dd data-hojas="8">Modelo de NVIDIA con System 2 y System 1; tarda 63,9 ms en generar 16 acciones.</dd>
-<dt>Gemini Robotics, Gemini Robotics 2, ER 2</dt><dd data-hojas="8,17,37">Modelos de Google DeepMind; el backbone corre en la nube y entregan chunks de acciones.</dd>
-<dt>Dreamer, DreamerV3, Dreamer 4, DayDreamer</dt><dd data-hojas="17">Familia de world models que aprenden imaginando en un espacio latente.</dd>
-<dt>V-JEPA 2, Genie 3</dt><dd data-hojas="17">World models de 2025.</dd>
+<dt>Gemini Robotics, Gemini Robotics 2, ER 2</dt><dd data-hojas="8,18,44">Modelos de Google DeepMind; el backbone corre en la nube y entregan chunks de acciones.</dd>
+<dt>Dreamer, DreamerV3, Dreamer 4, DayDreamer</dt><dd data-hojas="18">Familia de world models que aprenden imaginando en un espacio latente.</dd>
+<dt>V-JEPA 2, Genie 3</dt><dd data-hojas="18">World models de 2025.</dd>
 <dt>System 1 / System 2</dt><dd data-hojas="8">Capa rápida que actúa y capa lenta que razona en las arquitecturas jerárquicas.</dd>
-<dt>S1, S2</dt><dd data-hojas="24">Abreviaturas de System 1 y System 2 en la figura de tamaño frente a frecuencia.</dd>
-<dt>DARPA</dt><dd data-hojas="14">Agencia que organizó el Grand Challenge ganado por Stanley en 2005.</dd>
-<dt>UZH, TU Delft, UPenn GRASP, ETH, CMU, MIT, UC Berkeley</dt><dd data-hojas="40">Grupos y universidades citados en la hoja de quién hace qué.</dd>
-<dt>ICRA, IROS, RSS, CoRL</dt><dd data-hojas="40">Conferencias de robótica.</dd>
-<dt>NeurIPS, ICML, ICLR</dt><dd data-hojas="40">Conferencias de aprendizaje automático.</dd>
-<dt>T-RO, RA-L, IJRR</dt><dd data-hojas="40">Revistas de robótica; también Science Robotics.</dd>
-<dt>cs.RO, cs.LG</dt><dd data-hojas="40">Categorías de arXiv para robótica y aprendizaje automático.</dd>
-<dt>UAV</dt><dd data-hojas="37">Unmanned aerial vehicle: vehículo aéreo no tripulado.</dd>
-<dt>uv</dt><dd data-hojas="50">Gestor de proyectos y paquetes de Python con el que se crea el entorno del laboratorio 0.</dd>
-<dt>RK4</dt><dd data-hojas="50">Integrador Runge-Kutta de cuarto orden del laboratorio 0.</dd>
-<dt>vmap</dt><dd data-hojas="50">Función de JAX que vectoriza un cálculo sobre muchos entornos a la vez.</dd>
-<dt>CUDA</dt><dd data-hojas="50">Plataforma de cálculo en GPU NVIDIA que usa JAX.</dd>
+<dt>S1, S2</dt><dd data-hojas="25">Abreviaturas de System 1 y System 2 en la figura de tamaño frente a frecuencia.</dd>
+<dt>DARPA</dt><dd data-hojas="15">Agencia que organizó el Grand Challenge ganado por Stanley en 2005.</dd>
+<dt>UZH, TU Delft, UPenn GRASP, ETH, CMU, MIT, UC Berkeley</dt><dd data-hojas="47">Grupos y universidades citados en la hoja de quién hace qué.</dd>
+<dt>ICRA, IROS, RSS, CoRL</dt><dd data-hojas="47">Conferencias de robótica.</dd>
+<dt>NeurIPS, ICML, ICLR</dt><dd data-hojas="47">Conferencias de aprendizaje automático.</dd>
+<dt>T-RO, RA-L, IJRR</dt><dd data-hojas="47">Revistas de robótica; también Science Robotics.</dd>
+<dt>cs.RO, cs.LG</dt><dd data-hojas="47">Categorías de arXiv para robótica y aprendizaje automático.</dd>
+<dt>UAV</dt><dd data-hojas="44">Unmanned aerial vehicle: vehículo aéreo no tripulado.</dd>
+<dt>uv</dt><dd data-hojas="57">Gestor de proyectos y paquetes de Python con el que se crea el entorno del laboratorio 0.</dd>
+<dt>RK4</dt><dd data-hojas="57">Integrador Runge-Kutta de cuarto orden del laboratorio 0.</dd>
+<dt>vmap</dt><dd data-hojas="57">Función de JAX que vectoriza un cálculo sobre muchos entornos a la vez.</dd>
+<dt>CUDA</dt><dd data-hojas="57">Plataforma de cálculo en GPU NVIDIA que usa JAX.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>

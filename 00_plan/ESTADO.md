@@ -8,7 +8,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| M0 | Mapa del campo | ✅ | 2026-11-06 | 55 hojas + lab 0. Plantilla de referencia. |
+| M0 | Mapa del campo | ✅ | 2026-11-06 | 62 hojas + lab 0 (eran 55; desplegado el 2026-11-07 tras la revisión de Pablo: cascada de lazos dibujada, tres arquitecturas de la pila dibujadas, el retardo que se come el margen de fase en cinco hojas con Bode calculado y τ_max = PM/(2πf_c) derivado y comprobado con el integrador del lab 0, trozos de acciones y edad de la observación en línea temporal; ejemplos en `figuras/ejemplos_m0.py`). Plantilla de referencia. |
 | M1 | Herramientas matemáticas | ✅ | 2026-11-06 | 84 hojas + lab (eran 44; rehecho el 2026-11-07 tras la revisión de Pablo). Modelo para temas con muchas derivaciones: notación por parte, derivaciones en tablas «paso / por qué» y ejemplos numéricos calculados en `figuras/ejemplos_m1.py`. |
 
 ## Fase 1 · El robot y su control
