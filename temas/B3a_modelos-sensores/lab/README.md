@@ -15,7 +15,7 @@ Caracterizar con datos reales el ruido de una IMU MEMS, construir un modelo de I
 | Deriva de posición sin corrección con la IMU de EuRoC (un eje) | 25 cm a 10 s; 29 m a 60 s | 3 |
 | Cizalla del obturador rodante: \(f\) = 458,65 px, 5 rad/s, 30 ms | 69 px | 5 |
 
-El script de las figuras está en `../figuras/figuras_b3a.py`.
+El script de las figuras está en `../figuras/figuras_b3a.py`; los ejemplos numéricos de la presentación, en `../figuras/ejemplos_b3a.py` (su salida, en `salida_ejemplos.txt`).
 
 ## 1. Allan de una IMU real (60 min)
 

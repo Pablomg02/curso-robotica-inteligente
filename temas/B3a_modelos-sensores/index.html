@@ -49,7 +49,7 @@
   <h2>La política nunca ve el estado: ve lo que el modelo de sensor le deja ver</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>En un POMDP, el modelo de observación \(p(o\mid s)\) es la mitad del problema. En simulación, ese modelo lo escribes tú: si es demasiado limpio, la política (y su belief) aprende a fiarse de algo que no existe.</li>
         <li>Los estimadores de A4 necesitan las densidades de ruido correctas: con valores optimistas, el filtro se cree más de lo que sabe (NEES alto).</li>
         <li>Lo que no se simula no se aprende a tolerar: sesgos que derivan, vibración, obturador rodante, retardos.</li>
@@ -82,7 +82,6 @@
   </div>
 </section>
 
-<!-- ============ PARTE 1 ============ -->
 <section class="slide divider" data-section="IMU">
   <p class="num">Parte 1</p>
   <h2>La IMU</h2>
@@ -90,42 +89,238 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">IMU · modelo de medida</p>
-  <h2>Medida = verdad + sesgo + ruido (y lo que suele olvidarse)</h2>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra de la IMU antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:13%">Símbolo</th><th>Qué es</th><th style="width:15%">Unidades</th><th style="width:21%">Ejemplo</th></tr>
+      <tr><td>\(\omega(t)\), \(\tilde\omega(t)\)</td><td>Velocidad angular verdadera en un eje y la que mide el giróscopo. La tilde marca siempre «lo que entrega el sensor»</td><td>rad/s</td><td>Guiñada a 2 rad/s</td></tr>
+      <tr><td>\(b(t)\), \(b_k\)</td><td><strong>Sesgo</strong>: lo que el giróscopo marca de más aunque no gire. Cambia despacio; \(b_k\) es su valor en la muestra \(k\)</td><td>rad/s</td><td>0,5 mrad/s (supuesto)</td></tr>
+      <tr><td>\(n(t)\); \(w(t)\), \(w_k\)</td><td><strong>Ruido blanco</strong> de la medida (sin memoria); ruido blanco unitario que hace pasear al sesgo, en discreto \(w_k\sim\mathcal N(0,1)\)</td><td>rad/s; —</td><td>—</td></tr>
+      <tr><td>\(\gamma\)</td><td><strong>Error del factor de escala</strong>: el giróscopo mide \((1+\gamma)\,\omega\) en vez de \(\omega\)</td><td>adimensional</td><td>1 % (supuesto)</td></tr>
+      <tr><td>\(\sigma_g\), \(\sigma_{b_g}\)</td><td>Densidades del ruido blanco y del paseo del sesgo del giróscopo (Kalibr). Como 1/√Hz = √s, rad/s/√Hz = rad/√s</td><td>rad/s/√Hz, rad/s²/√Hz</td><td>TUM VI: 8,0·10⁻⁵ y 2,2·10⁻⁶</td></tr>
+      <tr><td>\(\sigma_a\), \(\sigma_{b_a}\)</td><td>Los mismos parámetros para el acelerómetro, que sigue el mismo modelo</td><td>m/s²/√Hz, m/s³/√Hz</td><td>TUM VI: 1,4·10⁻³ y 8,6·10⁻⁵</td></tr>
+      <tr><td>\(\Delta t\), \(f_s\); \(\sigma_{g,d}\)</td><td>Paso y frecuencia de muestreo (\(f_s = 1/\Delta t\)); desviación típica <em>por muestra</em> del ruido blanco, la de un simulador discreto</td><td>s, Hz; rad/s</td><td>5 ms, 200 Hz; 1,13·10⁻³ (hoja 11)</td></tr>
+      <tr><td>\(\tau\); \(N\), \(B\), \(K\)</td><td>Tiempo de promediado de la desviación de Allan y los tres coeficientes que se leen en su curva (hojas 12–18)</td><td>s; ver hoja 14</td><td>\(N = \sigma_g\), \(K = \sigma_{b_g}\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · qué estamos modelando</p>
+  <h2>De la velocidad angular verdadera a la muestra que lee el filtro</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 600 252" style="max-height:290px" role="img" aria-label="Diagrama de bloques del modelo de error de un giróscopo">
+      <defs><marker id="b3a-m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker><marker id="b3a-m7a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+      <text x="14" y="75" class="t-mono" font-size="15">ω(t)</text>
+      <text x="14" y="94" class="t-faint" font-size="12">verdad</text>
+      <path class="ln" d="M58 70 H92" marker-end="url(#b3a-m7)"/>
+      <rect x="94" y="48" width="92" height="44" rx="5" class="box"/>
+      <text x="140" y="76" text-anchor="middle" class="t-mono" font-size="14">× (1 + γ)</text>
+      <text x="140" y="110" text-anchor="middle" class="t-muted" font-size="12">factor de escala</text>
+      <path class="ln" d="M186 70 H220" marker-end="url(#b3a-m7)"/>
+      <circle cx="236" cy="70" r="14" class="box"/><text x="236" y="76" text-anchor="middle" font-size="18">+</text>
+      <path class="ln" d="M250 70 H324" marker-end="url(#b3a-m7)"/>
+      <circle cx="340" cy="70" r="14" class="box"/><text x="340" y="76" text-anchor="middle" font-size="18">+</text>
+      <path class="ln" d="M354 70 H378" marker-end="url(#b3a-m7)"/>
+      <rect x="380" y="44" width="122" height="52" rx="5" class="box-time"/>
+      <text x="441" y="66" text-anchor="middle" font-size="13">antialiasing</text>
+      <text x="441" y="86" text-anchor="middle" font-size="13">y muestreo Δt</text>
+      <path class="ln" d="M502 70 H534" marker-end="url(#b3a-m7)"/>
+      <text x="540" y="78" class="t-mono t-bold" font-size="15">ω</text><text x="541" y="64" class="t-mono t-bold" font-size="14">~</text><text x="551" y="82" class="t-mono t-bold" font-size="11">k</text>
+      <rect x="212" y="150" width="48" height="40" rx="5" class="box-accent"/>
+      <text x="236" y="177" text-anchor="middle" font-size="20">∫</text>
+      <path class="ln-accent" d="M236 150 V86" marker-end="url(#b3a-m7a)"/>
+      <text x="244" y="126" class="t-accent t-mono" font-size="14">b(t)</text>
+      <path class="ln-accent" d="M236 214 V192" marker-end="url(#b3a-m7a)"/>
+      <text x="236" y="230" text-anchor="middle" class="t-accent t-mono" font-size="13">σ_bg · w(t)</text>
+      <text x="236" y="247" text-anchor="middle" class="t-muted" font-size="12">paseo del sesgo</text>
+      <path class="ln-accent" d="M340 150 V86" marker-end="url(#b3a-m7a)"/>
+      <text x="340" y="170" text-anchor="middle" class="t-accent t-mono" font-size="13">n(t): ruido blanco</text>
+      <text x="340" y="188" text-anchor="middle" class="t-muted" font-size="12">densidad σ_g</text>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <p class="small">Modelo estándar, por eje, para giróscopo (y, con sus parámetros, acelerómetro) <a class="cite" data-ref="kalibrwiki"></a>:</p>
-      \[ \tilde\omega(t) = \omega(t) + b(t) + n(t) \]
-      \[ \mathbb E[n(t_1)n(t_2)] = \sigma_g^2\,\delta(t_1 - t_2),\qquad \dot b = \sigma_{b_g}\,w(t) \]
-      <ul class="small">
-        <li>\(\sigma_g\): densidad de ruido (rad/s/√Hz), el «angle random walk» de las hojas de datos.</li>
-        <li>\(\sigma_{b_g}\): paseo aleatorio del sesgo (rad/s²/√Hz).</li>
-        <li>Lo que este modelo no tiene: factor de escala, desalineamiento entre ejes, sensibilidad del giróscopo a la aceleración, dependencia de la temperatura, vibración y saturación.</li>
-      </ul>
-      <div class="callout realidad"><span class="tag">Kalibr, sobre su propio modelo</span>Se obtiene en reposo y a temperatura constante, así que «es optimista». Con los sensores más baratos, «puede ser necesario multiplicar los parámetros por 10 o más» <a class="cite" data-ref="kalibrwiki"></a>.</div>
+      <p>El modelo completo, por eje: la verdad escalada, más el sesgo, más el ruido; el sesgo es la integral de un ruido blanco.</p>
+      \[ \tilde\omega(t) = (1+\gamma)\,\omega(t) + b(t) + n(t),\qquad \dot b(t) = \sigma_{b_g}\,w(t) \]
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: de tiempo continuo a discreto</summary>
-        <p class="small">Si la señal se filtra con un paso bajo ideal en \(1/(2\Delta t)\) y se muestrea, la media de \(n\) en un intervalo \(\Delta t\) tiene varianza</p>
-        \[ \mathrm{Var}\Big[\frac{1}{\Delta t}\int_0^{\Delta t} n\,dt\Big] = \frac{\sigma_g^2}{\Delta t}\;\Rightarrow\; \sigma_{g,d} = \frac{\sigma_g}{\sqrt{\Delta t}}. \]
-        <p class="small">El sesgo es una integral de ruido blanco: en un paso acumula varianza \(\sigma_{b_g}^2\Delta t\):</p>
-        \[ b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\;w_k,\qquad w_k\sim\mathcal N(0,1). \]
-        <p class="small">Si submuestreas sin filtrar (quedarte con una de cada \(m\) muestras), la desviación por muestra no cambia y la fórmula deja de valer <a class="cite" data-ref="kalibrwiki"></a>.</p>
-      </details>
+      <p><strong>Entra</strong> la velocidad angular verdadera; <strong>sale</strong> una muestra cada \(\Delta t\). El problema de esta parte: qué valen \(\gamma\), \(\sigma_g\) y \(\sigma_{b_g}\) en una IMU real, cómo se miden (Allan) y cómo se simulan a paso \(\Delta t\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · modelo de medida</p>
+  <h2>Cada término del modelo: qué es, en qué unidades y cómo se mide</h2>
+  <p>El modelo estándar de Kalibr es el del esquema con \(\gamma = 0\): \(\tilde\omega = \omega + b + n\), con \(\mathbb E[n(t_1)n(t_2)] = \sigma_g^2\,\delta(t_1-t_2)\) y \(\dot b = \sigma_{b_g} w\) <a class="cite" data-ref="kalibrwiki"></a>. La delta de Dirac \(\delta\) dice que el ruido de dos instantes distintos no está correlacionado.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Término</th><th>Qué es físicamente</th><th style="width:16%">Parámetro</th><th style="width:26%">Cómo se mide</th></tr>
+      <tr><td>Sesgo inicial \(b(0)\)</td><td>Lo que marca en reposo; cambia en cada encendido y con la temperatura</td><td>rad/s</td><td>Media en reposo; calibración térmica de PX4</td></tr>
+      <tr><td>Ruido blanco \(n\)</td><td>Fluctuación rápida sin memoria de la electrónica</td><td>\(\sigma_g\), rad/s/√Hz</td><td>Allan: pendiente −1/2, en \(\tau\) = 1 s</td></tr>
+      <tr><td>Paseo del sesgo</td><td>El sesgo se desplaza al azar y no vuelve: crece como \(\sqrt t\)</td><td>\(\sigma_{b_g}\), rad/s²/√Hz</td><td>Allan: pendiente +1/2, en \(\tau\) = 3 s</td></tr>
+      <tr><td>Inestabilidad del sesgo</td><td>Fluctuación lenta intermedia (ruido \(1/f\)); Kalibr no la modela</td><td>\(B\), rad/s</td><td>Allan: mínimo / 0,664</td></tr>
+      <tr><td>Escala \(\gamma\), desalineamiento</td><td>Ganancia errónea y ejes no del todo perpendiculares: error proporcional a la señal</td><td>adimensional</td><td>Giros a velocidad conocida</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Kalibr, sobre su propio modelo</span>Se obtiene en reposo y a temperatura constante, así que «es optimista». Con los sensores más baratos, «puede ser necesario multiplicar los parámetros por 10 o más» <a class="cite" data-ref="kalibrwiki"></a>.</div>
+    <div class="callout error"><span class="tag">Lo que el modelo estándar no tiene</span>Escala, desalineamiento, sensibilidad del giróscopo a la aceleración, temperatura, vibración y saturación. En vuelo aparecen todos.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · cómo se ve cada término</p>
+  <h2>El error de medida, \(\tilde\omega - \omega\), término a término</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Cuatro trazas del error de un giróscopo: sesgo, ruido blanco, paseo del sesgo y factor de escala">
+        <line x1="150" y1="50" x2="480" y2="50" class="ln-rule"/>
+        <line x1="150" y1="120" x2="480" y2="120" class="ln-rule"/>
+        <line x1="150" y1="190" x2="480" y2="190" class="ln-rule"/>
+        <line x1="150" y1="260" x2="480" y2="260" class="ln-rule"/>
+        <text x="10" y="46" class="t-bold" font-size="13">sesgo b</text><text x="10" y="63" class="t-muted" font-size="12">desplaza el cero</text>
+        <text x="10" y="116" class="t-bold" font-size="13">ruido blanco n</text><text x="10" y="133" class="t-muted" font-size="12">sin memoria</text>
+        <text x="10" y="186" class="t-bold" font-size="13">paseo del sesgo</text><text x="10" y="203" class="t-muted" font-size="12">deriva sin volver</text>
+        <text x="10" y="256" class="t-bold" font-size="13">escala γ</text><text x="10" y="273" class="t-muted" font-size="12">error ∝ ω</text>
+        <path d="M150.0,37.0 L480.0,37.0" class="ln-accent" stroke-width="2.2"/>
+        <path d="M150.0,117.5 L150.7,113.3 L151.3,117.3 L152.0,125.4 L152.6,119.7 L153.3,119.9 L154.0,139.9 L154.6,118.4 L155.3,122.8 L155.9,123.8 L156.6,129.0 L157.3,120.7 L157.9,115.6 L158.6,114.6 L159.2,113.3 L159.9,119.6 L160.6,118.5 L161.2,132.1 L161.9,126.0 L162.5,122.5 L163.2,114.3 L163.9,113.5 L164.5,116.7 L165.2,120.7 L165.8,121.0 L166.5,124.8 L167.2,111.0 L167.8,107.1 L168.5,121.4 L169.1,125.3 L169.8,108.8 L170.5,101.3 L171.1,126.2 L171.8,123.0 L172.4,122.4 L173.1,128.0 L173.8,116.2 L174.4,117.9 L175.1,127.8 L175.7,128.6 L176.4,113.4 L177.1,114.9 L177.7,124.4 L178.4,120.2 L179.0,124.2 L179.7,116.4 L180.4,113.5 L181.0,131.4 L181.7,112.9 L182.3,111.8 L183.0,106.6 L183.7,125.0 L184.3,127.1 L185.0,121.8 L185.6,123.2 L186.3,122.2 L187.0,124.9 L187.6,128.4 L188.3,122.9 L188.9,130.4 L189.6,119.3 L190.3,106.7 L190.9,122.6 L191.6,118.2 L192.2,126.4 L192.9,126.3 L193.6,119.7 L194.2,113.4 L194.9,138.1 L195.5,113.7 L196.2,113.7 L196.9,126.7 L197.5,130.2 L198.2,118.9 L198.8,125.8 L199.5,124.4 L200.2,119.0 L200.8,117.6 L201.5,124.7 L202.1,130.3 L202.8,120.6 L203.5,121.6 L204.1,123.8 L204.8,116.5 L205.4,116.4 L206.1,128.1 L206.8,118.5 L207.4,124.1 L208.1,113.8 L208.7,113.9 L209.4,115.0 L210.1,119.7 L210.7,116.6 L211.4,123.9 L212.0,116.2 L212.7,119.1 L213.4,126.6 L214.0,115.7 L214.7,120.8 L215.3,118.6 L216.0,130.1 L216.7,131.8 L217.3,111.3 L218.0,128.8 L218.6,113.6 L219.3,121.0 L220.0,117.7 L220.6,117.9 L221.3,107.2 L221.9,115.7 L222.6,124.1 L223.3,113.6 L223.9,113.5 L224.6,119.7 L225.2,118.6 L225.9,107.0 L226.6,123.1 L227.2,121.5 L227.9,120.1 L228.5,118.8 L229.2,121.8 L229.9,101.2 L230.5,121.0 L231.2,111.8 L231.8,115.9 L232.5,130.1 L233.2,128.8 L233.8,115.7 L234.5,107.7 L235.1,114.1 L235.8,113.1 L236.5,103.1 L237.1,130.9 L237.8,124.3 L238.4,115.8 L239.1,119.9 L239.8,120.6 L240.4,119.1 L241.1,125.7 L241.7,114.1 L242.4,125.4 L243.1,123.9 L243.7,118.7 L244.4,115.0 L245.0,133.3 L245.7,114.9 L246.4,125.2 L247.0,127.8 L247.7,122.4 L248.3,124.0 L249.0,126.3 L249.7,117.7 L250.3,130.4 L251.0,119.9 L251.6,121.8 L252.3,107.4 L253.0,126.2 L253.6,106.5 L254.3,133.9 L254.9,123.5 L255.6,117.0 L256.3,125.4 L256.9,124.0 L257.6,127.9 L258.2,130.5 L258.9,121.8 L259.6,135.3 L260.2,111.5 L260.9,123.1 L261.5,123.9 L262.2,126.9 L262.9,118.1 L263.5,113.8 L264.2,116.6 L264.8,125.4 L265.5,124.0 L266.2,123.9 L266.8,137.0 L267.5,108.5 L268.1,128.5 L268.8,113.0 L269.5,125.8 L270.1,112.8 L270.8,118.0 L271.4,118.0 L272.1,121.3 L272.8,113.0 L273.4,129.5 L274.1,111.2 L274.7,118.6 L275.4,124.1 L276.1,126.2 L276.7,127.4 L277.4,125.6 L278.0,122.7 L278.7,122.0 L279.4,125.0 L280.0,120.7 L280.7,119.7 L281.3,128.7 L282.0,125.1 L282.7,113.5 L283.3,116.1 L284.0,123.6 L284.6,126.9 L285.3,120.9 L286.0,112.5 L286.6,118.4 L287.3,117.0 L287.9,118.3 L288.6,129.1 L289.3,115.6 L289.9,120.0 L290.6,113.5 L291.2,119.5 L291.9,92.4 L292.6,114.7 L293.2,119.8 L293.9,127.4 L294.5,118.2 L295.2,130.0 L295.9,121.6 L296.5,125.7 L297.2,122.6 L297.8,119.6 L298.5,128.4 L299.2,111.8 L299.8,120.6 L300.5,122.4 L301.1,130.2 L301.8,119.0 L302.5,123.0 L303.1,118.7 L303.8,123.2 L304.4,119.3 L305.1,114.2 L305.8,114.2 L306.4,113.6 L307.1,117.5 L307.7,119.8 L308.4,123.6 L309.1,113.8 L309.7,121.9 L310.4,129.3 L311.0,115.2 L311.7,125.6 L312.4,112.0 L313.0,127.4 L313.7,122.6 L314.3,137.8 L315.0,118.6 L315.7,138.9 L316.3,122.2 L317.0,130.6 L317.6,120.2 L318.3,101.4 L319.0,121.9 L319.6,115.2 L320.3,105.4 L320.9,109.6 L321.6,122.3 L322.3,117.9 L322.9,113.1 L323.6,126.3 L324.2,124.0 L324.9,131.1 L325.6,110.0 L326.2,124.5 L326.9,120.9 L327.5,125.8 L328.2,122.1 L328.9,109.9 L329.5,122.6 L330.2,121.0 L330.8,120.8 L331.5,122.7 L332.2,108.8 L332.8,121.2 L333.5,123.0 L334.1,116.7 L334.8,117.2 L335.5,125.1 L336.1,122.6 L336.8,114.4 L337.4,110.0 L338.1,121.2 L338.8,116.7 L339.4,106.9 L340.1,132.7 L340.7,115.8 L341.4,126.6 L342.1,117.7 L342.7,113.5 L343.4,130.0 L344.0,126.2 L344.7,101.6 L345.4,119.9 L346.0,125.4 L346.7,121.2 L347.3,129.0 L348.0,122.5 L348.7,128.4 L349.3,117.7 L350.0,115.6 L350.6,115.2 L351.3,121.9 L352.0,116.2 L352.6,117.1 L353.3,117.4 L353.9,115.9 L354.6,128.6 L355.3,120.5 L355.9,133.9 L356.6,116.0 L357.2,104.7 L357.9,114.5 L358.6,116.4 L359.2,124.4 L359.9,120.0 L360.5,118.7 L361.2,107.2 L361.9,130.7 L362.5,114.6 L363.2,107.2 L363.8,114.1 L364.5,120.0 L365.2,118.3 L365.8,120.2 L366.5,110.9 L367.1,116.2 L367.8,116.9 L368.5,120.3 L369.1,116.7 L369.8,134.4 L370.4,127.4 L371.1,107.3 L371.8,121.0 L372.4,123.4 L373.1,119.4 L373.7,116.5 L374.4,111.5 L375.1,123.1 L375.7,124.9 L376.4,114.7 L377.0,119.6 L377.7,111.0 L378.4,129.9 L379.0,131.5 L379.7,129.0 L380.3,131.1 L381.0,116.6 L381.7,111.9 L382.3,96.6 L383.0,126.2 L383.6,121.3 L384.3,123.1 L385.0,120.3 L385.6,118.5 L386.3,122.3 L386.9,119.5 L387.6,121.9 L388.3,115.2 L388.9,115.4 L389.6,118.5 L390.2,104.1 L390.9,112.2 L391.6,125.0 L392.2,113.8 L392.9,128.0 L393.5,127.4 L394.2,131.4 L394.9,119.8 L395.5,124.3 L396.2,109.7 L396.8,125.8 L397.5,117.1 L398.2,110.1 L398.8,104.8 L399.5,115.7 L400.1,112.1 L400.8,119.5 L401.5,118.9 L402.1,131.3 L402.8,124.8 L403.4,115.6 L404.1,119.4 L404.8,126.0 L405.4,118.8 L406.1,114.7 L406.7,110.5 L407.4,109.2 L408.1,99.5 L408.7,127.3 L409.4,117.3 L410.0,112.0 L410.7,121.2 L411.4,113.9 L412.0,110.8 L412.7,121.3 L413.3,113.0 L414.0,122.5 L414.7,120.6 L415.3,118.1 L416.0,118.4 L416.6,127.0 L417.3,125.1 L418.0,110.8 L418.6,113.3 L419.3,122.2 L419.9,111.5 L420.6,129.6 L421.3,110.5 L421.9,110.0 L422.6,123.9 L423.2,127.0 L423.9,116.6 L424.6,119.0 L425.2,134.2 L425.9,123.1 L426.5,122.9 L427.2,111.7 L427.9,105.3 L428.5,110.8 L429.2,127.6 L429.8,132.0 L430.5,129.0 L431.2,107.7 L431.8,109.7 L432.5,123.6 L433.1,133.9 L433.8,109.9 L434.5,111.1 L435.1,119.1 L435.8,121.4 L436.4,123.7 L437.1,121.3 L437.8,106.5 L438.4,122.2 L439.1,123.1 L439.7,125.4 L440.4,132.7 L441.1,115.3 L441.7,126.4 L442.4,119.4 L443.0,122.4 L443.7,111.1 L444.4,121.0 L445.0,115.8 L445.7,128.0 L446.3,116.4 L447.0,119.1 L447.7,122.3 L448.3,124.1 L449.0,104.5 L449.6,116.0 L450.3,127.5 L451.0,122.3 L451.6,122.3 L452.3,122.1 L452.9,124.7 L453.6,121.5 L454.3,118.4 L454.9,112.8 L455.6,125.1 L456.2,117.9 L456.9,115.8 L457.6,114.8 L458.2,118.1 L458.9,125.6 L459.5,129.2 L460.2,105.5 L460.9,126.1 L461.5,114.1 L462.2,125.1 L462.8,105.5 L463.5,127.4 L464.2,107.6 L464.8,117.0 L465.5,124.1 L466.1,123.5 L466.8,116.8 L467.5,110.1 L468.1,130.1 L468.8,110.8 L469.4,110.5 L470.1,120.6 L470.8,115.9 L471.4,120.7 L472.1,126.5 L472.7,104.7 L473.4,119.0 L474.1,118.3 L474.7,105.2 L475.4,110.7 L476.0,120.0 L476.7,116.9 L477.4,112.9 L478.0,119.0 L478.7,124.2 L479.3,119.3" class="ln" stroke-width="1"/>
+        <path d="M150.0,190.0 L151.8,189.3 L153.7,189.1 L155.5,188.6 L157.3,189.1 L159.2,188.5 L161.0,188.1 L162.8,189.5 L164.7,189.0 L166.5,189.4 L168.3,189.5 L170.2,190.2 L172.0,190.0 L173.8,190.3 L175.7,190.8 L177.5,188.6 L179.3,189.3 L181.2,189.1 L183.0,189.7 L184.8,190.1 L186.7,190.5 L188.5,191.0 L190.3,190.8 L192.2,192.0 L194.0,191.3 L195.8,191.3 L197.7,190.2 L199.5,189.0 L201.3,188.4 L203.2,187.6 L205.0,188.2 L206.8,188.1 L208.7,187.8 L210.5,188.1 L212.3,188.1 L214.2,188.3 L216.0,188.4 L217.8,188.3 L219.7,188.6 L221.5,188.8 L223.3,189.6 L225.2,189.9 L227.0,189.2 L228.8,189.7 L230.7,190.0 L232.5,190.0 L234.3,188.7 L236.2,188.4 L238.0,188.4 L239.8,187.9 L241.7,187.1 L243.5,187.5 L245.3,187.4 L247.2,188.0 L249.0,187.3 L250.8,187.9 L252.7,187.9 L254.5,187.2 L256.3,187.0 L258.2,187.1 L260.0,187.6 L261.8,186.2 L263.7,186.8 L265.5,187.3 L267.3,187.6 L269.2,186.9 L271.0,186.9 L272.8,186.5 L274.7,184.7 L276.5,184.5 L278.3,185.3 L280.2,185.7 L282.0,185.4 L283.8,185.4 L285.7,186.3 L287.5,186.0 L289.3,186.5 L291.2,186.5 L293.0,186.7 L294.8,188.1 L296.7,189.2 L298.5,189.3 L300.3,189.5 L302.2,188.6 L304.0,188.7 L305.8,189.2 L307.7,189.1 L309.5,189.6 L311.3,189.6 L313.2,189.7 L315.0,191.1 L316.8,191.5 L318.7,190.6 L320.5,190.5 L322.3,190.8 L324.2,190.3 L326.0,190.3 L327.8,191.1 L329.7,191.4 L331.5,192.1 L333.3,191.9 L335.2,190.9 L337.0,190.8 L338.8,190.8 L340.7,190.2 L342.5,189.9 L344.3,190.0 L346.2,191.0 L348.0,190.7 L349.8,190.7 L351.7,189.7 L353.5,189.5 L355.3,188.6 L357.2,188.7 L359.0,189.0 L360.8,189.8 L362.7,190.6 L364.5,189.8 L366.3,190.6 L368.2,190.8 L370.0,189.8 L371.8,190.0 L373.7,190.6 L375.5,190.6 L377.3,190.2 L379.2,189.7 L381.0,189.6 L382.8,189.9 L384.7,189.8 L386.5,189.4 L388.3,189.5 L390.2,189.8 L392.0,188.3 L393.8,189.8 L395.7,190.5 L397.5,190.2 L399.3,190.9 L401.2,190.6 L403.0,190.6 L404.8,191.0 L406.7,191.3 L408.5,191.0 L410.3,191.5 L412.2,192.5 L414.0,192.7 L415.8,192.5 L417.7,192.4 L419.5,193.6 L421.3,194.5 L423.2,195.5 L425.0,196.4 L426.8,196.5 L428.7,197.0 L430.5,197.5 L432.3,197.4 L434.2,197.7 L436.0,196.9 L437.8,197.0 L439.7,198.0 L441.5,198.5 L443.3,197.5 L445.2,197.5 L447.0,198.2 L448.8,198.0 L450.7,197.5 L452.5,196.4 L454.3,196.1 L456.2,196.1 L458.0,196.9 L459.8,196.0 L461.7,196.2 L463.5,196.2 L465.3,197.2 L467.2,196.8 L469.0,197.1 L470.8,197.6 L472.7,197.9 L474.5,197.0 L476.3,197.1 L478.2,196.9" class="ln-tesis" stroke-width="2"/>
+        <path d="M150.0,260.0 L151.7,260.0 L153.3,260.0 L154.9,260.0 L156.6,260.0 L158.2,260.0 L159.9,260.0 L161.6,260.0 L163.2,260.0 L164.8,260.0 L166.5,260.0 L168.2,260.0 L169.8,260.0 L171.4,260.0 L173.1,260.0 L174.8,260.0 L176.4,260.0 L178.1,260.0 L179.7,260.0 L181.3,260.0 L183.0,260.0 L184.7,260.0 L186.3,260.0 L187.9,260.0 L189.6,260.0 L191.2,260.0 L192.9,260.0 L194.6,260.0 L196.2,260.0 L197.8,260.0 L199.5,260.0 L201.2,260.0 L202.8,260.0 L204.4,260.0 L206.1,260.0 L207.8,260.0 L209.4,260.0 L211.1,260.0 L212.7,260.0 L214.3,260.0 L216.0,260.0 L217.6,260.0 L219.3,260.0 L220.9,260.0 L222.6,260.0 L224.2,260.0 L225.9,260.0 L227.6,260.0 L229.2,260.0 L230.9,260.0 L232.5,260.0 L234.2,260.0 L235.8,260.0 L237.4,260.0 L239.1,260.0 L240.8,260.0 L242.4,260.0 L244.1,260.0 L245.7,260.0 L247.4,260.0 L249.0,260.0 L250.7,259.5 L252.3,259.0 L253.9,258.4 L255.6,257.9 L257.2,257.4 L258.9,256.9 L260.6,256.4 L262.2,255.8 L263.9,255.3 L265.5,254.8 L267.1,254.3 L268.8,253.8 L270.4,253.2 L272.1,252.7 L273.8,252.2 L275.4,251.7 L277.1,251.2 L278.7,250.6 L280.4,250.1 L282.0,249.6 L283.6,249.1 L285.3,248.6 L287.0,248.0 L288.6,247.5 L290.2,247.0 L291.9,246.5 L293.6,246.0 L295.2,245.4 L296.9,244.9 L298.5,244.4 L300.1,243.9 L301.8,243.4 L303.5,242.8 L305.1,242.3 L306.8,241.8 L308.4,241.3 L310.1,240.8 L311.7,240.2 L313.4,239.7 L315.0,239.2 L316.6,239.2 L318.3,239.2 L320.0,239.2 L321.6,239.2 L323.2,239.2 L324.9,239.2 L326.6,239.2 L328.2,239.2 L329.9,239.2 L331.5,239.2 L333.1,239.2 L334.8,239.2 L336.5,239.2 L338.1,239.2 L339.8,239.2 L341.4,239.2 L343.1,239.2 L344.7,239.2 L346.4,239.2 L348.0,239.2 L349.6,239.2 L351.3,239.2 L353.0,239.2 L354.6,239.2 L356.2,239.2 L357.9,239.2 L359.6,239.2 L361.2,239.2 L362.9,239.2 L364.5,239.2 L366.1,239.2 L367.8,239.2 L369.4,239.2 L371.1,239.2 L372.8,239.2 L374.4,239.2 L376.1,239.2 L377.7,239.2 L379.4,239.2 L381.0,239.2 L382.6,240.2 L384.3,241.3 L385.9,242.3 L387.6,243.4 L389.2,244.4 L390.9,245.4 L392.6,246.5 L394.2,247.5 L395.9,248.6 L397.5,249.6 L399.1,250.6 L400.8,251.7 L402.4,252.7 L404.1,253.8 L405.8,254.8 L407.4,255.8 L409.1,256.9 L410.7,257.9 L412.4,259.0 L414.0,260.0 L415.7,260.0 L417.3,260.0 L418.9,260.0 L420.6,260.0 L422.2,260.0 L423.9,260.0 L425.6,260.0 L427.2,260.0 L428.8,260.0 L430.5,260.0 L432.2,260.0 L433.8,260.0 L435.4,260.0 L437.1,260.0 L438.8,260.0 L440.4,260.0 L442.1,260.0 L443.7,260.0 L445.4,260.0 L447.0,260.0 L448.7,260.0 L450.3,260.0 L451.9,260.0 L453.6,260.0 L455.2,260.0 L456.9,260.0 L458.6,260.0 L460.2,260.0 L461.9,260.0 L463.5,260.0 L465.2,260.0 L466.8,260.0 L468.4,260.0 L470.1,260.0 L471.8,260.0 L473.4,260.0 L475.1,260.0 L476.7,260.0 L478.4,260.0" class="ln-time" stroke-width="2.2"/>
+        <text x="488" y="40" class="t-mono t-faint" font-size="11">±1 mrad/s</text><text x="488" y="64" class="t-mono t-faint" font-size="11">10 s</text>
+        <text x="488" y="110" class="t-mono t-faint" font-size="11">±4 mrad/s</text><text x="488" y="134" class="t-mono t-faint" font-size="11">10 s</text>
+        <text x="488" y="180" class="t-mono t-faint" font-size="11">±0,4 mrad/s</text><text x="488" y="204" class="t-mono t-faint" font-size="11">1 h</text>
+        <text x="488" y="250" class="t-mono t-faint" font-size="11">±25 mrad/s</text><text x="488" y="274" class="t-mono t-faint" font-size="11">10 s</text>
+        <text x="315" y="296" text-anchor="middle" class="t-muted" font-size="12">tiempo; cada fila con su escala (la línea gris es el cero)</text>
+      </svg>
+      <figcaption>Giróscopo con los parámetros de TUM VI a 200 Hz; el sesgo de 0,5 mrad/s y la escala del 1 % son supuestos. En la última fila, el dron gira a 2 rad/s entre 5 y 7 s. <code>ejemplos_b3a.py</code>, ejemplo 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Sesgo:</strong> una recta desplazada. Integrado, da un ángulo que crece lineal con \(t\).</p>
+      <p><strong>Ruido blanco:</strong> 1,13 mrad/s por muestra, pero se promedia: integrado, crece solo como \(\sqrt t\).</p>
+      <p><strong>Paseo del sesgo:</strong> invisible en 10 s; en una hora se aleja ±0,13 mrad/s (1σ) y no vuelve.</p>
+      <p><strong>Escala:</strong> cero en reposo y 20 mrad/s al girar a 2 rad/s. Una prueba en reposo (como Allan) no la ve.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · de continuo a discreto · 1</p>
+  <h2>De la densidad a la desviación por muestra: el factor \(1/\sqrt{\Delta t}\)</h2>
+  <p>Una muestra de una IMU bien filtrada es, en esencia, la <strong>media</strong> de la señal continua durante su paso \(\Delta t\). Promediar ruido blanco durante \(\Delta t\) divide su varianza entre \(\Delta t\): de ahí sale todo <a class="cite" data-ref="kalibrwiki"></a>.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\displaystyle \bar n_k = \frac{1}{\Delta t}\int_{t_k}^{t_k+\Delta t} n(t)\,dt\)</td><td>La muestra \(k\) es la media del ruido en su intervalo (filtro antialiasing ideal, paso bajo en \(1/(2\Delta t)\))</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\displaystyle \mathrm{Var}[\bar n_k] = \frac{1}{\Delta t^2}\int\!\!\int \mathbb E[n(t_1)\,n(t_2)]\,dt_1\,dt_2\)</td><td>La varianza de una integral de ruido de media nula es la doble integral de su covarianza</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\displaystyle = \frac{1}{\Delta t^2}\int\!\!\int \sigma_g^2\,\delta(t_1-t_2)\,dt_1\,dt_2 = \frac{\sigma_g^2\,\Delta t}{\Delta t^2}\)</td><td>Ruido blanco: la delta se come una integral y la otra deja la longitud del intervalo, \(\Delta t\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\sigma_{g,d} = \sigma_g/\sqrt{\Delta t} = \sigma_g\sqrt{f_s}\)</td><td>Raíz cuadrada. Unidades: (rad/s)·√s / √s = rad/s</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\displaystyle b_k - b_{k-1} = \sigma_{b_g}\int_{t_{k-1}}^{t_k} w(t)\,dt\)</td><td>Integrar \(\dot b = \sigma_{b_g}w\) durante un paso: el sesgo <em>acumula</em> ruido, no lo promedia</td></tr>
+      <tr><td><strong>6</strong></td><td>\(b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\;w_k,\quad w_k\sim\mathcal N(0,1)\)</td><td>Las cuentas 2–3 sin el \(1/\Delta t^2\) de la media: varianza \(\sigma_{b_g}^2\Delta t\) por paso</td></tr>
+    </table>
+  </div>
+  <p class="small muted">El ruido se divide por \(\sqrt{\Delta t}\) y el paso del sesgo se multiplica: muestrear más rápido da muestras más ruidosas, pero la misma información por segundo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · de continuo a discreto · 2</p>
+  <h2>Con los números de TUM VI a 200 Hz</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Qué</th><th>Cuenta</th><th>Resultado</th></tr>
+          <tr><td>Ruido del giróscopo por muestra</td><td>\(8{,}0\cdot10^{-5}\cdot\sqrt{200}\)</td><td class="n">1,13·10⁻³ rad/s</td></tr>
+          <tr><td>Ruido del acelerómetro por muestra</td><td>\(1{,}4\cdot10^{-3}\cdot\sqrt{200}\)</td><td class="n">0,0198 m/s²</td></tr>
+          <tr><td>Paso del sesgo del giróscopo</td><td>\(2{,}2\cdot10^{-6}\cdot\sqrt{0{,}005}\)</td><td class="n">1,56·10⁻⁷ rad/s</td></tr>
+          <tr><td>Sesgo tras 1 h (720 000 pasos)</td><td>\(2{,}2\cdot10^{-6}\cdot\sqrt{3600}\)</td><td class="n">1,32·10⁻⁴ rad/s = 27 °/h</td></tr>
+          <tr><td>Ángulo integrado en 1 h (ARW)</td><td>\(\sigma_g\sqrt t = 8{,}0\cdot10^{-5}\cdot 60\)</td><td class="n">4,8·10⁻³ rad = 0,28°</td></tr>
+        </table>
+      </div>
+      <p>La última fila explica la unidad de las hojas de datos: \(\sigma_g\) = 8,0·10⁻⁵ rad/s/√Hz son 0,275 °/√h, los grados que el ángulo integrado se aleja (1σ) en una hora.</p>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">Comprobación</span>
+        <p>Ruido de densidad 8,0·10⁻⁵ simulado a 200 kHz y promediado en ventanas de 5 ms: desviación 1,135·10⁻³ rad/s frente a los 1,131·10⁻³ de la fórmula. Si en vez de promediar te quedas con una muestra de cada mil, la desviación sigue siendo la de 200 kHz (3,5·10⁻² rad/s): sin filtro, submuestrear no reduce el ruido y la fórmula deja de valer <a class="cite" data-ref="kalibrwiki"></a>. <code>ejemplos_b3a.py</code>, ejemplo 2.</p>
+      </div>
       <div class="callout error"><span class="tag">Error frecuente</span>Poner en el simulador la densidad de la hoja de datos como desviación típica por muestra. A 200 Hz, la desviación por muestra es \(\sqrt{200} \approx 14\) veces la densidad.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">IMU · varianza de Allan</p>
-  <h2>La desviación de Allan separa los ruidos por su escala de tiempo</h2>
+  <p class="kicker">IMU · desviación de Allan · la idea</p>
+  <h2>Cortar la señal en cúmulos de duración \(\tau\) y comparar medias vecinas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 560 245" style="max-height:260px" role="img" aria-label="Señal de un giróscopo en reposo cortada en seis cúmulos con su media">
+      <defs><marker id="b3a-m12" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+      <line x1="40" y1="115" x2="540" y2="115" class="ln-rule"/>
+      <line x1="40" y1="25" x2="40" y2="205" class="ln-dash"/><line x1="123.3" y1="25" x2="123.3" y2="205" class="ln-dash"/><line x1="206.7" y1="25" x2="206.7" y2="205" class="ln-dash"/><line x1="290" y1="25" x2="290" y2="205" class="ln-dash"/><line x1="373.3" y1="25" x2="373.3" y2="205" class="ln-dash"/><line x1="456.7" y1="25" x2="456.7" y2="205" class="ln-dash"/><line x1="540" y1="25" x2="540" y2="205" class="ln-dash"/>
+      <path d="M44.2,159.0 L52.5,134.8 L60.8,91.1 L69.2,73.8 L77.5,105.4 L85.8,109.6 L94.2,83.0 L102.5,106.2 L110.8,104.5 L119.2,143.8 L127.5,101.8 L135.8,109.9 L144.2,109.7 L152.5,100.0 L160.8,97.0 L169.2,157.8 L177.5,136.4 L185.8,114.0 L194.2,89.9 L202.5,136.0 L210.8,107.5 L219.2,70.4 L227.5,127.0 L235.8,133.7 L244.2,100.0 L252.5,110.2 L260.8,95.6 L269.2,107.2 L277.5,71.7 L285.8,52.1 L294.2,134.4 L302.5,97.5 L310.8,105.8 L319.2,148.6 L327.5,122.4 L335.8,92.0 L344.2,105.1 L352.5,117.3 L360.8,113.6 L369.2,105.5 L377.5,128.0 L385.8,68.3 L394.2,125.0 L402.5,148.2 L410.8,96.9 L419.2,126.9 L427.5,67.9 L435.8,123.7 L444.2,98.1 L452.5,101.8 L460.8,86.9 L469.2,107.0 L477.5,103.5 L485.8,115.6 L494.2,111.2 L502.5,85.0 L510.8,136.1 L519.2,120.1 L527.5,134.5 L535.8,147.5" class="ln" stroke-width="1.2"/>
+      <line x1="40" y1="111.1" x2="123.3" y2="111.1" class="ln-accent" stroke-width="3.5"/>
+      <line x1="123.3" y1="115.3" x2="206.7" y2="115.3" class="ln-accent" stroke-width="3.5"/>
+      <line x1="206.7" y1="97.5" x2="290" y2="97.5" class="ln-accent" stroke-width="3.5"/>
+      <line x1="290" y1="114.2" x2="373.3" y2="114.2" class="ln-accent" stroke-width="3.5"/>
+      <line x1="373.3" y1="108.5" x2="456.7" y2="108.5" class="ln-accent" stroke-width="3.5"/>
+      <line x1="456.7" y1="114.7" x2="540" y2="114.7" class="ln-accent" stroke-width="3.5"/>
+      <path class="ln-time" d="M212 115.3 V100.5" marker-end="url(#b3a-m12)" stroke-width="2"/>
+      <text x="218" y="196" class="t-time t-mono" font-size="13">d₂ = <tspan text-decoration="overline">Ω</tspan>₃ − <tspan text-decoration="overline">Ω</tspan>₂ (flecha)</text>
+      <text x="81.7" y="40" text-anchor="middle" class="t-accent t-mono" font-size="13"><tspan text-decoration="overline">Ω</tspan>₁</text>
+      <text x="165" y="40" text-anchor="middle" class="t-accent t-mono" font-size="13"><tspan text-decoration="overline">Ω</tspan>₂</text>
+      <text x="248.3" y="40" text-anchor="middle" class="t-accent t-mono" font-size="13"><tspan text-decoration="overline">Ω</tspan>₃</text>
+      <path class="ln" d="M40 222 H123.3 M40 216 V228 M123.3 216 V228"/>
+      <text x="81.7" y="241" text-anchor="middle" class="t-mono" font-size="13">τ = m Δt</text>
+      <text x="330" y="236" class="t-muted" font-size="12">60 muestras en reposo, cúmulos de m = 10</text>
+    </svg>
+    <figcaption>Ruido blanco más un poco de paseo, valores ilustrativos. Datos: <code>ejemplos_b3a.py</code>, ejemplo 3.</figcaption>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con la señal promediada en ventanas de duración \(\tau\), \(\bar\Omega_k(\tau)\), la varianza de Allan es la mitad de la varianza de la diferencia entre ventanas consecutivas <a class="cite" data-ref="allan1966,ieee952,hou2004"></a>:</p>
-      \[ \sigma^2(\tau) = \tfrac12\,\mathbb E\big[(\bar\Omega_{k+1}(\tau) - \bar\Omega_k(\tau))^2\big]. \]
-      <p class="small">Con el ángulo integrado \(\theta_k\) y \(m = \tau f_s\) muestras por ventana, el estimador solapado usa todas las ventanas posibles:</p>
-      \[ \hat\sigma^2(\tau) = \frac{1}{2\tau^2(N-2m)}\sum_{k}\big(\theta_{k+2m} - 2\theta_{k+m} + \theta_k\big)^2 . \]
+      <p>\(\Omega\) es la salida del giróscopo en reposo (la \(\tilde\omega\) de antes) y \(\bar\Omega_k(\tau)\) su media en el cúmulo \(k\). La varianza de Allan es la mitad del cuadrado medio de la diferencia entre medias vecinas <a class="cite" data-ref="allan1966,ieee952,hou2004"></a>:</p>
+      \[ \sigma^2(\tau) = \tfrac12\,\mathbb E\big[(\bar\Omega_{k+1}(\tau) - \bar\Omega_k(\tau))^2\big] \]
+    </div>
+    <div class="stack">
+      <p><strong>Por qué distingue ruidos:</strong> si el ruido es blanco, cúmulos más largos dan medias más quietas y \(\sigma\) baja con \(\tau\). Si el sesgo pasea, cúmulos más largos se separan más y \(\sigma\) sube. Se repite para muchos \(\tau\) y se dibuja \(\sigma(\tau)\) en ejes logarítmicos.</p>
+      <p class="small muted">El ½ hace que, con ruido blanco, \(\sigma^2(\tau)\) sea la varianza de una sola media.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · desviación de Allan · a mano</p>
+  <h2>Doce muestras, tres valores de \(\tau\)</h2>
+  <p>Un giróscopo en reposo muestreado a 1 Hz da, en mrad/s: <span class="mono">2, 0, 1, 3, −1, 1, 0, 2, 4, 1, −2, 1</span>. Para cada \(\tau\): medias de cada cúmulo, diferencias entre vecinas, y la mitad de la media de sus cuadrados.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:8%">\(\tau\)</th><th style="width:22%">Medias \(\bar\Omega_k\)</th><th style="width:26%">Diferencias \(d_k\)</th><th>\(\sigma^2 = \tfrac12\,\overline{d^2}\)</th><th style="width:12%">\(\sigma\)</th></tr>
+      <tr><td class="n">1 s</td><td>las 12 muestras</td><td class="n">−2, 1, 2, −4, 2, −1, 2, 2, −3, −3, 3</td><td>\(\tfrac12\cdot 65/11 = 2{,}95\)</td><td class="n">1,72</td></tr>
+      <tr><td class="n">2 s</td><td class="n">1, 2, 0, 1, 2,5, −0,5</td><td class="n">1, −2, 1, 1,5, −3</td><td>\(\tfrac12\cdot 17{,}25/5 = 1{,}73\)</td><td class="n">1,31</td></tr>
+      <tr><td class="n">3 s</td><td class="n">1, 1, 2, 0</td><td class="n">0, 1, −2</td><td>\(\tfrac12\cdot 5/3 = 0{,}83\)</td><td class="n">0,91</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Lectura:</strong> \(\sigma\) cae con \(\tau\), y lo hace aproximadamente como \(1/\sqrt\tau\) (si fuera exacto, 1,72 / √2 = 1,22 y 1,72 / √3 = 0,99): es la firma del ruido blanco.</p>
+    </div>
+    <div class="stack">
+      <p><strong>El problema:</strong> con \(\tau\) = 3 s solo quedan 3 diferencias. Cuanto más largo es \(\tau\), menos cúmulos caben y peor es la estimación; por eso, para ver los \(\tau\) largos, hacen falta horas de datos.</p>
+    </div>
+  </div>
+  <p class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 3.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · desviación de Allan · estimador y firmas</p>
+  <h2>El estimador solapado y la firma de cada ruido</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con el ángulo integrado \(\theta_k = \Delta t\sum_{j\lt k}\Omega_j\), la media del cúmulo que empieza en \(k\) es \((\theta_{k+m}-\theta_k)/\tau\), con \(m = \tau f_s\) muestras por cúmulo. La diferencia entre dos medias vecinas es entonces \((\theta_{k+2m} - 2\theta_{k+m} + \theta_k)/\tau\), y el estimador <strong>solapado</strong> la calcula empezando un cúmulo en <em>cada</em> muestra:</p>
+      \[ \hat\sigma^2(\tau) = \frac{1}{2\tau^2(N-2m)}\sum_{k}\big(\theta_{k+2m} - 2\theta_{k+m} + \theta_k\big)^2 \]
+      <p class="small">Aquí \(N\) es el número de valores de \(\theta\) (uno más que de muestras, porque \(\theta_0 = 0\)) y la suma tiene \(N-2m\) términos. En el ejemplo de 12 muestras (\(N\) = 13), con \(\tau\) = 2 s hay 9 diferencias en vez de 5 y \(\hat\sigma^2\) = 2,01 en lugar de 1,73: más términos, menos varianza de la estimación.</p>
+    </div>
+    <div class="stack">
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Ruido</th><th>\(\sigma(\tau)\)</th><th>Pendiente</th><th>Lectura</th></tr></thead>
@@ -138,16 +333,145 @@
           </tbody>
         </table>
       </div>
+      <div class="callout error"><span class="tag">Aviso de notación</span>En la tabla, \(N\) es el coeficiente de ruido blanco (que coincide con \(\sigma_g\)) y \(K\) el del paseo (\(\sigma_{b_g}\)); en la fórmula de la izquierda, \(N\) es el número de valores de \(\theta\). Es la notación de IEEE Std 952.</div>
+      <p class="xsmall muted">Pendientes y puntos de lectura según IEEE Std 952, en la forma de la tesis de Hou (ec. 4.29–4.57) <a class="cite" data-ref="ieee952,hou2004"></a>. Hou llama \(Q\) al coeficiente que aquí es \(N\). Las tres hojas siguientes derivan las pendientes −1/2, +1/2 y 0.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · por qué −1/2</p>
+  <h2>Ruido blanco: las dos medias son independientes</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 200" role="img" aria-label="Peso con que cada instante entra en la diferencia de dos medias">
+          <line x1="40" y1="100" x2="380" y2="100" class="ln-rule"/>
+          <path d="M50 100 V150 H210 V50 H370 V100" class="ln-accent" stroke-width="2.6"/>
+          <text x="130" y="170" text-anchor="middle" class="t-accent t-mono" font-size="14">−1/τ</text>
+          <text x="290" y="40" text-anchor="middle" class="t-accent t-mono" font-size="14">+1/τ</text>
+          <text x="130" y="128" text-anchor="middle" class="t-muted" font-size="12">cúmulo k</text>
+          <text x="290" y="78" text-anchor="middle" class="t-muted" font-size="12">cúmulo k+1</text>
+          <text x="44" y="118" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="222" y="118" class="t-mono t-faint" font-size="12">τ</text>
+          <text x="370" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">2τ</text>
+          <text x="210" y="192" text-anchor="middle" class="t-muted" font-size="12">peso de cada instante en d = <tspan text-decoration="overline">Ω</tspan>ₖ₊₁ − <tspan text-decoration="overline">Ω</tspan>ₖ</text>
+        </svg>
+      </figure>
+      <p>La diferencia de medias es una integral de la señal con un <strong>peso</strong>: −1/τ en el primer cúmulo, +1/τ en el segundo. Su varianza, para ruido blanco, es la densidad al cuadrado por \(\int\text{peso}^2\).</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: las pendientes −1/2 y +1/2</summary>
-        <p class="small"><strong>Ruido blanco</strong> de densidad \(N\): la media en \(\tau\) tiene varianza \(N^2/\tau\), y dos ventanas consecutivas son independientes:</p>
-        \[ \sigma^2(\tau) = \tfrac12\cdot 2\,\frac{N^2}{\tau} = \frac{N^2}{\tau}. \]
-        <p class="small"><strong>Paseo aleatorio</strong> \(\dot b = K w\): la diferencia de dos medias consecutivas es \(\frac1\tau\int_0^{\tau}\big(b(t+\tau)-b(t)\big)dt\). Con \(\mathrm{Var}[b(t+s)-b(t)] = K^2 s\) e integrando la covarianza:</p>
-        \[ \sigma^2(\tau) = \frac{K^2\tau}{3}. \]
-        <p class="small">Por eso \(N\) se lee en \(\tau\) = 1 s y \(K\) en \(\tau\) = 3 s sobre las rectas ajustadas <a class="cite" data-ref="kalibrwiki"></a>.</p>
-      </details>
-      <p class="xsmall muted">Pendientes y puntos de lectura según IEEE Std 952, en la forma de la tesis de Hou (ec. 4.29–4.57) <a class="cite" data-ref="ieee952,hou2004"></a>. Hou llama \(Q\) al coeficiente que aquí es \(N\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\displaystyle d = \frac1\tau\int_\tau^{2\tau} n\,dt - \frac1\tau\int_0^\tau n\,dt\)</td><td>Diferencia de las dos medias, con \(n\) de densidad \(N\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\displaystyle \mathrm{Var}[d] = \frac{N^2\tau}{\tau^2} + \frac{N^2\tau}{\tau^2} = \frac{2N^2}{\tau}\)</td><td>Cada integral de ruido blanco en un intervalo \(\tau\) tiene varianza \(N^2\tau\) (hoja 10); los cúmulos no se solapan, así que son independientes y las varianzas se suman</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\displaystyle \sigma^2(\tau) = \tfrac12\mathrm{Var}[d] = \frac{N^2}{\tau}\)</td><td>Definición de Allan</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\sigma(\tau) = N/\sqrt\tau\), y \(\sigma(1\ \text s) = N\)</td><td>En log-log, \(\log\sigma = \log N - \tfrac12\log\tau\): recta de pendiente −1/2 que pasa por \(N\) en \(\tau\) = 1 s</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Comprobación</span>
+        <p>Ruido blanco con \(N\) = 1 simulado a 100 Hz (8 millones de muestras): \(\sigma^2\) = 1,002 en \(\tau\) = 1 s y 0,254 en \(\tau\) = 4 s, frente a 1 y 0,25. <code>ejemplos_b3a.py</code>, ejemplo 4.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · por qué +1/2</p>
+  <h2>Paseo aleatorio: cada incremento entra en muchas parejas</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 210" role="img" aria-label="Núcleo triangular del paseo aleatorio en la varianza de Allan">
+          <line x1="40" y1="170" x2="380" y2="170" class="ln-rule"/>
+          <path d="M50 170 L210 40 L370 170" class="ln-tesis" stroke-width="2.6"/>
+          <line x1="210" y1="40" x2="210" y2="170" class="ln-dash"/>
+          <text x="120" y="96" text-anchor="end" class="t-tesis t-mono" font-size="14">κ(u) = u</text>
+          <text x="300" y="96" class="t-tesis t-mono" font-size="14">2τ − u</text>
+          <text x="210" y="30" text-anchor="middle" class="t-mono t-faint" font-size="12">τ</text>
+          <text x="50" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="210" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">τ</text>
+          <text x="370" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">2τ</text>
+          <text x="210" y="206" text-anchor="middle" class="t-muted" font-size="12">instante u del incremento w(u)</text>
+        </svg>
+      </figure>
+      <p>Ahora el sesgo es \(b(t) = K\int_0^t w\,du\), con \(K\) la densidad del paseo. Emparejando el instante \(s\) del primer cúmulo con el \(s+\tau\) del segundo, un incremento \(w(u)\) entra en todas las parejas que lo contienen: \(\kappa(u)\) de ellas, un triángulo.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\displaystyle d = \frac1\tau\int_0^\tau \big[b(s+\tau) - b(s)\big]\,ds\)</td><td>Restar las dos medias emparejando instantes</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\displaystyle b(s+\tau)-b(s) = K\int_s^{s+\tau} w(u)\,du\)</td><td>Incremento del paseo entre los dos instantes</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\displaystyle d = \frac K\tau\int_0^{2\tau}\kappa(u)\,w(u)\,du\)</td><td>Cambiar el orden de integración: \(w(u)\) aparece para los \(s\) con \(s\lt u\lt s+\tau\); hay \(\kappa(u) = u\) si \(u\lt\tau\) y \(2\tau-u\) si \(u\gt\tau\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\displaystyle \mathrm{Var}[d] = \frac{K^2}{\tau^2}\int_0^{2\tau}\kappa^2\,du = \frac{K^2}{\tau^2}\cdot\frac{2\tau^3}{3}\)</td><td>Varianza de ruido blanco con peso: \(\int\text{peso}^2\); el triángulo da \(2\int_0^\tau u^2du\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\sigma^2(\tau) = K^2\tau/3\), y \(\sigma(3\ \text s) = K\)</td><td>Mitad de la varianza; pendiente +1/2 y lectura en \(\tau\) = 3 s</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Comprobación</span>
+        <p>Paseo con \(K\) = 1 a 100 Hz: \(\sigma^2\) = 0,333 en \(\tau\) = 1 s y 1,36 en \(\tau\) = 4 s, frente a 1/3 y 4/3. <code>ejemplos_b3a.py</code>, ejemplo 4.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · la regla general, y por qué 0</p>
+  <h2>Del espectro del ruido a la pendiente de Allan</h2>
+  <p>Cualquier ruido se describe por su densidad espectral \(S(f)\), en (rad/s)²/Hz. La varianza de Allan es ese espectro pasado por un filtro fijo <a class="cite" data-ref="ieee952,hou2004"></a>: \(\displaystyle \sigma^2(\tau) = 4\int_0^\infty S(f)\,\frac{\sin^4(\pi f\tau)}{(\pi f\tau)^2}\,df\).</p>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(S(f) = h_\alpha\,f^{\alpha}\)</td><td>Cada ruido es una potencia de \(f\): blanco \(\alpha = 0\), inestabilidad (\(1/f\)) \(\alpha=-1\), paseo \(\alpha=-2\)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(z = \pi f\tau,\quad df = dz/(\pi\tau)\)</td><td>Cambio de variable que saca \(\tau\) de la integral</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\displaystyle \sigma^2 = \frac{4h_\alpha}{(\pi\tau)^{\alpha+1}}\int_0^\infty z^{\alpha}\frac{\sin^4 z}{z^2}\,dz\)</td><td>La integral ya no depende de \(\tau\): es un número</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\sigma\propto\tau^{-(\alpha+1)/2}\)</td><td>\(\alpha = 0\to -1/2\); \(\alpha = -1\to 0\); \(\alpha = -2\to +1/2\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Ruido</th><th>\(S(f)\)</th><th>Integral</th><th>\(\sigma^2(\tau)\)</th></tr>
+          <tr><td>Blanco</td><td>\(N^2\)</td><td>\(\int\frac{\sin^4z}{z^2} = \frac\pi4\)</td><td>\(N^2/\tau\)</td></tr>
+          <tr><td>\(1/f\)</td><td>\(\frac{B^2}{2\pi}\frac1f\)</td><td>\(\int\frac{\sin^4z}{z^3} = \ln2\)</td><td>\(\frac{2\ln2}{\pi}B^2\)</td></tr>
+          <tr><td>Paseo</td><td>\(\big(\frac{K}{2\pi}\big)^2\frac1{f^2}\)</td><td>\(\int\frac{\sin^4z}{z^4} = \frac\pi3\)</td><td>\(K^2\tau/3\)</td></tr>
+        </table>
+      </div>
+      <p>De ahí el 0,664: \(\sqrt{2\ln2/\pi} = 0{,}664\). Las tres integrales, comprobadas numéricamente en <code>ejemplos_b3a.py</code> (ejemplo 4), reproducen las dos hojas anteriores.</p>
+      <p class="small muted">El ruido \(1/f\) real se corta a baja frecuencia; la fórmula vale para \(\tau\) mucho mayor que el inverso de esa frecuencia de corte, y por eso la tabla dice «≈» y se lee en el mínimo <a class="cite" data-ref="elsheimy2008"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · desviación de Allan con números</p>
+  <h2>TUM VI: dónde se lee cada parámetro y dónde se cruzan las rectas</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 275" role="img" aria-label="Rectas de ruido blanco y paseo aleatorio con los parámetros de TUM VI">
+        <line x1="70" y1="240" x2="500" y2="240" class="ln-rule"/><line x1="70" y1="20" x2="70" y2="240" class="ln-rule"/>
+        <line x1="70" y1="212.5" x2="500" y2="212.5" class="ln-dash"/><line x1="70" y1="157.5" x2="500" y2="157.5" class="ln-dash"/><line x1="70" y1="102.5" x2="500" y2="102.5" class="ln-dash"/><line x1="70" y1="47.5" x2="500" y2="47.5" class="ln-dash"/>
+        <text x="64" y="217" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁶</text><text x="64" y="162" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁵</text><text x="64" y="107" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁴</text><text x="64" y="52" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻³</text>
+        <text x="70" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">0,01</text><text x="141.7" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">0,1</text><text x="213.3" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text><text x="285" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text><text x="356.7" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text><text x="428.3" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">1000</text><text x="500" y="257" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁴ s</text>
+        <path d="M70.0,52.8 L81.0,57.1 L92.1,61.3 L103.1,65.5 L114.1,69.8 L125.1,74.0 L136.2,78.2 L147.2,82.4 L158.2,86.7 L169.2,90.9 L180.3,95.1 L191.3,99.4 L202.3,103.6 L213.3,107.8 L224.4,112.1 L235.4,116.3 L246.4,120.5 L257.4,124.8 L268.5,129.0 L279.5,133.2 L290.5,137.4 L301.5,141.7 L312.6,145.9 L323.6,150.1 L334.6,154.4 L345.6,158.6 L356.7,162.8 L367.7,167.1 L378.7,171.3 L389.7,175.5 L400.8,179.8 L411.8,184.0 L422.8,188.2 L433.8,192.4 L444.9,196.7 L455.9,200.9 L466.9,205.1 L477.9,209.4 L489.0,213.6 L500.0,217.8" class="ln-accent ln-dash" stroke-width="1.6"/>
+        <path d="M141.7,234.3 L152.5,230.1 L163.4,226.0 L174.2,221.8 L185.1,217.6 L196.0,213.5 L206.8,209.3 L217.7,205.1 L228.5,201.0 L239.4,196.8 L250.3,192.6 L261.1,188.5 L272.0,184.3 L282.8,180.1 L293.7,176.0 L304.5,171.8 L315.4,167.6 L326.3,163.5 L337.1,159.3 L348.0,155.1 L358.8,151.0 L369.7,146.8 L380.6,142.6 L391.4,138.5 L402.3,134.3 L413.1,130.1 L424.0,126.0 L434.8,121.8 L445.7,117.6 L456.6,113.5 L467.4,109.3 L478.3,105.1 L489.1,101.0 L500.0,96.8" class="ln-tesis ln-dash" stroke-width="1.6"/>
+        <path d="M70.0,52.8 L81.0,57.1 L92.1,61.3 L103.1,65.5 L114.1,69.8 L125.1,74.0 L136.2,78.2 L147.2,82.4 L158.2,86.7 L169.2,90.9 L180.3,95.1 L191.3,99.4 L202.3,103.6 L213.3,107.8 L224.4,112.1 L235.4,116.3 L246.4,120.5 L257.4,124.7 L268.5,128.9 L279.5,133.0 L290.5,137.0 L301.5,140.8 L312.6,144.3 L323.6,147.0 L334.6,148.7 L345.6,149.0 L356.7,147.8 L367.7,145.4 L378.7,142.2 L389.7,138.5 L400.8,134.6 L411.8,130.5 L422.8,126.3 L433.8,122.1 L444.9,117.9 L455.9,113.7 L466.9,109.5 L477.9,105.2 L489.0,101.0 L500.0,96.8" class="ln-time" stroke-width="2.6"/>
+        <circle cx="213.3" cy="107.8" r="5" class="fill-accent"/><text x="222" y="100" class="t-accent" font-size="12">N en τ = 1 s</text>
+        <circle cx="247.5" cy="193.7" r="5" class="fill-tesis"/><text x="256" y="208" class="t-tesis" font-size="12">K en τ = 3 s (recta extrapolada)</text>
+        <circle cx="342.3" cy="157.3" r="5" class="fill-time"/><text x="318" y="128" class="t-time" font-size="12">cruce: 63 s</text>
+        <text x="96" y="36" class="t-accent" font-size="12">N/√τ</text>
+        <text x="440" y="90" class="t-tesis" font-size="12">K√(τ/3)</text>
+        <text x="285" y="272" text-anchor="middle" class="t-muted" font-size="12">τ; σ(τ) en rad/s</text>
+      </svg>
+      <figcaption>Giróscopo de TUM VI: \(N\) = 8,0·10⁻⁵ rad/s/√Hz, \(K\) = 2,2·10⁻⁶ rad/s²/√Hz <a class="cite" data-ref="tumvi"></a>. En trazo grueso, la curva \(\sqrt{N^2/\tau + K^2\tau/3}\). <code>ejemplos_b3a.py</code>, ejemplo 5.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Blanco:</strong> 8·10⁻⁴ en 0,01 s, 8·10⁻⁵ en 1 s, 8·10⁻⁶ en 100 s; cada década de \(\tau\), media década menos.</p>
+      <p><strong>Paseo:</strong> 2,2·10⁻⁶ en 3 s, muy por debajo de la curva: allí domina el blanco y \(K\) se lee sobre la recta extrapolada. En 300 s vale 2,2·10⁻⁵.</p>
+      <p><strong>Cruce:</strong> \(N/\sqrt\tau = K\sqrt{\tau/3}\Rightarrow \tau^* = \sqrt3\,N/K\) = 63 s, donde cada recta vale 1,0·10⁻⁵ y la curva, 1,4·10⁻⁵.</p>
+      <p class="small">Con un ruido \(1/f\) añadido, el mínimo sube y se adelanta (hoja siguiente: 1,73·10⁻⁵ en 44 s).</p>
     </div>
   </div>
 </section>
@@ -191,11 +515,10 @@
       <figcaption>12 h simuladas a 200 Hz con \(N\) = 8,0·10⁻⁵ rad/s/√Hz y \(K\) = 2,2·10⁻⁶ rad/s²/√Hz (los de TUM VI) más una inestabilidad de sesgo de Gauss-Markov (supuesta, 3·10⁻⁵ rad/s, 300 s). Gazebo: 0,000873 rad/s por muestra a 250 Hz, sin sesgo. <code>figuras_b3a.py</code>, sección 1.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>\(\sigma\)(1 s) = 7,99·10⁻⁵: \(N\) recuperado.</li>
         <li>Mínimo de 1,73·10⁻⁵ rad/s a 44 s: inestabilidad del sesgo de 5,4 °/h.</li>
-        <li>Error relativo de cada punto: \(1/\sqrt{2(N/n-1)}\), con \(N/n\) ventanas <a class="cite" data-ref="hou2004"></a>.</li>
-        <li>\(K\) leído con la recta +1/2: 1,93·10⁻⁶, un 12 % por debajo del verdadero, con 12 h de datos. A \(\tau\) ≈ 3400 s solo caben unas 12 ventanas y el error relativo de cada punto es de ±21 %.</li>
+                <li>\(K\) leído con la recta +1/2: 1,93·10⁻⁶, un 12 % por debajo del verdadero, con 12 h de datos. A \(\tau\) ≈ 3400 s solo caben unas 12 ventanas: con \(n\) ventanas, el error relativo de cada punto es \(1/\sqrt{2(n-1)}\), ±21 % <a class="cite" data-ref="hou2004"></a>.</li>
         <li>Gazebo baja con pendiente −1/2 para siempre: su sesgo es constante (nulo). Su densidad equivalente, \(0{,}000873/\sqrt{250}\) = 5,5·10⁻⁵ rad/s/√Hz, es comparable a la del MEMS.</li>
       </ul>
       <div class="callout clave"><span class="tag">Cuántos datos</span>Para ver el paseo aleatorio hacen falta horas en reposo: TUM VI grabó 111 h <a class="cite" data-ref="tumvi"></a>. Con un vuelo de minutos solo ves el ruido blanco.</div>
@@ -233,7 +556,118 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">IMU · navegación a ciegas</p>
+  <p class="kicker">IMU · navegación a ciegas · el esquema</p>
+  <h2>Por qué la IMU sola deriva: una cadena de integradores</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 250" role="img" aria-label="Cadena de integradores por la que los errores de la IMU llegan a la posición">
+        <defs><marker id="b3a-m20" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <text x="10" y="46" class="t-bold" font-size="13">giróscopo</text>
+        <text x="10" y="63" class="t-mono t-accent" font-size="12">b_g, n_g</text>
+        <path class="ln" d="M86 55 H120" marker-end="url(#b3a-m20)"/>
+        <rect x="122" y="35" width="48" height="40" rx="5" class="box-accent"/><text x="146" y="62" text-anchor="middle" font-size="20">∫</text>
+        <path class="ln" d="M170 55 H222" marker-end="url(#b3a-m20)"/>
+        <text x="196" y="46" text-anchor="middle" class="t-mono" font-size="13">δθ</text>
+        <rect x="224" y="35" width="60" height="40" rx="5" class="box"/><text x="254" y="61" text-anchor="middle" class="t-mono" font-size="14">× g</text>
+        <path class="ln" d="M284 55 H330 V124" marker-end="url(#b3a-m20)"/>
+        <text x="10" y="136" class="t-bold" font-size="13">acelerómetro</text>
+        <text x="10" y="153" class="t-mono t-accent" font-size="12">b_a, n_a</text>
+        <path class="ln" d="M104 140 H314" marker-end="url(#b3a-m20)"/>
+        <circle cx="330" cy="140" r="14" class="box"/><text x="330" y="146" text-anchor="middle" font-size="18">+</text>
+        <path class="ln" d="M344 140 H372" marker-end="url(#b3a-m20)"/>
+        <text x="358" y="130" text-anchor="middle" class="t-mono" font-size="13">δa</text>
+        <rect x="374" y="120" width="48" height="40" rx="5" class="box-accent"/><text x="398" y="147" text-anchor="middle" font-size="20">∫</text>
+        <path class="ln" d="M422 140 H460" marker-end="url(#b3a-m20)"/>
+        <text x="441" y="130" text-anchor="middle" class="t-mono" font-size="13">δv</text>
+        <rect x="462" y="120" width="48" height="40" rx="5" class="box-accent"/><text x="486" y="147" text-anchor="middle" font-size="20">∫</text>
+        <path class="ln" d="M510 140 H548" marker-end="url(#b3a-m20)"/>
+        <text x="554" y="146" class="t-mono t-bold" font-size="14">δp</text>
+        <text x="146" y="96" text-anchor="middle" class="t-muted" font-size="12">actitud</text>
+        <text x="442" y="182" text-anchor="middle" class="t-muted" font-size="12">velocidad y posición</text>
+        <line x1="40" y1="236" x2="190" y2="236" class="ln-rule"/>
+        <line x1="110" y1="236" x2="110" y2="164" class="ln-dash"/>
+        <path class="ln-time ln-dash" d="M110 172 H142"/>
+        <path class="ln-tesis" d="M110 236 L142 172" marker-end="url(#b3a-m20)" stroke-width="2"/>
+        <text x="148" y="190" class="t-tesis t-mono" font-size="12">g</text>
+        <text x="104" y="222" text-anchor="end" class="t-mono" font-size="12">δθ</text>
+        <text x="116" y="160" class="t-time t-mono" font-size="11">g sen δθ</text>
+        <text x="210" y="216" class="t-muted" font-size="12">el filtro cree que está nivelado y ve</text>
+        <text x="210" y="233" class="t-muted" font-size="12">la gravedad inclinada como aceleración</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <p>Un error de actitud \(\delta\theta\) inclina la gravedad que mide el acelerómetro: su parte horizontal, \(g\sin\delta\theta\approx g\,\delta\theta\), se toma por aceleración. El giróscopo llega a la posición por <strong>un integrador más</strong> que el acelerómetro, y multiplicado por \(g\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Error</th><th>Integradores</th><th>Constante</th><th>Blanco</th><th>Paseo</th></tr>
+          <tr><td>Acelerómetro</td><td class="n">2</td><td>\(t^2\)</td><td>\(t^{3/2}\)</td><td>\(t^{5/2}\)</td></tr>
+          <tr><td>Giróscopo</td><td class="n">3</td><td>\(t^3\)</td><td>\(t^{5/2}\)</td><td>\(t^{7/2}\)</td></tr>
+        </table>
+      </div>
+      <p class="small">Un error constante gana una potencia entera por integrador; el ruido blanco, media potencia menos (las dos hojas siguientes).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · navegación a ciegas · errores constantes</p>
+  <h2>Un sesgo constante: \(t^2\) desde el acelerómetro, \(t^3\) desde el giróscopo</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\delta a = b_a\Rightarrow \delta v = b_a t,\ \ \delta p = \tfrac12 b_a t^2\)</td><td>Integrar dos veces una constante, partiendo de error cero</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\delta\theta = b_g\,t\)</td><td>Un sesgo del giróscopo es un error de velocidad angular: el ángulo crece lineal</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\delta a = g\,\delta\theta = g\,b_g\,t\)</td><td>La gravedad inclinada se cuela como aceleración horizontal (hoja anterior)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\delta v = \tfrac12 g\,b_g t^2,\ \ \delta p = \tfrac16 g\,b_g t^3\)</td><td>Dos integraciones más</td></tr>
+        </table>
+      </div>
+      <p>Aquí \(b_a\) y \(b_g\) son los sesgos que quedan sin estimar (en m/s² y rad/s); \(\delta\) marca error.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Con números.</strong> Tomamos como sesgo residual lo que el paseo de TUM VI acumula en una hora (1σ): \(b_a = 8{,}6\cdot10^{-5}\sqrt{3600}\) = 5,2 mm/s² y \(b_g = 2{,}2\cdot10^{-6}\sqrt{3600}\) = 1,32·10⁻⁴ rad/s.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Tiempo</th><th>\(\tfrac12 b_a t^2\)</th><th>\(\tfrac16 g\,b_g t^3\)</th></tr>
+          <tr><td class="n">1 s</td><td class="n">3 mm</td><td class="n">0,2 mm</td></tr>
+          <tr><td class="n">10 s</td><td class="n">26 cm</td><td class="n">22 cm</td></tr>
+          <tr><td class="n">60 s</td><td class="n">9,3 m</td><td class="n">47 m</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Lo que enseña</span>Un sesgo sin estimar pesa más que todo el ruido: con TUM VI, los cuatro ruidos juntos dan 5,4 m en 60 s (hoja 24); un sesgo de giróscopo de 1,3·10⁻⁴ rad/s, 47 m. Por eso el ESKF de A4a lleva los sesgos en el estado.</div>
+      <p class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 6.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · navegación a ciegas · ruidos</p>
+  <h2>Ruido blanco integrado \(k\) veces: la fórmula que da los cuatro términos</h2>
+  <p>Integrar \(k\) veces seguidas equivale a una sola integral con peso \((t-s)^{k-1}/(k-1)!\) (fórmula de Cauchy de la integral repetida; \(s\) es la variable de integración). Y la varianza de una integral de ruido blanco con peso es, como en Allan, \(q^2\int\text{peso}^2\), con \(q\) la densidad del ruido.</p>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(\displaystyle I_k(t) = q\int_0^t \frac{(t-s)^{k-1}}{(k-1)!}\,n(s)\,ds\)</td><td>Cauchy: \(k\) integrales de \(q\,n\) en una</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\displaystyle \mathrm{Var}[I_k] = q^2\int_0^t\frac{(t-s)^{2k-2}}{(k-1)!^2}\,ds\)</td><td>Ruido blanco unitario: \(\int\text{peso}^2\)</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\displaystyle = \frac{q^2\,t^{2k-1}}{(k-1)!^2\,(2k-1)}\)</td><td>Integral de una potencia</td></tr>
+        <tr><td><strong>4</strong></td><td>\(k=2:\ \tfrac{t^3}{3};\quad k=3:\ \tfrac{t^5}{20};\quad k=4:\ \tfrac{t^7}{252}\)</td><td>Sustituir. La desviación crece como \(t^{3/2}\), \(t^{5/2}\), \(t^{7/2}\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Cada término cuenta sus integradores en el esquema (el paseo del sesgo añade uno, el giróscopo otro y el factor \(g\)):</p>
+      \[ \sigma_p^{(a)} = \frac{\sigma_a t^{3/2}}{\sqrt3}\ (k{=}2),\qquad \sigma_p^{(b_a)} = \frac{\sigma_{b_a} t^{5/2}}{\sqrt{20}}\ (k{=}3) \]
+      \[ \sigma_p^{(g)} = \frac{g\,\sigma_g t^{5/2}}{\sqrt{20}}\ (k{=}3),\qquad \sigma_p^{(b_g)} = \frac{g\,\sigma_{b_g} t^{7/2}}{\sqrt{252}}\ (k{=}4) \]
+      <div class="aparte"><span class="rotulo">Comprobación</span>
+        <p>Doble integral de ruido unitario, 4000 ensayos: desviación 18,40 a 10 s frente a \(\sqrt{1000/3}\) = 18,26. Solo el giróscopo blanco de EuRoC, 2000 ensayos: 0,1180 m frente a 0,1177 m de la fórmula. <code>ejemplos_b3a.py</code>, ejemplo 7, y <code>figuras_b3a.py</code>, sección 2.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · navegación a ciegas · con números</p>
   <h2>Cuánto deriva una IMU sola, término a término</h2>
   <div class="cols w60">
     <figure class="fig">
@@ -263,12 +697,16 @@
       <figcaption>IMU de EuRoC en reposo, sin ninguna corrección externa. <code>figuras_b3a.py</code>, sección 2.</figcaption>
     </figure>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: los cuatro términos</summary>
-        <p class="small">Cada término es ruido blanco integrado varias veces; la integral \(k\)-ésima de ruido de densidad \(q\) tiene varianza \(q^2 t^{2k-1}/((k-1)!^2(2k-1))\):</p>
-        \[ \sigma_p^{(a)} = \frac{\sigma_a t^{3/2}}{\sqrt3},\qquad \sigma_p^{(b_a)} = \frac{\sigma_{b_a} t^{5/2}}{\sqrt{20}}, \]
-        \[ \sigma_p^{(g)} = \frac{g\,\sigma_g t^{5/2}}{\sqrt{20}},\qquad \sigma_p^{(b_g)} = \frac{g\,\sigma_{b_g} t^{7/2}}{\sqrt{252}}. \]
-        <p class="small">El giróscopo entra por la inclinación: un error de actitud \(\delta\theta\) proyecta la gravedad, \(g\,\delta\theta\), como aceleración horizontal. Comprobado con 2000 ensayos de Monte Carlo: 0,1180 m frente a 0,1177 m de la fórmula a 10 s.</p>
-      </details>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>EuRoC a 10 s</th><th>Cuenta</th><th>Posición</th></tr>
+          <tr><td>Acel. blanco</td><td>\(2{,}0\cdot10^{-3}\cdot 31{,}6/\sqrt3\)</td><td class="n">3,7 cm</td></tr>
+          <tr><td>Paseo acel.</td><td>\(3{,}0\cdot10^{-3}\cdot 316/\sqrt{20}\)</td><td class="n">21 cm</td></tr>
+          <tr><td>Gir. blanco</td><td>\(9{,}81\cdot1{,}70\cdot10^{-4}\cdot316/\sqrt{20}\)</td><td class="n">12 cm</td></tr>
+          <tr><td>Paseo gir.</td><td>\(9{,}81\cdot1{,}94\cdot10^{-5}\cdot3162/\sqrt{252}\)</td><td class="n">3,8 cm</td></tr>
+          <tr><td><strong>Total</strong></td><td>raíz de la suma de cuadrados</td><td class="n">25 cm</td></tr>
+        </table>
+      </div>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Sin corrección</th><th>1 s</th><th>10 s</th><th>60 s</th></tr></thead>
@@ -278,18 +716,51 @@
           </tbody>
         </table>
       </div>
-      <div class="callout tesis"><span class="tag">Hilo de observabilidad</span>Por eso la IMU sola no basta: en segundos, la incertidumbre de posición crece como \(t^{5/2}\) o más. Cualquier belief de posición necesita una medida externa (visión, GNSS) a una frecuencia que A4a y A4b te enseñaron a calcular.</div>
+      <div class="callout tesis"><span class="tag">Hilo de observabilidad</span>La IMU sola no basta: en segundos, la incertidumbre de posición crece como \(t^{5/2}\) o más. Cualquier belief de posición necesita una medida externa (visión, GNSS) a una frecuencia que A4a y A4b te enseñaron a calcular.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">IMU · en vuelo</p>
-  <h2>Vibración, filtros y lo que los simuladores no tienen</h2>
+  <p class="kicker">IMU · en vuelo · vibración</p>
+  <h2>La vibración de los rotores y el aliasing: un falso sesgo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Vibración:</strong> los rotores excitan la estructura a su frecuencia de giro y sus armónicos (a 770 rad/s, unos 123 Hz). Si el muestreo o el filtro antialiasing no la cortan, aparece como ruido a baja frecuencia (aliasing) y sesga el acelerómetro.</li>
+      <p>Los rotores excitan la estructura a su frecuencia de giro y sus armónicos: a 770 rad/s, 770/2π = 122,5 Hz. Si se muestrea a \(f_s\) sin filtro antialiasing, una componente de frecuencia \(f\) aparece en</p>
+      \[ f_{\text{aparente}} = |f - j\,f_s|,\quad j \text{ el entero más cercano a } f/f_s \]
+      <p class="small">Porque \(\sin(2\pi f\,k/f_s) = \sin(2\pi(f-jf_s)\,k/f_s)\) para todo entero \(k\): en las muestras, las dos frecuencias son indistinguibles.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Muestreo</th><th>122,5 Hz</th><th>245,1 Hz</th><th>367,6 Hz</th></tr>
+          <tr><td>200 Hz</td><td class="n">77,5 Hz</td><td class="n">45,1 Hz</td><td class="n">32,4 Hz</td></tr>
+          <tr><td>250 Hz</td><td class="n">122,5 Hz</td><td class="n">4,9 Hz</td><td class="n">117,6 Hz</td></tr>
+        </table>
+      </div>
+      <p>A 250 Hz, el segundo armónico se ve a 4,9 Hz, dentro de la banda del estimador. Si un armónico cae casi encima de un múltiplo de \(f_s\) (201 Hz muestreados a 200 Hz), aparece a 1 Hz: casi un sesgo, y además sesga el acelerómetro.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 230" role="img" aria-label="Una senoide de 21 hercios muestreada a 20 hercios parece de 1 hercio">
+        <line x1="50" y1="110" x2="530" y2="110" class="ln-rule"/>
+        <path d="M50.0,110.0 L50.6,99.6 L51.1,89.4 L51.7,79.7 L52.3,70.8 L52.9,62.9 L53.4,56.1 L54.0,50.6 L54.6,46.6 L55.1,44.2 L55.7,43.3 L56.3,44.2 L56.9,46.6 L57.4,50.6 L58.0,56.1 L58.6,62.9 L59.1,70.8 L59.7,79.7 L60.3,89.4 L60.9,99.6 L61.4,110.0 L62.0,120.4 L62.6,130.6 L63.1,140.3 L63.7,149.2 L64.3,157.1 L64.9,163.9 L65.4,169.4 L66.0,173.4 L66.6,175.8 L67.1,176.7 L67.7,175.8 L68.3,173.4 L68.9,169.4 L69.4,163.9 L70.0,157.1 L70.6,149.2 L71.1,140.3 L71.7,130.6 L72.3,120.4 L72.9,110.0 L73.4,99.6 L74.0,89.4 L74.6,79.7 L75.1,70.8 L75.7,62.9 L76.3,56.1 L76.9,50.6 L77.4,46.6 L78.0,44.2 L78.6,43.3 L79.1,44.2 L79.7,46.6 L80.3,50.6 L80.9,56.1 L81.4,62.9 L82.0,70.8 L82.6,79.7 L83.1,89.4 L83.7,99.6 L84.3,110.0 L84.9,120.4 L85.4,130.6 L86.0,140.3 L86.6,149.2 L87.1,157.1 L87.7,163.9 L88.3,169.4 L88.9,173.4 L89.4,175.8 L90.0,176.7 L90.6,175.8 L91.1,173.4 L91.7,169.4 L92.3,163.9 L92.9,157.1 L93.4,149.2 L94.0,140.3 L94.6,130.6 L95.1,120.4 L95.7,110.0 L96.3,99.6 L96.9,89.4 L97.4,79.7 L98.0,70.8 L98.6,62.9 L99.1,56.1 L99.7,50.6 L100.3,46.6 L100.9,44.2 L101.4,43.3 L102.0,44.2 L102.6,46.6 L103.1,50.6 L103.7,56.1 L104.3,62.9 L104.9,70.8 L105.4,79.7 L106.0,89.4 L106.6,99.6 L107.1,110.0 L107.7,120.4 L108.3,130.6 L108.9,140.3 L109.4,149.2 L110.0,157.1 L110.6,163.9 L111.1,169.4 L111.7,173.4 L112.3,175.8 L112.9,176.7 L113.4,175.8 L114.0,173.4 L114.6,169.4 L115.1,163.9 L115.7,157.1 L116.3,149.2 L116.9,140.3 L117.4,130.6 L118.0,120.4 L118.6,110.0 L119.1,99.6 L119.7,89.4 L120.3,79.7 L120.9,70.8 L121.4,62.9 L122.0,56.1 L122.6,50.6 L123.1,46.6 L123.7,44.2 L124.3,43.3 L124.9,44.2 L125.4,46.6 L126.0,50.6 L126.6,56.1 L127.1,62.9 L127.7,70.8 L128.3,79.7 L128.9,89.4 L129.4,99.6 L130.0,110.0 L130.6,120.4 L131.1,130.6 L131.7,140.3 L132.3,149.2 L132.9,157.1 L133.4,163.9 L134.0,169.4 L134.6,173.4 L135.1,175.8 L135.7,176.7 L136.3,175.8 L136.9,173.4 L137.4,169.4 L138.0,163.9 L138.6,157.1 L139.1,149.2 L139.7,140.3 L140.3,130.6 L140.9,120.4 L141.4,110.0 L142.0,99.6 L142.6,89.4 L143.1,79.7 L143.7,70.8 L144.3,62.9 L144.9,56.1 L145.4,50.6 L146.0,46.6 L146.6,44.2 L147.1,43.3 L147.7,44.2 L148.3,46.6 L148.9,50.6 L149.4,56.1 L150.0,62.9 L150.6,70.8 L151.1,79.7 L151.7,89.4 L152.3,99.6 L152.9,110.0 L153.4,120.4 L154.0,130.6 L154.6,140.3 L155.1,149.2 L155.7,157.1 L156.3,163.9 L156.9,169.4 L157.4,173.4 L158.0,175.8 L158.6,176.7 L159.1,175.8 L159.7,173.4 L160.3,169.4 L160.9,163.9 L161.4,157.1 L162.0,149.2 L162.6,140.3 L163.1,130.6 L163.7,120.4 L164.3,110.0 L164.9,99.6 L165.4,89.4 L166.0,79.7 L166.6,70.8 L167.1,62.9 L167.7,56.1 L168.3,50.6 L168.9,46.6 L169.4,44.2 L170.0,43.3 L170.6,44.2 L171.1,46.6 L171.7,50.6 L172.3,56.1 L172.9,62.9 L173.4,70.8 L174.0,79.7 L174.6,89.4 L175.1,99.6 L175.7,110.0 L176.3,120.4 L176.9,130.6 L177.4,140.3 L178.0,149.2 L178.6,157.1 L179.1,163.9 L179.7,169.4 L180.3,173.4 L180.9,175.8 L181.4,176.7 L182.0,175.8 L182.6,173.4 L183.1,169.4 L183.7,163.9 L184.3,157.1 L184.9,149.2 L185.4,140.3 L186.0,130.6 L186.6,120.4 L187.1,110.0 L187.7,99.6 L188.3,89.4 L188.9,79.7 L189.4,70.8 L190.0,62.9 L190.6,56.1 L191.1,50.6 L191.7,46.6 L192.3,44.2 L192.9,43.3 L193.4,44.2 L194.0,46.6 L194.6,50.6 L195.1,56.1 L195.7,62.9 L196.3,70.8 L196.9,79.7 L197.4,89.4 L198.0,99.6 L198.6,110.0 L199.1,120.4 L199.7,130.6 L200.3,140.3 L200.9,149.2 L201.4,157.1 L202.0,163.9 L202.6,169.4 L203.1,173.4 L203.7,175.8 L204.3,176.7 L204.9,175.8 L205.4,173.4 L206.0,169.4 L206.6,163.9 L207.1,157.1 L207.7,149.2 L208.3,140.3 L208.9,130.6 L209.4,120.4 L210.0,110.0 L210.6,99.6 L211.1,89.4 L211.7,79.7 L212.3,70.8 L212.9,62.9 L213.4,56.1 L214.0,50.6 L214.6,46.6 L215.1,44.2 L215.7,43.3 L216.3,44.2 L216.9,46.6 L217.4,50.6 L218.0,56.1 L218.6,62.9 L219.1,70.8 L219.7,79.7 L220.3,89.4 L220.9,99.6 L221.4,110.0 L222.0,120.4 L222.6,130.6 L223.1,140.3 L223.7,149.2 L224.3,157.1 L224.9,163.9 L225.4,169.4 L226.0,173.4 L226.6,175.8 L227.1,176.7 L227.7,175.8 L228.3,173.4 L228.9,169.4 L229.4,163.9 L230.0,157.1 L230.6,149.2 L231.1,140.3 L231.7,130.6 L232.3,120.4 L232.9,110.0 L233.4,99.6 L234.0,89.4 L234.6,79.7 L235.1,70.8 L235.7,62.9 L236.3,56.1 L236.9,50.6 L237.4,46.6 L238.0,44.2 L238.6,43.3 L239.1,44.2 L239.7,46.6 L240.3,50.6 L240.9,56.1 L241.4,62.9 L242.0,70.8 L242.6,79.7 L243.1,89.4 L243.7,99.6 L244.3,110.0 L244.9,120.4 L245.4,130.6 L246.0,140.3 L246.6,149.2 L247.1,157.1 L247.7,163.9 L248.3,169.4 L248.9,173.4 L249.4,175.8 L250.0,176.7 L250.6,175.8 L251.1,173.4 L251.7,169.4 L252.3,163.9 L252.9,157.1 L253.4,149.2 L254.0,140.3 L254.6,130.6 L255.1,120.4 L255.7,110.0 L256.3,99.6 L256.9,89.4 L257.4,79.7 L258.0,70.8 L258.6,62.9 L259.1,56.1 L259.7,50.6 L260.3,46.6 L260.9,44.2 L261.4,43.3 L262.0,44.2 L262.6,46.6 L263.1,50.6 L263.7,56.1 L264.3,62.9 L264.9,70.8 L265.4,79.7 L266.0,89.4 L266.6,99.6 L267.1,110.0 L267.7,120.4 L268.3,130.6 L268.9,140.3 L269.4,149.2 L270.0,157.1 L270.6,163.9 L271.1,169.4 L271.7,173.4 L272.3,175.8 L272.9,176.7 L273.4,175.8 L274.0,173.4 L274.6,169.4 L275.1,163.9 L275.7,157.1 L276.3,149.2 L276.9,140.3 L277.4,130.6 L278.0,120.4 L278.6,110.0 L279.1,99.6 L279.7,89.4 L280.3,79.7 L280.9,70.8 L281.4,62.9 L282.0,56.1 L282.6,50.6 L283.1,46.6 L283.7,44.2 L284.3,43.3 L284.9,44.2 L285.4,46.6 L286.0,50.6 L286.6,56.1 L287.1,62.9 L287.7,70.8 L288.3,79.7 L288.9,89.4 L289.4,99.6 L290.0,110.0 L290.6,120.4 L291.1,130.6 L291.7,140.3 L292.3,149.2 L292.9,157.1 L293.4,163.9 L294.0,169.4 L294.6,173.4 L295.1,175.8 L295.7,176.7 L296.3,175.8 L296.9,173.4 L297.4,169.4 L298.0,163.9 L298.6,157.1 L299.1,149.2 L299.7,140.3 L300.3,130.6 L300.9,120.4 L301.4,110.0 L302.0,99.6 L302.6,89.4 L303.1,79.7 L303.7,70.8 L304.3,62.9 L304.9,56.1 L305.4,50.6 L306.0,46.6 L306.6,44.2 L307.1,43.3 L307.7,44.2 L308.3,46.6 L308.9,50.6 L309.4,56.1 L310.0,62.9 L310.6,70.8 L311.1,79.7 L311.7,89.4 L312.3,99.6 L312.9,110.0 L313.4,120.4 L314.0,130.6 L314.6,140.3 L315.1,149.2 L315.7,157.1 L316.3,163.9 L316.9,169.4 L317.4,173.4 L318.0,175.8 L318.6,176.7 L319.1,175.8 L319.7,173.4 L320.3,169.4 L320.9,163.9 L321.4,157.1 L322.0,149.2 L322.6,140.3 L323.1,130.6 L323.7,120.4 L324.3,110.0 L324.9,99.6 L325.4,89.4 L326.0,79.7 L326.6,70.8 L327.1,62.9 L327.7,56.1 L328.3,50.6 L328.9,46.6 L329.4,44.2 L330.0,43.3 L330.6,44.2 L331.1,46.6 L331.7,50.6 L332.3,56.1 L332.9,62.9 L333.4,70.8 L334.0,79.7 L334.6,89.4 L335.1,99.6 L335.7,110.0 L336.3,120.4 L336.9,130.6 L337.4,140.3 L338.0,149.2 L338.6,157.1 L339.1,163.9 L339.7,169.4 L340.3,173.4 L340.9,175.8 L341.4,176.7 L342.0,175.8 L342.6,173.4 L343.1,169.4 L343.7,163.9 L344.3,157.1 L344.9,149.2 L345.4,140.3 L346.0,130.6 L346.6,120.4 L347.1,110.0 L347.7,99.6 L348.3,89.4 L348.9,79.7 L349.4,70.8 L350.0,62.9 L350.6,56.1 L351.1,50.6 L351.7,46.6 L352.3,44.2 L352.9,43.3 L353.4,44.2 L354.0,46.6 L354.6,50.6 L355.1,56.1 L355.7,62.9 L356.3,70.8 L356.9,79.7 L357.4,89.4 L358.0,99.6 L358.6,110.0 L359.1,120.4 L359.7,130.6 L360.3,140.3 L360.9,149.2 L361.4,157.1 L362.0,163.9 L362.6,169.4 L363.1,173.4 L363.7,175.8 L364.3,176.7 L364.9,175.8 L365.4,173.4 L366.0,169.4 L366.6,163.9 L367.1,157.1 L367.7,149.2 L368.3,140.3 L368.9,130.6 L369.4,120.4 L370.0,110.0 L370.6,99.6 L371.1,89.4 L371.7,79.7 L372.3,70.8 L372.9,62.9 L373.4,56.1 L374.0,50.6 L374.6,46.6 L375.1,44.2 L375.7,43.3 L376.3,44.2 L376.9,46.6 L377.4,50.6 L378.0,56.1 L378.6,62.9 L379.1,70.8 L379.7,79.7 L380.3,89.4 L380.9,99.6 L381.4,110.0 L382.0,120.4 L382.6,130.6 L383.1,140.3 L383.7,149.2 L384.3,157.1 L384.9,163.9 L385.4,169.4 L386.0,173.4 L386.6,175.8 L387.1,176.7 L387.7,175.8 L388.3,173.4 L388.9,169.4 L389.4,163.9 L390.0,157.1 L390.6,149.2 L391.1,140.3 L391.7,130.6 L392.3,120.4 L392.9,110.0 L393.4,99.6 L394.0,89.4 L394.6,79.7 L395.1,70.8 L395.7,62.9 L396.3,56.1 L396.9,50.6 L397.4,46.6 L398.0,44.2 L398.6,43.3 L399.1,44.2 L399.7,46.6 L400.3,50.6 L400.9,56.1 L401.4,62.9 L402.0,70.8 L402.6,79.7 L403.1,89.4 L403.7,99.6 L404.3,110.0 L404.9,120.4 L405.4,130.6 L406.0,140.3 L406.6,149.2 L407.1,157.1 L407.7,163.9 L408.3,169.4 L408.9,173.4 L409.4,175.8 L410.0,176.7 L410.6,175.8 L411.1,173.4 L411.7,169.4 L412.3,163.9 L412.9,157.1 L413.4,149.2 L414.0,140.3 L414.6,130.6 L415.1,120.4 L415.7,110.0 L416.3,99.6 L416.9,89.4 L417.4,79.7 L418.0,70.8 L418.6,62.9 L419.1,56.1 L419.7,50.6 L420.3,46.6 L420.9,44.2 L421.4,43.3 L422.0,44.2 L422.6,46.6 L423.1,50.6 L423.7,56.1 L424.3,62.9 L424.9,70.8 L425.4,79.7 L426.0,89.4 L426.6,99.6 L427.1,110.0 L427.7,120.4 L428.3,130.6 L428.9,140.3 L429.4,149.2 L430.0,157.1 L430.6,163.9 L431.1,169.4 L431.7,173.4 L432.3,175.8 L432.9,176.7 L433.4,175.8 L434.0,173.4 L434.6,169.4 L435.1,163.9 L435.7,157.1 L436.3,149.2 L436.9,140.3 L437.4,130.6 L438.0,120.4 L438.6,110.0 L439.1,99.6 L439.7,89.4 L440.3,79.7 L440.9,70.8 L441.4,62.9 L442.0,56.1 L442.6,50.6 L443.1,46.6 L443.7,44.2 L444.3,43.3 L444.9,44.2 L445.4,46.6 L446.0,50.6 L446.6,56.1 L447.1,62.9 L447.7,70.8 L448.3,79.7 L448.9,89.4 L449.4,99.6 L450.0,110.0 L450.6,120.4 L451.1,130.6 L451.7,140.3 L452.3,149.2 L452.9,157.1 L453.4,163.9 L454.0,169.4 L454.6,173.4 L455.1,175.8 L455.7,176.7 L456.3,175.8 L456.9,173.4 L457.4,169.4 L458.0,163.9 L458.6,157.1 L459.1,149.2 L459.7,140.3 L460.3,130.6 L460.9,120.4 L461.4,110.0 L462.0,99.6 L462.6,89.4 L463.1,79.7 L463.7,70.8 L464.3,62.9 L464.9,56.1 L465.4,50.6 L466.0,46.6 L466.6,44.2 L467.1,43.3 L467.7,44.2 L468.3,46.6 L468.9,50.6 L469.4,56.1 L470.0,62.9 L470.6,70.8 L471.1,79.7 L471.7,89.4 L472.3,99.6 L472.9,110.0 L473.4,120.4 L474.0,130.6 L474.6,140.3 L475.1,149.2 L475.7,157.1 L476.3,163.9 L476.9,169.4 L477.4,173.4 L478.0,175.8 L478.6,176.7 L479.1,175.8 L479.7,173.4 L480.3,169.4 L480.9,163.9 L481.4,157.1 L482.0,149.2 L482.6,140.3 L483.1,130.6 L483.7,120.4 L484.3,110.0 L484.9,99.6 L485.4,89.4 L486.0,79.7 L486.6,70.8 L487.1,62.9 L487.7,56.1 L488.3,50.6 L488.9,46.6 L489.4,44.2 L490.0,43.3 L490.6,44.2 L491.1,46.6 L491.7,50.6 L492.3,56.1 L492.9,62.9 L493.4,70.8 L494.0,79.7 L494.6,89.4 L495.1,99.6 L495.7,110.0 L496.3,120.4 L496.9,130.6 L497.4,140.3 L498.0,149.2 L498.6,157.1 L499.1,163.9 L499.7,169.4 L500.3,173.4 L500.9,175.8 L501.4,176.7 L502.0,175.8 L502.6,173.4 L503.1,169.4 L503.7,163.9 L504.3,157.1 L504.9,149.2 L505.4,140.3 L506.0,130.6 L506.6,120.4 L507.1,110.0 L507.7,99.6 L508.3,89.4 L508.9,79.7 L509.4,70.8 L510.0,62.9 L510.6,56.1 L511.1,50.6 L511.7,46.6 L512.3,44.2 L512.9,43.3 L513.4,44.2 L514.0,46.6 L514.6,50.6 L515.1,56.1 L515.7,62.9 L516.3,70.8 L516.9,79.7 L517.4,89.4 L518.0,99.6 L518.6,110.0 L519.1,120.4 L519.7,130.6 L520.3,140.3 L520.9,149.2 L521.4,157.1 L522.0,163.9 L522.6,169.4 L523.1,173.4 L523.7,175.8 L524.3,176.7 L524.9,175.8 L525.4,173.4 L526.0,169.4 L526.6,163.9 L527.1,157.1 L527.7,149.2 L528.3,140.3 L528.9,130.6 L529.4,120.4 L530.0,110.0" class="ln" stroke-width="0.9"/>
+        <path d="M50.0,110.0 L54.6,106.0 L59.1,102.0 L63.7,98.1 L68.3,94.2 L72.9,90.3 L77.4,86.6 L82.0,82.9 L86.6,79.3 L91.1,75.8 L95.7,72.4 L100.3,69.2 L104.9,66.1 L109.4,63.2 L114.0,60.5 L118.6,57.9 L123.1,55.5 L127.7,53.3 L132.3,51.3 L136.9,49.5 L141.4,47.9 L146.0,46.6 L150.6,45.5 L155.1,44.6 L159.7,43.9 L164.3,43.5 L168.9,43.3 L173.4,43.4 L178.0,43.7 L182.6,44.2 L187.1,45.0 L191.7,46.0 L196.3,47.2 L200.9,48.7 L205.4,50.4 L210.0,52.3 L214.6,54.4 L219.1,56.7 L223.7,59.1 L228.3,61.8 L232.9,64.7 L237.4,67.7 L242.0,70.8 L246.6,74.1 L251.1,77.5 L255.7,81.1 L260.3,84.7 L264.9,88.5 L269.4,92.3 L274.0,96.1 L278.6,100.1 L283.1,104.0 L287.7,108.0 L292.3,112.0 L296.9,116.0 L301.4,119.9 L306.0,123.9 L310.6,127.7 L315.1,131.5 L319.7,135.3 L324.3,138.9 L328.9,142.5 L333.4,145.9 L338.0,149.2 L342.6,152.3 L347.1,155.3 L351.7,158.2 L356.3,160.9 L360.9,163.3 L365.4,165.6 L370.0,167.7 L374.6,169.6 L379.1,171.3 L383.7,172.8 L388.3,174.0 L392.9,175.0 L397.4,175.8 L402.0,176.3 L406.6,176.6 L411.1,176.7 L415.7,176.5 L420.3,176.1 L424.9,175.4 L429.4,174.5 L434.0,173.4 L438.6,172.1 L443.1,170.5 L447.7,168.7 L452.3,166.7 L456.9,164.5 L461.4,162.1 L466.0,159.5 L470.6,156.8 L475.1,153.9 L479.7,150.8 L484.3,147.6 L488.9,144.2 L493.4,140.7 L498.0,137.1 L502.6,133.4 L507.1,129.7 L511.7,125.8 L516.3,121.9 L520.9,118.0 L525.4,114.0 L530.0,110.0" class="ln-time ln-dash" stroke-width="2"/>
+        <circle cx="50.0" cy="110.0" r="3.6" class="fill-time"/><circle cx="74.0" cy="89.4" r="3.6" class="fill-time"/><circle cx="98.0" cy="70.8" r="3.6" class="fill-time"/><circle cx="122.0" cy="56.1" r="3.6" class="fill-time"/><circle cx="146.0" cy="46.6" r="3.6" class="fill-time"/><circle cx="170.0" cy="43.3" r="3.6" class="fill-time"/><circle cx="194.0" cy="46.6" r="3.6" class="fill-time"/><circle cx="218.0" cy="56.1" r="3.6" class="fill-time"/><circle cx="242.0" cy="70.8" r="3.6" class="fill-time"/><circle cx="266.0" cy="89.4" r="3.6" class="fill-time"/><circle cx="290.0" cy="110.0" r="3.6" class="fill-time"/><circle cx="314.0" cy="130.6" r="3.6" class="fill-time"/><circle cx="338.0" cy="149.2" r="3.6" class="fill-time"/><circle cx="362.0" cy="163.9" r="3.6" class="fill-time"/><circle cx="386.0" cy="173.4" r="3.6" class="fill-time"/><circle cx="410.0" cy="176.7" r="3.6" class="fill-time"/><circle cx="434.0" cy="173.4" r="3.6" class="fill-time"/><circle cx="458.0" cy="163.9" r="3.6" class="fill-time"/><circle cx="482.0" cy="149.2" r="3.6" class="fill-time"/><circle cx="506.0" cy="130.6" r="3.6" class="fill-time"/><circle cx="530.0" cy="110.0" r="3.6" class="fill-time"/>
+        <text x="50" y="208" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="290" y="208" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="530" y="208" text-anchor="middle" class="t-mono t-faint" font-size="12">1 s</text>
+        <text x="60" y="20" class="t-muted" font-size="12">señal real: 21 Hz</text>
+        <text x="330" y="20" class="t-time" font-size="12">muestras a 20 Hz: parece 1 Hz</text>
+      </svg>
+      <figcaption>La misma cuenta a escala visible: 21 Hz muestreados a 20 Hz (como 201 Hz a 200 Hz). <code>ejemplos_b3a.py</code>, ejemplo 8.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · en vuelo</p>
+  <h2>Filtros, temperatura y lo que los simuladores no tienen</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
         <li><strong>PX4 lo combate</strong> con un paso bajo del giróscopo (<code>IMU_GYRO_CUTOFF</code>, A2) y filtros notch dinámicos que siguen la velocidad de los motores por telemetría del ESC o por FFT a bordo (<code>IMU_GYRO_DNF_EN</code>, desactivado por defecto; 3 armónicos y 15 Hz de ancho por notch) <a class="cite" data-ref="px4gyro"></a>.</li>
         <li><strong>Temperatura:</strong> el sesgo de un MEMS cambia con ella; en un vuelo de minutos la IMU se calienta. PX4 tiene calibración térmica.</li>
       </ul>
@@ -302,7 +773,6 @@
   </div>
 </section>
 
-<!-- ============ PARTE 2 ============ -->
 <section class="slide divider" data-section="Cámaras">
   <p class="num">Parte 2</p>
   <h2>Cámaras convencionales y de eventos</h2>
@@ -310,27 +780,141 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Las letras de la cámara y de la cámara de eventos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Símbolo</th><th>Qué es</th><th style="width:15%">Unidades</th><th style="width:24%">Ejemplo</th></tr>
+      <tr><td>\(\mu_p\)</td><td>Fotones que llegan a un píxel durante la exposición (media)</td><td>fotones</td><td>1000</td></tr>
+      <tr><td>\(\eta\), \(\mu_e = \eta\mu_p\)</td><td>Eficiencia cuántica (fracción de fotones que dan electrón) y electrones de señal</td><td>—, e⁻</td><td>0,5 (supuesto); 500 e⁻</td></tr>
+      <tr><td>\(\mu_d\), \(\sigma_d\)</td><td>Media y desviación de los electrones oscuros (lectura y corriente oscura)</td><td>e⁻</td><td>\(\sigma_d\) = 5 e⁻ (supuesto)</td></tr>
+      <tr><td>\(K\)</td><td>Ganancia: niveles digitales (DN) por electrón. <strong>No es la \(K\) de Allan</strong></td><td>DN/e⁻</td><td>0,1 (supuesto)</td></tr>
+      <tr><td>\(\mu_y\), \(\sigma_y^2\), \(\sigma_q^2\)</td><td>Media y varianza de la salida del píxel; varianza de cuantización</td><td>DN, DN²</td><td>\(\sigma_q^2\) = 1/12</td></tr>
+      <tr><td>\(f\)</td><td>Distancia focal en píxeles (ahora no es una frecuencia)</td><td>px</td><td>458,65 (EuRoC)</td></tr>
+      <tr><td>\(\omega\)</td><td>Velocidad angular de la cámara, la del dron</td><td>rad/s</td><td>2 rad/s</td></tr>
+      <tr><td>\(t_{\exp}\), \(t_{ro}\)</td><td>Tiempo de exposición y tiempo de lectura de la imagen completa</td><td>s</td><td>5 ms, 30 ms</td></tr>
+      <tr><td>\(H\), \(v\), \(u\)</td><td>Número de filas, índice de fila (0 arriba) y columna de un píxel</td><td>—, px</td><td>480 filas (EuRoC)</td></tr>
+      <tr><td>\(I\), \(L = \ln I\), \(C\)</td><td>Intensidad en un píxel, su logaritmo y el umbral de contraste de la cámara de eventos</td><td>—</td><td>\(C\) = 0,2</td></tr>
+    </table>
+  </div>
+  <p class="small muted">DN (<em>digital number</em>) es el valor que sale del conversor analógico-digital. La proyección de la cámara (\(f\), centro óptico) es la de A4b.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara · qué estamos modelando</p>
+  <h2>La cadena de un píxel: de fotones a nivel digital</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 620 200" style="max-height:250px" role="img" aria-label="Cadena de un píxel con las fuentes de ruido">
+      <defs><marker id="b3a-m28" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="10" y="66" class="t-bold" font-size="13">fotones</text>
+      <text x="10" y="84" class="t-mono" font-size="13">μ_p</text>
+      <path class="ln" d="M66 70 H108" marker-end="url(#b3a-m28)"/>
+      <rect x="110" y="50" width="62" height="40" rx="5" class="box"/><text x="141" y="76" text-anchor="middle" class="t-mono" font-size="14">× η</text>
+      <path class="ln" d="M172 70 H214" marker-end="url(#b3a-m28)"/>
+      <text x="193" y="40" text-anchor="middle" class="t-muted" font-size="12">e⁻ de señal</text>
+      <text x="193" y="24" text-anchor="middle" class="t-accent t-mono" font-size="12">var = ημ_p</text>
+      <circle cx="230" cy="70" r="14" class="box"/><text x="230" y="76" text-anchor="middle" font-size="18">+</text>
+      <path class="ln-accent" d="M230 140 V86" marker-end="url(#b3a-m28)"/>
+      <text x="230" y="158" text-anchor="middle" class="t-accent" font-size="12">oscuros</text>
+      <text x="230" y="175" text-anchor="middle" class="t-accent t-mono" font-size="12">μ_d, σ_d²</text>
+      <path class="ln" d="M244 70 H288" marker-end="url(#b3a-m28)"/>
+      <rect x="290" y="50" width="62" height="40" rx="5" class="box"/><text x="321" y="76" text-anchor="middle" class="t-mono" font-size="14">× K</text>
+      <text x="321" y="108" text-anchor="middle" class="t-muted" font-size="12">ganancia</text>
+      <path class="ln" d="M352 70 H394" marker-end="url(#b3a-m28)"/>
+      <text x="373" y="40" text-anchor="middle" class="t-accent t-mono" font-size="12">var × K²</text>
+      <circle cx="410" cy="70" r="14" class="box"/><text x="410" y="76" text-anchor="middle" font-size="18">+</text>
+      <path class="ln-accent" d="M410 140 V86" marker-end="url(#b3a-m28)"/>
+      <text x="410" y="158" text-anchor="middle" class="t-accent" font-size="12">cuantización</text>
+      <text x="410" y="175" text-anchor="middle" class="t-accent t-mono" font-size="12">σ_q² = 1/12</text>
+      <path class="ln" d="M424 70 H470" marker-end="url(#b3a-m28)"/>
+      <rect x="472" y="48" width="96" height="44" rx="5" class="box-time"/>
+      <text x="520" y="67" text-anchor="middle" font-size="12">satura y</text>
+      <text x="520" y="84" text-anchor="middle" font-size="12">redondea</text>
+      <path class="ln" d="M568 70 H600" marker-end="url(#b3a-m28)"/>
+      <text x="520" y="122" text-anchor="middle" class="t-mono t-bold" font-size="13">y (DN): μ_y, σ_y²</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p><strong>Entra</strong> la radiancia que el render ya ha convertido en fotones por píxel; <strong>sale</strong> un número entero por píxel. Cada etapa añade su ruido, y como las fuentes son independientes, sus varianzas se suman (con el factor \(K^2\) al pasar por la ganancia).</p>
+    <p>Antes de esta cadena, en la radiancia, actúan el <strong>desenfoque</strong> y el <strong>obturador rodante</strong>: dependen del tiempo, no del número de fotones, y por eso se aplican antes del ruido.</p>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Cámara · ruido fotométrico</p>
-  <h2>De fotones a niveles digitales: el modelo lineal de cámara</h2>
+  <h2>El modelo lineal de EMVA 1288, paso a paso</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>Electrones de señal \(\sim\) Poisson: media \(\eta\mu_p\), varianza \(\eta\mu_p\)</td><td>Fotones que llegan de forma independiente: en una distribución de Poisson la varianza es igual a la media (<strong>ruido de disparo</strong>)</td></tr>
+      <tr><td><strong>2</strong></td><td>Más electrones oscuros: media \(\mu_d\), varianza \(\sigma_d^2\)</td><td>Lectura y corriente oscura, independientes de la luz (<strong>ruido oscuro</strong>)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mu_y = K(\eta\,\mu_p + \mu_d)\)</td><td>La ganancia escala la media por \(K\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\sigma_y^2 = K^2(\sigma_d^2 + \eta\mu_p) + \sigma_q^2\)</td><td>Escalar por \(K\) multiplica la varianza por \(K^2\); fuentes independientes suman varianzas; la cuantización añade 1/12 DN² (error uniforme en un escalón)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\sigma_y^2 = K^2\sigma_d^2 + \sigma_q^2 + K\,(\mu_y - \mu_{y,\text{dark}})\)</td><td>Con \(\mu_{y,\text{dark}} = K\mu_d\), \(K^2\eta\mu_p = K(\mu_y-\mu_{y,\text{dark}})\). Es la forma de EMVA 1288 <a class="cite" data-ref="emva1288"></a>: la varianza es una recta en la media, de pendiente \(K\), y así se mide la ganancia</td></tr>
+      <tr><td><strong>6</strong></td><td>\(\displaystyle \mathrm{SNR} = \frac{\eta\mu_p}{\sqrt{\sigma_d^2 + \sigma_q^2/K^2 + \eta\mu_p}}\)</td><td>Señal entre ruido, todo en electrones: se divide \(\sigma_y\) entre \(K\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara · con números</p>
+  <h2>Relación señal-ruido, exposición y desenfoque</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">El estándar EMVA 1288 modela una cámara como una cadena lineal: \(\mu_p\) fotones por píxel, eficiencia cuántica \(\eta\), ganancia \(K\) (niveles digitales por electrón) <a class="cite" data-ref="emva1288"></a>:</p>
-      \[ \mu_y = K(\eta\,\mu_p + \mu_d) \]
-      \[ \sigma_y^2 = K^2\sigma_d^2 + \sigma_q^2 + K\,(\mu_y - \mu_{y,\text{dark}}) \]
-      <ul class="small">
-        <li><strong>Ruido de disparo</strong> (Poisson): varianza igual a la media de electrones. Domina con buena luz.</li>
-        <li><strong>Ruido oscuro</strong> \(\sigma_d\) (lectura y corriente oscura, en electrones): domina con poca luz.</li>
-        <li><strong>Cuantización</strong>: \(\sigma_q^2 = 1/12\) niveles digitales al cuadrado.</li>
-      </ul>
-      \[ \mathrm{SNR} = \frac{\eta\mu_p}{\sqrt{\sigma_d^2 + \sigma_q^2/K^2 + \eta\mu_p}} . \]
+      <p>Con \(\eta\) = 0,5, \(\sigma_d\) = 5 e⁻ y \(K\) = 0,1 DN/e⁻ (supuestos), en DN²:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\mu_p\)</th><th>Electrones</th><th>\(\sigma_y^2\) = oscuro + cuant. + disparo</th><th>SNR</th><th>\(\sqrt{\eta\mu_p}\)</th></tr>
+          <tr><td class="n">9000</td><td class="n">4500</td><td class="n">0,25 + 0,08 + 45</td><td class="n">66,8</td><td class="n">67,1</td></tr>
+          <tr><td class="n">1000</td><td class="n">500</td><td class="n">0,25 + 0,08 + 5</td><td class="n">21,7</td><td class="n">22,4</td></tr>
+          <tr><td class="n">100</td><td class="n">50</td><td class="n">0,25 + 0,08 + 0,5</td><td class="n">5,5</td><td class="n">7,1</td></tr>
+          <tr><td class="n">20</td><td class="n">10</td><td class="n">0,25 + 0,08 + 0,1</td><td class="n">1,5</td><td class="n">3,2</td></tr>
+        </table>
+      </div>
+      <p>Con luz domina el disparo y \(\mathrm{SNR}\approx\sqrt{\eta\mu_p}\): pasar de SNR 10 a 30 exige 9 veces más luz, es decir, 9 veces más exposición. Con poca luz domina el ruido oscuro. <span class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 9.</span></p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Cuenta: la relación señal-ruido y la exposición</summary>
-        <p class="small">Con buena luz (ruido de disparo), \(\mathrm{SNR} \approx \sqrt{\eta\mu_p}\): para pasar de SNR 10 a 30 hace falta 9 veces más luz, es decir, 9 veces más exposición. Pero la exposición es también desenfoque: \(f\,\omega\,t_{\exp}\) píxeles.</p>
-        <p class="small">Un dron que gira a 2 rad/s con la cámara de EuRoC (\(f\) = 458,65 px) y 5 ms de exposición emborrona 4,6 px. Ganar SNR cuesta nitidez: en interiores oscuros, el compromiso decide si el VIO funciona.</p>
-      </details>
+      <p><strong>El precio de exponer más:</strong> durante \(t_{\exp}\) la imagen se mueve \(f\,\omega\,t_{\exp}\) píxeles (hoja 32). Con la cámara de EuRoC girando a 2 rad/s: 4,6 px con 5 ms; con 9 veces más, 41 px. En interiores oscuros, este compromiso decide si el VIO funciona.</p>
       <div class="callout clave"><span class="tag">Para simular</span>Renderiza la radiancia sin ruido; conviértela a electrones con \(\eta\) y la exposición; añade Poisson y ruido gaussiano oscuro; aplica la ganancia, satura y cuantiza. Y aplica el desenfoque y el obturador antes del ruido, en el dominio de la radiancia.</div>
       <div class="callout error"><span class="tag">Error frecuente</span>Ruido gaussiano aditivo de varianza fija sobre la imagen en 8 bits. El ruido real depende de la intensidad de cada píxel y crece en las zonas oscuras relativas a la señal.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara · obturador rodante · geometría</p>
+  <h2>Cada fila se expone en su momento, y la cámara ya ha girado</h2>
+  <div class="cols">
+    <div class="stack">
+    <figure class="fig">
+      <svg viewBox="0 0 540 262" role="img" aria-label="Línea temporal de exposición de las filas con obturador rodante">
+        <rect x="120" y="22" width="50" height="196" class="box-soft"/>
+        <text x="145" y="14" text-anchor="middle" class="t-muted" font-size="12">global: todas a la vez</text>
+        <rect x="120.0" y="23.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="34.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 0</text><rect x="170.0" y="53.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="64.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 80</text><rect x="220.0" y="83.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="94.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 160</text><rect x="270.0" y="113.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="124.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 240</text><rect x="320.0" y="143.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="154.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 320</text><rect x="370.0" y="173.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="184.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 400</text><rect x="420.0" y="203.0" width="50" height="14" rx="2" class="box-accent"/><text x="112" y="214.0" text-anchor="end" class="t-mono t-faint" font-size="11">fila 480</text>
+        <path d="M120 30 L420 210" class="ln-tesis ln-dash" stroke-width="1.6"/>
+        <text x="330" y="70" class="t-tesis t-mono" font-size="13">t_v = t_ro · v/H</text>
+        <line x1="120" y1="232" x2="520" y2="232" class="ln-rule"/>
+        <text x="120" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text><text x="220" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text><text x="320" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text><text x="420" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">30</text><text x="520" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">40 ms</text>
+        <text x="445" y="196" text-anchor="middle" class="t-accent t-mono" font-size="13">t_exp</text>
+      </svg>
+      <figcaption>EuRoC (480 filas), lectura de 30 ms y exposición de 5 ms. <code>ejemplos_b3a.py</code>, ejemplo 10.</figcaption>
+    </figure>
+    <p>EuRoC a 5 rad/s con 30 ms: cada fila empieza 62,5 µs después que la anterior y se desplaza 0,14 px más; la fila 240, 34 px; la última, 69 px.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(t_v = t_{ro}\,v/H\)</td><td>Las filas se leen una tras otra a ritmo constante</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\delta\psi(v) = \omega\,t_v\)</td><td>Ángulo girado hasta que se expone la fila \(v\) (\(\omega\) constante durante la imagen)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(u = f\tan\beta\ \Rightarrow\ du \approx f\,d\beta\)</td><td>Proyección (A4b): un punto a un ángulo \(\beta\) del eje óptico; cerca del centro, \(\tan\beta\approx\beta\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\Delta u(v) \approx f\,\omega\,t_{ro}\,v/H\)</td><td>1 y 2 en 3: el desplazamiento crece con la fila y la imagen se <strong>cizalla</strong></td></tr>
+          <tr><td><strong>5</strong></td><td>desenfoque \(\approx f\,\omega\,t_{\exp}\)</td><td>Lo mismo dentro de una fila: durante su exposición el punto recorre esos píxeles</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Lejos del centro</span>
+        <p>\(du/d\beta = f(1+\tan^2\beta) = f\,(1 + (u/f)^2)\): a 376 px del centro el factor es 1,67, y el desplazamiento de la última fila, unos 115 px en vez de 69.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -361,8 +945,7 @@
       <figcaption>Una rejilla vista por la cámara de EuRoC (752 × 480, \(f\) = 458,65 px) mientras el dron gira en guiñada a 5 rad/s. Con una lectura de 30 ms, la última fila se desplaza 69 px (9 % del ancho) respecto a la primera. <code>figuras_b3a.py</code>, sección 3.</figcaption>
     </figure>
     <div class="stack">
-      <p class="small">Cada fila \(v\) se expone \(t_{ro}\,v/H\) más tarde que la primera. Con giro \(\omega\), el desplazamiento horizontal de la fila \(v\) es</p>
-      \[ \Delta u(v) \approx f\,\omega\,t_{ro}\,\frac{v}{H},\qquad \text{desenfoque} \approx f\,\omega\,t_{\exp}. \]
+      <p>Con \(\Delta u \approx f\,\omega\,t_{ro}\,v/H\) y desenfoque \(\approx f\,\omega\,t_{\exp}\) (hoja anterior):</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>\(\omega\) · lectura · exposición</th><th>Cizalla</th><th>Desenfoque</th></tr></thead>
@@ -376,6 +959,49 @@
       <div class="callout realidad"><span class="tag">Cifras reales</span>TUM VI eligió cámaras de obturador global <a class="cite" data-ref="tumvi"></a>. En su dataset de obturador rodante, la misma cámara en modo rodante tarda unos 29,5 µs por fila (unos 30 ms para sus 1024 filas), «más bien en el extremo lento» según los autores, que modelan el tiempo de cada fila en su VIO <a class="cite" data-ref="schubert2019"></a>.</div>
     </div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara de eventos · qué hace un píxel</p>
+  <h2>Cada píxel compara su log-intensidad con la que tenía en su último evento</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 620 205" style="max-height:250px" role="img" aria-label="Diagrama de bloques de un píxel de una cámara de eventos">
+      <defs><marker id="b3a-m33" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="8" y="64" class="t-bold" font-size="13">luz</text>
+      <text x="8" y="82" class="t-mono" font-size="13">I(x, t)</text>
+      <path class="ln" d="M62 72 H96" marker-end="url(#b3a-m33)"/>
+      <rect x="98" y="46" width="124" height="52" rx="5" class="box"/>
+      <text x="160" y="68" text-anchor="middle" font-size="12">fotorreceptor</text>
+      <text x="160" y="86" text-anchor="middle" font-size="12">logarítmico</text>
+      <path class="ln" d="M222 72 H268" marker-end="url(#b3a-m33)"/>
+      <text x="245" y="62" text-anchor="middle" class="t-mono" font-size="13">L</text>
+      <circle cx="284" cy="72" r="14" class="box"/><text x="284" y="78" text-anchor="middle" font-size="18">−</text>
+      <path class="ln" d="M298 72 H350" marker-end="url(#b3a-m33)"/>
+      <text x="324" y="62" text-anchor="middle" class="t-mono" font-size="13">ΔL</text>
+      <rect x="352" y="46" width="118" height="52" rx="5" class="box-accent"/>
+      <text x="411" y="68" text-anchor="middle" font-size="12">¿ΔL ≥ +C? ON</text>
+      <text x="411" y="86" text-anchor="middle" font-size="12">¿ΔL ≤ −C? OFF</text>
+      <path class="ln-time" d="M470 72 H508" marker-end="url(#b3a-m33)"/>
+      <text x="514" y="66" class="t-time t-bold" font-size="13">evento</text>
+      <text x="514" y="84" class="t-time t-mono" font-size="12">(x, t, ±1)</text>
+      <rect x="226" y="136" width="116" height="40" rx="5" class="box-soft"/>
+      <text x="284" y="153" text-anchor="middle" font-size="12">memoria:</text>
+      <text x="284" y="169" text-anchor="middle" class="t-mono" font-size="12">L(t_último)</text>
+      <path class="ln" d="M284 136 V88" marker-end="url(#b3a-m33)"/>
+      <path class="ln ln-dash" d="M411 98 V156 H344" marker-end="url(#b3a-m33)"/>
+      <text x="420" y="140" class="t-muted" font-size="12">al emitir, guarda</text>
+      <text x="420" y="156" class="t-muted" font-size="12">el L actual</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Entra</strong> la intensidad de luz \(I\) en el píxel \(\mathbf x\); <strong>sale</strong> una lista asíncrona de eventos \((\mathbf x, t, \pm1)\): dónde, cuándo y si la luz subió (ON) o bajó (OFF). No hay imágenes ni ritmo fijo.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Por qué el logaritmo:</strong> \(\Delta L = \ln(I_2/I_1)\) solo depende del cociente. Un borde de contraste 5:1 da los mismos eventos con la luz del día que con cien veces menos luz: el sensor mide contraste relativo, y de ahí su rango dinámico.</p>
+    </div>
+  </div>
+  <div class="callout realidad"><span class="tag">Hardware</span>El DVS de 2008: 128 × 128 píxeles, 120 dB de rango dinámico y 15 µs de latencia <a class="cite" data-ref="lichtsteiner2008"></a>.</div>
 </section>
 
 <section class="slide">
@@ -408,14 +1034,45 @@
       <figcaption>Un píxel ve pasar un borde suave (2 px de ancho) de intensidad 0,2 a 1. Cada vez que \(\ln I\) sube \(C\) desde el último evento, se emite uno. <code>figuras_b3a.py</code>, sección 4.</figcaption>
     </figure>
     <div class="stack">
-      <p class="small">Cada píxel memoriza \(\ln I\) en su último evento y emite otro, con polaridad \(\pm1\), cuando <a class="cite" data-ref="gallego2022"></a></p>
+      <p>Cada píxel memoriza \(\ln I\) en su último evento y emite otro, con polaridad \(\pm1\), cuando <a class="cite" data-ref="gallego2022"></a></p>
       \[ \Delta\ln I(\mathbf x, t) = \ln I(\mathbf x, t) - \ln I(\mathbf x, t_{\text{último}}) = \pm C . \]
-      <ul class="small">
+      <ul>
         <li>Umbrales típicos entre el 10 % y el 50 % de cambio de iluminación, con una dispersión entre píxeles de 2–4 % (1σ) <a class="cite" data-ref="gallego2022"></a>.</li>
-        <li>El número de eventos lo fija el contraste, \(\ln(1/0{,}2)/C \approx 8\); su ritmo, la velocidad del borde: a 100, 1000 y 10 000 px/s, los mismos 8 eventos en 36 ms, 3,6 ms y 0,36 ms.</li>
+        <li>El borde tiene contraste 5:1: \(\ln 5/C\) ≈ 8 eventos (en la figura se ven 7, porque la ventana empieza con el borde ya iniciado). Su ritmo lo fija la velocidad: a 100, 1000 y 10 000 px/s, los mismos 8 eventos en 36 ms, 3,6 ms y 0,36 ms.</li>
         <li>A 10 000 px/s, una cámara de 30 Hz vería el borde saltar 333 px entre imágenes.</li>
       </ul>
-      <div class="callout realidad"><span class="tag">Hardware</span>El DVS de 2008: 128 × 128 píxeles, 120 dB de rango dinámico y 15 µs de latencia <a class="cite" data-ref="lichtsteiner2008"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara de eventos · cuántos y a qué ritmo</p>
+  <h2>El contraste fija cuántos eventos; la velocidad, a qué ritmo</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>eventos \(= \lfloor \ln(I_2/I_1)/C\rfloor\)</td><td>Cada evento consume un escalón \(C\) de log-intensidad entre los dos lados del borde</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\Delta t_{\text{ev}}\approx C/|\partial L/\partial t|\)</td><td>Entre dos eventos, \(L\) cambia \(C\); linealizar \(L\) en ese intervalo</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\partial L/\partial t = -\nabla L\cdot\mathbf v\)</td><td>Si la escena solo se traslada a velocidad \(\mathbf v\) (px/s) en la imagen, \(L(\mathbf x,t) = L(\mathbf x-\mathbf v t, 0)\): regla de la cadena <a class="cite" data-ref="gallego2022"></a></td></tr>
+          <tr><td><strong>4</strong></td><td>ritmo \(= |\nabla L\cdot\mathbf v|/C\)</td><td>Más contraste espacial \(\nabla L\) o más velocidad: más eventos por segundo</td></tr>
+        </table>
+      </div>
+      <p class="small">\(\nabla L\) es el gradiente espacial de la log-intensidad (por px) e \(I_1\), \(I_2\) las intensidades a cada lado del borde.</p>
+    </div>
+    <div class="stack">
+      <p><strong>El borde de la hoja anterior</strong> (0,2 → 1, \(C\) = 0,2): \(\ln 5/0{,}2\) = 8,05, así que 8 eventos. Su gradiente máximo es 0,76 por px:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Velocidad</th><th>\(|\partial L/\partial t|\) máx.</th><th>Ritmo máx.</th><th>Intervalo mín.</th></tr>
+          <tr><td class="n">100 px/s</td><td class="n">76 /s</td><td class="n">382 ev/s</td><td class="n">2,6 ms</td></tr>
+          <tr><td class="n">1000 px/s</td><td class="n">764 /s</td><td class="n">3820 ev/s</td><td class="n">262 µs</td></tr>
+          <tr><td class="n">10 000 px/s</td><td class="n">7639 /s</td><td class="n">38 197 ev/s</td><td class="n">26 µs</td></tr>
+        </table>
+      </div>
+      <p><strong>El paso de ESIM</strong> sale de la fila 2: para que entre dos imágenes renderizadas \(L\) no cambie más que una fracción \(\lambda\) del umbral, \(\Delta t_{\text{render}} = \lambda C/|\partial L/\partial t|_{\max}\). Con \(\lambda\) = 0,5 (elegido aquí) y 1000 px/s, 131 µs: unas 7600 imágenes por segundo, solo mientras dura el movimiento rápido.</p>
+      <p class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 11.</p>
     </div>
   </div>
 </section>
@@ -425,7 +1082,7 @@
   <h2>ESIM y v2e: de vídeo renderizado a eventos con sus defectos</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>El problema:</strong> los eventos tienen resolución de microsegundos y un renderizador da imágenes a decenas o cientos de Hz. Interpolar entre imágenes pierde eventos si el cambio entre dos de ellas supera \(C\) muchas veces.</li>
         <li><strong>ESIM</strong> acopla el renderizador y el simulador de eventos y elige el paso de render de forma adaptativa, \(t_{k+1} = t_k + \lambda C\,|\partial L/\partial t|_{\max}^{-1}\), o según el flujo óptico. Con flujo óptico necesita 1260 imágenes por segundo para el error que el muestreo uniforme logra con 2060 <a class="cite" data-ref="rebecq2018"></a>.</li>
         <li><strong>v2e</strong> parte de vídeo (real o sintético) y añade los defectos del sensor real: dispersión del umbral (\(\sigma_\theta\) ≈ 0,03 alrededor de unos 0,3), eventos de fuga (≈ 0,1 Hz), ruido de disparo (1 Hz por defecto) y un ancho de banda del fotorreceptor proporcional a la luz <a class="cite" data-ref="hu2021"></a>.</li>
@@ -439,7 +1096,6 @@
   </div>
 </section>
 
-<!-- ============ PARTE 3 ============ -->
 <section class="slide divider" data-section="LiDAR y profundidad">
   <p class="num">Parte 3</p>
   <h2>LiDAR y profundidad</h2>
@@ -447,15 +1103,65 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">LiDAR · qué estamos modelando</p>
+  <h2>Un rayo por dirección: origen, dirección, primer impacto y ruido</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Vista cenital de los rayos de un LiDAR sobre un poste y una pared">
+        <rect x="466" y="200" width="9" height="78" class="fill-ink3"/>
+        <line x1="470" y1="18" x2="470" y2="282" class="ln" stroke-width="2.4"/>
+        <line x1="60" y1="150" x2="470" y2="267.6" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="267.6" r="4" class="box"/>
+        <line x1="60" y1="150" x2="470" y2="237.1" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="237.1" r="4" class="box"/>
+        <line x1="60" y1="150" x2="470" y2="207.6" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="207.6" r="3.5" class="fill-ink3"/>
+        <line x1="60" y1="150" x2="470" y2="178.7" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="178.7" r="3.5" class="fill-ink3"/>
+        <line x1="60" y1="150" x2="470" y2="150.0" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="150.0" r="3.5" class="fill-ink3"/>
+        <line x1="60" y1="150" x2="356.1" y2="129.3" class="ln-time" stroke-width="1.4"/>
+        <circle cx="356.1" cy="129.3" r="4" class="fill-time"/>
+        <line x1="60" y1="150" x2="470" y2="92.4" class="ln-time" stroke-width="1"/>
+        <circle cx="415" cy="100.1" r="4.5" class="fill-accent"/>
+        <line x1="60" y1="150" x2="470" y2="62.9" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="62.9" r="3.5" class="fill-ink3"/>
+        <line x1="60" y1="150" x2="470" y2="32.4" class="ln" stroke-width="1"/>
+        <circle cx="470" cy="32.4" r="3.5" class="fill-ink3"/>
+        <circle cx="360" cy="122" r="8" class="box-accent"/>
+        <rect x="46" y="140" width="18" height="20" rx="3" class="box-time"/>
+        <text x="40" y="184" class="t-bold" font-size="12">LiDAR</text>
+        <path d="M110 150 A50 50 0 0 0 109.9 146.5" class="ln"/>
+        <text x="118" y="140" class="t-mono" font-size="12">Δθ</text>
+        <path class="ln" d="M300 150 V133.2 M294 150 H306 M294 133.2 H306"/>
+        <text x="310" y="146" class="t-mono t-faint" font-size="11">r Δθ</text>
+        <text x="372" y="144" class="t-accent" font-size="12">poste</text>
+        <line x1="420" y1="99" x2="478" y2="104" class="ln-rule"/><text x="482" y="108" class="t-accent" font-size="11">mixed pixel</text>
+        <text x="482" y="30" class="t-muted" font-size="12">pared</text>
+        <text x="482" y="236" class="t-muted" font-size="12">negra:</text>
+        <text x="482" y="252" class="t-muted" font-size="12">sin retorno</text>
+        <text x="300" y="296" text-anchor="middle" class="t-muted" font-size="12">ángulo entre rayos exagerado (4°)</text>
+      </svg>
+      <figcaption>Vista cenital. Puntos llenos: retornos; huecos: rayos perdidos en una superficie negra; el punto del rayo que roza el poste cae entre poste y pared. Geometría de <code>ejemplos_b3a.py</code>, ejemplo 12.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Para el rayo \(i\), con origen \(\mathbf o\) (el sensor) y dirección unitaria \(\mathbf d_i\) (del patrón de barrido), el simulador busca la distancia \(r_i\) al primer objeto que corta. La medida es</p>
+      \[ \tilde r_i = r_i + \varepsilon_i,\qquad \tilde{\mathbf p}_i = \mathbf o + \tilde r_i\,\mathbf d_i \]
+      <p>con \(\varepsilon_i\) un ruido de distancia de desviación \(\sigma_r\) (unos centímetros). Eso es todo el <em>ray casting</em>.</p>
+      <p>Dos rayos vecinos están separados \(\Delta\theta\); a distancia \(r\), su separación es \(r\,\Delta\theta\): lo que no la llena puede no verse (hoja 42).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">LiDAR · modelo</p>
-  <h2>Un LiDAR simulado es un ray casting; uno real, no del todo</h2>
+  <h2>Lo que el ray casting no da</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Geometría:</strong> un rayo por dirección del patrón de barrido (filas y columnas, o el patrón no repetitivo de algunos LiDAR de estado sólido), intersectado con la escena. Es lo que hacen Gazebo, Isaac y Aerial Gym (B1).</li>
         <li><strong>Distancia:</strong> ruido gaussiano de unos centímetros, que en el real crece con la distancia y con la reflectividad baja.</li>
         <li><strong>Lo que el ray casting no da:</strong> divergencia del haz (un rayo «grueso» que toca dos superficies da puntos intermedios: <em>mixed pixels</em>), pérdida de retornos (<em>raydrop</em>) en superficies negras, especulares o lejanas, intensidad, y retornos de polvo o lluvia.</li>
-        <li><strong>Distorsión por movimiento:</strong> un barrido dura decenas de milisegundos; si el dron se mueve, la nube se deforma igual que una imagen con obturador rodante.</li>
       </ul>
     </div>
     <div class="stack">
@@ -467,12 +1173,78 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">LiDAR · distorsión por movimiento</p>
+  <h2>Un barrido dura 100 ms: si el dron se mueve, la nube se deforma</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 275" role="img" aria-label="Pared registrada inclinada porque el dron avanza durante el barrido">
+        <line x1="40" y1="50" x2="520" y2="50" class="ln-dash"/>
+        <text x="520" y="38" text-anchor="end" class="t-muted" font-size="12">verdadera, a 10 m</text>
+        <path d="M56.2,50.0 L94.4,51.2 L128.0,52.5 L158.0,53.8 L185.4,55.0 L210.8,56.2 L234.7,57.5 L257.7,58.8 L280.0,60.0 L302.0,61.2 L324.1,62.5 L346.5,63.8 L369.8,65.0 L394.2,66.2 L420.5,67.5 L449.2,68.8 L481.4,70.0" class="ln-accent" stroke-width="3"/>
+        <text x="60" y="38" class="t-accent" font-size="12">pared registrada (sin corregir): trazo grueso</text>
+        <path class="ln" d="M424 50 V67.5 M418 50 H430 M418 67.5 H430"/>
+        <text x="488" y="64" class="t-mono t-muted" font-size="11">≈ 1 m</text>
+        <line x1="280" y1="250" x2="56.2" y2="50" class="ln" stroke-width="1"/>
+        <line x1="280" y1="240" x2="280" y2="50" class="ln" stroke-width="1"/>
+        <line x1="280" y1="230" x2="481.4" y2="50" class="ln" stroke-width="1"/>
+        <rect x="272" y="244" width="16" height="12" rx="2" class="box-time"/>
+        <rect x="272" y="224" width="16" height="12" rx="2" class="box-accent"/>
+        <text x="296" y="256" class="t-muted" font-size="12">t = 0: empieza el barrido (−40°)</text>
+        <text x="296" y="222" class="t-muted" font-size="12">t = 100 ms: 1 m más cerca (+40°)</text>
+      </svg>
+      <figcaption>El dron avanza hacia la pared a 10 m/s mientras barre de −40° a +40°; cada punto se registra como si se hubiera medido desde la posición inicial. Escala vertical aproximada. <code>ejemplos_b3a.py</code>, ejemplo 12.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>El punto \(i\) se mide en el instante \(t_i\), entre 0 y la duración del barrido \(T_b\). Si se le asigna la pose del inicio, su error es lo que el sensor se ha movido hasta \(t_i\):</p>
+      \[ \delta\mathbf p_i \approx \mathbf v\,t_i + (\boldsymbol\omega\times r_i\mathbf d_i)\,t_i \]
+      <p>y como mucho, al final del barrido, \(|\delta\mathbf p|\approx (v + r\,\omega)\,T_b\).</p>
+      <p>(\(\mathbf v\): velocidad del dron, \(\boldsymbol\omega\): su velocidad angular.) A 10 Hz, \(T_b\) = 100 ms: a 10 m/s, 1 m; girando a 1 rad/s, un punto a 10 m también se desplaza 1 m; a 2 m/s, 20 cm.</p>
+      <p>Es el obturador rodante del LiDAR, y se corrige igual: con la pose (interpolada con la IMU) en el instante de cada punto.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">LiDAR · obstáculos finos · geometría</p>
+  <h2>Un objeto más estrecho que la separación entre rayos puede caer entre ellos</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 520 215" style="max-height:230px" role="img" aria-label="Un poste fino entre dos rayos de LiDAR">
+        <line x1="40" y1="110" x2="480" y2="156.2" class="ln" stroke-width="1"/>
+        <line x1="40" y1="110" x2="480" y2="133.1" class="ln" stroke-width="1"/>
+        <line x1="40" y1="110" x2="480" y2="110.0" class="ln" stroke-width="1"/>
+        <line x1="40" y1="110" x2="480" y2="86.9" class="ln" stroke-width="1"/>
+        <line x1="40" y1="110" x2="480" y2="63.8" class="ln" stroke-width="1"/>
+        <path class="ln-time" d="M405 110.0 V92.2 M399 110.0 H411 M399 92.2 H411"/>
+        <text x="416" y="105.1" class="t-time t-mono" font-size="12">r Δθ</text>
+        <circle cx="380" cy="101.1" r="5" class="box-accent"/>
+        <line x1="330" y1="74" x2="376" y2="97" class="ln-rule"/><text x="250" y="70" class="t-accent t-mono" font-size="12">poste, anchura w</text>
+        <rect x="31" y="101" width="18" height="18" rx="3" class="box-time"/>
+        <path class="ln" d="M40 190 H380 M40 184 V196 M380 184 V196"/>
+        <text x="210" y="208" text-anchor="middle" class="t-mono" font-size="12">r</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:45%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>separación \(= r\,\Delta\theta_h\)</td><td>Arco de radio \(r\) y ángulo \(\Delta\theta_h\) (en rad); para ángulos pequeños, arco ≈ cuerda</td></tr>
+        <tr><td><strong>2</strong></td><td>\(n_h \approx w/(r\,\Delta\theta_h)\)</td><td>Cuántas separaciones caben en la anchura \(w\): columnas que tocan el objeto por barrido</td></tr>
+        <tr><td><strong>3</strong></td><td>si \(n_h\lt 1\): \(P(\text{algún rayo}) = n_h\)</td><td>La posición del objeto respecto a la rejilla de rayos es al azar: lo toca si su centro cae a menos de \(w/2\) de un rayo</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Con 0,35° a 9,8 m, la separación es 6,0 cm y un poste de 5 cm recibe \(n_h\) = 0,84: en un barrido de cada seis no existe. Si la fase cambia al azar entre barridos (el dron se mueve), la probabilidad de no verlo en tres seguidos es 0,16³ ≈ 0,005.</p>
+      <p class="xsmall muted">\(\Delta\theta_h\): resolución horizontal. En vertical vale lo mismo con \(\Delta\theta_v\). <code>ejemplos_b3a.py</code>, ejemplo 12.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">LiDAR · obstáculos finos</p>
   <h2>¿Cuántos rayos tocan un cable o una rama?</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con resolución angular horizontal \(\Delta\theta_h\), un objeto de anchura \(w\) a distancia \(r\) recibe del orden de</p>
-      \[ n_h \approx \frac{w}{r\,\Delta\theta_h}\quad\text{columnas por barrido.} \]
+      <p>Con \(n_h \approx w/(r\,\Delta\theta_h)\) columnas por barrido (hoja anterior), un poste de 5 cm:</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>\(\Delta\theta_h\)</th><th>Poste de 5 cm a 5 m</th><th>A 10 m</th><th>A 20 m</th><th>\(n_h\) = 1 en</th></tr></thead>
@@ -493,7 +1265,6 @@
   </div>
 </section>
 
-<!-- ============ PARTE 4 ============ -->
 <section class="slide divider" data-section="GNSS, baro y mag">
   <p class="num">Parte 4</p>
   <h2>GNSS, barómetro y magnetómetro</h2>
@@ -501,9 +1272,54 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Las letras del GNSS, el barómetro y el magnetómetro</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Símbolo</th><th>Qué es</th><th style="width:14%">Unidades</th><th style="width:26%">Ejemplo</th></tr>
+      <tr><td>\(e_k\), \(e(t)\)</td><td>Error de posición del GNSS en un eje, en la muestra \(k\) o en continuo</td><td>m</td><td>—</td></tr>
+      <tr><td>\(\tau\)</td><td><strong>Tiempo de correlación</strong> del error. Aviso: ya no es la ventana de Allan</td><td>s</td><td>60 s (ejemplo), 0,46 s (PX4)</td></tr>
+      <tr><td>\(a = e^{-\Delta t/\tau}\)</td><td>Cuánto se parece cada error al anterior. Aviso: no es una aceleración</td><td>—</td><td>0,76 (PX4 a 8 Hz)</td></tr>
+      <tr><td>\(\sigma\), \(q\)</td><td>Desviación estacionaria del error y desviación del ruido que lo alimenta en cada paso</td><td>m</td><td>PX4: 2,5 cm y 1,6 cm</td></tr>
+      <tr><td>\(R(\ell)\)</td><td>Autocorrelación: correlación entre dos errores separados un desfase \(\ell\)</td><td>—, s</td><td>\(e^{-\ell/\tau}\)</td></tr>
+      <tr><td>\(p\), \(h\), \(\rho\), \(A\)</td><td>Presión, altura, densidad del aire y área de una lámina de aire</td><td>Pa, m, kg/m³, m²</td><td>\(\rho\) = 1,225 kg/m³</td></tr>
+      <tr><td>\(\mathbf B\), \(B_h\)</td><td>Campo magnético terrestre y su componente horizontal. Aviso: no es la inestabilidad del sesgo</td><td>µT</td><td>48,3 y 23,8 µT (mundo de PX4)</td></tr>
+      <tr><td>\(\psi\), \(\delta\psi\)</td><td>Rumbo (guiñada) y su error</td><td>rad, °</td><td>—</td></tr>
+      <tr><td>\(\delta B_\perp\), \(\mathbf b_{hi}\), \(M\)</td><td>Perturbación perpendicular a \(B_h\); hierro duro (desplazamiento fijo en el cuerpo) y matriz de hierro blando</td><td>µT, —</td><td>\(\mathbf b_{hi}\) = 5 µT (supuesto)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GNSS · de dónde sale el modelo</p>
+  <h2>Gauss-Markov de primer orden: un error que olvida con constante \(\tau\)</h2>
+  <p>El error tiende a cero a ritmo \(1/\tau\) y un ruido blanco lo empuja: la versión aleatoria de una relajación exponencial.</p>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(\dot e = -e/\tau + \sigma\sqrt{2/\tau}\;w(t)\)</td><td>Modelo continuo; la densidad del ruido se elige para que la varianza estacionaria sea \(\sigma^2\)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(e_k = a\,e_{k-1} + q\,w_k,\quad a = e^{-\Delta t/\tau}\)</td><td>Solución exacta en un paso: la parte determinista decae con \(e^{-\Delta t/\tau}\); el ruido acumulado es gaussiano</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\mathrm{Var}[e_k] = a^2\,\mathrm{Var}[e_{k-1}] + q^2\)</td><td>\(e_{k-1}\) y \(w_k\) son independientes</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\sigma^2 = a^2\sigma^2 + q^2\Rightarrow q = \sigma\sqrt{1-a^2}\)</td><td>En régimen la varianza no cambia: lo que pierde al decaer lo repone el ruido</td></tr>
+        <tr><td><strong>5</strong></td><td>\(\mathbb E[e_k e_{k-j}] = a^j\sigma^2 = \sigma^2 e^{-j\Delta t/\tau}\)</td><td>Multiplicar la recursión por \(e_{k-j}\) y repetir: la memoria decae exponencialmente</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p><strong>PX4</strong> (<code>sensor_gps_sim</code>, 8 Hz): \(a\) = 0,76 y \(q\) = 0,016 m <a class="cite" data-ref="px4gpssim"></a>. Del paso 4, \(\sigma = 0{,}016/\sqrt{1-0{,}76^2} = 0{,}016/0{,}650\) = 2,5 cm; del 2, \(\tau = -\Delta t/\ln a = -0{,}125/\ln 0{,}76\) = 0,46 s.</p>
+      <p><strong>Un ejemplo de metros</strong> (supuesto: 1 m y 60 s): \(a = e^{-0{,}125/60}\) = 0,99792 y \(q = \sqrt{1-a^2}\) = 6,5 cm por paso. Diez segundos después, la correlación aún es \(e^{-10/60}\) = 0,85.</p>
+      <div class="aparte"><span class="rotulo">Comprobación del paso 1</span>
+        <p>La varianza que el ruido continuo acumula en un paso es \(\sigma^2(2/\tau)\int_0^{\Delta t}e^{-2s/\tau}ds = \sigma^2(1-a^2)\): la \(q^2\) del paso 4.</p>
+      </div>
+      <p class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 13.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">GNSS · errores</p>
   <h2>El error del GNSS es lento: un proceso de Gauss-Markov, no ruido blanco</h2>
-  <div class="cols w60">
+  <div class="cols">
     <figure class="fig">
       <svg viewBox="0 0 560 290" role="img" aria-label="Tres modelos de error de posición GNSS">
         <line x1="60" y1="135" x2="530" y2="135" class="ln-rule"/>
@@ -527,12 +1343,52 @@
       <figcaption>Tres modelos de error horizontal a 8 Hz durante 10 min. El de Gauss-Markov (1 m, 60 s) es un ejemplo con parámetros supuestos. <code>figuras_b3a.py</code>, sección 6.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Fuentes:</strong> reloj y efemérides de los satélites, ionosfera, troposfera, multitrayecto y ruido del receptor. Las primeras varían en minutos: el error de posición está correlacionado en el tiempo.</li>
-        <li><strong>Gauss-Markov de primer orden:</strong> \(e_k = a\,e_{k-1} + \sigma\sqrt{1-a^2}\,w_k\), \(a = e^{-\Delta t/\tau}\).</li>
-        <li><strong>Consecuencia:</strong> promediar no ayuda dentro de \(\tau\), y la velocidad derivada de la posición es mucho mejor que con ruido blanco: 0,52 m/s frente a 11,2 m/s de desviación al diferenciar a 8 Hz.</li>
+        <li><strong>Modelo:</strong> Gauss-Markov de primer orden (hoja anterior).</li>
+        <li><strong>Consecuencia:</strong> promediar no ayuda dentro de \(\tau\); derivar, en cambio, da 0,52 m/s de error de velocidad frente a 11,2 m/s con ruido blanco (hoja 48).</li>
       </ul>
       <div class="callout realidad"><span class="tag">PX4, leído en el código</span><code>sensor_gps_sim</code> a 8 Hz: \(e_k = 0{,}76\,e_{k-1} + 0{,}016\,w_k\), es decir, 2,5 cm de desviación y \(\tau\) ≈ 0,46 s. Declara <code>eph</code> = 0,9 m y <code>epv</code> = 1,78 m sin RTK <a class="cite" data-ref="px4gpssim"></a>. El EKF recibe una incertidumbre unas 36 veces mayor que el error real simulado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GNSS · consecuencias de la correlación</p>
+  <h2>Promediar no ayuda dentro de \(\tau\); derivar, en cambio, sale bien</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 235" role="img" aria-label="Autocorrelación de tres modelos de error GNSS">
+          <line x1="70" y1="200" x2="500" y2="200" class="ln-rule"/><line x1="70" y1="20" x2="70" y2="200" class="ln-rule"/>
+          <line x1="70" y1="137.5" x2="285" y2="137.5" class="ln-dash"/><line x1="285" y1="137.5" x2="285" y2="200" class="ln-dash"/>
+          <path d="M70.0,30.0 L73.6,32.8 L77.2,35.6 L80.8,38.3 L84.3,41.0 L87.9,43.6 L91.5,46.2 L95.1,48.7 L98.7,51.2 L102.2,53.7 L105.8,56.1 L109.4,58.5 L113.0,60.8 L116.6,63.1 L120.2,65.4 L123.8,67.6 L127.3,69.8 L130.9,71.9 L134.5,74.1 L138.1,76.1 L141.7,78.2 L145.2,80.2 L148.8,82.2 L152.4,84.1 L156.0,86.0 L159.6,87.9 L163.2,89.8 L166.8,91.6 L170.3,93.4 L173.9,95.2 L177.5,96.9 L181.1,98.6 L184.7,100.3 L188.2,101.9 L191.8,103.5 L195.4,105.1 L199.0,106.7 L202.6,108.2 L206.2,109.8 L209.8,111.3 L213.3,112.7 L216.9,114.2 L220.5,115.6 L224.1,117.0 L227.7,118.3 L231.2,119.7 L234.8,121.0 L238.4,122.3 L242.0,123.6 L245.6,124.9 L249.2,126.1 L252.8,127.3 L256.3,128.5 L259.9,129.7 L263.5,130.9 L267.1,132.0 L270.7,133.1 L274.2,134.3 L277.8,135.3 L281.4,136.4 L285.0,137.5 L288.6,138.5 L292.2,139.5 L295.8,140.5 L299.3,141.5 L302.9,142.5 L306.5,143.4 L310.1,144.3 L313.7,145.3 L317.2,146.2 L320.8,147.1 L324.4,147.9 L328.0,148.8 L331.6,149.6 L335.2,150.5 L338.8,151.3 L342.3,152.1 L345.9,152.9 L349.5,153.7 L353.1,154.4 L356.7,155.2 L360.2,155.9 L363.8,156.7 L367.4,157.4 L371.0,158.1 L374.6,158.8 L378.2,159.5 L381.8,160.1 L385.3,160.8 L388.9,161.4 L392.5,162.1 L396.1,162.7 L399.7,163.3 L403.2,163.9 L406.8,164.5 L410.4,165.1 L414.0,165.7 L417.6,166.2 L421.2,166.8 L424.8,167.4 L428.3,167.9 L431.9,168.4 L435.5,168.9 L439.1,169.5 L442.7,170.0 L446.2,170.5 L449.8,170.9 L453.4,171.4 L457.0,171.9 L460.6,172.4 L464.2,172.8 L467.8,173.3 L471.3,173.7 L474.9,174.1 L478.5,174.6 L482.1,175.0 L485.7,175.4 L489.2,175.8 L492.8,176.2 L496.4,176.6 L500.0,177.0" class="ln-accent" stroke-width="2.6"/>
+          <path d="M70.0,30.0 L70.4,63.5 L70.7,90.4 L71.1,112.0 L71.4,129.4 L71.8,143.3 L72.2,154.5 L72.5,163.4 L72.9,170.6 L73.2,176.4 L73.6,181.1 L73.9,184.8 L74.3,187.8 L74.7,190.2 L75.0,192.1 L75.4,193.7 L75.7,194.9 L76.1,195.9 L76.5,196.7 L76.8,197.4 L77.2,197.9 L77.5,198.3 L77.9,198.6 L78.2,198.9 L78.6,199.1 L79.0,199.3 L79.3,199.4 L79.7,199.5 L80.0,199.6 L80.4,199.7 L80.8,199.8" class="ln-time" stroke-width="2.6"/>
+          <line x1="70" y1="30" x2="70" y2="200" class="ln" stroke-width="3"/>
+          <text x="64" y="34" text-anchor="end" class="t-mono t-faint" font-size="14">1</text>
+          <text x="64" y="142" text-anchor="end" class="t-mono t-faint" font-size="14">e⁻¹</text>
+          <text x="64" y="204" text-anchor="end" class="t-mono t-faint" font-size="14">0</text>
+          <text x="70" y="218" text-anchor="middle" class="t-mono t-faint" font-size="14">0</text><text x="177.5" y="218" text-anchor="middle" class="t-mono t-faint" font-size="14">30</text><text x="285" y="218" text-anchor="middle" class="t-mono t-faint" font-size="14">60</text><text x="392.5" y="218" text-anchor="middle" class="t-mono t-faint" font-size="14">90</text><text x="500" y="218" text-anchor="middle" class="t-mono t-faint" font-size="14">120 s</text>
+          <text x="300" y="70" class="t-accent" font-size="14">Gauss-Markov, τ = 60 s</text>
+          <text x="96" y="175" class="t-time" font-size="14">PX4, τ = 0,46 s</text>
+          <text x="96" y="192" class="t-muted" font-size="14">blanco: solo en 0</text>
+          <text x="285" y="233" text-anchor="middle" class="t-muted" font-size="14">desfase ℓ</text>
+        </svg>
+      </figure>
+      <p>\(R(\ell) = e^{-\ell/\tau}\): con \(\tau\) = 60 s, dos errores separados un minuto aún comparten un 37 %.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\displaystyle \mathrm{Var}[\bar e] = \frac{\sigma^2}{n^2}\sum_{i}\sum_{j} a^{|i-j|}\)</td><td>Varianza de la media de \(n\) muestras: entran todas las covarianzas</td></tr>
+          <tr><td><strong>2</strong></td><td>Blanco (\(a\) = 0): \(\sigma/\sqrt n\) = 1 m/√480 = 4,6 cm</td><td>Solo la diagonal: 60 s a 8 Hz son 480 muestras</td></tr>
+          <tr><td><strong>3</strong></td><td>Gauss-Markov 1 m y 60 s: 0,86 m</td><td>Casi todas las parejas tienen correlación cercana a 1: la media apenas mejora</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{Var}[e_k - e_{k-1}] = 2\sigma^2(1-a)\)</td><td>\(\mathrm{Var}+\mathrm{Var}-2\,\mathrm{Cov}\), con \(\mathrm{Cov} = a\sigma^2\)</td></tr>
+          <tr><td><strong>5</strong></td><td>Velocidad a 8 Hz: \(8\sqrt{2(1-0{,}99792)}\) = 0,52 m/s; blanco: \(8\sqrt2\) = 11,3 m/s</td><td>Dividir entre \(\Delta t\) = 1/8 s. Con correlación, los errores vecinos se cancelan</td></tr>
+        </table>
+      </div>
+      <div class="callout error"><span class="tag">Por eso</span>Un filtro alimentado con GNSS blanco en simulación cree que promediando un minuto tiene 5 cm de error; con el real seguiría teniendo casi un metro. <code>ejemplos_b3a.py</code>, ejemplo 13.</div>
     </div>
   </div>
 </section>
@@ -563,29 +1419,123 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Barómetro y magnetómetro</p>
-  <h2>Altura y rumbo: dos sensores sencillos con perturbaciones propias</h2>
+  <p class="kicker">Barómetro · de presión a altura</p>
+  <h2>El equilibrio de una lámina de aire: 1 Pa son 8,3 cm</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 260" style="max-height:300px" role="img" aria-label="Fuerzas sobre una lámina de aire en reposo">
+        <defs><marker id="b3a-m49" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker><marker id="b3a-m49a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect x="110" y="20" width="140" height="220" class="box-soft"/>
+        <rect x="110" y="110" width="140" height="40" class="box-accent"/>
+        <path class="ln" d="M160 64 V108" marker-end="url(#b3a-m49)" stroke-width="2"/>
+        <text x="160" y="56" text-anchor="middle" class="t-mono" font-size="12">(p + dp)·A</text>
+        <path class="ln" d="M160 196 V152" marker-end="url(#b3a-m49)" stroke-width="2"/>
+        <text x="160" y="212" text-anchor="middle" class="t-mono" font-size="12">p·A</text>
+        <path class="ln-accent" d="M215 130 V190" marker-end="url(#b3a-m49a)" stroke-width="2"/>
+        <text x="222" y="186" class="t-accent t-mono" font-size="12">ρ g A dh</text>
+        <path class="ln" d="M96 110 V150 M90 110 H102 M90 150 H102"/>
+        <text x="84" y="135" text-anchor="end" class="t-mono" font-size="12">dh</text>
+        <path class="ln" d="M40 230 V40" marker-end="url(#b3a-m49)"/>
+        <text x="48" y="44" class="t-mono" font-size="13">h</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(pA - (p+dp)A - \rho g A\,dh = 0\)</td><td>Aire en reposo: la presión de abajo, la de arriba y el peso de la lámina se equilibran</td></tr>
+          <tr><td><strong>2</strong></td><td>\(dp = -\rho g\,dh\)</td><td>Dividir entre \(A\): la presión baja al subir</td></tr>
+          <tr><td><strong>3</strong></td><td>\(dh = -dp/(\rho g)\), con \(\rho g\) = 1,225 · 9,81 = 12,0 Pa/m</td><td>Cerca del suelo \(\rho\) es casi constante en las decenas de metros de un vuelo</td></tr>
+        </table>
+      </div>
+      <p>1 Pa son 8,3 cm; los 3 Pa de ruido del x500 de Gazebo, 25 cm <a class="cite" data-ref="px4gzmodels"></a>.</p>
+      <p>Y al revés: el barómetro mide presión, no altura. Si la presión atmosférica cambia 1 hPa (100 Pa) durante el vuelo, lo lee como 8,3 m de altura. Por eso su error lento es una deriva, no un ruido. <span class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 14.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Barómetro · en simulación y en el real</p>
+  <h2>Ruido pequeño, deriva lenta y el chorro de los rotores</h2>
   <div class="cols">
     <div class="stack">
-      <h3 style="margin:0">Barómetro</h3>
-      <ul class="small">
-        <li>\(dp = -\rho g\,dh\): 1 Pa equivale a 8,3 cm. El x500 de Gazebo usa 3 Pa de ruido (25 cm) a 50 Hz <a class="cite" data-ref="px4gzmodels"></a>; el simulador de barómetro de PX4, 1 Pa más una deriva lineal <a class="cite" data-ref="px4barosim"></a>.</li>
-        <li>En el real, la presión atmosférica y la temperatura del sensor cambian durante el vuelo (deriva lenta de la altura), y el chorro de los rotores y el efecto suelo cambian la presión cerca del suelo: PX4 aplica una zona muerta a las innovaciones negativas del barómetro (<code>EKF2_GND_EFF_DZ</code>, 4 m por defecto) <a class="cite" data-ref="px4ekfbaro"></a>.</li>
-      </ul>
+      <p><strong>En los simuladores:</strong> el x500 de Gazebo usa 3 Pa de ruido a 50 Hz <a class="cite" data-ref="px4gzmodels"></a>; el simulador de barómetro de PX4, 1 Pa más una deriva lineal <a class="cite" data-ref="px4barosim"></a>.</p>
+      <p><strong>En el real:</strong> la presión atmosférica y la temperatura del sensor cambian durante el vuelo (deriva lenta de la altura), y el chorro de los rotores y el efecto suelo cambian la presión cerca del suelo. PX4 aplica una zona muerta a las innovaciones negativas del barómetro (<code>EKF2_GND_EFF_DZ</code>, 4 m por defecto) <a class="cite" data-ref="px4ekfbaro"></a>.</p>
     </div>
     <div class="stack">
-      <h3 style="margin:0">Magnetómetro</h3>
-      <ul class="small">
-        <li>El mundo de PX4 en Gazebo tiene un campo de 48,3 µT; el ruido de 3·10⁻⁷ T del x500 es el 0,6 % (unos 0,7° de rumbo por muestra) <a class="cite" data-ref="px4gzmodels"></a>.</li>
-        <li>En el real, la corriente de los motores genera un campo que cambia con el empuje. PX4 lo compensa por empuje o por corriente (<code>CAL_MAG_COMP_TYP</code>, desactivado por defecto) <a class="cite" data-ref="px4mag"></a>. Ningún simulador por defecto lo modela.</li>
-        <li>Hierro duro y blando de la estructura: se calibran, pero cambian si cambias la carga.</li>
-      </ul>
+      <p><strong>Un modelo mínimo creíble:</strong></p>
+      \[ \tilde h_k = h_k + b_{h,k} + n_k + \delta_{\text{suelo}}(h_k) \]
+      <p>con \(b_{h,k}\) una deriva lenta (Gauss-Markov o paseo, como el GNSS), \(n_k\) el ruido de unos pascales pasado a metros con \(1/(\rho g)\), y \(\delta_{\text{suelo}}\) una perturbación que solo actúa cerca del suelo.</p>
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>La deriva del barómetro es estado oculto, igual que el sesgo de la IMU: un belief que solo ha visto un barómetro perfecto no aprende a desconfiar de él al despegar o aterrizar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Magnetómetro · el rumbo y su error</p>
+  <h2>Solo la parte horizontal del campo da el rumbo</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 340 260" style="max-height:300px" role="img" aria-label="Error de rumbo por una perturbación perpendicular al campo horizontal">
+        <defs><marker id="b3a-m51" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker><marker id="b3a-m51a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <path class="ln" d="M110 230 V44" marker-end="url(#b3a-m51)" stroke-width="2.4"/>
+        <text x="100" y="40" text-anchor="end" class="t-mono t-bold" font-size="13">B_h</text>
+        <text x="100" y="58" text-anchor="end" class="t-muted" font-size="11">norte magnético</text>
+        <path class="ln-accent" d="M110 44 H166" marker-end="url(#b3a-m51a)" stroke-width="2.2"/>
+        <text x="170" y="36" class="t-accent t-mono" font-size="13">δB⊥</text>
+        <path class="ln-accent ln-dash" d="M110 230 L168 44" stroke-width="1.6"/>
+        <path class="ln" d="M110 170 A60 60 0 0 1 128 172.8"/>
+        <text x="134" y="160" class="t-mono" font-size="13">δψ</text>
+        <text x="180" y="130" class="t-muted" font-size="12">medida</text>
+        <text x="180" y="146" class="t-muted" font-size="12">perturbada</text>
+        <text x="170" y="236" class="t-muted" font-size="11">vista desde arriba,</text>
+        <text x="170" y="251" class="t-muted" font-size="11">perturbación exagerada</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\psi = \mathrm{atan2}(-m_y, m_x)\)</td><td>Con la actitud se proyecta la medida \(\mathbf m\) al plano horizontal (componentes \(m_x\), \(m_y\) en ejes cuerpo); el ángulo con el norte magnético es el rumbo</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\tan\delta\psi = \delta B_\perp/B_h\)</td><td>Una perturbación perpendicular gira el vector medido (dibujo); la paralela solo cambia su longitud</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\delta\psi\approx\delta B_\perp/B_h\)</td><td>Ángulo pequeño</td></tr>
+        </table>
+      </div>
+      <p><strong>Con el mundo de PX4 en Gazebo</strong>, \(\mathbf B\) = (6, 23, −42) µT: \(|\mathbf B|\) = 48,3 µT, pero \(B_h\) = 23,8 µT, porque el campo apunta 60° hacia abajo <a class="cite" data-ref="px4gzmodels"></a>. El ruido de 0,3 µT del x500 da 0,72° de rumbo por muestra; una perturbación de 1 µT, 2,4°; de 5 µT, 12°.</p>
+      <p class="small">Cuanto más cerca de los polos, menor \(B_h\) y más sensible el rumbo. <span class="xsmall muted"><code>ejemplos_b3a.py</code>, ejemplo 15.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Magnetómetro · en el real</p>
+  <h2>Hierro duro, hierro blando y la corriente de los motores</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 320 280" style="max-height:300px" role="img" aria-label="Círculo de calibración del magnetómetro con hierro duro y blando">
+        <line x1="30" y1="140" x2="290" y2="140" class="ln-rule"/><line x1="160" y1="15" x2="160" y2="265" class="ln-rule"/>
+        <path d="M231.3,140.0 L230.9,132.5 L229.8,125.2 L227.8,118.0 L225.1,111.0 L221.8,104.3 L217.7,98.1 L213.0,92.3 L207.7,87.0 L201.9,82.3 L195.7,78.2 L189.0,74.9 L182.0,72.2 L174.8,70.2 L167.5,69.1 L160.0,68.7 L152.5,69.1 L145.2,70.2 L138.0,72.2 L131.0,74.9 L124.3,78.2 L118.1,82.3 L112.3,87.0 L107.0,92.3 L102.3,98.1 L98.2,104.3 L94.9,111.0 L92.2,118.0 L90.2,125.2 L89.1,132.5 L88.7,140.0 L89.1,147.5 L90.2,154.8 L92.2,162.0 L94.9,169.0 L98.2,175.7 L102.3,181.9 L107.0,187.7 L112.3,193.0 L118.1,197.7 L124.3,201.8 L131.0,205.1 L138.0,207.8 L145.2,209.8 L152.5,210.9 L160.0,211.3 L167.5,210.9 L174.8,209.8 L182.0,207.8 L189.0,205.1 L195.7,201.8 L201.9,197.7 L207.7,193.0 L213.0,187.7 L217.7,181.9 L221.8,175.7 L225.1,169.0 L227.8,162.0 L229.8,154.8 L230.9,147.5 L231.3,140.0" class="ln" stroke-width="1.6"/>
+        <path d="M246.3,135.5 L245.9,128.0 L244.8,120.7 L242.8,113.5 L240.1,106.5 L236.8,99.8 L232.7,93.6 L228.0,87.8 L222.7,82.5 L216.9,77.8 L210.7,73.7 L204.0,70.4 L197.0,67.7 L189.8,65.7 L182.5,64.6 L175.0,64.2 L167.5,64.6 L160.2,65.7 L153.0,67.7 L146.0,70.4 L139.3,73.7 L133.1,77.8 L127.3,82.5 L122.0,87.8 L117.3,93.6 L113.2,99.8 L109.9,106.5 L107.2,113.5 L105.2,120.7 L104.1,128.0 L103.7,135.5 L104.1,143.0 L105.2,150.3 L107.2,157.5 L109.9,164.5 L113.2,171.2 L117.3,177.4 L122.0,183.2 L127.3,188.5 L133.1,193.2 L139.3,197.3 L146.0,200.6 L153.0,203.3 L160.2,205.3 L167.5,206.4 L175.0,206.8 L182.5,206.4 L189.8,205.3 L197.0,203.3 L204.0,200.6 L210.7,197.3 L216.9,193.2 L222.7,188.5 L228.0,183.2 L232.7,177.4 L236.8,171.2 L240.1,164.5 L242.8,157.5 L244.8,150.3 L245.9,143.0 L246.3,135.5" class="ln-accent" stroke-width="2.2"/>
+        <path d="M249.1,140.0 L248.6,134.0 L247.2,128.1 L244.8,122.4 L241.4,116.8 L237.2,111.5 L232.1,106.5 L226.2,101.8 L219.6,97.6 L212.4,93.8 L204.6,90.6 L196.3,87.9 L187.5,85.7 L178.5,84.2 L169.3,83.3 L160.0,83.0 L150.7,83.3 L141.5,84.2 L132.5,85.7 L123.7,87.9 L115.4,90.6 L107.6,93.8 L100.4,97.6 L93.8,101.8 L87.9,106.5 L82.8,111.5 L78.6,116.8 L75.2,122.4 L72.8,128.1 L71.4,134.0 L70.9,140.0 L71.4,146.0 L72.8,151.9 L75.2,157.6 L78.6,163.2 L82.8,168.5 L87.9,173.5 L93.8,178.2 L100.4,182.4 L107.6,186.2 L115.4,189.4 L123.7,192.1 L132.5,194.3 L141.5,195.8 L150.7,196.7 L160.0,197.0 L169.3,196.7 L178.5,195.8 L187.5,194.3 L196.3,192.1 L204.6,189.4 L212.4,186.2 L219.6,182.4 L226.2,178.2 L232.1,173.5 L237.2,168.5 L241.4,163.2 L244.8,157.6 L247.2,151.9 L248.6,146.0 L249.1,140.0" class="ln-tesis ln-dash" stroke-width="2"/>
+        <circle cx="160" cy="140" r="3.5" class="fill-ink3"/>
+        <circle cx="175" cy="135.5" r="3.5" class="fill-accent"/>
+        <text x="236" y="40" class="t-accent" font-size="12">hierro duro:</text>
+        <text x="236" y="56" class="t-accent" font-size="12">desplazado</text>
+        <text x="14" y="30" class="t-tesis" font-size="12">hierro blando: elipse</text>
+        <text x="200" y="262" class="t-muted" font-size="12">sin perturbar</text>
+        <text x="160" y="278" text-anchor="middle" class="t-faint" font-size="11">m_x, m_y al dar una vuelta</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <p>Al girar el dron una vuelta, la medida horizontal recorre un círculo de radio \(B_h\). Lo que el dron lleva encima lo deforma:</p>
+      \[ \tilde{\mathbf m} = M\,\mathbf m + \mathbf b_{hi} + \delta\mathbf B_{\text{mot}} + \mathbf n \]
+      <p><strong>Hierro duro</strong> \(\mathbf b_{hi}\) (imanes, fijo en el cuerpo): desplaza el círculo. Con 5 µT (supuesto), el error de rumbo oscila ±12° según hacia dónde apuntes. <strong>Hierro blando</strong> \(M\): lo vuelve elipse. Se calibran, pero cambian si cambias la carga.</p>
+      <p><strong>Motores</strong>: su corriente crea un campo \(\delta\mathbf B_{\text{mot}}\) que cambia con el empuje. PX4 lo compensa por empuje o por corriente (<code>CAL_MAG_COMP_TYP</code>, desactivado por defecto) <a class="cite" data-ref="px4mag"></a>. Ningún simulador por defecto lo modela.</p>
       <div class="callout error"><span class="tag">Error frecuente</span>Simular un magnetómetro perfecto y descubrir en vuelo que el rumbo salta al acelerar. En A4a viste que sin magnetómetro la guiñada no es observable: con uno malo, es peor que no tenerlo.</div>
     </div>
   </div>
 </section>
 
-<!-- ============ CIERRE ============ -->
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hilo de latencia y frecuencia</p>
   <h2>Cada sensor llega a su ritmo y con su retraso</h2>
@@ -674,7 +1624,7 @@
   <ul class="body" style="font-size:19px; gap:9px;">
     <li>IMU: \(\tilde\omega = \omega + b + n\); en discreto, \(\sigma_d = \sigma/\sqrt{\Delta t}\) y paso del sesgo \(\sigma_b\sqrt{\Delta t}\). No confundas densidad con desviación por muestra.</li>
     <li>Allan: pendiente −1/2 (lee \(N\) en 1 s), mínimo = 0,664 \(B\), +1/2 (lee \(K\) en 3 s). Hacen falta horas en reposo; los valores se inflan para el filtro (TUM VI: ×2 y ×10 para Kalibr).</li>
-    <li>Navegación a ciegas: \(t^{3/2}\), \(t^{5/2}\) y \(t^{7/2}\); con la IMU de EuRoC, 25 cm en 10 s y 29 m en 60 s.</li>
+    <li>Navegación a ciegas: \(t^2\) y \(t^3\) con sesgos constantes; \(t^{3/2}\), \(t^{5/2}\) y \(t^{7/2}\) con ruidos; con la IMU de EuRoC, 25 cm en 10 s y 29 m en 60 s.</li>
     <li>Cámara: ruido de disparo y oscuro (EMVA 1288); desenfoque \(f\omega t_{\exp}\); obturador rodante \(f\omega t_{ro}\), 69 px a 5 rad/s.</li>
     <li>Eventos: \(\Delta\ln I = \pm C\); simular exige render adaptativo (ESIM) y los defectos del sensor (v2e).</li>
     <li>LiDAR: ray casting más ruido, pérdida de retornos y distorsión; los objetos finos desaparecen con la distancia.</li>
@@ -867,170 +1817,211 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Una tilde sobre una medida (\(\tilde\omega\)) indica lo que entrega el sensor; el sombrero, una estimación. Los subíndices \(g\) y \(a\) indican giróscopo y acelerómetro, y \(d\) discreto, salvo donde se avise.</p>
+<p>Una tilde sobre una medida (\(\tilde\omega\)) indica lo que entrega el sensor; el sombrero, una estimación; \(\delta\) delante de una magnitud, su error. Los subíndices \(g\) y \(a\) indican giróscopo y acelerómetro, y \(d\) discreto, salvo donde se avise.</p>
 <dl>
-<dt>\(\tilde{\ }\) (tilde)</dt><dd data-hojas="6">Medida del sensor, con sesgo y ruido: \(\tilde\omega = \omega + b + n\).</dd>
-<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="7">Estimador de una cantidad a partir de datos, como \(\hat\sigma^2(\tau)\), la varianza de Allan estimada.</dd>
-<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="7">Promedio sobre una ventana de duración \(\tau\), como \(\bar\Omega_k(\tau)\).</dd>
-<dt>\(\dot{\ }\) (punto)</dt><dd data-hojas="6">Derivada respecto al tiempo, como \(\dot b\).</dd>
-<dt>\(\mathbb E\)</dt><dd data-hojas="6">Esperanza (media) de una variable aleatoria.</dd>
-<dt>\(\mathrm{Var}\)</dt><dd data-hojas="6">Varianza de una variable aleatoria.</dd>
-<dt>\(\mathcal N(0,1)\)</dt><dd data-hojas="6">Gaussiana de media 0 y varianza 1; \(w_k\sim\mathcal N(0,1)\) se lee «\(w_k\) se distribuye según».</dd>
-<dt>\(\delta(t_1-t_2)\)</dt><dd data-hojas="6">Delta de Dirac: la autocorrelación de un ruido blanco es cero salvo cuando \(t_1=t_2\).</dd>
-<dt>\(\Delta t\)</dt><dd data-hojas="6">Paso de muestreo, en s (por ejemplo 5 ms a 200 Hz).</dd>
-<dt>\(\Rightarrow\)</dt><dd data-hojas="6">«Implica»: en la hoja 6, de la varianza de la media sale la desviación discreta.</dd>
-<dt>\(\propto\)</dt><dd data-hojas="10">«Proporcional a»: en la deriva, p. ej. aceleración blanca \(\propto t^{1{,}5}\).</dd>
-<dt>\(\approx\)</dt><dd data-hojas="6">«Aproximadamente igual a».</dd>
-<dt>\(\mathbf x\)</dt><dd data-hojas="15">Posición de un píxel en la imagen en \(\mathbb R^2\), en px, como en \(I(\mathbf x,t)\).</dd>
-<dt>\(\sum\)</dt><dd data-hojas="7">Suma sobre un índice; en Allan, sobre todas las ventanas \(k\).</dd>
-<dt>\(\int\)</dt><dd data-hojas="6">Integral; promedia o acumula una señal continua en el tiempo.</dd>
+<dt>\(\tilde{\ }\) (tilde)</dt><dd data-hojas="6,7">Medida del sensor, con sesgo y ruido: \(\tilde\omega = (1+\gamma)\omega + b + n\).</dd>
+<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="14">Estimador de una cantidad a partir de datos, como \(\hat\sigma^2(\tau)\), la varianza de Allan estimada.</dd>
+<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="12,10">Promedio sobre una ventana, como \(\bar\Omega_k(\tau)\) o \(\bar n_k\).</dd>
+<dt>\(\dot{\ }\) (punto)</dt><dd data-hojas="7">Derivada respecto al tiempo, como \(\dot b\).</dd>
+<dt>\(\delta\) (delante de una magnitud)</dt><dd data-hojas="21,22">Error de esa magnitud: \(\delta\theta\), \(\delta a\), \(\delta v\), \(\delta p\), \(\delta\psi\).</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="8,10">Esperanza (media) de una variable aleatoria.</dd>
+<dt>\(\mathrm{Var}\)</dt><dd data-hojas="10">Varianza de una variable aleatoria.</dd>
+<dt>\(\mathcal N(0,1)\)</dt><dd data-hojas="6,10">Gaussiana de media 0 y varianza 1; \(w_k\sim\mathcal N(0,1)\) se lee «\(w_k\) se distribuye según».</dd>
+<dt>\(\delta(t_1-t_2)\)</dt><dd data-hojas="8,10">Delta de Dirac: la autocorrelación de un ruido blanco es cero salvo cuando \(t_1=t_2\).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="6,10">Paso de muestreo, en s (por ejemplo 5 ms a 200 Hz; 0,125 s en el GNSS a 8 Hz).</dd>
+<dt>\(\Rightarrow\)</dt><dd data-hojas="18,32">«Implica».</dd>
+<dt>\(\propto\)</dt><dd data-hojas="17,24">«Proporcional a»: en la deriva, p. ej. aceleración blanca \(\propto t^{1{,}5}\).</dd>
+<dt>\(\approx\)</dt><dd data-hojas="32">«Aproximadamente igual a».</dd>
+<dt>\(\lfloor\cdot\rfloor\)</dt><dd data-hojas="36">Parte entera por defecto, en el número de eventos de un borde.</dd>
+<dt>\(\mathbf x\)</dt><dd data-hojas="34,35">Posición de un píxel en la imagen en \(\mathbb R^2\), en px, como en \(I(\mathbf x,t)\).</dd>
+<dt>\(\sum\)</dt><dd data-hojas="14,48">Suma sobre un índice; en Allan, sobre todos los cúmulos \(k\).</dd>
+<dt>\(\int\)</dt><dd data-hojas="10">Integral; promedia o acumula una señal continua en el tiempo.</dd>
+<dt>\(s\), \(u\) (variables de integración)</dt><dd data-hojas="16,23">Variables mudas de las integrales de Allan y de la integral repetida. En la cámara, \(u\) es la columna del píxel.</dd>
 </dl>
 <h3>IMU: modelo de medida</h3>
 <p>Modelo por eje. La densidad se da en unidades por raíz de hercio; la desviación por muestra, en unidades de la medida.</p>
 <dl>
-<dt>\(\tilde\omega(t)\)</dt><dd data-hojas="6">Velocidad angular medida por el giróscopo en un eje (rad/s): verdad más sesgo más ruido.</dd>
-<dt>\(\omega(t)\)</dt><dd data-hojas="6">Velocidad angular verdadera en ese eje (rad/s). En la cámara (hojas 13, 14), \(\omega\) es el giro del dron.</dd>
-<dt>\(b(t)\)</dt><dd data-hojas="6">Sesgo del giróscopo, escalar que deriva lentamente; su derivada es ruido blanco.</dd>
-<dt>\(b_k\)</dt><dd data-hojas="6">Sesgo en el paso \(k\) en discreto: \(b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\,w_k\).</dd>
-<dt>\(n(t)\)</dt><dd data-hojas="6">Ruido blanco de la medida, de densidad \(\sigma_g\).</dd>
-<dt>\(w(t)\), \(w_k\)</dt><dd data-hojas="6">Ruido blanco unitario que alimenta el paseo aleatorio del sesgo; en discreto, \(w_k\sim\mathcal N(0,1)\). En la hoja 21 es el ruido del proceso de Gauss-Markov del GNSS.</dd>
-<dt>\(\sigma_g\)</dt><dd data-hojas="6">Densidad de ruido del giróscopo (rad/s/√Hz), el «angle random walk» de las hojas de datos.</dd>
-<dt>\(\sigma_{b_g}\)</dt><dd data-hojas="6">Paseo aleatorio del sesgo del giróscopo (rad/s²/√Hz).</dd>
-<dt>\(\sigma_a\)</dt><dd data-hojas="9">Densidad de ruido del acelerómetro (m/s²/√Hz).</dd>
-<dt>\(\sigma_{b_a}\)</dt><dd data-hojas="9">Paseo aleatorio del sesgo del acelerómetro (m/s³/√Hz).</dd>
-<dt>\(\sigma_{g,d}\)</dt><dd data-hojas="6">Desviación típica por muestra del ruido del giróscopo en discreto: \(\sigma_g/\sqrt{\Delta t}\).</dd>
-<dt>\(\sigma_d\) (en la IMU)</dt><dd data-hojas="29">En el ejemplo de autoevaluación, desviación por muestra: \(\sigma_d = \sigma/\sqrt{\Delta t}\). En la cámara (hoja 13), \(\sigma_d\) es el ruido oscuro; son dos usos distintos.</dd>
-<dt>\(m\)</dt><dd data-hojas="7">Número de muestras por ventana de Allan, \(m=\tau f_s\).</dd>
-<dt>\(f_s\)</dt><dd data-hojas="7">Frecuencia de muestreo de la IMU, en Hz.</dd>
+<dt>\(\tilde\omega(t)\)</dt><dd data-hojas="6,7">Velocidad angular medida por el giróscopo en un eje (rad/s): verdad escalada más sesgo más ruido.</dd>
+<dt>\(\omega(t)\)</dt><dd data-hojas="6,7">Velocidad angular verdadera en ese eje (rad/s). En la cámara (hojas 28, 32), \(\omega\) es el giro del dron.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6,7">Error del factor de escala del giróscopo, adimensional: mide \((1+\gamma)\omega\). 1 % supuesto en la hoja 9.</dd>
+<dt>\(b(t)\)</dt><dd data-hojas="6,7">Sesgo del giróscopo, escalar que deriva lentamente; su derivada es ruido blanco.</dd>
+<dt>\(b_k\)</dt><dd data-hojas="6,10">Sesgo en el paso \(k\) en discreto: \(b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\,w_k\).</dd>
+<dt>\(n(t)\)</dt><dd data-hojas="6,10">Ruido blanco de la medida, de densidad \(\sigma_g\).</dd>
+<dt>\(\bar n_k\)</dt><dd data-hojas="10">Media del ruido blanco en el intervalo de la muestra \(k\); su varianza es \(\sigma_g^2/\Delta t\).</dd>
+<dt>\(w(t)\), \(w_k\)</dt><dd data-hojas="6,10">Ruido blanco unitario que alimenta el paseo aleatorio del sesgo; en discreto, \(w_k\sim\mathcal N(0,1)\). En la hoja 46 es el ruido del proceso de Gauss-Markov del GNSS.</dd>
+<dt>\(\sigma_g\)</dt><dd data-hojas="6,8">Densidad de ruido del giróscopo (rad/s/√Hz), el «angle random walk» de las hojas de datos; 8,0·10⁻⁵ en TUM VI.</dd>
+<dt>\(\sigma_{b_g}\)</dt><dd data-hojas="6,8">Paseo aleatorio del sesgo del giróscopo (rad/s²/√Hz); 2,2·10⁻⁶ en TUM VI.</dd>
+<dt>\(\sigma_a\)</dt><dd data-hojas="6,20">Densidad de ruido del acelerómetro (m/s²/√Hz).</dd>
+<dt>\(\sigma_{b_a}\)</dt><dd data-hojas="6,20">Paseo aleatorio del sesgo del acelerómetro (m/s³/√Hz).</dd>
+<dt>\(\sigma_{g,d}\)</dt><dd data-hojas="6,10">Desviación típica por muestra del ruido del giróscopo en discreto: \(\sigma_g/\sqrt{\Delta t}\); 1,13·10⁻³ rad/s con TUM VI a 200 Hz.</dd>
+<dt>\(\sigma_d\) (en la IMU)</dt><dd data-hojas="59">En la pregunta 1 de la autoevaluación, desviación por muestra: \(\sigma_d = \sigma/\sqrt{\Delta t}\). En la cámara (hoja 28), \(\sigma_d\) es el ruido oscuro; son dos usos distintos.</dd>
+<dt>\(f_s\)</dt><dd data-hojas="6,14">Frecuencia de muestreo de la IMU, \(f_s = 1/\Delta t\), en Hz.</dd>
+<dt>\(m\)</dt><dd data-hojas="12,14">Número de muestras por cúmulo de Allan, \(m=\tau f_s\).</dd>
 </dl>
 <h3>Varianza de Allan</h3>
 <dl>
-<dt>\(\tau\)</dt><dd data-hojas="7">Duración de las ventanas de promediado de Allan, en s.</dd>
-<dt>\(\bar\Omega_k(\tau)\)</dt><dd data-hojas="7">Media de la señal en la ventana \(k\)-ésima de duración \(\tau\).</dd>
-<dt>\(\sigma^2(\tau)\), \(\sigma(\tau)\)</dt><dd data-hojas="7">Varianza y desviación de Allan: la mitad de la varianza de la diferencia entre ventanas consecutivas, en función de \(\tau\).</dd>
-<dt>\(\hat\sigma^2(\tau)\)</dt><dd data-hojas="7">Estimador solapado de la varianza de Allan a partir del ángulo integrado.</dd>
-<dt>\(\theta_k\)</dt><dd data-hojas="7">Ángulo integrado del giróscopo en la muestra \(k\), usado en el estimador solapado.</dd>
-<dt>\(N\) (muestras)</dt><dd data-hojas="7">En el estimador solapado de Allan, número total de muestras del registro.</dd>
-<dt>\(N\) (ruido blanco)</dt><dd data-hojas="7">Coeficiente de ruido blanco (ARW) leído en la curva de Allan: \(N=\sigma(1\ \text s)\). Hou lo llama \(Q\). No es el número de muestras.</dd>
-<dt>\(N/n\)</dt><dd data-hojas="8">Número de ventanas disponibles para un \(\tau\) dado; fija el error relativo de cada punto, \(1/\sqrt{2(N/n-1)}\).</dd>
-<dt>\(Q\)</dt><dd data-hojas="7">Coeficiente de cuantización de la tabla de Allan: \(\sigma(\tau)=\sqrt3\,Q/\tau\). Hou usa también \(Q\) para lo que aquí es \(N\).</dd>
-<dt>\(B\)</dt><dd data-hojas="7">Inestabilidad del sesgo: el mínimo de la curva de Allan es \(\approx 0{,}664\,B\).</dd>
-<dt>\(K\)</dt><dd data-hojas="7">Coeficiente del paseo aleatorio de la tasa (RRW), leído como \(K=\sigma(3\ \text s)\) sobre la recta +1/2. En la cámara (hoja 13), \(K\) es la ganancia; es otro uso.</dd>
-<dt>\(R\) (rampa)</dt><dd data-hojas="7">Coeficiente de la rampa de la tabla de Allan: \(\sigma(\tau)=R\tau/\sqrt2\).</dd>
+<dt>\(\tau\)</dt><dd data-hojas="12,14">Duración de los cúmulos de promediado de Allan, en s. En el GNSS (hoja 45), \(\tau\) es el tiempo de correlación.</dd>
+<dt>\(\Omega\)</dt><dd data-hojas="12">Salida del giróscopo en reposo, la serie con que se calcula Allan.</dd>
+<dt>\(\bar\Omega_k(\tau)\)</dt><dd data-hojas="12,13">Media de la señal en el cúmulo \(k\)-ésimo de duración \(\tau\).</dd>
+<dt>\(d_k\), \(d\)</dt><dd data-hojas="13,15">Diferencia entre las medias de dos cúmulos vecinos, \(\bar\Omega_{k+1}-\bar\Omega_k\).</dd>
+<dt>\(\sigma^2(\tau)\), \(\sigma(\tau)\)</dt><dd data-hojas="12,14">Varianza y desviación de Allan: la mitad del cuadrado medio de la diferencia entre medias vecinas, en función de \(\tau\).</dd>
+<dt>\(\hat\sigma^2(\tau)\)</dt><dd data-hojas="14">Estimador solapado de la varianza de Allan a partir del ángulo integrado.</dd>
+<dt>\(\theta_k\)</dt><dd data-hojas="14">Ángulo integrado del giróscopo en la muestra \(k\), \(\theta_k=\Delta t\sum_{j\lt k}\Omega_j\), usado en el estimador solapado.</dd>
+<dt>\(N\) (valores de \(\theta\))</dt><dd data-hojas="14">En el estimador solapado de Allan, número de valores del ángulo integrado (uno más que de muestras).</dd>
+<dt>\(N\) (ruido blanco)</dt><dd data-hojas="14,15">Coeficiente de ruido blanco (ARW) leído en la curva de Allan: \(N=\sigma(1\ \text s)\), igual a \(\sigma_g\). Hou lo llama \(Q\). No es el número de muestras.</dd>
+<dt>\(n\) (ventanas)</dt><dd data-hojas="19">Número de ventanas disponibles para un \(\tau\) dado; fija el error relativo de cada punto, \(1/\sqrt{2(n-1)}\).</dd>
+<dt>\(Q\)</dt><dd data-hojas="14">Coeficiente de cuantización de la tabla de Allan: \(\sigma(\tau)=\sqrt3\,Q/\tau\). Hou usa también \(Q\) para lo que aquí es \(N\).</dd>
+<dt>\(B\)</dt><dd data-hojas="14,17">Inestabilidad del sesgo (ruido \(1/f\)): el mínimo de la curva de Allan es \(\approx 0{,}664\,B\). En el magnetómetro, \(\mathbf B\) es el campo.</dd>
+<dt>\(K\)</dt><dd data-hojas="14,16">Coeficiente del paseo aleatorio de la tasa (RRW), leído como \(K=\sigma(3\ \text s)\) sobre la recta +1/2; igual a \(\sigma_{b_g}\). En la cámara (hoja 28), \(K\) es la ganancia; es otro uso.</dd>
+<dt>\(R\) (rampa)</dt><dd data-hojas="14">Coeficiente de la rampa de la tabla de Allan: \(\sigma(\tau)=R\tau/\sqrt2\).</dd>
+<dt>\(\kappa(u)\)</dt><dd data-hojas="16">Núcleo triangular: cuántas parejas de instantes contienen el incremento \(w(u)\) en la diferencia de medias del paseo aleatorio.</dd>
+<dt>\(S(f)\)</dt><dd data-hojas="17">Densidad espectral del ruido de la velocidad angular, en (rad/s)²/Hz.</dd>
+<dt>\(h_\alpha\), \(\alpha\)</dt><dd data-hojas="17">Coeficiente y exponente de un espectro en potencia, \(S(f)=h_\alpha f^\alpha\): \(\alpha\) = 0 (blanco), −1 (\(1/f\)), −2 (paseo).</dd>
+<dt>\(z\)</dt><dd data-hojas="17">Variable \(z=\pi f\tau\) que saca \(\tau\) de la integral espectral de Allan.</dd>
+<dt>\(\tau^*\)</dt><dd data-hojas="18">Tiempo en que se cruzan las rectas de ruido blanco y de paseo, \(\sqrt3\,N/K\): 63 s con TUM VI.</dd>
 </dl>
 <h3>Navegación a ciegas</h3>
 <dl>
-<dt>\(\sigma_p^{(a)}\)</dt><dd data-hojas="10">Desviación típica de la posición debida al ruido blanco del acelerómetro: \(\sigma_a t^{3/2}/\sqrt3\), crece como \(t^{3/2}\).</dd>
-<dt>\(\sigma_p^{(b_a)}\)</dt><dd data-hojas="10">Desviación de la posición por el paseo del sesgo del acelerómetro: \(\sigma_{b_a} t^{5/2}/\sqrt{20}\).</dd>
-<dt>\(\sigma_p^{(g)}\)</dt><dd data-hojas="10">Desviación de la posición por el ruido del giróscopo, que entra por la inclinación: \(g\,\sigma_g t^{5/2}/\sqrt{20}\).</dd>
-<dt>\(\sigma_p^{(b_g)}\)</dt><dd data-hojas="10">Desviación de la posición por el paseo del sesgo del giróscopo: \(g\,\sigma_{b_g} t^{7/2}/\sqrt{252}\).</dd>
-<dt>\(t\)</dt><dd data-hojas="10">Tiempo sin corrección externa, en s.</dd>
-<dt>\(q\), \(k\)</dt><dd data-hojas="10">En la derivación, \(q\) es la densidad de un ruido blanco y \(k\) el número de veces que se integra (la integral \(k\)-ésima tiene varianza \(q^2 t^{2k-1}/((k-1)!^2(2k-1))\)).</dd>
-<dt>\(g\)</dt><dd data-hojas="10">Aceleración de la gravedad (m/s²); proyectada por un error de actitud, da aceleración horizontal.</dd>
-<dt>\(\delta\theta\)</dt><dd data-hojas="10">Error de actitud (inclinación), en rad; produce una aceleración horizontal \(g\,\delta\theta\).</dd>
-<dt>\(a\) (aceleración de parada)</dt><dd data-hojas="19">En la distancia de parada, \(a=g\tan30°\), la aceleración máxima de frenado.</dd>
+<dt>\(\delta\theta\)</dt><dd data-hojas="21,22">Error de actitud (inclinación), en rad; produce una aceleración horizontal \(g\,\delta\theta\).</dd>
+<dt>\(\delta a\), \(\delta v\), \(\delta p\)</dt><dd data-hojas="22,21">Errores de aceleración, velocidad y posición en un eje horizontal.</dd>
+<dt>\(b_a\), \(b_g\)</dt><dd data-hojas="22">Sesgos constantes sin estimar del acelerómetro (m/s²) y del giróscopo (rad/s); dan \(\tfrac12 b_a t^2\) y \(\tfrac16 g\,b_g t^3\).</dd>
+<dt>\(I_k(t)\)</dt><dd data-hojas="23">Ruido blanco integrado \(k\) veces; su varianza es \(q^2 t^{2k-1}/((k-1)!^2(2k-1))\).</dd>
+<dt>\(q\), \(k\) (deriva)</dt><dd data-hojas="23">En la integral repetida, \(q\) es la densidad de un ruido blanco y \(k\) el número de veces que se integra. En el GNSS (hoja 45), \(q\) es otra cosa.</dd>
+<dt>\(\sigma_p^{(a)}\)</dt><dd data-hojas="23,24">Desviación típica de la posición debida al ruido blanco del acelerómetro: \(\sigma_a t^{3/2}/\sqrt3\).</dd>
+<dt>\(\sigma_p^{(b_a)}\)</dt><dd data-hojas="23,24">Desviación de la posición por el paseo del sesgo del acelerómetro: \(\sigma_{b_a} t^{5/2}/\sqrt{20}\).</dd>
+<dt>\(\sigma_p^{(g)}\)</dt><dd data-hojas="23,24">Desviación de la posición por el ruido del giróscopo, que entra por la inclinación: \(g\,\sigma_g t^{5/2}/\sqrt{20}\).</dd>
+<dt>\(\sigma_p^{(b_g)}\)</dt><dd data-hojas="23,24">Desviación de la posición por el paseo del sesgo del giróscopo: \(g\,\sigma_{b_g} t^{7/2}/\sqrt{252}\).</dd>
+<dt>\(t\)</dt><dd data-hojas="22,23">Tiempo sin corrección externa, en s.</dd>
+<dt>\(g\)</dt><dd data-hojas="21,22">Aceleración de la gravedad (m/s²); proyectada por un error de actitud, da aceleración horizontal.</dd>
+<dt>\(a\) (aceleración de parada)</dt><dd data-hojas="43">En la distancia de parada, \(a=g\tan30°\), la aceleración máxima de frenado.</dd>
 </dl>
 <h3>Vibración y temperatura</h3>
 <dl>
-<dt>IMU_GYRO_CUTOFF</dt><dd data-hojas="11">Parámetro de PX4: frecuencia de corte del paso bajo del giróscopo.</dd>
-<dt>IMU_GYRO_DNF_EN</dt><dd data-hojas="11">Parámetro de PX4 que activa los filtros notch dinámicos; desactivado por defecto.</dd>
+<dt>\(f_{\text{aparente}}\), \(j\)</dt><dd data-hojas="25">Frecuencia con que aparece una vibración de frecuencia \(f\) muestreada a \(f_s\) sin antialiasing, \(|f-jf_s|\), con \(j\) el entero más cercano a \(f/f_s\).</dd>
+<dt>IMU_GYRO_CUTOFF</dt><dd data-hojas="26">Parámetro de PX4: frecuencia de corte del paso bajo del giróscopo.</dd>
+<dt>IMU_GYRO_DNF_EN</dt><dd data-hojas="26">Parámetro de PX4 que activa los filtros notch dinámicos; desactivado por defecto.</dd>
 </dl>
 <h3>Cámara: ruido fotométrico</h3>
 <dl>
-<dt>\(\mu_p\)</dt><dd data-hojas="13">Número medio de fotones por píxel durante la exposición.</dd>
-<dt>\(\eta\)</dt><dd data-hojas="13">Eficiencia cuántica: fracción de fotones que se convierten en electrones.</dd>
-<dt>\(K\) (ganancia)</dt><dd data-hojas="13">Ganancia del sensor, en niveles digitales por electrón. En la hoja 7, \(K\) es el coeficiente del paseo aleatorio de Allan.</dd>
-<dt>\(\mu_d\)</dt><dd data-hojas="13">Media de electrones oscuros (corriente oscura) por píxel.</dd>
-<dt>\(\mu_y\)</dt><dd data-hojas="13">Media de la salida digital del píxel, en niveles digitales: \(\mu_y=K(\eta\mu_p+\mu_d)\).</dd>
-<dt>\(\mu_{y,\text{dark}}\)</dt><dd data-hojas="13">Media de la salida digital en oscuridad; se resta para aislar el ruido de disparo.</dd>
-<dt>\(\sigma_y^2\)</dt><dd data-hojas="13">Varianza de la salida digital: oscuro, cuantización y disparo, esta última proporcional a la señal.</dd>
-<dt>\(\sigma_d\) (en la cámara)</dt><dd data-hojas="13">Ruido oscuro (lectura y corriente oscura), en electrones; domina con poca luz.</dd>
-<dt>\(\sigma_q^2\)</dt><dd data-hojas="13">Varianza de cuantización, \(1/12\) niveles digitales al cuadrado.</dd>
-<dt>\(\mathrm{SNR}\)</dt><dd data-hojas="13">Relación señal-ruido: \(\eta\mu_p\) dividida entre la raíz de la suma de varianzas. Con buena luz, \(\approx\sqrt{\eta\mu_p}\).</dd>
-<dt>\(f\)</dt><dd data-hojas="13">Distancia focal de la cámara, en píxeles (458,65 px en EuRoC).</dd>
-<dt>\(t_{\exp}\)</dt><dd data-hojas="13">Tiempo de exposición, en s; el desenfoque es \(f\omega t_{\exp}\) píxeles.</dd>
+<dt>\(\mu_p\)</dt><dd data-hojas="28,30">Número medio de fotones por píxel durante la exposición.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="28,30">Eficiencia cuántica: fracción de fotones que se convierten en electrones.</dd>
+<dt>\(\mu_e\)</dt><dd data-hojas="28">Electrones de señal, \(\mu_e=\eta\mu_p\).</dd>
+<dt>\(K\) (ganancia)</dt><dd data-hojas="28,30">Ganancia del sensor, en niveles digitales por electrón. En la hoja 14, \(K\) es el coeficiente del paseo aleatorio de Allan.</dd>
+<dt>\(\mu_d\)</dt><dd data-hojas="28,30">Media de electrones oscuros (corriente oscura) por píxel.</dd>
+<dt>\(\mu_y\)</dt><dd data-hojas="28,30">Media de la salida digital del píxel, en DN: \(\mu_y=K(\eta\mu_p+\mu_d)\).</dd>
+<dt>\(\mu_{y,\text{dark}}\)</dt><dd data-hojas="30">Media de la salida digital en oscuridad, \(K\mu_d\); se resta para aislar el ruido de disparo.</dd>
+<dt>\(\sigma_y^2\)</dt><dd data-hojas="28,30">Varianza de la salida digital: oscuro, cuantización y disparo, esta última proporcional a la señal.</dd>
+<dt>\(\sigma_d\) (en la cámara)</dt><dd data-hojas="28,30">Ruido oscuro (lectura y corriente oscura), en electrones; domina con poca luz.</dd>
+<dt>\(\sigma_q^2\)</dt><dd data-hojas="28,30">Varianza de cuantización, \(1/12\) DN².</dd>
+<dt>\(\mathrm{SNR}\)</dt><dd data-hojas="30,31">Relación señal-ruido: \(\eta\mu_p\) dividida entre la raíz de la suma de varianzas en electrones. Con buena luz, \(\approx\sqrt{\eta\mu_p}\).</dd>
+<dt>\(f\)</dt><dd data-hojas="28,32">Distancia focal de la cámara, en píxeles (458,65 px en EuRoC). En la IMU, \(f\) es una frecuencia.</dd>
+<dt>\(t_{\exp}\)</dt><dd data-hojas="28,32">Tiempo de exposición, en s; el desenfoque es \(f\omega t_{\exp}\) píxeles.</dd>
 </dl>
 <h3>Cámara: obturador rodante</h3>
 <dl>
-<dt>\(t_{ro}\)</dt><dd data-hojas="14">Tiempo de lectura de la imagen completa (readout), en s.</dd>
-<dt>\(v\)</dt><dd data-hojas="14">Índice de la fila de la imagen, de 0 a \(H\).</dd>
-<dt>\(H\)</dt><dd data-hojas="14">Número de filas de la imagen.</dd>
-<dt>\(\Delta u(v)\)</dt><dd data-hojas="14">Desplazamiento horizontal de la fila \(v\) respecto a la primera por el obturador rodante, en px: \(f\omega t_{ro}\,v/H\).</dd>
+<dt>\(t_{ro}\)</dt><dd data-hojas="28,32">Tiempo de lectura de la imagen completa (readout), en s.</dd>
+<dt>\(t_v\)</dt><dd data-hojas="32">Instante en que empieza a exponerse la fila \(v\): \(t_{ro}\,v/H\).</dd>
+<dt>\(v\)</dt><dd data-hojas="28,32">Índice de la fila de la imagen, de 0 a \(H\).</dd>
+<dt>\(H\)</dt><dd data-hojas="28,32">Número de filas de la imagen (480 en EuRoC).</dd>
+<dt>\(u\)</dt><dd data-hojas="28,32">Columna de un píxel, medida desde el centro óptico en la geometría del obturador.</dd>
+<dt>\(\beta\)</dt><dd data-hojas="32">Ángulo de un punto respecto al eje óptico: \(u=f\tan\beta\).</dd>
+<dt>\(\delta\psi(v)\)</dt><dd data-hojas="32">Ángulo girado por la cámara hasta que se expone la fila \(v\), \(\omega t_v\).</dd>
+<dt>\(\Delta u(v)\)</dt><dd data-hojas="32,33">Desplazamiento horizontal de la fila \(v\) respecto a la primera por el obturador rodante, en px: \(f\omega t_{ro}\,v/H\).</dd>
 </dl>
 <h3>Cámara de eventos</h3>
 <dl>
-<dt>\(I\)</dt><dd data-hojas="15">Intensidad de luz en un píxel; la cámara de eventos reacciona a \(\ln I\).</dd>
-<dt>\(\ln I\)</dt><dd data-hojas="15">Logaritmo de la intensidad que cada píxel memoriza en su último evento.</dd>
-<dt>\(C\)</dt><dd data-hojas="15">Umbral de contraste: cambio de \(\ln I\) que dispara un evento (0,2 en la figura).</dd>
-<dt>\(\Delta\ln I(\mathbf x,t)\)</dt><dd data-hojas="15">Cambio de \(\ln I\) desde el último evento del píxel; hay evento al alcanzar \(\pm C\).</dd>
-<dt>\(t_{\text{último}}\)</dt><dd data-hojas="15">Instante del último evento emitido por el píxel.</dd>
-<dt>\(\pm1\)</dt><dd data-hojas="15">Polaridad del evento: ON si sube la intensidad, OFF si baja.</dd>
-<dt>\(t_k\)</dt><dd data-hojas="16">Instante de render \(k\) en ESIM; \(t_{k+1}=t_k+\lambda C\,|\partial L/\partial t|_{\max}^{-1}\).</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="16">Factor adimensional que escala el paso adaptativo de ESIM.</dd>
-<dt>\(L\)</dt><dd data-hojas="16">Brillo (logaritmo de la intensidad) de la imagen renderizada en la fórmula del paso de ESIM; su derivada temporal máxima fija el paso.</dd>
-<dt>\(\sigma_\theta\)</dt><dd data-hojas="16">Dispersión del umbral entre píxeles en v2e (≈ 0,03 alrededor de unos 0,3).</dd>
+<dt>\(I\)</dt><dd data-hojas="28,34">Intensidad de luz en un píxel; la cámara de eventos reacciona a \(\ln I\).</dd>
+<dt>\(L = \ln I\)</dt><dd data-hojas="28,36">Logaritmo de la intensidad, que cada píxel memoriza en su último evento. En ESIM, el brillo de la imagen renderizada.</dd>
+<dt>\(C\)</dt><dd data-hojas="34,35">Umbral de contraste: cambio de \(\ln I\) que dispara un evento (0,2 en la figura).</dd>
+<dt>\(\Delta\ln I(\mathbf x,t)\), \(\Delta L\)</dt><dd data-hojas="35,34">Cambio de \(\ln I\) desde el último evento del píxel; hay evento al alcanzar \(\pm C\).</dd>
+<dt>\(t_{\text{último}}\)</dt><dd data-hojas="35,34">Instante del último evento emitido por el píxel.</dd>
+<dt>\(\pm1\)</dt><dd data-hojas="34,35">Polaridad del evento: ON si sube la intensidad, OFF si baja.</dd>
+<dt>\(I_1\), \(I_2\)</dt><dd data-hojas="34,36">Intensidades a cada lado de un borde; el número de eventos es \(\lfloor\ln(I_2/I_1)/C\rfloor\).</dd>
+<dt>\(\nabla L\)</dt><dd data-hojas="36">Gradiente espacial de la log-intensidad, por px.</dd>
+<dt>\(\mathbf v\) (imagen)</dt><dd data-hojas="36">Velocidad de la escena en la imagen, en px/s; \(\partial L/\partial t = -\nabla L\cdot\mathbf v\). En el LiDAR (hoja 41), \(\mathbf v\) es la velocidad del dron.</dd>
+<dt>\(\Delta t_{\text{ev}}\), \(\Delta t_{\text{render}}\)</dt><dd data-hojas="36">Intervalo entre dos eventos de un píxel y paso de render adaptativo de ESIM.</dd>
+<dt>\(t_k\)</dt><dd data-hojas="37">Instante de render \(k\) en ESIM; \(t_{k+1}=t_k+\lambda C\,|\partial L/\partial t|_{\max}^{-1}\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="36,37">Factor adimensional que escala el paso adaptativo de ESIM (0,5 en el ejemplo, elegido aquí).</dd>
+<dt>\(\sigma_\theta\)</dt><dd data-hojas="37">Dispersión del umbral entre píxeles en v2e (≈ 0,03 alrededor de unos 0,3).</dd>
 </dl>
 <h3>LiDAR y profundidad</h3>
 <dl>
-<dt>\(\Delta\theta_h\)</dt><dd data-hojas="19">Resolución angular horizontal del LiDAR, en grados o rad.</dd>
-<dt>\(w\)</dt><dd data-hojas="19">Anchura de un objeto (poste, cable), en m.</dd>
-<dt>\(r\)</dt><dd data-hojas="19">Distancia al objeto, en m.</dd>
-<dt>\(n_h\)</dt><dd data-hojas="19">Número de columnas del barrido que tocan el objeto: \(w/(r\,\Delta\theta_h)\).</dd>
-<dt>\(\sigma_Z\)</dt><dd data-hojas="18">Error de la profundidad estéreo, \(Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
-<dt>\(Z\)</dt><dd data-hojas="18">Profundidad (distancia) de un punto a la cámara, en m.</dd>
-<dt>\(\sigma_d\) (estéreo)</dt><dd data-hojas="18">Error de disparidad en píxeles dentro de \(\sigma_Z\). Otro uso distinto de \(\sigma_d\).</dd>
-<dt>\(b\)</dt><dd data-hojas="18">Línea de base (baseline) del par estéreo, en m.</dd>
+<dt>\(\mathbf o\), \(\mathbf d_i\)</dt><dd data-hojas="39">Origen del rayo (el sensor) y dirección unitaria del rayo \(i\), dada por el patrón de barrido.</dd>
+<dt>\(r_i\), \(\tilde r_i\)</dt><dd data-hojas="39">Distancia verdadera al primer impacto del rayo \(i\) y distancia medida, \(\tilde r_i=r_i+\varepsilon_i\), en m.</dd>
+<dt>\(\varepsilon_i\), \(\sigma_r\)</dt><dd data-hojas="39">Ruido de distancia del rayo \(i\) y su desviación típica (unos centímetros).</dd>
+<dt>\(\tilde{\mathbf p}_i\)</dt><dd data-hojas="39">Punto medido, \(\mathbf o+\tilde r_i\mathbf d_i\).</dd>
+<dt>\(t_i\), \(T_b\)</dt><dd data-hojas="41">Instante en que se mide el punto \(i\) y duración del barrido (100 ms a 10 Hz).</dd>
+<dt>\(\delta\mathbf p_i\)</dt><dd data-hojas="41">Error del punto \(i\) por moverse el sensor durante el barrido: \(\approx\mathbf v t_i + (\boldsymbol\omega\times r_i\mathbf d_i)t_i\).</dd>
+<dt>\(\Delta\theta\), \(\Delta\theta_h\)</dt><dd data-hojas="42,39">Ángulo entre rayos vecinos; resolución angular horizontal del LiDAR, en grados o rad.</dd>
+<dt>\(w\)</dt><dd data-hojas="42,43">Anchura de un objeto (poste, cable), en m.</dd>
+<dt>\(r\)</dt><dd data-hojas="42,43">Distancia al objeto, en m; la separación entre rayos a esa distancia es \(r\Delta\theta_h\).</dd>
+<dt>\(n_h\)</dt><dd data-hojas="42,43">Número de columnas del barrido que tocan el objeto: \(w/(r\,\Delta\theta_h)\); si es menor que 1, la probabilidad de recibir algún rayo.</dd>
+<dt>\(\sigma_Z\)</dt><dd data-hojas="40">Error de la profundidad estéreo, \(Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
+<dt>\(Z\)</dt><dd data-hojas="40">Profundidad (distancia) de un punto a la cámara, en m.</dd>
+<dt>\(\sigma_d\) (estéreo)</dt><dd data-hojas="40">Error de disparidad en píxeles dentro de \(\sigma_Z\). Otro uso distinto de \(\sigma_d\).</dd>
+<dt>\(b\) (estéreo)</dt><dd data-hojas="40">Línea de base (baseline) del par estéreo, en m.</dd>
 </dl>
 <h3>GNSS, barómetro y magnetómetro</h3>
 <dl>
-<dt>\(e_k\)</dt><dd data-hojas="21">Error de posición en un eje en el paso \(k\), modelado como Gauss-Markov de primer orden.</dd>
-<dt>\(a\) (Gauss-Markov)</dt><dd data-hojas="21">Coeficiente de correlación del Gauss-Markov, \(a=e^{-\Delta t/\tau}\) (0,76 en PX4 a 8 Hz).</dd>
-<dt>\(\sigma\) (Gauss-Markov)</dt><dd data-hojas="21">Desviación típica estacionaria del error GNSS; el ruido de entrada es \(\sigma\sqrt{1-a^2}\).</dd>
-<dt>\(\tau\) (Gauss-Markov)</dt><dd data-hojas="21">Tiempo de correlación del error del GNSS, en s (60 s en el ejemplo, 0,46 s en PX4).</dd>
-<dt>\(dp\)</dt><dd data-hojas="23">Variación de la presión del barómetro; \(dp=-\rho g\,dh\).</dd>
-<dt>\(\rho\)</dt><dd data-hojas="23">Densidad del aire, en kg/m³.</dd>
-<dt>\(dh\)</dt><dd data-hojas="23">Variación de la altura, en m; 1 Pa equivale a 8,3 cm.</dd>
+<dt>\(e_k\), \(e(t)\)</dt><dd data-hojas="45,46">Error de posición en un eje en el paso \(k\) (o en continuo), modelado como Gauss-Markov de primer orden.</dd>
+<dt>\(a\) (Gauss-Markov)</dt><dd data-hojas="45,46">Coeficiente de correlación entre muestras, \(a=e^{-\Delta t/\tau}\) (0,76 en PX4 a 8 Hz).</dd>
+<dt>\(\sigma\) (Gauss-Markov)</dt><dd data-hojas="45,46">Desviación típica estacionaria del error GNSS (2,5 cm en PX4; 1 m en el ejemplo).</dd>
+<dt>\(q\) (Gauss-Markov)</dt><dd data-hojas="45,46">Desviación del ruido que alimenta el error en cada paso, \(q=\sigma\sqrt{1-a^2}\) (0,016 m en PX4).</dd>
+<dt>\(\tau\) (Gauss-Markov)</dt><dd data-hojas="45,46">Tiempo de correlación del error del GNSS, en s (60 s en el ejemplo, 0,46 s en PX4).</dd>
+<dt>\(R(\ell)\), \(\ell\)</dt><dd data-hojas="45,48">Autocorrelación del error a un desfase \(\ell\): \(e^{-\ell/\tau}\).</dd>
+<dt>\(\bar e\)</dt><dd data-hojas="48">Media de \(n\) errores consecutivos; con Gauss-Markov apenas baja dentro de \(\tau\).</dd>
+<dt>eph, epv</dt><dd data-hojas="47">Precisión horizontal y vertical que declara el receptor GNSS (0,9 m y 1,78 m en PX4 simulado).</dd>
+<dt>\(p\), \(dp\)</dt><dd data-hojas="50,45">Presión y su variación, en Pa; \(dp=-\rho g\,dh\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="45,50">Densidad del aire, en kg/m³ (1,225 cerca del suelo).</dd>
+<dt>\(h\), \(dh\)</dt><dd data-hojas="50">Altura y su variación, en m; 1 Pa equivale a 8,3 cm.</dd>
+<dt>\(A\)</dt><dd data-hojas="50">Área de la lámina de aire en el equilibrio hidrostático, en m².</dd>
+<dt>\(\tilde h_k\), \(b_{h,k}\), \(\delta_{\text{suelo}}\)</dt><dd data-hojas="51">Altura barométrica medida, su deriva lenta y la perturbación cerca del suelo, en el modelo mínimo del barómetro.</dd>
+<dt>\(\mathbf B\), \(B_h\)</dt><dd data-hojas="45,52">Campo magnético terrestre y su componente horizontal, en µT (48,3 y 23,8 µT en el mundo de PX4).</dd>
+<dt>\(\psi\), \(\delta\psi\)</dt><dd data-hojas="52">Rumbo (guiñada) y su error; \(\delta\psi\approx\delta B_\perp/B_h\).</dd>
+<dt>\(\mathbf m\), \(m_x\), \(m_y\)</dt><dd data-hojas="52,53">Medida del magnetómetro y sus componentes horizontales en ejes cuerpo; \(\psi=\mathrm{atan2}(-m_y,m_x)\).</dd>
+<dt>\(\delta B_\perp\)</dt><dd data-hojas="52">Perturbación magnética perpendicular a \(B_h\), en µT.</dd>
+<dt>\(\tilde{\mathbf m}\), \(M\), \(\mathbf b_{hi}\), \(\delta\mathbf B_{\text{mot}}\)</dt><dd data-hojas="53">Medida perturbada: matriz de hierro blando, desplazamiento de hierro duro (fijo en el cuerpo) y campo de la corriente de los motores.</dd>
 <dt>\(p(o\mid s)\)</dt><dd data-hojas="3">Modelo de observación del POMDP: probabilidad de la observación \(o\) dado el estado \(s\).</dd>
-<dt>EKF2_GND_EFF_DZ</dt><dd data-hojas="23">Parámetro de PX4: zona muerta del barómetro por efecto suelo (4 m por defecto).</dd>
-<dt>CAL_MAG_COMP_TYP</dt><dd data-hojas="23">Parámetro de PX4 que compensa el campo de los motores en el magnetómetro; desactivado por defecto.</dd>
-<dt>eph, epv</dt><dd data-hojas="21">Precisión horizontal y vertical que declara el receptor GNSS (0,9 m y 1,78 m en PX4 simulado).</dd>
+<dt>EKF2_GND_EFF_DZ</dt><dd data-hojas="51">Parámetro de PX4: zona muerta del barómetro por efecto suelo (4 m por defecto).</dd>
+<dt>CAL_MAG_COMP_TYP</dt><dd data-hojas="53">Parámetro de PX4 que compensa el campo de los motores en el magnetómetro; desactivado por defecto.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
 <dt>IMU</dt><dd data-hojas="1">Inertial measurement unit: giróscopo y acelerómetro en un chip.</dd>
 <dt>GPU</dt><dd data-hojas="4">Graphics processing unit: sensores simulados en GPU para entrenar políticas masivamente.</dd>
-<dt>MEMS</dt><dd data-hojas="8">Micro-electro-mechanical systems: sensores inerciales baratos de silicio.</dd>
-<dt>ARW</dt><dd data-hojas="7">Angle random walk: ruido blanco del giróscopo, integrado en el ángulo; sale de \(\sigma_g\) y de \(N\).</dd>
-<dt>RRW</dt><dd data-hojas="7">Rate random walk: paseo aleatorio de la tasa (el sesgo); se lee con \(K\).</dd>
+<dt>MEMS</dt><dd data-hojas="19">Micro-electro-mechanical systems: sensores inerciales baratos de silicio.</dd>
+<dt>ARW</dt><dd data-hojas="11,14">Angle random walk: ruido blanco del giróscopo, integrado en el ángulo; sale de \(\sigma_g\) y de \(N\).</dd>
+<dt>RRW</dt><dd data-hojas="14">Rate random walk: paseo aleatorio de la tasa (el sesgo); se lee con \(K\).</dd>
 <dt>DVS</dt><dd data-hojas="4">Dynamic vision sensor: sensor de visión de contraste temporal asíncrono.</dd>
-<dt>EMVA 1288</dt><dd data-hojas="13">Estándar de la European Machine Vision Association para caracterizar sensores de imagen con un modelo lineal.</dd>
-<dt>ESIM</dt><dd data-hojas="16">Simulador de cámara de eventos que acopla el renderizador con el generador de eventos y elige el paso de render de forma adaptativa.</dd>
-<dt>v2e</dt><dd data-hojas="16">Herramienta que convierte vídeo en eventos y añade los defectos del sensor real.</dd>
-<dt>EQS</dt><dd data-hojas="16">Event Quality Score: distancia entre eventos simulados y reales en el espacio latente de una red.</dd>
-<dt>LiDAR</dt><dd data-hojas="17">Light detection and ranging: medida de distancia con rayos láser.</dd>
-<dt>LiDARsim</dt><dd data-hojas="18">Simulador de LiDAR que reconstruye la escena con datos reales y aprende qué rayos se pierden.</dd>
-<dt>MARSIM</dt><dd data-hojas="18">Simulador de LiDAR ligero para drones que construye una imagen de profundidad desde un mapa de puntos.</dd>
-<dt>mAP</dt><dd data-hojas="18">Mean average precision: métrica de detección de objetos.</dd>
-<dt>CPU</dt><dd data-hojas="18">Central processing unit: la versión en CPU de MARSIM es el doble de rápida que Gazebo con GPU.</dd>
-<dt>GNSS</dt><dd data-hojas="21">Global navigation satellite system: posicionamiento por satélite (GPS y otros).</dd>
-<dt>RTK</dt><dd data-hojas="22">Real-time kinematic: corrección de GNSS con precisión de centímetros.</dd>
-<dt>CEP</dt><dd data-hojas="22">Circular error probable: radio del círculo que contiene la mitad de las posiciones.</dd>
-<dt>EKF</dt><dd data-hojas="21">Extended Kalman filter: el estimador de a bordo de PX4 que recibe el GNSS con su incertidumbre.</dd>
+<dt>DN</dt><dd data-hojas="28">Digital number: nivel digital a la salida del conversor de la cámara.</dd>
+<dt>EMVA 1288</dt><dd data-hojas="30">Estándar de la European Machine Vision Association para caracterizar sensores de imagen con un modelo lineal.</dd>
+<dt>ESIM</dt><dd data-hojas="36,37">Simulador de cámara de eventos que acopla el renderizador con el generador de eventos y elige el paso de render de forma adaptativa.</dd>
+<dt>v2e</dt><dd data-hojas="37">Herramienta que convierte vídeo en eventos y añade los defectos del sensor real.</dd>
+<dt>EQS</dt><dd data-hojas="37">Event Quality Score: distancia entre eventos simulados y reales en el espacio latente de una red.</dd>
+<dt>LiDAR</dt><dd data-hojas="38">Light detection and ranging: medida de distancia con rayos láser.</dd>
+<dt>LiDARsim</dt><dd data-hojas="40">Simulador de LiDAR que reconstruye la escena con datos reales y aprende qué rayos se pierden.</dd>
+<dt>MARSIM</dt><dd data-hojas="40">Simulador de LiDAR ligero para drones que construye una imagen de profundidad desde un mapa de puntos.</dd>
+<dt>mAP</dt><dd data-hojas="40">Mean average precision: métrica de detección de objetos.</dd>
+<dt>CPU</dt><dd data-hojas="40">Central processing unit: la versión en CPU de MARSIM es el doble de rápida que Gazebo con GPU.</dd>
+<dt>GNSS</dt><dd data-hojas="44">Global navigation satellite system: posicionamiento por satélite (GPS y otros).</dd>
+<dt>RTK</dt><dd data-hojas="49">Real-time kinematic: corrección de GNSS con precisión de centímetros.</dd>
+<dt>CEP</dt><dd data-hojas="49">Circular error probable: radio del círculo que contiene la mitad de las posiciones.</dd>
+<dt>EKF</dt><dd data-hojas="47">Extended Kalman filter: el estimador de a bordo de PX4 que recibe el GNSS con su incertidumbre.</dd>
 <dt>NEES</dt><dd data-hojas="3">Normalized estimation error squared: mide si la covarianza de un filtro es coherente con su error real.</dd>
-<dt>VIO</dt><dd data-hojas="9">Visual-inertial odometry: odometría con cámara e IMU.</dd>
+<dt>VIO</dt><dd data-hojas="20">Visual-inertial odometry: odometría con cámara e IMU.</dd>
 <dt>POMDP</dt><dd data-hojas="3">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
-<dt>GPS</dt><dd data-hojas="22">Global positioning system: en la tabla, el servicio estándar tiene ≤ 8 m horizontal y ≤ 13 m vertical (95 %).</dd>
-<dt>ESKF</dt><dd data-hojas="33">Error-state Kalman filter: el filtro de Kalman sobre el error de estado del tema A4a.</dd>
-<dt>Kalibr</dt><dd data-hojas="4">Herramienta de calibración de cámara e IMU, con un modelo de ruido de IMU estándar en robótica.</dd>
-<dt>TUM VI</dt><dd data-hojas="8">Dataset visual-inertial de la TUM; su secuencia imu-static dura 111 h en reposo.</dd>
-<dt>EuRoC</dt><dd data-hojas="9">Dataset de vuelo de un dron con IMU ADIS16448 y cámara de 752 × 480.</dd>
+<dt>GPS</dt><dd data-hojas="49">Global positioning system: en la tabla, el servicio estándar tiene ≤ 8 m horizontal y ≤ 13 m vertical (95 %).</dd>
+<dt>ESKF</dt><dd data-hojas="22,63">Error-state Kalman filter: el filtro de Kalman sobre el error de estado del tema A4a.</dd>
+<dt>Kalibr</dt><dd data-hojas="4,8">Herramienta de calibración de cámara e IMU, con un modelo de ruido de IMU estándar en robótica.</dd>
+<dt>TUM VI</dt><dd data-hojas="11,18">Dataset visual-inertial de la TUM; su secuencia imu-static dura 111 h en reposo.</dd>
+<dt>EuRoC</dt><dd data-hojas="20,24">Dataset de vuelo de un dron con IMU ADIS16448 y cámara de 752 × 480.</dd>
 <dt>PX4</dt><dd data-hojas="3">Autopiloto de código abierto cuyos simuladores se comparan en el tema.</dd>
 <dt>SIH</dt><dd data-hojas="3">Simulation-in-hardware: simulador de PX4 con el ruido «realista» desactivado en el código.</dd>
-<dt>ESC</dt><dd data-hojas="11">Electronic speed controller: controlador de velocidad del motor; su telemetría alimenta los notch dinámicos.</dd>
-<dt>FFT</dt><dd data-hojas="11">Fast Fourier transform: se usa a bordo para seguir la frecuencia de la vibración.</dd>
-<dt>OKVIS, ROVIO, OpenVINS</dt><dd data-hojas="9">Sistemas de VIO citados al comparar el inflado de los parámetros de la IMU.</dd>
-<dt>JAX</dt><dd data-hojas="33">Biblioteca de cálculo numérico con la que se programa el modelo de IMU del laboratorio.</dd>
-<dt>3DGS</dt><dd data-hojas="27">3D Gaussian splatting: render neuronal tratado en el tema B3b.</dd>
+<dt>ESC</dt><dd data-hojas="26">Electronic speed controller: controlador de velocidad del motor; su telemetría alimenta los notch dinámicos.</dd>
+<dt>FFT</dt><dd data-hojas="26">Fast Fourier transform: se usa a bordo para seguir la frecuencia de la vibración.</dd>
+<dt>OKVIS, ROVIO, OpenVINS</dt><dd data-hojas="20">Sistemas de VIO citados al comparar el inflado de los parámetros de la IMU.</dd>
+<dt>JAX</dt><dd data-hojas="63">Biblioteca de cálculo numérico con la que se programa el modelo de IMU del laboratorio.</dd>
+<dt>3DGS</dt><dd data-hojas="57">3D Gaussian splatting: render neuronal tratado en el tema B3b.</dd>
 </dl>
 </aside>
 
