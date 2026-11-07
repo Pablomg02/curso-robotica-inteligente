@@ -75,7 +75,7 @@ Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.h
 
 Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `T` tema) y modo lectura automático en pantallas estrechas.
 
-**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=7`, `curso.js?v=3`.
+**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=8`, `curso.js?v=3`.
 
 Componentes disponibles:
 

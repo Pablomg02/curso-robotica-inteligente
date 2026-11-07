@@ -97,3 +97,9 @@ Anota aquí cada revisión: fecha, qué temas revisó y qué pidió cambiar. Lo 
 | 2026-11-06 | A1 | Corregir lo que quedó dudoso en A1. No parar tras cada tema: solo al acabar la fase 1 (H1) y la fase 2 (B6). Paralelizar el trabajo con subagentes siempre que no reste calidad. | Sí: fuentes pendientes de A1 verificadas con agentes; investigación de cada tema en paralelo y revisión independiente antes del commit (`CONTINUAR.md` §3) |
 | 2026-11-06 | — | El ritmo de consumo de IA es alto: usar los subagentes con más cuidado. | Sí: como mucho un agente de investigación por tema, con encargo acotado; consultas de código y documentación hechas directamente; revisión independiente solo en temas con muchas derivaciones (`CONTINUAR.md` §3.1) |
 | 2026-11-07 | Fase 1 (A1–A5, H1) | «Se ve bien». Seguir hasta el final sin parar, revisando la calidad a medida que se avanza: completo, riguroso y de la máxima calidad. | Sí: las paradas 🛑 pasan a ser revisiones propias de fase (relectura de las hojas, comprobación de cifras y referencias cruzadas, anotadas en este fichero) sin esperar respuesta; se mantiene la política de agentes del 2026-11-06 |
+
+## Correcciones transversales
+
+| Fecha | Qué | Dónde |
+|---|---|---|
+| 2026-11-07 | Las líneas discontinuas con solo la clase `ln-dash` no tenían color de trazo y no se veían (52 en 11 temas). `curso.css` les da un gris por defecto con especificidad cero, así que no pisa `ln-accent` y compañía. Revisado con capturas en A2, B2 y B3b. | `assets/curso.css` (`?v=8` en todas las páginas) |
