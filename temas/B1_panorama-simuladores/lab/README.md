@@ -15,7 +15,7 @@ Montar el mismo x500 en tu simulador y en MuJoCo, volarlo con el mismo controlad
 | Vuelo recto a 5 m/s: inclinación y retraso del PD (mismas tres plantas) | 0° y 0; 3,5° y 15 cm; 13,9° y 61 cm | 2 |
 | Mando de estacionario en SIH con sus valores por defecto (1 kg, 4 × 5 N) | \(u = mg/(4T_{\max})\) ≈ 0,49 | 5 |
 
-El script de las figuras, en numpy, está en `../figuras/figuras_b1.py`. Contiene el modelo del x500, el controlador y las tres convenciones de planta (empuje instantáneo como en MuJoCo Menagerie, motor de Gazebo y SIH de PX4). Úsalo como referencia para comprobar cada paso.
+El script de las figuras, en numpy, está en `../figuras/figuras_b1.py`. Contiene el modelo del x500, el controlador y las tres convenciones de planta (empuje instantáneo como en MuJoCo Menagerie, motor de Gazebo y SIH de PX4). Úsalo como referencia para comprobar cada paso. Las cuentas a mano de las hojas (el oscilador con Euler explícito y semiimplícito, RK4 en \(\dot x = -x\), la saturación de juguete, el motor discretizado, el lazo de *rate* con retardo, el contacto por penalización y el *lockstep*) están en `../figuras/ejemplos_b1.py`, con su salida en `../figuras/salida_ejemplos.txt`.
 
 ## 1. El x500 en MuJoCo (45 min)
 
@@ -53,9 +53,9 @@ En `experimentos/b1_dos_simuladores.py`:
 2. Lo mismo en tu simulador JAX, con Euler explícito, Euler semiimplícito y RK4.
 3. Para cada caso, mide el error máximo de posición y el tiempo de CPU por segundo simulado.
 
-**Comprobaciones:** pendiente 1 para Euler y 4 para RK4 si quitas la saturación de los motores; con saturación, RK4 baja a un orden cercano a 2. Prueba también `dyntype="filterexact"`: ¿cambia el error con pasos grandes?
+**Comprobaciones:** pendiente 1 para Euler y 4 para RK4 si quitas la saturación de los motores; con saturación, RK4 baja a un orden cercano a 2. La hoja «Por qué una saturación baja RK4 de orden 4 a orden 2» explica el mecanismo y su ejemplo de juguete (ejemplo 7 del script) te sirve de test rápido antes del x500. Prueba también `dyntype="filterexact"`: ¿cambia el error con pasos grandes?
 
-**Piensa:** ¿por qué Euler explícito y semiimplícito dan casi lo mismo aquí? Construye un caso en el que no sea así (un péndulo sin amortiguar, 60 s) y mide la deriva de energía con los dos.
+**Piensa:** ¿por qué Euler explícito y semiimplícito dan casi lo mismo aquí? Construye un caso en el que no sea así (un péndulo sin amortiguar, 60 s) y mide la deriva de energía con los dos. Compara con la hoja «Por qué el explícito gana energía y el semiimplícito no»: con \(z = h\omega\) pequeño, el explícito debería multiplicar la energía por \(1 + z^2\) en cada paso.
 
 ## 4. Rendimiento (40 min)
 

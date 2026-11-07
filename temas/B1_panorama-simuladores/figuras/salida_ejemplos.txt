@@ -1,0 +1,171 @@
+==============================================================================
+EJEMPLO 1. Un paso de simulación: cuántas evaluaciones de la dinámica por paso de control
+  control a 250 Hz con 8 subpasos de física: h = 0.500 ms (2000 Hz)
+  con RK4 (4 evaluaciones por subpaso): 32 evaluaciones de la dinámica por paso de control
+  por segundo simulado: 250 llamadas al controlador, 2000 pasos de física, 8000 evaluaciones
+  SITL con Gazebo: h = 4 ms -> 250 Hz; IMU publicada en cada paso: 250 Hz
+==============================================================================
+EJEMPLO 2. Euler explícito y semiimplícito en el oscilador q'' = -w^2 q (w = 1 rad/s, h = 0,1 s)
+  exacto tras un paso:  q = 0.995004, v = -0.099833, E = 0.500000
+  explícito:            q = 1.000000, v = -0.100000, E = 0.505000  (E1/E0 = 1.0100 = 1 + z^2)
+  semiimplícito:        q = 0.990000, v = -0.100000, E = 0.495050
+  error local en q del explícito: 0.004996  (h^2 w^2 / 2 = 0.005000)
+  z = h w = 0.1; A_e = [[1.0, 0.1], [-0.1, 1.0]], det = 1.0100; |autovalor| = 1.004988 = sqrt(1+z^2) = 1.004988
+  A_s = [[0.99, 0.1], [-0.1, 1.0]], det = 1.0000; |autovalores| = [1. 1.]
+  tras 120 pasos (12 s, casi dos vueltas): E/E0 explícito = 3.300 (1,01^120 = 3.300); semiimplícito entre 0.9524 y 1.0526
+  radio final en el plano de fase: explícito 1.817; semiimplícito 1.023
+  tras 1000 pasos: explícito E/E0 = 2.096e+04
+  path explícito: M245.0,150.0 L245.0,157.5 L244.3,165.0 L242.7,172.4 L240.5,179.7 L237.5,186.8 L233.9,193.5 L229.5,199.9 L224.5,205.8 L218.9,211.3 L212.8,216.2 L206.2,220.5 L199.1,224.1 L191.7,227.0 L184.0,229.2 L176.1,230.6 L168.1,231.2 L159.9,231.0 L151.8,230.0 L143.8,228.2 L136.0,225.6 L128.5,222.2 L121.3,218.0 L114.5,213.1 L108.1,207.6 L102.4,201.4 L97.2,194.6 L92.8,187.4 L89.0,179.6 L86.1,171.5 L83.9,163.1 L82.6,154.5 L82.2,145.8 L82.6,137.0 L83.9,128.3 L86.0,119.7 L89.1,111.3 L93.0,103.2 L97.6,95.5 L103.1,88.2 L109.3,81.5 L116.1,75.5 L123.6,70.1 L131.6,65.4 L140.0,61.6 L148.9,58.6 L158.0,56.5 L167.4,55.3 L176.8,55.0 L186.3,55.7 L195.8,57.3 L205.0,59.9 L214.0,63.4 L222.7,67.8 L230.9,73.1 L238.6,79.2 L245.7,86.0 L252.1,93.6 L257.7,101.8 L262.5,110.6 L266.5,119.8 L269.5,129.5 L271.6,139.4 L272.6,149.6 L272.6,159.8 L271.7,170.1 L269.7,180.3 L266.6,190.2 L262.6,199.9 L257.6,209.2 L251.7,217.9 L244.9,226.1 L237.3,233.6 L228.9,240.3 L219.9,246.2 L210.3,251.2 L200.2,255.2 L189.6,258.2 L178.8,260.2 L167.8,261.1 L156.7,260.9 L145.6,259.5 L134.6,257.1 L123.9,253.6 L113.6,249.0 L103.7,243.3 L94.4,236.7 L85.7,229.1 L77.8,220.7 L70.7,211.5 L64.6,201.5 L59.4,191.0 L55.3,179.9 L52.3,168.5 L50.5,156.7 L49.8,144.7 L50.3,132.7 L52.1,120.8 L55.0,109.0 L59.1,97.5 L64.3,86.4 L70.7,75.8 L78.1,65.9 L86.5,56.7 L95.9,48.3 L106.0,40.9 L116.9,34.5 L128.5,29.2 L140.6,25.1 L153.1,22.1 L165.8,20.4 L178.8,20.0 L191.8,20.9 L204.7,23.1 L217.4,26.5 L229.8,31.3 L241.6,37.3 L252.9,44.4 L263.5,52.7 L273.2,62.1 L282.0,72.4
+  path semiimplícito: M245.0,150.0 L244.3,157.5 L242.8,164.9 L240.5,172.2 L237.6,179.3 L234.0,186.0 L229.8,192.4 L224.9,198.4 L219.5,203.9 L213.7,208.8 L207.3,213.2 L200.6,216.9 L193.6,220.0 L186.4,222.4 L179.0,224.0 L171.5,224.9 L164.0,225.1 L156.6,224.5 L149.2,223.1 L142.1,221.0 L135.3,218.3 L128.8,214.8 L122.8,210.7 L117.2,205.9 L112.1,200.7 L107.6,194.9 L103.8,188.6 L100.6,182.0 L98.1,175.1 L96.3,167.9 L95.2,160.5 L94.9,153.0 L95.4,145.5 L96.6,138.1 L98.5,130.7 L101.1,123.6 L104.5,116.7 L108.4,110.1 L113.1,104.0 L118.2,98.3 L123.9,93.1 L130.1,88.5 L136.6,84.5 L143.5,81.1 L150.7,78.5 L158.0,76.6 L165.5,75.4 L173.0,74.9 L180.5,75.2 L187.8,76.3 L195.0,78.0 L202.0,80.5 L208.6,83.7 L214.8,87.6 L220.6,92.1 L225.9,97.1 L230.6,102.7 L234.8,108.8 L238.2,115.3 L241.0,122.1 L243.1,129.2 L244.5,136.5 L245.1,144.0 L244.9,151.5 L244.0,159.0 L242.4,166.4 L240.0,173.6 L237.0,180.6 L233.2,187.3 L228.9,193.6 L223.9,199.5 L218.4,204.9 L212.5,209.7 L206.1,214.0 L199.3,217.6 L192.3,220.5 L185.0,222.7 L177.6,224.2 L170.1,225.0 L162.6,225.0 L155.1,224.3 L147.8,222.8 L140.8,220.6 L134.0,217.6 L127.6,214.0 L121.6,209.8 L116.2,205.0 L111.2,199.6 L106.8,193.7 L103.1,187.4 L100.0,180.7 L97.6,173.7 L96.0,166.5 L95.1,159.1 L94.9,151.6 L95.5,144.1 L96.9,136.6 L98.9,129.3 L101.7,122.2 L105.2,115.4 L109.3,108.9 L114.0,102.8 L119.3,97.2 L125.1,92.1 L131.3,87.7 L137.9,83.8 L144.9,80.6 L152.1,78.1 L159.4,76.3 L166.9,75.2 L174.4,74.9 L181.9,75.4 L189.2,76.5 L196.4,78.5 L203.3,81.1 L209.8,84.4 L216.0,88.4 L221.7,93.0 L226.9,98.2 L231.5,103.9 L235.5,110.0
+  ejes: x(-2)=20, x(0)=170, x(2)=320; y(-2)=300, y(0)=150, y(2)=0
+  círculo exacto: centro (170, 150), radio 75
+==============================================================================
+EJEMPLO 3. Un paso de RK4 a mano en x' = -x (x0 = 1, h = 0,5)
+  s1 = f(x0) = -1.000000
+  s2 = f(x0 + h/2 s1) = f(0.7500) = -0.750000
+  s3 = f(x0 + h/2 s2) = f(0.8125) = -0.812500
+  s4 = f(x0 + h s3)   = f(0.59375) = -0.593750
+  suma ponderada s1 + 2 s2 + 2 s3 + s4 = -4.718750; x1 = x0 + h/6 * suma = 0.606771
+  exacto e^-0,5 = 0.606531; error RK4 = 2.40e-04; Euler x1 = 0.500000, error = 0.1065
+  R(z) con z = -0.5: 1 + z + z^2/2 + z^3/6 + z^4/24 = 0.606771 (igual a x1/x0)
+  términos: [1, -0.5, 0.125, -0.020833333333333332, 0.0026041666666666665]; siguiente término de e^z, z^5/120 = -2.60e-04
+==============================================================================
+EJEMPLO 4. Orden global: dividir h entre 2 en x' = -x hasta t = 1
+  euler: error con h = 0,1 / 0,05 / 0,025: 1.920e-02 / 9.394e-03 / 4.647e-03; cocientes 2.04 y 2.02
+  rk4  : error con h = 0,1 / 0,05 / 0,025: 3.332e-07 / 1.998e-08 / 1.223e-09; cocientes 16.68 y 16.34
+  Euler, error local de un paso con h = 0,1: 4.837e-03 (h^2/2 = 5.000e-03); 10 pasos: suma aproximada 10 x local = 4.837e-02
+==============================================================================
+EJEMPLO 5. Estabilidad en el oscilador: factor de energía por paso y paso máximo
+  Euler explícito  z = 0.100: |R(iz)|^2 = 1.010000
+  Euler explícito  z = 0.251: |R(iz)|^2 = 1.063001
+  Euler explícito  z = 1.000: |R(iz)|^2 = 2.000000
+  Euler explícito  z = 2.000: |R(iz)|^2 = 5.000000
+  Euler explícito  z = 2.828: |R(iz)|^2 = 9.000000
+  Euler explícito  z = 3.000: |R(iz)|^2 = 10.000000
+  RK4              z = 0.100: |R(iz)|^2 = 1.000000
+  RK4              z = 0.251: |R(iz)|^2 = 0.999997
+  RK4              z = 1.000: |R(iz)|^2 = 0.987847
+  RK4              z = 2.000: |R(iz)|^2 = 0.555556
+  RK4              z = 2.828: |R(iz)|^2 = 1.000000
+  RK4              z = 3.000: |R(iz)|^2 = 2.265625
+  comprobación: |R(i·0.5)|^2 = 0.999790 frente a la fórmula 0.999790
+  comprobación: |R(i·2.0)|^2 = 0.555556 frente a la fórmula 0.555556
+  Euler implícito   z = 0.100: |R(iz)|^2 = 1/(1+z^2) = 0.990099 (pierde energía con cualquier paso)
+  Euler implícito   z = 1.000: |R(iz)|^2 = 1/(1+z^2) = 0.500000 (pierde energía con cualquier paso)
+  Euler implícito   z = 3.000: |R(iz)|^2 = 1/(1+z^2) = 0.100000 (pierde energía con cualquier paso)
+  modo de 10 Hz (w = 62.8 rad/s): semiimplícito estable si h < 2/w = 31.8 ms; RK4 si h < 2 sqrt2 / w = 45.0 ms
+  Euler explícito con h = 4 ms: z = 0.251, factor por paso 1.0632, en 250 pasos 4.47e+06
+==============================================================================
+EJEMPLO 6. Amortiguamiento rígido: explícito frente a implícito en v' = -(c/m) v (c/m = 500 1/s)
+  h c/m = 5.0; factor por paso: explícito 1 - h c/m = -4.000; implícito 1/(1 + h c/m) = 0.1667; exacto e^(-h c/m) = 0.0067
+  tras 5 pasos desde v = 1: explícito -1024; implícito 1.29e-04; exacto 1.39e-11
+  explícito estable solo si h < 2 m/c = 4.0 ms
+==============================================================================
+EJEMPLO 7. Por qué una saturación baja RK4 a orden 2: x' = clip(4 (1 - x), -1, 1), x(0) = 0, hasta t = 2
+  la saturación se suelta cuando 4 (1 - x) = 1, es decir x = 3/4, en t* = 0.7500 s
+  exacta: x = t hasta t*, después x = 1 - (1/4) e^(-4 (t - t*)); x(2) = 0.99831551
+  RK4 con saturación                  : error en t = 2 con h = 0,1 / 0,1/3 / 0,1/9: 8.71e-06 / 1.22e-06 / 1.38e-07; cocientes 7.1 y 8.8; pendientes 1.79 y 1.98
+  RK4 sin saturación (x' = 4(1 - x))  : error en t = 2 con h = 0,1 / 0,1/3 / 0,1/9: 8.01e-07 / 7.90e-09 / 9.06e-11; cocientes 101.4 y 87.2; pendientes 4.20 y 4.07
+  Euler con saturación                : error en t = 2 con h = 0,1 / 0,1/3 / 0,1/9: 1.25e-03 / 5.14e-04 / 1.82e-04; cocientes 2.4 y 2.8; pendientes 0.81 y 0.94
+    h = 0.10000: t*/h = 7.500 (el codo cae a mitad del paso número 8)
+    h = 0.03333: t*/h = 22.500 (el codo cae a mitad del paso número 23)
+    h = 0.01111: t*/h = 67.500 (el codo cae a mitad del paso número 68)
+  error local de cada paso de RK4 (h = 0,1), arrancando de la solución exacta:
+    paso  1 [0.0, 0.1]: 0.00e+00
+    paso  2 [0.1, 0.2]: 0.00e+00
+    paso  3 [0.2, 0.3]: 0.00e+00
+    paso  4 [0.3, 0.4]: 0.00e+00
+    paso  5 [0.4, 0.5]: 0.00e+00
+    paso  6 [0.5, 0.6]: 0.00e+00
+    paso  7 [0.6, 0.7]: 0.00e+00
+    paso  8 [0.7, 0.8]: 1.35e-03   <- contiene t*
+    paso  9 [0.8, 0.9]: 1.64e-05
+    paso 10 [0.9, 1.0]: 1.10e-05
+    h = 0.10000: error local del paso con el codo 1.35e-03 (error/h^2 = 1.35e-01); de un paso suave en t = 1,5: 9.95e-07 (error/h^5 = 9.95e-02)
+    h = 0.03333: error local del paso con el codo 1.73e-04 (error/h^2 = 1.56e-01); de un paso suave en t = 1,5: 4.28e-09 (error/h^5 = 1.04e-01)
+    h = 0.01111: error local del paso con el codo 2.01e-05 (error/h^2 = 1.63e-01); de un paso suave en t = 1,5: 1.79e-11 (error/h^5 = 1.05e-01)
+  caso especial: codo a 2/3 del paso (x' = clip(3(1-x), -1, 1), h = 0,1): error local 5.42e-05, 25 veces menor que con el codo a mitad de paso (1,35e-03): ahí la regla de Simpson integra el codo sin error de orden h^2
+  path solución: M40.0,170.0 L44.2,166.2 L48.5,162.5 L52.8,158.8 L57.0,155.0 L61.2,151.2 L65.5,147.5 L69.8,143.8 L74.0,140.0 L78.2,136.2 L82.5,132.5 L86.8,128.8 L91.0,125.0 L95.2,121.2 L99.5,117.5 L103.8,113.8 L108.0,110.0 L112.3,106.2 L116.5,102.5 L120.8,98.8 L125.0,95.0 L129.2,91.2 L133.5,87.5 L137.8,83.7 L142.0,80.0 L146.2,76.2 L150.5,72.5 L154.8,68.8 L159.0,65.0 L163.2,61.2 L167.5,57.5 L171.8,53.9 L176.0,50.7 L180.2,47.8 L184.5,45.1 L188.8,42.7 L193.0,40.6 L197.2,38.6 L201.5,36.8 L205.8,35.2 L210.0,33.8 L214.3,32.5 L218.5,31.3 L222.8,30.2 L227.0,29.2 L231.2,28.4 L235.5,27.6 L239.8,26.9 L244.0,26.2 L248.3,25.6 L252.5,25.1 L256.8,24.6 L261.0,24.2 L265.2,23.8 L269.5,23.4 L273.8,23.1 L278.0,22.8 L282.2,22.5 L286.5,22.3 L290.8,22.1 L295.0,21.9 L299.2,21.7 L303.5,21.5 L307.8,21.4 L312.0,21.3 L316.2,21.1 L320.5,21.0 L324.8,20.9 L329.0,20.8 L333.2,20.8 L337.5,20.7 L341.8,20.6 L346.0,20.6 L350.3,20.5 L354.5,20.5 L358.8,20.4 L363.0,20.4 L367.2,20.3 L371.5,20.3 L375.8,20.3 L380.0,20.3
+  punto del codo: (167.5, 57.5); ejes x(0)=40, x(1)=210, x(2)=380; y(0)=170, y(0,5)=95, y(1)=20
+  paso de h = 0,1 que contiene el codo: t = 0,7 -> x = 159.0; t = 0,8 -> x = 176.0
+  derivada x' a lo largo del tiempo (para la figura: continua, con un codo en t*):
+  path derivada: M40.0,27.1 L44.2,27.1 L48.5,27.1 L52.8,27.1 L57.0,27.1 L61.2,27.1 L65.5,27.1 L69.8,27.1 L74.0,27.1 L78.2,27.1 L82.5,27.1 L86.8,27.1 L91.0,27.1 L95.2,27.1 L99.5,27.1 L103.8,27.1 L108.0,27.1 L112.3,27.1 L116.5,27.1 L120.8,27.1 L125.0,27.1 L129.2,27.1 L133.5,27.1 L137.8,27.1 L142.0,27.1 L146.2,27.1 L150.5,27.1 L154.8,27.1 L159.0,27.1 L163.2,27.1 L167.5,27.1 L171.8,40.7 L176.0,53.0 L180.2,64.2 L184.5,74.2 L188.8,83.4 L193.0,91.6 L197.2,99.1 L201.5,105.8 L205.8,111.9 L210.0,117.4 L214.3,122.4 L218.5,127.0 L222.8,131.1 L227.0,134.8 L231.2,138.1 L235.5,141.2 L239.8,143.9 L244.0,146.4 L248.3,148.6 L252.5,150.7 L256.8,152.5 L261.0,154.2 L265.2,155.7 L269.5,157.0 L273.8,158.3 L278.0,159.4 L282.2,160.4 L286.5,161.3 L290.8,162.1 L295.0,162.9 L299.2,163.6 L303.5,164.2 L307.8,164.7 L312.0,165.2 L316.2,165.7 L320.5,166.1 L324.8,166.5 L329.0,166.8 L333.2,167.1 L337.5,167.4 L341.8,167.6 L346.0,167.9 L350.3,168.1 L354.5,168.2 L358.8,168.4 L363.0,168.6 L367.2,168.7 L371.5,168.8 L375.8,168.9 L380.0,169.0
+==============================================================================
+EJEMPLO 8. El paso frente al motor y al giro del rotor (Gazebo, x500)
+  tau = 12,5 ms con h = 4 ms: 3.12 pasos por constante de tiempo
+  tau = 12,5 ms con h = 10 ms: 1.25 pasos por constante de tiempo
+  Omega de estacionario = sqrt(m g / (4 kT)) = 769.6 rad/s
+  Omega =  769.6 rad/s, h = 4 ms: avance de la junta por paso 3.078 rad (176°); el muestreo ve +3.078 rad (+176°)
+  Omega = 1000.0 rad/s, h = 4 ms: avance de la junta por paso 4.000 rad (229°); el muestreo ve -2.283 rad (-131°)
+  Omega =  100.0 rad/s, h = 4 ms: avance de la junta por paso 0.400 rad (23°); el muestreo ve +0.400 rad (+23°)
+  límite de Nyquist de la junta con h = 4 ms: pi/h = 785 rad/s
+  con rotorVelocitySlowdownSim = 10: Omega = 1000 -> la junta gira a 100 rad/s, 0.40 rad por paso; límite real 7854 rad/s
+==============================================================================
+EJEMPLO 9. Contacto por penalización: rigidez y paso (dron de 2,064 kg apoyado en el suelo)
+  penetración en reposo 1.0 mm: k = m g / delta = 20,251 N/m; w_c = sqrt(k/m) = sqrt(g/delta) = 99.0 rad/s; periodo 63.4 ms; semiimplícito estable si h < 2/w_c = 20.19 ms; diez pasos por periodo: h = 6.3 ms
+  penetración en reposo 0.1 mm: k = m g / delta = 202,509 N/m; w_c = sqrt(k/m) = sqrt(g/delta) = 313.2 rad/s; periodo 20.1 ms; semiimplícito estable si h < 2/w_c = 6.39 ms; diez pasos por periodo: h = 2.0 ms
+  a 10 m/s con h = 10 ms el dron avanza 10 cm por paso
+    obstáculo de 2 cm y cuerpo de colisión de 5 cm: puede atravesarlo (v h = 10 cm frente a d + l = 7 cm)
+    obstáculo de 2 cm y cuerpo de colisión de 10 cm: se detecta (v h = 10 cm frente a d + l = 12 cm)
+    obstáculo de 2 cm y cuerpo de colisión de 50 cm: se detecta (v h = 10 cm frente a d + l = 52 cm)
+==============================================================================
+EJEMPLO 10. Discretizar el motor de primer orden: exacto e^(-h/tau) frente a Euler 1 - h/tau
+  tau =  12.5 ms, h =  4.0 ms: h/tau = 0.320; e^(-h/tau) = 0.7261; 1 - h/tau = +0.6800
+  tau =  12.5 ms, h = 10.0 ms: h/tau = 0.800; e^(-h/tau) = 0.4493; 1 - h/tau = +0.2000
+  tau =  12.5 ms, h = 25.0 ms: h/tau = 2.000; e^(-h/tau) = 0.1353; 1 - h/tau = -1.0000
+  tau =  50.0 ms, h =  5.0 ms: h/tau = 0.100; e^(-h/tau) = 0.9048; 1 - h/tau = +0.9000
+  Omega_k = 700, Omega_c = 800 rad/s, h = 4 ms: exacto 727.4; Euler 732.0
+  Omega_k = 700, Omega_c = 800 rad/s, h = 25 ms: exacto 786.5; Euler 900.0
+==============================================================================
+EJEMPLO 11. Lazo de rate con motor de primer orden: amortiguamiento (modelo lineal, K_w = 25 1/s)
+  Gazebo al subir  tau =  12.5 ms: K_w tau = 0.3125; zeta = 1/(2 sqrt(K_w tau)) = 0.894; w_n = 44.7 rad/s; sobreoscilación del rate 0.2 %; retraso de fase a 25 rad/s 17.4°
+  Gazebo al bajar  tau =  25.0 ms: K_w tau = 0.6250; zeta = 1/(2 sqrt(K_w tau)) = 0.632; w_n = 31.6 rad/s; sobreoscilación del rate 7.7 %; retraso de fase a 25 rad/s 32.0°
+  SIH              tau =  50.0 ms: K_w tau = 1.2500; zeta = 1/(2 sqrt(K_w tau)) = 0.447; w_n = 22.4 rad/s; sobreoscilación del rate 20.8 %; retraso de fase a 25 rad/s 51.3°
+    simulación del modelo lineal, tau = 12.5 ms: máximo del rate 1.0019 -> sobreoscilación 0.2 %
+    simulación del modelo lineal, tau = 50.0 ms: máximo del rate 1.2079 -> sobreoscilación 20.8 %
+  lazo de actitud (K_R = 8) sobre el de rate, modelo lineal de un eje, escalón unitario:
+    con tau = 0: phi'' + K_w phi' + K_w K_R phi = K_w K_R phi_ref -> zeta = K_w / (2 sqrt(K_w K_R)) = 0.884; sobreoscilación 0.26 %
+    tau =  0.0 ms: sobreoscilación  0.26 %; establecimiento (2 %) 320 ms
+    tau = 12.5 ms: sobreoscilación -0.00 %; establecimiento (2 %) 324 ms
+    tau = 50.0 ms: sobreoscilación  6.53 %; establecimiento (2 %) 595 ms
+    (la simulación completa de figuras_b1.py da 0,2 % y 320 ms con empuje instantáneo; 0 % y 332 ms con Gazebo;
+     4,0 % y 576 ms con SIH, cuya planta completa añade, entre otras cosas, el amortiguamiento angular K_dw)
+==============================================================================
+EJEMPLO 12. Arrastre en crucero: inclinación y error del PD (x500, 5 m/s)
+  Gazebo, 4 c_d Omega_h : D = 0.2482 N/(m/s); D v = 1.241 N; m g = 20.251 N; tan(theta) = 0.0613 -> theta = 3.51°; e = D v / (m K_p) = 15.0 cm; D/m = 0.120 1/s
+  SIH, K_dv             : D = 1.0000 N/(m/s); D v = 5.000 N; m g = 20.251 N; tan(theta) = 0.2469 -> theta = 13.87°; e = D v / (m K_p) = 60.6 cm; D/m = 0.484 1/s
+  Omega_h = 769.6 rad/s; c_d = 8.0643e-05
+==============================================================================
+EJEMPLO 13. Lockstep: factor de tiempo real con números de ejemplo (h = 4 ms simulados)
+  solo el simulador, c_sim = 1 ms: factor de tiempo real h / c_sim = 4.00
+  c_sim = 1.0 ms, c_PX4 = 0.5 ms: 1.5 ms de pared por paso; factor de tiempo real h / (c_sim + c_PX4) = 2.67
+  c_sim = 6.0 ms, c_PX4 = 0.5 ms: 6.5 ms de pared por paso; factor de tiempo real h / (c_sim + c_PX4) = 0.62
+  en tiempo real estricto con 6,5 ms por paso: cada paso llega 2.5 ms tarde; tras 100 pasos el simulador va 250 ms por detrás (o se saltan pasos)
+==============================================================================
+EJEMPLO 14. Física en GPU: rendimiento por entorno y tiempo para 10^9 pasos (cifras de cada artículo)
+  gym-pybullet-drones, 1 dron, CPU      :        4,032 pasos/s en total;   4032.0 por entorno; 10^9 pasos en    248,016 s = 2.9 días
+  Flightmare, 150 drones, CPU           :      200,000 pasos/s en total;   1333.3 por entorno; 10^9 pasos en      5,000 s = 1.4 h
+  OmniDrones, 4096 entornos, RTX 4090   :      732,109 pasos/s en total;    178.7 por entorno; 10^9 pasos en      1,366 s = 22.8 min
+  Aerial Gym, 2^16 robots, RTX 3090     :    4,430,000 pasos/s en total;     67.6 por entorno; 10^9 pasos en        226 s = 3.8 min
+==============================================================================
+EJEMPLO 15. Qué es un paso: decimation (control a 250 Hz con 8 subpasos de física)
+  un simulador que hace 1,000,000 pasos de física por segundo da 125,000 pasos de control por segundo
+==============================================================================
+EJEMPLO 16. Datos de figuras: qué hace un integrador (Euler en x' = x, h = 0,5, de 0 a 2)
+  path exacta e^t: M50.0,205.0 L59.0,203.7 L68.0,202.4 L77.0,201.0 L86.0,199.5 L95.0,197.9 L104.0,196.3 L113.0,194.5 L122.0,192.7 L131.0,190.8 L140.0,188.8 L149.0,186.7 L158.0,184.4 L167.0,182.1 L176.0,179.7 L185.0,177.1 L194.0,174.4 L203.0,171.5 L212.0,168.5 L221.0,165.4 L230.0,162.0 L239.0,158.6 L248.0,154.9 L257.0,151.0 L266.0,147.0 L275.0,142.7 L284.0,138.3 L293.0,133.6 L302.0,128.6 L311.0,123.4 L320.0,118.0 L329.0,112.2 L338.0,106.2 L347.0,99.8 L356.0,93.2 L365.0,86.1 L374.0,78.8 L383.0,71.0 L392.0,62.9 L401.0,54.3 L410.0,45.3
+  Euler t = 0.0: x = 1.0000 -> (50.0, 205.0); exacta 1.0000 -> y = 205.0
+  Euler t = 0.5: x = 1.5000 -> (140.0, 192.5); exacta 1.6487 -> y = 188.8
+  Euler t = 1.0: x = 2.2500 -> (230.0, 173.8); exacta 2.7183 -> y = 162.0
+  Euler t = 1.5: x = 3.3750 -> (320.0, 145.6); exacta 4.4817 -> y = 118.0
+  Euler t = 2.0: x = 5.0625 -> (410.0, 103.4); exacta 7.3891 -> y = 45.3
+  paso local desde la exacta en t = 1,5: x = 4.4817 -> Euler 6.7225 (y = 61.9); exacta en 2: 7.3891 (y = 45.3); error local 0.667
+  error global en t = 2: 2.327; error local del primer paso: 0.149
+  ejes: x(0)=50, x(1)=230, x(2)=410; y(0)=230, y(4)=130, y(8)=30
+==============================================================================
+EJEMPLO 17. Datos de figuras: la rueda de carro (junta del rotor muestreada cada h = 4 ms)
+  Omega = 1000 rad/s: k=0: (152.0, 100.0); k=1: (49.5, 146.9); k=2: (81.0, 38.7); k=3: (142.3, 133.3)
+  con slowdown 10 (100 rad/s): k=0: (152.0, 100.0); k=1: (147.1, 75.9); k=2: (133.2, 55.5); k=3: (112.5, 42.2)
+==============================================================================
+EJEMPLO 18. Datos de figuras: diagrama de fuerzas en crucero (SIH, theta = 13,9°)
+  theta = 13.87°; empuje desde (170, 150) hasta (196.4, 43.2)
+  componentes del empuje: horizontal 26.4 px, vertical 106.8 px
