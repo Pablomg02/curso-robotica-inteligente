@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B1 · Panorama de simuladores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="B1" data-deck-title="Panorama de simuladores · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 2 · Jornada 11 · Curso de robótica inteligente</p>
+  <h1>Panorama de simuladores</h1>
+  <p class="subtitle">Qué hay dentro de un simulador de drones, qué decisiones de modelado esconde cada uno, cuánto cuesta cada paso y cómo elegir (y combinar) simuladores para entrenar, validar y desplegar.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A1 (modelo), A2 (frecuencias y lazos), H1</span>
+    <span><b>Prepara</b> B2–B8, A6 (RL masivo), C7 (SITL)</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de B1</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Describir las piezas de un simulador (física, actuadores, sensores, render, reloj e interfaces) y qué decide cada una.</li>
+    <li>Elegir integrador y paso para un dron, y predecir el error con el orden del método y sus excepciones.</li>
+    <li>Leer en el código de un simulador qué modelo de motor y de arrastre usa, y calcular su efecto en vuelo.</li>
+    <li>Explicar el <em>lockstep</em> y por qué un SITL no reproduce las frecuencias del vuelo real.</li>
+    <li>Situar los simuladores actuales (universales, fotorrealistas y masivos en GPU) y leer críticamente sus cifras de rendimiento.</li>
+    <li>Diseñar la combinación de simuladores para tu tesis.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Todo lo que aprendas en la fase 3 lo aprenderás dentro de un simulador</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Una política de RL necesita entre millones y miles de millones de pasos: sin simulador no hay aprendizaje, y sin un simulador rápido no hay iteración.</li>
+        <li>Lo que el simulador no modela, la política no lo aprende, y lo que modela mal, la política lo explota. El <em>sim-to-real gap</em> empieza en las decisiones de este tema.</li>
+        <li>Validar el software de vuelo (PX4, ROS 2) sin volar exige un simulador que hable con el autopiloto real y respete su reloj.</li>
+        <li>Ningún simulador hace bien las tres cosas a la vez: física fiel, imágenes realistas y millones de pasos por segundo.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Pensabas construir tu propio simulador en JAX. Este tema y B8 te dan los criterios: qué copiar de los existentes, qué decisiones son tuyas y con qué simuladores validar el tuyo.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 330" role="img" aria-label="Triángulo de compromisos de un simulador">
+        <polygon points="260,30 60,290 460,290" class="box-soft"/>
+        <circle cx="260" cy="30" r="7" class="fill-accent"/>
+        <circle cx="60" cy="290" r="7" class="fill-time"/>
+        <circle cx="460" cy="290" r="7" class="fill-tesis"/>
+        <text x="260" y="16" text-anchor="middle" class="t-bold">Física fiel</text>
+        <text x="60" y="318" text-anchor="middle" class="t-bold">Millones de pasos/s</text>
+        <text x="460" y="318" text-anchor="middle" class="t-bold">Imagen realista</text>
+        <text x="140" y="150" text-anchor="middle" class="t-muted" font-size="13">Gazebo + PX4 SITL</text>
+        <text x="140" y="166" text-anchor="middle" class="t-muted" font-size="13">(autopiloto real)</text>
+        <text x="380" y="150" text-anchor="middle" class="t-muted" font-size="13">AirSim, Flightmare,</text>
+        <text x="380" y="166" text-anchor="middle" class="t-muted" font-size="13">Isaac Sim</text>
+        <text x="260" y="276" text-anchor="middle" class="t-muted" font-size="13">Aerial Gym, OmniDrones (ray casting)</text>
+        <text x="150" y="234" text-anchor="middle" class="t-muted" font-size="13">tu simulador JAX,</text>
+        <text x="150" y="250" text-anchor="middle" class="t-muted" font-size="13">L2F, MJX</text>
+        <text x="260" y="205" text-anchor="middle" class="t-accent" font-size="14">elige dos</text>
+      </svg>
+      <figcaption>Cada simulador se sitúa en algún punto de este triángulo. Ninguno está en el centro. Esquema orientativo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De simular un robot a fabricar datos a escala</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2004</span>Gazebo: simulador multirrobot de código abierto para exteriores e interiores <a class="cite" data-ref="koenig2004"></a>. JSBSim, modelo de vuelo de ala fija en C++ <a class="cite" data-ref="berndt2004"></a>.</div>
+    <div class="ev"><span class="yr">2012</span>MuJoCo: un motor «a medida del control basado en modelos», con contacto por <em>velocity-stepping</em> <a class="cite" data-ref="todorov2012"></a>.</div>
+    <div class="ev"><span class="yr">2016–2017</span>RotorS, multirrotores sobre Gazebo y ROS <a class="cite" data-ref="furrer2016"></a>. AirSim, sobre Unreal Engine, con física propia a 1000 Hz <a class="cite" data-ref="shah2017"></a>.</div>
+    <div class="ev"><span class="yr">2019–2021</span>FlightGoggles: fotogrametría y vehículo real en el lazo <a class="cite" data-ref="guerra2019"></a>. Flightmare: Unity y física separada <a class="cite" data-ref="song2020"></a>. gym-pybullet-drones <a class="cite" data-ref="panerati2021"></a>. Isaac Gym: física en GPU para RL <a class="cite" data-ref="makoviychuk2021"></a>.</div>
+    <div class="ev"><span class="yr">2022–2024</span>Microsoft anuncia el archivo de AirSim <a class="cite" data-ref="airsimrepo"></a>. Gazebo Harmonic (LTS). OmniDrones <a class="cite" data-ref="xu2024"></a> y L2F <a class="cite" data-ref="eschmann2024"></a>: drones en GPU. Genesis y su polémica cifra de 43 millones de FPS <a class="cite" data-ref="genesis,tao2024"></a>.</div>
+    <div class="ev"><span class="yr">2025–2026</span>Aerial Gym <a class="cite" data-ref="kulkarni2025"></a>, MuJoCo Playground <a class="cite" data-ref="zakka2025"></a>, la revisión de Dimmig et al. <a class="cite" data-ref="dimmig2025"></a> y Gazebo Jetty. Isaac Lab 3.0, con Newton como motor alternativo, y MuJoCo 4.0 (octubre y noviembre de 2026) <a class="cite" data-ref="isaaclab3,mujoco4"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Anatomía">
+  <p class="num">Parte 1</p>
+  <h2>Anatomía de un simulador</h2>
+  <p>Física, actuadores, sensores, render, reloj e interfaces. Cada pieza es una decisión de modelado que tu política heredará.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Las piezas</p>
+  <h2>Seis bloques y un reloj que los ordena</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 380" role="img" aria-label="Bloques de un simulador">
+        <rect x="20" y="20" width="180" height="70" rx="8" class="box"/>
+        <text x="110" y="48" text-anchor="middle" class="t-bold">Mundo y escena</text>
+        <text x="110" y="70" text-anchor="middle" class="t-muted" font-size="13">SDF, MJCF, USD, URDF</text>
+        <rect x="230" y="20" width="180" height="70" rx="8" class="box-accent"/>
+        <text x="320" y="48" text-anchor="middle" class="t-bold">Física</text>
+        <text x="320" y="70" text-anchor="middle" class="t-muted" font-size="13">integrador, colisión, contacto</text>
+        <rect x="440" y="20" width="180" height="70" rx="8" class="box-accent"/>
+        <text x="530" y="48" text-anchor="middle" class="t-bold">Actuadores</text>
+        <text x="530" y="70" text-anchor="middle" class="t-muted" font-size="13">motor, hélice, arrastre</text>
+        <rect x="20" y="150" width="180" height="70" rx="8" class="box"/>
+        <text x="110" y="178" text-anchor="middle" class="t-bold">Sensores</text>
+        <text x="110" y="200" text-anchor="middle" class="t-muted" font-size="13">IMU, GNSS, baro (B3a)</text>
+        <rect x="230" y="150" width="180" height="70" rx="8" class="box"/>
+        <text x="320" y="178" text-anchor="middle" class="t-bold">Render</text>
+        <text x="320" y="200" text-anchor="middle" class="t-muted" font-size="13">rasterizado, ray casting (B3b)</text>
+        <rect x="440" y="150" width="180" height="70" rx="8" class="box"/>
+        <text x="530" y="178" text-anchor="middle" class="t-bold">Interfaces</text>
+        <text x="530" y="200" text-anchor="middle" class="t-muted" font-size="13">SITL, ROS 2, API Gym</text>
+        <rect x="20" y="280" width="600" height="70" rx="8" class="box-time"/>
+        <text x="320" y="308" text-anchor="middle" class="t-bold">Reloj</text>
+        <text x="320" y="330" text-anchor="middle" class="t-time" font-size="13">paso de física, frecuencias de cada sensor, lockstep con el autopiloto (B4)</text>
+        <line x1="200" y1="55" x2="230" y2="55" class="ln"/>
+        <line x1="410" y1="55" x2="440" y2="55" class="ln"/>
+        <line x1="320" y1="90" x2="320" y2="150" class="ln"/>
+        <line x1="250" y1="90" x2="110" y2="150" class="ln"/>
+        <line x1="530" y1="150" x2="530" y2="90" class="ln"/>
+        <line x1="110" y1="220" x2="110" y2="280" class="ln-time"/>
+        <line x1="320" y1="220" x2="320" y2="280" class="ln-time"/>
+        <line x1="530" y1="220" x2="530" y2="280" class="ln-time"/>
+      </svg>
+      <figcaption>Un simulador de drones, por bloques. Los nombres de formato son los de Gazebo (SDF), MuJoCo (MJCF), Isaac (USD) y ROS (URDF).</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Física:</strong> integra las ecuaciones de A1 y resuelve colisiones y contactos. Para un dron en vuelo libre es lo fácil; en aterrizajes, posados y choques, no.</li>
+        <li><strong>Actuadores:</strong> la parte que más pesa en un dron y la que más varía entre simuladores (lo verás en tres códigos reales).</li>
+        <li><strong>Sensores y render:</strong> cuánto se parece lo que ve la política a lo que verá en vuelo. Suelen ser lo más caro.</li>
+        <li><strong>Reloj e interfaces:</strong> quién avanza el tiempo y cómo entra el software real (PX4, ROS 2) o tu bucle de RL.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Idea clave</span>Un simulador no es «la física»: es un conjunto de modelos con sus parámetros por defecto. Léelos antes de fiarte de un resultado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Usos</p>
+  <h2>Cuatro usos con requisitos que chocan</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Uso</th><th>Qué importa</th><th>Qué sobra</th><th>Ejemplos</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Entrenar políticas (RL, IL)</strong></td><td>Pasos por segundo, miles de entornos en paralelo, aleatorización, a veces gradientes</td><td>Autopiloto real, GUI, imagen fotorrealista si la política no ve</td><td>Isaac Lab, Aerial Gym, OmniDrones, MJX, L2F, tu simulador JAX</td></tr>
+        <tr><td><strong>Validar software de vuelo</strong></td><td>El autopiloto real en el lazo (SITL o HIL), sus mensajes y su reloj; sensores con sus frecuencias</td><td>Velocidad muy por encima del tiempo real</td><td>Gazebo + PX4, SIH, ArduPilot SITL</td></tr>
+        <tr><td><strong>Percepción</strong></td><td>Imagen y profundidad creíbles, escenas variadas, modelos de cámara</td><td>Física detallada</td><td>AirSim, Flightmare, FlightGoggles, Isaac Sim, escenas 3DGS (B3b)</td></tr>
+        <tr><td><strong>Sistema y misión</strong></td><td>Varios vehículos, comunicaciones, ROS 2, mundos grandes</td><td>Precisión fina de la dinámica</td><td>Gazebo, Isaac Sim con Pegasus <a class="cite" data-ref="jacinto2024"></a></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">La revisión de referencia</span>Dimmig et al. comparan 44 simuladores de UAV, 14 de ellos en detalle, con diez criterios: fidelidad física y visual, autopilotos, varios vehículos, heterogeneidad, sensores, modelos de UAV, velocidad, API e integración (facilidad, licencia y mantenimiento) <a class="cite" data-ref="dimmig2025"></a>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Física · integración numérica</p>
+  <h2>El integrador: cuatro opciones y una que nadie debería usar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con estado \(\mathbf x = (\mathbf q, \mathbf v)\), posiciones y velocidades, y paso \(h\):</p>
+      <ul class="small">
+        <li><strong>Euler explícito:</strong> \(\mathbf q_{k+1} = \mathbf q_k + h\mathbf v_k\), \(\mathbf v_{k+1} = \mathbf v_k + h\mathbf a_k\). Orden 1; inyecta energía en las oscilaciones.</li>
+        <li><strong>Euler semiimplícito</strong> (simpléctico): primero \(\mathbf v_{k+1}\), y con ella \(\mathbf q_{k+1} = \mathbf q_k + h\mathbf v_{k+1}\). Orden 1, mismo coste, y no acumula energía.</li>
+        <li><strong>RK4:</strong> cuatro evaluaciones por paso, orden 4 si la dinámica es suave.</li>
+        <li><strong>Implícito en velocidad:</strong> resuelve un sistema lineal por paso; estable con amortiguamientos y contactos rígidos.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">MuJoCo</span>Ofrece Euler semiimplícito (por defecto, con el amortiguamiento de las juntas implícito), RK4, <code>implicit</code>, <code>implicitfast</code> y <code>discrete</code>. No implementa el explícito: el semiimplícito «es estrictamente mejor, y estándar en simulación física» <a class="cite" data-ref="mujocodoc"></a>.</div>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: por qué el explícito gana energía y el semiimplícito no</summary>
+        <p class="small">Oscilador \(\dot q = v\), \(\dot v = -\omega^2 q\), con \(z = h\omega\) y estado \((\omega q, v)\). Euler explícito multiplica el estado por</p>
+        \[ A_e = \begin{pmatrix}1 & z\\ -z & 1\end{pmatrix},\qquad \det A_e = 1 + z^2 . \]
+        <p class="small">Los autovalores \(1 \pm iz\) tienen módulo \(\sqrt{1+z^2} > 1\): la energía crece un factor \(1+z^2\) por paso, para todo \(h > 0\). Semiimplícito (primero \(v\)):</p>
+        \[ A_s = \begin{pmatrix}1 - z^2 & z\\ -z & 1\end{pmatrix},\qquad \det A_s = 1 . \]
+        <p class="small">Conserva el área en el plano de fase (es simpléctico); si \(z &lt; 2\), los autovalores están en el círculo unidad y la energía oscila acotada, sin deriva. RK4 da \(|R(iz)|^2 = 1 - z^6/72 + z^8/576\): disipa un poco y es estable hasta \(z = 2\sqrt2\).</p>
+      </details>
+      <details class="deriv"><summary>Derivación: orden local y global</summary>
+        <p class="small">Un método de orden \(p\) comete un error local \(O(h^{p+1})\) por paso. Con dinámica Lipschitz de constante \(L\), los errores se propagan como mucho por \(e^{L t}\) (Grönwall); sumando \(t/h\) pasos:</p>
+        \[ \|\mathbf x(t) - \mathbf x_k\| \le C\,\frac{e^{Lt}-1}{L}\,h^{p} . \]
+        <p class="small">Error global \(O(h^p)\): dividir \(h\) por 2 divide el error por 2 en Euler y por 16 en RK4. Exige derivadas acotadas hasta el orden \(p+1\); con saturaciones o conmutaciones, no hay garantía.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Física · integración numérica</p>
+  <h2>Error frente a coste en el x500: RK4 gana, salvo cuando satura</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Error de posición frente a evaluaciones por segundo simulado">
+        <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="192.5" x2="530" y2="192.5" class="ln-dash"/>
+        <line x1="60" y1="135" x2="530" y2="135" class="ln-dash"/>
+        <line x1="60" y1="77.5" x2="530" y2="77.5" class="ln-dash"/>
+        <text x="54" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">1 pm</text>
+        <text x="54" y="196" text-anchor="end" class="t-mono t-faint" font-size="12">1 nm</text>
+        <text x="54" y="139" text-anchor="end" class="t-mono t-faint" font-size="12">1 µm</text>
+        <text x="54" y="81" text-anchor="end" class="t-mono t-faint" font-size="12">1 mm</text>
+        <text x="54" y="24" text-anchor="end" class="t-mono t-faint" font-size="12">1 m</text>
+        <text x="131.9" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10²</text>
+        <text x="275.6" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10³</text>
+        <text x="419.4" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁴</text>
+        <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="13">evaluaciones de la dinámica por segundo simulado</text>
+        <path d="M362.2,80.9 L318.9,75.1 L275.6,69.3 L232.4,63.6 L189.1,57.8 L145.8,52.0 L131.9,50.2" fill="none" class="ln-time" stroke-width="2.5"/>
+        <path d="M362.2,81.5 L318.9,75.7 L275.6,69.9 L232.4,64.2 L189.1,58.4 L145.8,52.7 L131.9,50.9" fill="none" class="ln-dash" stroke-width="2"/>
+        <path d="M448.7,169.6 L405.4,165.7 L362.2,148.2 L318.9,139.4 L275.6,124.1 L232.4,115.1 L218.4,110.1" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M448.7,232.8 L405.4,209.6 L362.2,186.4 L318.9,163.1 L275.6,139.5 L232.4,115.4 L218.4,107.5" fill="none" class="ln-tesis" stroke-width="2.5"/>
+        <circle cx="275.6" cy="69.3" r="4" class="fill-time"/>
+        <circle cx="189.1" cy="57.8" r="4" class="fill-time"/>
+        <circle cx="131.9" cy="50.2" r="4" class="fill-time"/>
+        <circle cx="362.2" cy="148.2" r="4" class="fill-accent"/>
+        <circle cx="275.6" cy="124.1" r="4" class="fill-accent"/>
+        <circle cx="218.4" cy="110.1" r="4" class="fill-accent"/>
+        <text x="150" y="36" class="t-time" font-size="13">Euler (explícito y semiimplícito)</text>
+        <text x="131.9" y="68" text-anchor="middle" class="t-mono t-faint" font-size="11">10 ms</text>
+        <text x="189.1" y="75" text-anchor="middle" class="t-mono t-faint" font-size="11">4 ms</text>
+        <text x="275.6" y="94" text-anchor="middle" class="t-mono t-faint" font-size="11">1 ms</text>
+        <text x="210" y="102" text-anchor="end" class="t-mono t-faint" font-size="11">10 ms</text>
+        <text x="282" y="118" class="t-mono t-faint" font-size="11">4 ms</text>
+        <text x="368" y="143" class="t-mono t-faint" font-size="11">1 ms</text>
+        <text x="455" y="166" class="t-accent" font-size="13">RK4</text>
+        <text x="200" y="210" class="t-tesis" font-size="13">RK4 sin saturación</text>
+      </svg>
+      <figcaption>x500 en bucle cerrado sobre un círculo de 4 m a 5 m/s durante 4 s, con motor de 12,5 ms y arrastre de rotor. Error máximo de posición frente a RK4 con \(h\) = 0,05 ms. Pasos de 0,25 a 10 ms; con 0,25 ms y sin saturación, RK4 queda en 8 pm. <code>figuras_b1.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Euler:</strong> pendiente 1,00; 2,7 mm de error con 1 ms y 2,7 cm con 10 ms. Explícito y semiimplícito casi coinciden: este sistema está amortiguado por el controlador, y la ventaja simpléctica se nota en sistemas conservativos.</li>
+        <li><strong>RK4:</strong> 0,2 µm con 1 ms y 20 µm con 10 ms. A igualdad de coste, entre cuatro y cinco órdenes de magnitud mejor que Euler.</li>
+        <li><strong>La sorpresa:</strong> entre 1 y 4 ms, la pendiente de RK4 es 2,09, no 4. En 135 de los 4000 pasos de 1 ms algún motor toca su límite. Sin saturación, la pendiente es 4,06.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Prometer el orden del libro con una dinámica que tiene saturaciones, conmutaciones (subida y bajada del motor) o contactos. El orden real hay que medirlo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Física · paso de tiempo</p>
+  <h2>El paso por defecto: el parámetro que nadie mira</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Simulador (configuración por defecto)</th><th>Paso</th><th>Frecuencia</th></tr></thead>
+          <tbody>
+            <tr><td>Gazebo, mundo <code>default.sdf</code> de PX4 <a class="cite" data-ref="px4gzmodels"></a></td><td class="n">4 ms</td><td class="n"><span class="hz">250 Hz</span></td></tr>
+            <tr><td>SIH de PX4, multirrotor: \(\min(\)<code>IMU_GYRO_RATEMAX</code>, <code>IMU_INTEG_RATE</code>\()\) <a class="cite" data-ref="px4sih"></a></td><td class="n">5 ms</td><td class="n"><span class="hz">200 Hz</span></td></tr>
+            <tr><td>MuJoCo, <code>timestep</code> por defecto <a class="cite" data-ref="mujocodoc"></a></td><td class="n">2 ms</td><td class="n"><span class="hz">500 Hz</span></td></tr>
+            <tr><td>MuJoCo Menagerie, Skydio X2 <a class="cite" data-ref="menagerie"></a></td><td class="n">10 ms</td><td class="n"><span class="hz">100 Hz</span></td></tr>
+            <tr><td>gym-pybullet-drones (experimentos del artículo) <a class="cite" data-ref="panerati2021"></a></td><td class="n">4,2 ms</td><td class="n"><span class="hz">240 Hz</span></td></tr>
+            <tr><td>AirSim <a class="cite" data-ref="shah2017"></a> · FlightGoggles <a class="cite" data-ref="guerra2019"></a></td><td class="n">1 ms · 1,04 ms</td><td class="n"><span class="hz">1000 · 960 Hz</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">SIH limita el intervalo entre 0,5 y 5 ms; con los valores por defecto del multirrotor (800 y 200 Hz) cae en el límite de 5 ms.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">MuJoCo, en su documentación</span>El paso es «el parámetro más importante del compromiso entre velocidad y precisión, inherente a toda simulación física» <a class="cite" data-ref="mujocodoc"></a>.</div>
+      <ul class="small">
+        <li><strong>Regla práctica:</strong> varios pasos por la constante de tiempo más rápida que te importe. El motor del x500 en Gazebo tiene 12,5 ms al subir: con 4 ms son 3,1 pasos; con 10 ms, 1,25.</li>
+        <li><strong>El paso fija el reloj del lazo.</strong> En el SITL con Gazebo, la IMU sale a <span class="hz">250 Hz</span> y el lazo de <em>rate</em> de PX4 corre a esa frecuencia, no a los <span class="hz">800 Hz</span> de <code>rc.mc_defaults</code> en vuelo real. En A2 viste lo que eso cambia en los márgenes.</li>
+        <li><strong>Aliasing:</strong> el plugin de motor de Gazebo avisa si el giro de la junta supera la frecuencia de Nyquist del paso; por eso divide la velocidad del rotor por 10 (<code>rotorVelocitySlowdownSim</code>) <a class="cite" data-ref="gzmotor"></a>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Física · contacto</p>
+  <h2>Contacto: donde un dron deja de ser un cuerpo libre</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El contacto rígido sin interpenetración y con rozamiento de Coulomb es un problema de complementariedad: con \(\phi(\mathbf q)\) la distancia entre cuerpos y \(\lambda_n\) la fuerza normal,</p>
+      \[ 0 \le \lambda_n \;\perp\; \phi(\mathbf q) \ge 0, \qquad \|\boldsymbol\lambda_t\| \le \mu\,\lambda_n . \]
+      <p class="small">O hay contacto y fuerza, o hay separación y fuerza nula. Es no suave, a menudo con varias soluciones, y la fuente de casi todas las inestabilidades numéricas.</p>
+      <ul class="small">
+        <li><strong>Penalización</strong> (muelle y amortiguador): sencilla, pero rígida y sensible al paso.</li>
+        <li><strong>Complementariedad (LCP)</strong> y <strong>contacto en velocidades</strong>: MuJoCo resuelve en el nivel de velocidades, el enfoque de <em>velocity-stepping</em> que «evita las dificultades de los muelles y amortiguadores» <a class="cite" data-ref="todorov2012"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">En drones</span>El contacto importa en el despegue y el aterrizaje, en el posado (<em>perching</em>), la manipulación aérea y los choques. En vuelo libre no hay contacto, y la física de un dron es «solo» un cuerpo rígido con fuerzas: por eso los simuladores masivos de drones pueden ser tan rápidos.</div>
+      <div class="callout realidad"><span class="tag">Novedad de noviembre de 2026</span>MuJoCo 4.0 añade contactos especulativos: crea el contacto antes del impacto para que un objeto rápido no atraviese un obstáculo delgado dentro de un mismo paso (<em>tunneling</em>) <a class="cite" data-ref="mujoco4"></a>. A 10 m/s y con pasos de 10 ms, un dron avanza 10 cm por paso.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Detectar colisiones solo al final de cada paso: un dron rápido atraviesa una rama fina sin enterarse, y la política aprende que puede.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuadores · leídos en el código</p>
+  <h2>Tres simuladores, tres motores distintos para el mismo dron</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th></th><th>MuJoCo Menagerie (X2, Crazyflie 2)</th><th>Gazebo: <code>MulticopterMotorModel</code> con el x500</th><th>SIH de PX4</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Mando</strong></td><td>Fuerza por rotor (X2, 0–13 N) o empuje y tres momentos (Crazyflie)</td><td>Velocidad de rotor, hasta 1000 rad/s</td><td>Mando normalizado \(u \in [0, 1]\)</td></tr>
+        <tr><td><strong>Dinámica del motor</strong></td><td>Ninguna: la fuerza es instantánea</td><td>Primer orden sobre \(\Omega\): 12,5 ms al subir y 25 ms al bajar, discretizado con \(e^{-h/\tau}\)</td><td>Primer orden sobre \(u\): \(\tau\) = 50 ms (<code>SIH_T_TAU</code>), con Euler explícito</td></tr>
+        <tr><td><strong>Empuje</strong></td><td>El mando</td><td>\(k_T\Omega^2\), \(k_T = 8{,}55\cdot10^{-6}\) N/(rad/s)²</td><td>Lineal: \(T_{\max}u\), con \(T_{\max}\) = 5 N</td></tr>
+        <tr><td><strong>Arrastre</strong></td><td>Ninguno en el modelo</td><td>De rotor: \(-|\Omega|\,c_d\,\mathbf v_\perp\) por rotor, con \(c_d = 8{,}06\cdot10^{-5}\)</td><td>Lineal: \(-K_{dv}\mathbf v\), \(K_{dv}\) = 1 N/(m/s), y \(-K_{dw}\boldsymbol\omega\)</td></tr>
+        <tr><td><strong>Paso por defecto</strong></td><td>10 ms (X2); integrador RK4 en el Crazyflie</td><td>4 ms</td><td>5 ms</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="xsmall muted">Fuentes: <code>x2.xml</code> y <code>cf2.xml</code> de MuJoCo Menagerie <a class="cite" data-ref="menagerie"></a>; <code>MulticopterMotorModel.cc</code> de gz-sim <a class="cite" data-ref="gzmotor"></a> y <code>x500/model.sdf</code> de PX4-gazebo-models <a class="cite" data-ref="px4gzmodels"></a>; <code>sih.cpp</code> y <code>sih_params.yaml</code> de PX4 <a class="cite" data-ref="px4sih"></a>. Todos leídos en noviembre de 2026.</p>
+  <div class="callout clave"><span class="tag">Para leer bien</span>Ninguno está mal: cada uno es una elección para su uso. MuJoCo deja la dinámica del actuador al usuario (sus actuadores admiten un filtro de primer orden, <code>dyntype="filter"</code>); SIH es un modelo genérico de 1 kg para probar el software de PX4 sin dependencias.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuadores · el mismo dron, tres plantas</p>
+  <h2>Mismo x500 y mismo controlador: cambia solo la convención del motor</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 580 290" role="img" aria-label="Escalón de alabeo de 20 grados con tres modelos de motor">
+        <line x1="60" y1="250" x2="560" y2="250" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="69.3" x2="560" y2="69.3" class="ln-dash"/>
+        <text x="54" y="238" text-anchor="end" class="t-mono t-faint" font-size="12">0°</text>
+        <text x="54" y="155" text-anchor="end" class="t-mono t-faint" font-size="12">10°</text>
+        <text x="54" y="73" text-anchor="end" class="t-mono t-faint" font-size="12">20°</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="185" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,25</text>
+        <text x="310" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="435" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,75</text>
+        <text x="560" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1 s</text>
+        <path d="M60.0,233.6 L62.0,233.3 L64.0,232.6 L66.0,231.4 L68.0,229.8 L70.0,227.9 L72.0,225.6 L74.0,223.1 L76.0,220.4 L78.0,217.5 L80.0,214.3 L82.0,211.1 L84.0,207.7 L86.0,204.2 L88.0,200.6 L90.0,196.9 L92.0,193.3 L94.0,189.5 L96.0,185.8 L98.0,182.1 L100.0,178.3 L102.0,174.6 L104.0,171.0 L106.0,167.3 L108.0,163.8 L110.0,160.2 L112.0,156.7 L114.0,153.3 L116.0,150.0 L118.0,146.7 L120.0,143.5 L122.0,140.4 L124.0,137.4 L126.0,134.4 L128.0,131.5 L130.0,128.7 L132.0,126.0 L134.0,123.4 L136.0,120.9 L138.0,118.4 L140.0,116.1 L142.0,113.8 L144.0,111.6 L146.0,109.5 L148.0,107.4 L150.0,105.5 L152.0,103.6 L154.0,101.8 L156.0,100.1 L158.0,98.4 L160.0,96.8 L162.0,95.3 L164.0,93.8 L166.0,92.4 L168.0,91.1 L170.0,89.8 L172.0,88.6 L174.0,87.5 L176.0,86.4 L178.0,85.3 L180.0,84.3 L182.0,83.4 L184.0,82.5 L186.0,81.7 L188.0,80.9 L190.0,80.1 L192.0,79.4 L194.0,78.7 L196.0,78.0 L198.0,77.4 L200.0,76.9 L202.0,76.3 L204.0,75.8 L206.0,75.3 L208.0,74.9 L210.0,74.4 L212.0,74.0 L214.0,73.6 L216.0,73.3 L218.0,73.0 L220.0,72.6 L222.0,72.4 L224.0,72.1 L226.0,71.8 L228.0,71.6 L230.0,71.4 L232.0,71.2 L234.0,71.0 L236.0,70.8 L238.0,70.6 L240.0,70.5 L242.0,70.3 L244.0,70.2 L246.0,70.1 L248.0,70.0 L250.0,69.9 L252.0,69.8 L254.0,69.7 L256.0,69.6 L258.0,69.5 L260.0,69.5 L262.0,69.4 L264.0,69.3 L266.0,69.3 L268.0,69.2 L270.0,69.2 L272.0,69.2 L274.0,69.1 L276.0,69.1 L278.0,69.1 L280.0,69.1 L282.0,69.0 L284.0,69.0 L286.0,69.0 L288.0,69.0 L290.0,69.0 L292.0,69.0 L294.0,69.0 L296.0,69.0 L298.0,69.0 L300.0,69.0 L302.0,69.0 L304.0,69.0 L306.0,69.0 L308.0,69.0 L310.0,69.0 L312.0,69.0 L314.0,69.0 L316.0,69.0 L318.0,69.0 L320.0,69.0 L322.0,69.0 L324.0,69.0 L326.0,69.0 L328.0,69.0 L330.0,69.0 L332.0,69.0 L334.0,69.0 L336.0,69.1 L338.0,69.1 L340.0,69.1 L342.0,69.1 L344.0,69.1 L346.0,69.1 L348.0,69.1 L350.0,69.1 L352.0,69.1 L354.0,69.1 L356.0,69.1 L358.0,69.1 L360.0,69.1 L362.0,69.1 L364.0,69.1 L366.0,69.2 L368.0,69.2 L370.0,69.2 L372.0,69.2 L374.0,69.2 L376.0,69.2 L378.0,69.2 L380.0,69.2 L382.0,69.2 L384.0,69.2 L386.0,69.2 L388.0,69.2 L390.0,69.2 L392.0,69.2 L394.0,69.2 L396.0,69.2 L398.0,69.2 L400.0,69.2 L402.0,69.2 L404.0,69.2 L406.0,69.2 L408.0,69.2 L410.0,69.2 L412.0,69.2 L414.0,69.2 L416.0,69.3 L418.0,69.3 L420.0,69.3 L422.0,69.3 L424.0,69.3 L426.0,69.3 L428.0,69.3 L430.0,69.3 L432.0,69.3 L434.0,69.3 L436.0,69.3 L438.0,69.3 L440.0,69.3 L442.0,69.3 L444.0,69.3 L446.0,69.3 L448.0,69.3 L450.0,69.3 L452.0,69.3 L454.0,69.3 L456.0,69.3 L458.0,69.3 L460.0,69.3 L462.0,69.3 L464.0,69.3 L466.0,69.3 L468.0,69.3 L470.0,69.3 L472.0,69.3 L474.0,69.3 L476.0,69.3 L478.0,69.3 L480.0,69.3 L482.0,69.3 L484.0,69.3 L486.0,69.3 L488.0,69.3 L490.0,69.3 L492.0,69.3 L494.0,69.3 L496.0,69.3 L498.0,69.3 L500.0,69.3 L502.0,69.3 L504.0,69.3 L506.0,69.3 L508.0,69.3 L510.0,69.3 L512.0,69.3 L514.0,69.3 L516.0,69.3 L518.0,69.3 L520.0,69.3 L522.0,69.3 L524.0,69.3 L526.0,69.3 L528.0,69.3 L530.0,69.3 L532.0,69.3 L534.0,69.3 L536.0,69.3 L538.0,69.3 L540.0,69.3 L542.0,69.3 L544.0,69.3 L546.0,69.3 L548.0,69.3 L550.0,69.3 L552.0,69.3 L554.0,69.3 L556.0,69.3 L558.0,69.3 L560.0,69.3" fill="none" class="ln" stroke-width="2.5"/>
+        <path d="M60.0,233.6 L62.0,233.6 L64.0,233.4 L66.0,233.1 L68.0,232.5 L70.0,231.7 L72.0,230.5 L74.0,229.0 L76.0,227.1 L78.0,224.9 L80.0,222.3 L82.0,219.5 L84.0,216.3 L86.0,212.9 L88.0,209.2 L90.0,205.3 L92.0,201.2 L94.0,197.0 L96.0,192.6 L98.0,188.2 L100.0,183.7 L102.0,179.1 L104.0,174.6 L106.0,170.0 L108.0,165.5 L110.0,161.0 L112.0,156.6 L114.0,152.3 L116.0,148.1 L118.0,144.0 L120.0,140.0 L122.0,136.2 L124.0,132.4 L126.0,128.9 L128.0,125.4 L130.0,122.2 L132.0,119.0 L134.0,116.1 L136.0,113.2 L138.0,110.5 L140.0,108.0 L142.0,105.6 L144.0,103.3 L146.0,101.2 L148.0,99.2 L150.0,97.3 L152.0,95.6 L154.0,93.9 L156.0,92.4 L158.0,90.9 L160.0,89.6 L162.0,88.3 L164.0,87.2 L166.0,86.1 L168.0,85.1 L170.0,84.1 L172.0,83.2 L174.0,82.4 L176.0,81.7 L178.0,80.9 L180.0,80.3 L182.0,79.7 L184.0,79.1 L186.0,78.6 L188.0,78.1 L190.0,77.6 L192.0,77.2 L194.0,76.8 L196.0,76.4 L198.0,76.0 L200.0,75.7 L202.0,75.4 L204.0,75.1 L206.0,74.8 L208.0,74.5 L210.0,74.3 L212.0,74.0 L214.0,73.8 L216.0,73.6 L218.0,73.4 L220.0,73.2 L222.0,73.0 L224.0,72.9 L226.0,72.7 L228.0,72.5 L230.0,72.4 L232.0,72.2 L234.0,72.1 L236.0,72.0 L238.0,71.8 L240.0,71.7 L242.0,71.6 L244.0,71.5 L246.0,71.4 L248.0,71.3 L250.0,71.2 L252.0,71.1 L254.0,71.0 L256.0,70.9 L258.0,70.8 L260.0,70.8 L262.0,70.7 L264.0,70.6 L266.0,70.5 L268.0,70.5 L270.0,70.4 L272.0,70.4 L274.0,70.3 L276.0,70.2 L278.0,70.2 L280.0,70.1 L282.0,70.1 L284.0,70.1 L286.0,70.0 L288.0,70.0 L290.0,69.9 L292.0,69.9 L294.0,69.9 L296.0,69.8 L298.0,69.8 L300.0,69.8 L302.0,69.8 L304.0,69.7 L306.0,69.7 L308.0,69.7 L310.0,69.7 L312.0,69.6 L314.0,69.6 L316.0,69.6 L318.0,69.6 L320.0,69.6 L322.0,69.5 L324.0,69.5 L326.0,69.5 L328.0,69.5 L330.0,69.5 L332.0,69.5 L334.0,69.5 L336.0,69.5 L338.0,69.5 L340.0,69.4 L342.0,69.4 L344.0,69.4 L346.0,69.4 L348.0,69.4 L350.0,69.4 L352.0,69.4 L354.0,69.4 L356.0,69.4 L358.0,69.4 L360.0,69.4 L362.0,69.4 L364.0,69.4 L366.0,69.4 L368.0,69.4 L370.0,69.4 L372.0,69.4 L374.0,69.3 L376.0,69.3 L378.0,69.3 L380.0,69.3 L382.0,69.3 L384.0,69.3 L386.0,69.3 L388.0,69.3 L390.0,69.3 L392.0,69.3 L394.0,69.3 L396.0,69.3 L398.0,69.3 L400.0,69.3 L402.0,69.3 L404.0,69.3 L406.0,69.3 L408.0,69.3 L410.0,69.3 L412.0,69.3 L414.0,69.3 L416.0,69.3 L418.0,69.3 L420.0,69.3 L422.0,69.3 L424.0,69.3 L426.0,69.3 L428.0,69.3 L430.0,69.3 L432.0,69.3 L434.0,69.3 L436.0,69.3 L438.0,69.3 L440.0,69.3 L442.0,69.3 L444.0,69.3 L446.0,69.3 L448.0,69.3 L450.0,69.3 L452.0,69.3 L454.0,69.3 L456.0,69.3 L458.0,69.3 L460.0,69.3 L462.0,69.3 L464.0,69.3 L466.0,69.3 L468.0,69.3 L470.0,69.3 L472.0,69.3 L474.0,69.3 L476.0,69.3 L478.0,69.3 L480.0,69.3 L482.0,69.3 L484.0,69.3 L486.0,69.3 L488.0,69.3 L490.0,69.3 L492.0,69.3 L494.0,69.3 L496.0,69.3 L498.0,69.3 L500.0,69.3 L502.0,69.3 L504.0,69.3 L506.0,69.3 L508.0,69.3 L510.0,69.3 L512.0,69.3 L514.0,69.3 L516.0,69.3 L518.0,69.3 L520.0,69.3 L522.0,69.3 L524.0,69.3 L526.0,69.3 L528.0,69.3 L530.0,69.3 L532.0,69.3 L534.0,69.3 L536.0,69.3 L538.0,69.3 L540.0,69.3 L542.0,69.3 L544.0,69.3 L546.0,69.3 L548.0,69.3 L550.0,69.3 L552.0,69.3 L554.0,69.3 L556.0,69.3 L558.0,69.3 L560.0,69.3" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,233.6 L62.0,233.6 L64.0,233.5 L66.0,233.4 L68.0,233.2 L70.0,232.8 L72.0,232.3 L74.0,231.6 L76.0,230.6 L78.0,229.5 L80.0,228.1 L82.0,226.5 L84.0,224.6 L86.0,222.5 L88.0,220.1 L90.0,217.5 L92.0,214.6 L94.0,211.5 L96.0,208.1 L98.0,204.6 L100.0,200.8 L102.0,196.8 L104.0,192.6 L106.0,188.3 L108.0,183.8 L110.0,179.2 L112.0,174.5 L114.0,169.7 L116.0,164.8 L118.0,159.8 L120.0,154.9 L122.0,149.9 L124.0,144.9 L126.0,140.0 L128.0,135.1 L130.0,130.2 L132.0,125.5 L134.0,120.8 L136.0,116.3 L138.0,111.9 L140.0,107.6 L142.0,103.5 L144.0,99.6 L146.0,95.8 L148.0,92.3 L150.0,88.9 L152.0,85.7 L154.0,82.7 L156.0,80.0 L158.0,77.4 L160.0,75.1 L162.0,73.0 L164.0,71.1 L166.0,69.4 L168.0,67.9 L170.0,66.6 L172.0,65.5 L174.0,64.6 L176.0,63.9 L178.0,63.4 L180.0,63.0 L182.0,62.8 L184.0,62.8 L186.0,62.9 L188.0,63.1 L190.0,63.4 L192.0,63.9 L194.0,64.5 L196.0,65.1 L198.0,65.8 L200.0,66.6 L202.0,67.5 L204.0,68.4 L206.0,69.3 L208.0,70.3 L210.0,71.3 L212.0,72.3 L214.0,73.3 L216.0,74.2 L218.0,75.2 L220.0,76.1 L222.0,77.0 L224.0,77.9 L226.0,78.7 L228.0,79.4 L230.0,80.2 L232.0,80.8 L234.0,81.4 L236.0,81.9 L238.0,82.4 L240.0,82.8 L242.0,83.1 L244.0,83.3 L246.0,83.5 L248.0,83.6 L250.0,83.7 L252.0,83.6 L254.0,83.5 L256.0,83.4 L258.0,83.2 L260.0,82.9 L262.0,82.6 L264.0,82.2 L266.0,81.8 L268.0,81.3 L270.0,80.8 L272.0,80.3 L274.0,79.7 L276.0,79.1 L278.0,78.5 L280.0,77.8 L282.0,77.2 L284.0,76.5 L286.0,75.8 L288.0,75.2 L290.0,74.5 L292.0,73.8 L294.0,73.2 L296.0,72.5 L298.0,71.9 L300.0,71.3 L302.0,70.7 L304.0,70.2 L306.0,69.6 L308.0,69.1 L310.0,68.7 L312.0,68.2 L314.0,67.8 L316.0,67.4 L318.0,67.1 L320.0,66.8 L322.0,66.5 L324.0,66.3 L326.0,66.1 L328.0,65.9 L330.0,65.8 L332.0,65.7 L334.0,65.6 L336.0,65.6 L338.0,65.6 L340.0,65.6 L342.0,65.7 L344.0,65.8 L346.0,65.9 L348.0,66.0 L350.0,66.1 L352.0,66.3 L354.0,66.5 L356.0,66.7 L358.0,66.9 L360.0,67.1 L362.0,67.3 L364.0,67.6 L366.0,67.8 L368.0,68.1 L370.0,68.3 L372.0,68.5 L374.0,68.8 L376.0,69.0 L378.0,69.2 L380.0,69.5 L382.0,69.7 L384.0,69.9 L386.0,70.1 L388.0,70.3 L390.0,70.4 L392.0,70.6 L394.0,70.7 L396.0,70.9 L398.0,71.0 L400.0,71.1 L402.0,71.2 L404.0,71.3 L406.0,71.3 L408.0,71.4 L410.0,71.4 L412.0,71.4 L414.0,71.4 L416.0,71.4 L418.0,71.4 L420.0,71.4 L422.0,71.3 L424.0,71.3 L426.0,71.2 L428.0,71.1 L430.0,71.1 L432.0,71.0 L434.0,70.9 L436.0,70.8 L438.0,70.7 L440.0,70.6 L442.0,70.5 L444.0,70.3 L446.0,70.2 L448.0,70.1 L450.0,70.0 L452.0,69.9 L454.0,69.8 L456.0,69.7 L458.0,69.5 L460.0,69.4 L462.0,69.3 L464.0,69.2 L466.0,69.1 L468.0,69.1 L470.0,69.0 L472.0,68.9 L474.0,68.8 L476.0,68.8 L478.0,68.7 L480.0,68.6 L482.0,68.6 L484.0,68.6 L486.0,68.5 L488.0,68.5 L490.0,68.5 L492.0,68.5 L494.0,68.5 L496.0,68.5 L498.0,68.5 L500.0,68.5 L502.0,68.5 L504.0,68.5 L506.0,68.5 L508.0,68.6 L510.0,68.6 L512.0,68.6 L514.0,68.7 L516.0,68.7 L518.0,68.7 L520.0,68.8 L522.0,68.8 L524.0,68.9 L526.0,68.9 L528.0,69.0 L530.0,69.0 L532.0,69.1 L534.0,69.1 L536.0,69.2 L538.0,69.2 L540.0,69.3 L542.0,69.3 L544.0,69.4 L546.0,69.4 L548.0,69.4 L550.0,69.5 L552.0,69.5 L554.0,69.5 L556.0,69.6 L558.0,69.6 L560.0,69.6" fill="none" class="ln-time" stroke-width="2.5"/>
+        <text x="330" y="150" class="t-bold" font-size="13">Empuje instantáneo (Menagerie)</text>
+        <text x="330" y="170" class="t-accent" font-size="13">Gazebo: 12,5 / 25 ms y kΩ²</text>
+        <text x="330" y="190" class="t-time" font-size="13">SIH: 50 ms y arrastre lineal</text>
+        <text x="300" y="286" text-anchor="middle" class="t-muted" font-size="13">tiempo desde el escalón de alabeo de 20°</text>
+      </svg>
+      <figcaption>Escalón de alabeo de 20° con los lazos de actitud y <em>rate</em> a <span class="hz">250 Hz</span>, iguales en las tres plantas (planta integrada con RK4 a 2 kHz). <code>figuras_b1.py</code>, sección 2.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Ensayo</th><th>Menagerie</th><th>Gazebo</th><th>SIH</th></tr></thead>
+          <tbody>
+            <tr><td>Alabeo 20°: sobreoscilación</td><td class="n">0,2 %</td><td class="n">0 %</td><td class="n">4,0 %</td></tr>
+            <tr><td>Alabeo 20°: establecimiento (2 %)</td><td class="n">320 ms</td><td class="n">332 ms</td><td class="n">576 ms</td></tr>
+            <tr><td>Escalón lateral de 2 m: t(90 %)</td><td class="n">1,56 s</td><td class="n">1,64 s</td><td class="n">1,90 s</td></tr>
+            <tr><td>Escalón lateral: inclinación máx.</td><td class="n">32,0°</td><td class="n">33,2°</td><td class="n">38,1°</td></tr>
+            <tr><td>Vuelo a 5 m/s: inclinación</td><td class="n">0°</td><td class="n">3,5°</td><td class="n">13,9°</td></tr>
+            <tr><td>Vuelo a 5 m/s: retraso en x</td><td class="n">0</td><td class="n">15 cm</td><td class="n">61 cm</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">En las tres, masa e inercias del x500. Para SIH solo se toma su estructura (primer orden de 50 ms, empuje lineal y arrastres con sus valores por defecto), no su vehículo genérico de 1 kg.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuadores · lo que significa</p>
+  <h2>El arrastre domina en crucero; el retardo del motor, en las maniobras</h2>
+  <div class="cols">
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: inclinación y error de seguimiento en crucero</summary>
+        <p class="small">En vuelo recto a velocidad \(v\) con arrastre lineal \(D\,\mathbf v\), el equilibrio horizontal y vertical da</p>
+        \[ T\sin\theta = D v, \quad T\cos\theta = m g \;\Rightarrow\; \tan\theta = \frac{D v}{m g}. \]
+        <p class="small">Gazebo: \(D = 4c_d\Omega_h = 0{,}248\) N/(m/s) en estacionario, \(\theta = 3{,}5°\). SIH: \(D = 1\), \(\theta = 13{,}9°\). Con un PD de posición sin integral, el error estacionario compensa el arrastre: \(K_p e = D v/m\), así que</p>
+        \[ e = \frac{D v}{m K_p} = \frac{1 \cdot 5}{2{,}064\cdot 4} = 0{,}61\ \text{m (SIH)},\quad 0{,}15\ \text{m (Gazebo)}. \]
+        <p class="small">Es lo que da la simulación: 60,6 y 15,0 cm.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Por unidad de masa</strong>, el arrastre del x500 de Gazebo es \(0{,}12\ \mathrm{s^{-1}}\); Faessler et al. identificaron \(0{,}544\) y \(0{,}386\ \mathrm{s^{-1}}\) en un dron real de 610 g <a class="cite" data-ref="faessler2018"></a>. Son vehículos distintos, pero el orden de magnitud avisa: el x500 simulado puede tener varias veces menos arrastre que uno real.</li>
+        <li><strong>El retardo del motor</strong> (50 ms en SIH) se come margen de fase del lazo de <em>rate</em>: más sobreoscilación y el doble de tiempo de establecimiento con las mismas ganancias.</li>
+        <li><strong>La lección:</strong> la diferencia entre simuladores (<em>sim-to-sim gap</em>) es una cota inferior de la incertidumbre de modelo que tu política tendrá que tolerar en vuelo real.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Entrenar en un simulador y evaluar en otro sin reentrenar es la prueba de robustez más barata que existe. Hazla antes de ir a hardware: B7 la convierte en protocolo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · lockstep</p>
+  <h2>Lockstep: el simulador y el autopiloto avanzan juntos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="Esquema de lockstep entre simulador y PX4">
+        <text x="20" y="60" class="t-bold">Simulador</text>
+        <text x="20" y="190" class="t-bold">PX4 (SITL)</text>
+        <line x1="120" y1="55" x2="620" y2="55" class="ln-rule"/>
+        <line x1="120" y1="185" x2="620" y2="185" class="ln-rule"/>
+        <rect x="130" y="40" width="70" height="30" rx="4" class="box-accent"/>
+        <text x="165" y="60" text-anchor="middle" font-size="12">paso k</text>
+        <rect x="230" y="170" width="90" height="30" rx="4" class="box"/>
+        <text x="275" y="190" text-anchor="middle" font-size="12">EKF, control</text>
+        <rect x="350" y="40" width="70" height="30" rx="4" class="box-accent"/>
+        <text x="385" y="60" text-anchor="middle" font-size="12">paso k+1</text>
+        <rect x="450" y="170" width="90" height="30" rx="4" class="box"/>
+        <text x="495" y="190" text-anchor="middle" font-size="12">EKF, control</text>
+        <line x1="200" y1="70" x2="232" y2="170" class="ln-time"/>
+        <line x1="320" y1="170" x2="352" y2="70" class="ln-accent"/>
+        <line x1="420" y1="70" x2="452" y2="170" class="ln-time"/>
+        <line x1="540" y1="170" x2="572" y2="70" class="ln-accent"/>
+        <text x="180" y="125" class="t-time" font-size="12">sensores, t_k</text>
+        <text x="342" y="125" class="t-accent" font-size="12">motores</text>
+        <text x="400" y="125" class="t-time" font-size="12">sensores, t_k+1</text>
+        <text x="560" y="125" class="t-accent" font-size="12">motores</text>
+        <text x="320" y="245" text-anchor="middle" class="t-muted" font-size="13">el tiempo simulado solo avanza cuando los dos han terminado su parte</text>
+        <text x="320" y="268" text-anchor="middle" class="t-time" font-size="13">tiempo de pared por paso = cálculo del simulador + cálculo de PX4 (+ espera si se fuerza tiempo real)</text>
+      </svg>
+      <figcaption>Esquema del <em>lockstep</em>. En SIH, el bucle se registra como componente de <em>lockstep</em> de PX4 y espera a las salidas de actuador antes de avanzar <a class="cite" data-ref="px4sih"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>«PX4 SITL y los simuladores corren en <em>lockstep</em>: están obligados a ir a la misma velocidad», lo que permite acelerar, frenar o pausar la simulación (<code>PX4_SIM_SPEED_FACTOR</code>) <a class="cite" data-ref="px4simdoc"></a>.</li>
+        <li><strong>Lo que gana:</strong> determinismo y ninguna medida perdida, aunque tu PC vaya lento.</li>
+        <li><strong>Lo que pierde:</strong> el cálculo dura cero tiempo simulado. En vuelo real, el EKF y el control tardan, compiten por la CPU y tienen <em>jitter</em>. El SITL en <em>lockstep</em> no ve nada de eso.</li>
+        <li>Gazebo habla con PX4 por su transporte (<code>gz_bridge</code>); casi todos los demás, por la API MAVLink de simulación (<code>HIL_SENSOR</code>, <code>HIL_ACTUATOR_CONTROLS</code>) <a class="cite" data-ref="px4simdoc"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Hilo de latencia</span>Las latencias que importan en vuelo hay que <em>inyectarlas</em> a propósito en el simulador: es el tema B4.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="El mapa">
+  <p class="num">Parte 2</p>
+  <h2>El mapa de simuladores en 2026</h2>
+  <p>Universales, fotorrealistas y masivos en GPU: qué ofrece cada familia, con cifras leídas en sus artículos y en su código.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Taxonomía</p>
+  <h2>Siete familias, según Dimmig et al. (2025)</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card"><span class="meta">UNIVERSALES</span><h3>Gazebo, Isaac Sim, Webots, CoppeliaSim, MuJoCo</h3><p>Física general, sensores y ROS. Sobre ellos se montan RotorS, CrazyS, Pegasus o Aerial Gym.</p></div>
+    <div class="card"><span class="meta">CENTRADOS EN SENSORES</span><h3>AirSim, Flightmare, FlightGoggles</h3><p>Imagen realista con Unreal o Unity, y simuladores de LiDAR como MARSIM.</p></div>
+    <div class="card"><span class="meta">CENTRADOS EN APRENDIZAJE</span><h3>Aerial Gym, gym-pybullet-drones, safe-control-gym…</h3><p>API tipo Gym, entornos en paralelo y aleatorización.</p></div>
+    <div class="card"><span class="meta">CENTRADOS EN DINÁMICA</span><h3>RotorPy, RotorTM, MATLAB UAV Toolbox, RflySim…</h3><p>Modelos detallados de vuelo, carga o manipulación.</p></div>
+    <div class="card"><span class="meta">ENJAMBRES</span><h3>gym-pybullet-drones, QuadSwarm…</h3><p>Muchos vehículos a la vez.</p></div>
+    <div class="card"><span class="meta">PARTE DE UNA PILA DE VUELO</span><h3>Agilicious, MRS UAV System, Aerostack2, CrazySim…</h3><p>El simulador de una pila de software concreta.</p></div>
+    <div class="card"><span class="meta">SIMULADORES DE VUELO</span><h3>X-Plane, FlightGear, RealFlight</h3><p>Aviación tripulada y RC; útiles para ala fija.</p></div>
+    <div class="card"><span class="meta">SUS CONCLUSIONES</span><h3>No hay ranking de velocidad</h3><p>«Depende de la complejidad del entorno, el modelo físico, la calidad del render y el hardware». Piden benchmarks estándar.</p></div>
+  </div>
+  <p class="xsmall muted">Tabla III de Dimmig et al. <a class="cite" data-ref="dimmig2025"></a>, abreviada. Un simulador puede estar en varias familias.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Universales · Gazebo y PX4</p>
+  <h2>Gazebo y SIH: los dos simuladores oficiales de PX4</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Versión de Gazebo</th><th>Salida</th><th>Fin de soporte</th></tr></thead>
+          <tbody>
+            <tr><td>Harmonic (LTS)</td><td class="n">sep. 2023</td><td class="n">may. 2029</td></tr>
+            <tr><td>Ionic</td><td class="n">sep. 2024</td><td class="n">dic. 2026</td></tr>
+            <tr><td>Jetty (LTS)</td><td class="n">sep. 2025</td><td class="n">may. 2031</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Calendario oficial de Gazebo <a class="cite" data-ref="gzreleases"></a>. PX4 admite Harmonic, Ionic y Jetty en Ubuntu 24.04, y Harmonic en 22.04; Gazebo Classic pasa a mantenimiento de la comunidad <a class="cite" data-ref="px4simdoc"></a>.</p>
+      <ul class="small">
+        <li><strong>Gazebo</strong> (antes Ignition): mundos SDF, sensores (cámara, LiDAR, profundidad, IMU, GNSS, barómetro, magnetómetro), varios vehículos y ROS 2.</li>
+        <li><strong>SIH:</strong> física dentro de PX4, en C++, sin dependencias y sin interfaz gráfica; puede correr en la propia controladora (<code>SYS_HITL=2</code>) <a class="cite" data-ref="px4simdoc"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Leído en el código</span>El mundo por defecto de PX4 declara <code>&lt;physics type="ode"&gt;</code>, pero el sistema de física de gz-sim carga DART salvo que se le indique otro motor, y la configuración de PX4 no lo indica. El render de los sensores es OGRE 2 <a class="cite" data-ref="gzphysics,px4gzmodels"></a>.</div>
+      <div class="callout realidad"><span class="tag">SIH por dentro</span>Velocidad con Euler explícito, posición con la regla del trapecio, actitud con la exponencial de \(\boldsymbol\omega h\) y velocidad angular recortada a \(\pm6\pi\) rad/s. Todo en ECEF, con la rotación de la Tierra <a class="cite" data-ref="px4sih"></a>.</div>
+      <div class="callout clave"><span class="tag">Para qué cada uno</span>SIH, para iterar rápido con el software de PX4 y probar en la placa sin hélices. Gazebo, cuando necesitas mundo, sensores exteroceptivos o varios vehículos. Ninguno de los dos está hecho para entrenar con millones de pasos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fotorrealistas</p>
+  <h2>Cuando la política mira: motores gráficos de videojuego</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">AIRSIM · 2017 · UNREAL</span>
+      <h3>Física propia a <span class="hz">1000 Hz</span> <a class="cite" data-ref="shah2017"></a></h3>
+      <p>Un motor de física simple y rápido, para HITL con MAVLink, y Unreal para la imagen. Su modelo de GNSS usa «latencia (típicamente 200 ms)» y «50 Hz».</p>
+      <p>Microsoft anunció en 2022 que lo archivaría y no lo actualizaría más; su sucesor, Project AirSim, lo mantiene ahora IAMAI con licencia MIT, tras abandonarlo Microsoft <a class="cite" data-ref="airsimrepo,projectairsim"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">FLIGHTMARE · 2020 · UNITY</span>
+      <h3>Render y física desacoplados <a class="cite" data-ref="song2020"></a></h3>
+      <p>Física de hasta 200 000 pasos/s (150 drones en paralelo, CPU de portátil) y render de hasta <span class="hz">230 Hz</span> con 5 cámaras RGB en la escena más ligera.</p>
+      <p>Último <em>commit</em> en junio de 2024 y última versión publicada en 2020.</p>
+    </div>
+    <div class="card">
+      <span class="meta">FLIGHTGOGGLES · 2019 · UNITY</span>
+      <h3>El vehículo real en el lazo <a class="cite" data-ref="guerra2019"></a></h3>
+      <p>Escenas por fotogrametría. El dron vuela de verdad en una sala de captura de movimiento y solo las cámaras son sintéticas: la dinámica sale «orgánicamente» del vuelo real, sin modelar aerodinámica, motores ni batería.</p>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">La fidelidad visual se mide</span>Dimmig et al.: un detector de objetos (DOPE) no detectó una lata renderizada en Gazebo Classic (OGRE) y sí en Flightmare (Unity). OpenGL y OGRE «suelen considerarse de baja fidelidad visual» frente a Vulkan, Unity y Unreal <a class="cite" data-ref="dimmig2025"></a>.</div>
+    <div class="callout clave"><span class="tag">Isaac Sim + Pegasus</span>Render RTX de NVIDIA con PX4 en el lazo y varios vehículos <a class="cite" data-ref="jacinto2024"></a>. La alternativa de 2025–2026 a la imagen de videojuego son las escenas reconstruidas con Gaussian Splatting (B3b).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Masivos en GPU</p>
+  <h2>Miles de entornos a la vez: la física en la GPU, junto a la red</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Isaac Gym</strong> (2021) puso física, observaciones y recompensas en la GPU, sin copias a la CPU: «2–3 órdenes de magnitud» de mejora en entrenamiento. Ant aprende a andar en 20 s en una A100 <a class="cite" data-ref="makoviychuk2021"></a>.</li>
+        <li><strong>Isaac Lab 3.0</strong> (octubre de 2026): una sola API de tareas sobre varios motores de física y render. Newton, nativo en Warp, con MuJoCo Warp como uno de sus solvers; PhysX y RTX como bibliotecas sueltas; Isaac Sim, opcional <a class="cite" data-ref="isaaclab3,mittal2025"></a>.</li>
+        <li><strong>MuJoCo:</strong> MJX lo reimplementa en JAX, compatible con su API pero sin todas sus funciones; MuJoCo Warp (DeepMind y NVIDIA) es la versión para GPU NVIDIA <a class="cite" data-ref="mujocorepo,mjwarp"></a>. MuJoCo Playground entrena «en minutos en una sola GPU» <a class="cite" data-ref="zakka2025"></a>.</li>
+        <li><strong>Newton</strong> es un proyecto de la Linux Foundation iniciado por Disney Research, Google DeepMind y NVIDIA, con diferenciabilidad entre sus objetivos <a class="cite" data-ref="newton"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Para drones</th><th>Base</th><th>Cifra de su artículo</th></tr></thead>
+          <tbody>
+            <tr><td>OmniDrones <a class="cite" data-ref="xu2024"></a></td><td>Isaac Sim</td><td>732 109 FPS con 4096 entornos, RTX 4090</td></tr>
+            <tr><td>Aerial Gym <a class="cite" data-ref="kulkarni2025"></a></td><td>Isaac Gym + Warp</td><td>4,43 M muestras/s con 2<sup>16</sup> robots, RTX 3090</td></tr>
+            <tr><td>L2F <a class="cite" data-ref="eschmann2024"></a></td><td>Propia</td><td>«unos 5 meses de vuelo por segundo» en una GPU de portátil; transferencia a un Crazyflie con 18 s de entrenamiento</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Un detalle revelador</span>En el ejemplo Ingenuity de Isaac Gym, «las fuerzas se aplican directamente a los dos rotores, en vez de simular la aerodinámica» <a class="cite" data-ref="makoviychuk2021"></a>. La velocidad se compra con modelos sencillos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rendimiento · cifras publicadas</p>
+  <h2>Pasos por segundo: diez órdenes de magnitud y ninguna comparación justa</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 400" role="img" aria-label="Cifras de rendimiento publicadas en escala logarítmica">
+      <text x="20" y="22" class="t-bold" font-size="14">Física (pasos o muestras por segundo)</text>
+      <line x1="250" y1="250" x2="1180" y2="250" class="ln-rule"/>
+      <text x="250" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+      <text x="436" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10³</text>
+      <text x="622" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁵</text>
+      <text x="808" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁷</text>
+      <text x="994" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁹</text>
+      <text x="1180" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10¹¹</text>
+      <line x1="436" y1="30" x2="436" y2="250" class="ln-dash"/>
+      <line x1="622" y1="30" x2="622" y2="250" class="ln-dash"/>
+      <line x1="808" y1="30" x2="808" y2="250" class="ln-dash"/>
+      <line x1="994" y1="30" x2="994" y2="250" class="ln-dash"/>
+      <text x="240" y="44" text-anchor="end" font-size="13">gym-pybullet-drones, 1 dron, CPU</text><circle cx="492.3" cy="40" r="6" class="fill-ink3"/>
+      <text x="240" y="66" text-anchor="end" font-size="13">Flightmare, 150 drones, CPU</text><circle cx="650.0" cy="62" r="6" class="fill-ink3"/>
+      <text x="240" y="88" text-anchor="end" font-size="13">MuJoCo 2012, humanoide, 12 núcleos</text><circle cx="678.0" cy="84" r="6" class="fill-ink3"/>
+      <text x="240" y="110" text-anchor="end" font-size="13">Isaac Gym, Ant, 4096, A100</text><circle cx="690.1" cy="106" r="6" class="fill-accent"/>
+      <text x="240" y="132" text-anchor="end" font-size="13">OmniDrones, 4096, RTX 4090</text><circle cx="702.4" cy="128" r="6" class="fill-accent"/>
+      <text x="240" y="154" text-anchor="end" font-size="13">Aerial Gym, 2¹⁶, RTX 3090</text><circle cx="775.1" cy="150" r="6" class="fill-accent"/>
+      <text x="240" y="176" text-anchor="end" font-size="13">Genesis, blog de Tao (corregido)</text><circle cx="665.0" cy="172" r="6" class="fill-time"/>
+      <text x="240" y="198" text-anchor="end" font-size="13">Genesis, README (dic. 2024)</text><circle cx="866.9" cy="194" r="6" class="fill-time"/>
+      <line x1="671" y1="172" x2="860" y2="194" class="ln-time"/>
+      <text x="240" y="220" text-anchor="end" font-size="13">L2F, 2¹⁶, GPU de portátil</text><circle cx="1100.8" cy="216" r="6" class="fill-tesis"/>
+      <text x="20" y="302" class="t-bold" font-size="14">Render (imágenes por segundo)</text>
+      <line x1="250" y1="390" x2="1180" y2="390" class="ln-rule"/>
+      <text x="240" y="324" text-anchor="end" font-size="13">gym-pybullet-drones, 2⁴, TinyRenderer</text><circle cx="270.7" cy="320" r="6" class="fill-ink3"/>
+      <text x="240" y="346" text-anchor="end" font-size="13">Flightmare, OmniDrones (nativo)</text><circle cx="376.6" cy="342" r="6" class="fill-ink3"/><circle cx="388.3" cy="342" r="6" class="fill-accent"/>
+      <text x="240" y="368" text-anchor="end" font-size="13">Aerial Gym, ray casting 270×480, 2¹⁰</text><circle cx="491.2" cy="364" r="6" class="fill-accent"/>
+      <text x="240" y="390" text-anchor="end" font-size="13">MuJoCo Playground, Cartpole, Madrona</text><circle cx="678.3" cy="386" r="6" class="fill-accent"/>
+      <text x="510" y="368" class="t-muted" font-size="12">mil veces por debajo de su física (4,43 M)</text>
+      <text x="1100" y="238" text-anchor="middle" class="t-muted" font-size="12">dado por sus autores</text>
+      <text x="880" y="190" class="t-time" font-size="12">×148</text>
+    </svg>
+    <figcaption>Cifras de cada artículo, con su hardware, su robot y su definición de paso (gris: CPU; color: GPU). gym-pybullet-drones: 16,8 veces el tiempo real a 240 Hz, convertido a pasos. L2F, según la tabla de Aerial Gym. Datos en <code>figuras_b1.py</code>, sección 4 <a class="cite" data-ref="panerati2021,song2020,todorov2012,makoviychuk2021,xu2024,kulkarni2025,genesis,tao2024,zakka2025"></a>.</figcaption>
+  </figure>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rendimiento · cómo leer un benchmark</p>
+  <h2>El caso Genesis: 43 millones de FPS, o 0,29</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>La afirmación</strong> (README del proyecto, diciembre de 2024): «más de 43 millones de FPS simulando un brazo Franka con una sola RTX 4090 (430 000 veces más rápido que el tiempo real)». La frase ya no está en el README actual <a class="cite" data-ref="genesis"></a>.</li>
+        <li><strong>La réplica</strong> (Stone Tao, blog, diciembre de 2024): en el benchmark, el brazo llega a una posición y se queda quieto «más del 90 % del tiempo». Con el brazo moviéndose, 0,29 millones de FPS, «a la par o más lento» que otros simuladores en GPU <a class="cite" data-ref="tao2024"></a>.</li>
+        <li>La réplica no está revisada por pares, y su autor desarrolla un simulador competidor (ManiSkill). Las dos cifras son afirmaciones de parte.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Comparar las cifras de dos artículos. Dimmig et al. ni lo intentan <a class="cite" data-ref="dimmig2025"></a>; la única comparación fiable es la que mides tú, en tu hardware y con tu tarea.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lista para leer un benchmark</span>
+        <ol class="small" style="margin:6px 0 0 18px; padding:0;">
+          <li>¿Qué es un «paso»: física, paso de control con <em>decimation</em>, o paso con observación, recompensa y política?</li>
+          <li>¿Qué hace el robot? Quieto, con acciones aleatorias o con una política.</li>
+          <li>¿Hay contacto? ¿Hay render? ¿A qué resolución?</li>
+          <li>¿Cuántos entornos, en qué GPU y con qué precisión numérica?</li>
+          <li>¿Se mide en régimen estacionario o con compilación y arranque?</li>
+          <li>¿Lo que se compara usa la misma tarea, el mismo paso y la misma fidelidad?</li>
+        </ol>
+      </div>
+      <p class="small">OmniDrones, por ejemplo, avisa de que sus cifras incluyen el cálculo de observaciones, recompensas y registro <a class="cite" data-ref="xu2024"></a>; Aerial Gym mide la física con RPM constantes <a class="cite" data-ref="kulkarni2025"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rendimiento · el precio de ver</p>
+  <h2>El render, no la física, es el cuello de botella</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Medida (mismo artículo y hardware)</th><th>Sin imagen</th><th>Con imagen</th></tr></thead>
+          <tbody>
+            <tr><td>gym-pybullet-drones, 1 dron, CPU <a class="cite" data-ref="panerati2021"></a></td><td class="n">16,8× tiempo real</td><td class="n">1,3× (TinyRenderer)</td></tr>
+            <tr><td>Aerial Gym, RTX 3090 <a class="cite" data-ref="kulkarni2025"></a></td><td class="n">4,43 M/s (2<sup>16</sup>)</td><td class="n">3921 FPS (2<sup>10</sup>)</td></tr>
+            <tr><td>Aerial Gym, 2048 entornos, profundidad <a class="cite" data-ref="kulkarni2025"></a></td><td class="n">37 597 FPS a 8×8</td><td class="n">2750 FPS a 270×480</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li><strong>Ray casting de profundidad</strong> (Warp en Aerial Gym): un rayo por píxel contra mallas simples. Barato y suficiente para navegar con profundidad.</li>
+        <li><strong>Rasterizado de RGB realista</strong> (Unity, Unreal, RTX): caro y difícil de paralelizar en miles de entornos.</li>
+        <li><strong>Render por lotes</strong> (Madrona en MuJoCo Playground): Cartpole con píxeles a unos 403 000 pasos/s en una A100 <a class="cite" data-ref="zakka2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Escala</span>Aerial Gym renderiza a 270×480 un orden de magnitud más rápido que la cámara nativa de Isaac Gym con muchos entornos, pero «escala peor con la resolución»; Isaac Gym se queda sin memoria a partir de unos 2048 entornos con cámara <a class="cite" data-ref="kulkarni2025"></a>.</div>
+      <div class="callout clave"><span class="tag">Consecuencia de diseño</span>Entrena con observaciones baratas (estado, profundidad de baja resolución, características) siempre que la tarea lo permita, y deja el render caro para destilar o evaluar. Es la receta del alumno y el profesor privilegiado (A6b).</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model que aprende de píxeles necesita píxeles. Calcula cuántos pasos con imagen te caben en tu GPU antes de elegir la resolución y el simulador.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ala fija y diferenciables</p>
+  <h2>Dos nichos que te tocan: aviones y gradientes</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0">Ala fija</h3>
+      <ul class="small">
+        <li><strong>JSBSim:</strong> modelo de dinámica de vuelo de código abierto en C++, no lineal de 6 GDL, con aerodinámica, propulsión y control configurables en XML, modelo de Tierra WGS84 y atmósfera estándar; tiene módulo de Python <a class="cite" data-ref="berndt2004,jsbsimrepo"></a>.</li>
+        <li><strong>Simuladores de vuelo</strong> (X-Plane, FlightGear, RealFlight): aviación tripulada y RC, en la última familia de Dimmig et al. <a class="cite" data-ref="dimmig2025"></a>.</li>
+        <li><strong>En PX4:</strong> SIH simula avión, tailsitter y VTOL estándar; Gazebo, avión y VTOL <a class="cite" data-ref="px4simdoc"></a>.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Usar un simulador de multirrotor para ala fija: la aerodinámica (sustentación, pérdida, ángulo de ataque) es el modelo principal, no un término de arrastre.</div>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0">Diferenciables (B6)</h3>
+      <ul class="small">
+        <li>Si el simulador está escrito en JAX (MJX, Brax) o Warp (MuJoCo Warp, Newton), el gradiente del coste respecto al mando o a los parámetros sale por diferenciación automática <a class="cite" data-ref="mujocorepo,brax,newton"></a>. La física de Brax ya no se mantiene: su README remite a MJX.</li>
+        <li><strong>VisFly</strong> (preprint): física diferenciable y render con Habitat-Sim, «más de 10 000 FPS» según sus autores <a class="cite" data-ref="li2024"></a>.</li>
+        <li><strong>Zhang et al.</strong> entrenan navegación visual con física diferenciable de un punto masa (A5) <a class="cite" data-ref="zhang2025"></a>.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Matiz</span>El gradiente existe siempre en el código; que sea útil es otra cosa. Contactos y saturaciones lo hacen discontinuo o nulo, la misma no suavidad que bajaba el orden de RK4.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Elegir y combinar">
+  <p class="num">Parte 3</p>
+  <h2>Elegir y combinar</h2>
+  <p>No se elige un simulador: se diseña una cadena de simuladores, cada uno para lo que hace bien, y se comprueba cada eslabón contra el siguiente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Elegir</p>
+  <h2>Una guía de partida por pregunta</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Si tu pregunta es…</th><th>Empieza por</th><th>Porque</th><th>Vigila</th></tr></thead>
+      <tbody>
+        <tr><td>¿Funciona mi software de PX4 o ROS 2?</td><td>SIH, después Gazebo + PX4 SITL</td><td>Autopiloto real, <em>lockstep</em>, cero o pocas dependencias</td><td>Frecuencias distintas de las reales; modelos genéricos</td></tr>
+        <tr><td>¿Aprende mi política a volar por estados?</td><td>Tu simulador JAX, L2F, MJX o Isaac Lab</td><td>Millones de pasos por segundo, <code>vmap</code>, aleatorización</td><td>Motor, arrastre y latencias ausentes</td></tr>
+        <tr><td>¿Navega con profundidad?</td><td>Aerial Gym u OmniDrones con ray casting</td><td>Miles de cámaras de profundidad a la vez</td><td>Mundos geométricos simples; ruido de profundidad (B3a)</td></tr>
+        <tr><td>¿Navega con RGB?</td><td>Isaac Sim, Flightmare o escenas 3DGS (B3b)</td><td>Imagen creíble</td><td>Pasos por segundo; generalización visual</td></tr>
+        <tr><td>¿Y con varios drones?</td><td>Gazebo (sistema) u OmniDrones (aprendizaje)</td><td>Varios vehículos y comunicaciones</td><td>Coste lineal o peor con el número de drones</td></tr>
+        <tr><td>¿Y si es un ala fija?</td><td>JSBSim, SIH avión, Gazebo avión</td><td>Aerodinámica tabulada</td><td>Que el modelo corresponda a tu avión</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout realidad"><span class="tag">La recomendación de la revisión</span>«Para quien empieza, recomendamos un simulador universal bien mantenido (por ejemplo, Gazebo) y usar después este artículo para encontrar soluciones especializadas cuando hagan falta» <a class="cite" data-ref="dimmig2025"></a>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Mantenimiento</p>
+  <h2>Un simulador es también una apuesta por su comunidad</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Proyecto</th><th>Última versión publicada</th><th>Estado (7 de noviembre de 2026)</th></tr></thead>
+        <tbody>
+          <tr><td>MuJoCo · MuJoCo Warp</td><td class="n">4.0.0 (6 nov. 2026)</td><td>Activo; DeepMind (y NVIDIA en Warp)</td></tr>
+          <tr><td>Isaac Lab</td><td class="n">3.0.0 (20 oct. 2026)</td><td>Activo; NVIDIA</td></tr>
+          <tr><td>Gazebo</td><td class="n">Jetty, LTS (sep. 2025)</td><td>Activo</td></tr>
+          <tr><td>Aerial Gym</td><td class="n">2.0.1 (28 jun. 2026)</td><td>Activo; NTNU</td></tr>
+          <tr><td>Project AirSim</td><td class="n">1.1.0 (24 sep. 2026)</td><td>Activo; IAMAI, tras dejarlo Microsoft</td></tr>
+          <tr><td>OmniDrones</td><td class="n">sin versiones</td><td>Último <em>commit</em> en enero de 2026</td></tr>
+          <tr><td>gym-pybullet-drones</td><td class="n">1.0.0 (2021)</td><td>Con <em>commits</em> recientes</td></tr>
+          <tr><td>Flightmare</td><td class="n">0.0.5 (2020)</td><td>Último <em>commit</em> en junio de 2024</td></tr>
+          <tr><td>AirSim · Colosseum (su fork)</td><td class="n">— · 2.3.0 (2025)</td><td>Sin actualizaciones desde el anuncio de 2022 · archivado</td></tr>
+          <tr><td>Brax (física)</td><td class="n">—</td><td>Solo se mantiene <code>brax/training</code>; remite a MJX</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Dimmig et al.</span>Los simuladores académicos «suelen tener problemas de sostenibilidad, sobre todo cuando se titulan los investigadores que los desarrollaron, en su mayoría doctorandos» <a class="cite" data-ref="dimmig2025"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu caso</span>Tu simulador también lo escribirá un doctorando. Diséñalo para que otro pueda usarlo: tests, versiones, documentación y un formato de modelo estándar (MJCF o URDF) que permita comprobarlo contra un simulador mantenido.</div>
+      <p class="xsmall muted">Datos de los repositorios en GitHub, consultados el 7 de noviembre de 2026 <a class="cite" data-ref="mujoco4,isaaclab3,gzreleases,projectairsim,airsimrepo,brax"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Combinar</p>
+  <h2>Una cadena de simuladores para la tesis</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 300" role="img" aria-label="Cadena de simuladores desde el entrenamiento hasta el vuelo">
+      <rect x="10" y="40" width="210" height="110" rx="10" class="box-tesis"/>
+      <text x="115" y="70" text-anchor="middle" class="t-bold">1 · Tu simulador JAX</text>
+      <text x="115" y="94" text-anchor="middle" font-size="13">entrenar: belief, world model</text>
+      <text x="115" y="114" text-anchor="middle" font-size="13">miles de entornos, vmap</text>
+      <text x="115" y="134" text-anchor="middle" class="t-time" font-size="13">latencias inyectadas (B4)</text>
+      <rect x="250" y="40" width="210" height="110" rx="10" class="box-accent"/>
+      <text x="355" y="70" text-anchor="middle" class="t-bold">2 · Otro motor</text>
+      <text x="355" y="94" text-anchor="middle" font-size="13">MuJoCo o Isaac Lab</text>
+      <text x="355" y="114" text-anchor="middle" font-size="13">sim-to-sim sin reentrenar</text>
+      <text x="355" y="134" text-anchor="middle" font-size="13">mismo dron, otra física</text>
+      <rect x="490" y="40" width="210" height="110" rx="10" class="box"/>
+      <text x="595" y="70" text-anchor="middle" class="t-bold">3 · PX4 SITL</text>
+      <text x="595" y="94" text-anchor="middle" font-size="13">SIH o Gazebo</text>
+      <text x="595" y="114" text-anchor="middle" font-size="13">autopiloto real y ROS 2</text>
+      <text x="595" y="134" text-anchor="middle" class="t-time" font-size="13">interfaces y reloj (C8)</text>
+      <rect x="730" y="40" width="210" height="110" rx="10" class="box"/>
+      <text x="835" y="70" text-anchor="middle" class="t-bold">4 · Percepción</text>
+      <text x="835" y="94" text-anchor="middle" font-size="13">Isaac Sim o escenas 3DGS</text>
+      <text x="835" y="114" text-anchor="middle" font-size="13">imagen creíble</text>
+      <text x="835" y="134" text-anchor="middle" font-size="13">(B3b)</text>
+      <rect x="970" y="40" width="210" height="110" rx="10" class="box-soft"/>
+      <text x="1075" y="70" text-anchor="middle" class="t-bold">5 · HIL y datos reales</text>
+      <text x="1075" y="94" text-anchor="middle" font-size="13">Pixhawk en el lazo (B5)</text>
+      <text x="1075" y="114" text-anchor="middle" font-size="13">logs y datasets públicos</text>
+      <text x="1075" y="134" text-anchor="middle" font-size="13">(B7, D1)</text>
+      <line x1="220" y1="95" x2="250" y2="95" class="ln-accent"/>
+      <line x1="460" y1="95" x2="490" y2="95" class="ln-accent"/>
+      <line x1="700" y1="95" x2="730" y2="95" class="ln-accent"/>
+      <line x1="940" y1="95" x2="970" y2="95" class="ln-accent"/>
+      <text x="600" y="200" text-anchor="middle" class="t-muted" font-size="14">velocidad →  de millones de pasos por segundo (1) a tiempo real (3 y 5)</text>
+      <text x="600" y="225" text-anchor="middle" class="t-muted" font-size="14">fidelidad de software y de sensores →  crece hacia la derecha</text>
+      <text x="600" y="260" text-anchor="middle" class="t-accent" font-size="14">cada flecha es una prueba: la política no se reentrena al pasar al siguiente eslabón</text>
+    </svg>
+    <figcaption>Propuesta de cadena para un dron con belief y world model. Las velocidades son órdenes de magnitud orientativos.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Por qué un segundo motor</span>Si tu política solo funciona en el simulador en el que se entrenó, ha aprendido el simulador. El paso 2 es barato y detecta eso antes que nada.</div>
+    <div class="callout realidad"><span class="tag">Interfaces comunes</span>Mismo modelo de dron (masa, inercias, motor), mismas unidades y convenios de ejes, y la misma API de observación y acción en todos los eslabones. Sin eso, las diferencias que mides son errores de traducción.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Errores frecuentes</p>
+  <h2>Seis maneras de engañarte con un simulador</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">1 · PARÁMETROS POR DEFECTO</span><h3>Fiarse del modelo de serie</h3><p>SIH vuela un vehículo genérico de 1 kg; el x500 de Gazebo tiene varias veces menos arrastre que un dron real medido. Lee y ajusta los parámetros a tu vehículo.</p></div>
+    <div class="card"><span class="meta">2 · PASO</span><h3>No mirar el paso</h3><p>Con 10 ms y un motor de 12,5 ms, el motor dura poco más de un paso. Mide el error con dos pasos distintos antes de creerte un resultado.</p></div>
+    <div class="card"><span class="meta">3 · RELOJ</span><h3>Confundir SITL con tiempo real</h3><p>En <em>lockstep</em>, el cálculo no cuesta tiempo y el lazo de <em>rate</em> corre al ritmo de la IMU simulada, no al del vuelo real.</p></div>
+    <div class="card"><span class="meta">4 · CIFRAS</span><h3>Comparar benchmarks ajenos</h3><p>Distinto hardware, distinto «paso», robot quieto o en movimiento. Mide en tu máquina con tu tarea.</p></div>
+    <div class="card"><span class="meta">5 · EXPLOTACIÓN</span><h3>Dejar que la política explote huecos</h3><p>Sin motor ni arrastre, una política <em>bang-bang</em> vuela perfecta en simulación. Sin colisión continua, atraviesa ramas.</p></div>
+    <div class="card"><span class="meta">6 · UN SOLO SIMULADOR</span><h3>Validar donde se entrena</h3><p>El éxito en el simulador de entrenamiento no mide robustez. Evalúa en otro.</p></div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Cuatro tendencias, dos hechos y dos apuestas</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Hecho · varios motores, una API</span>Isaac Lab 3.0 separa la tarea del motor de física y de render: Newton (con MuJoCo Warp), PhysX y RTX como piezas intercambiables <a class="cite" data-ref="isaaclab3"></a>. Comparar motores se vuelve un cambio de configuración.</div>
+      <div class="callout realidad"><span class="tag">Hecho · MuJoCo en GPU</span>MuJoCo Warp y Newton llevan el motor de referencia del control a la GPU, mantenidos por DeepMind, NVIDIA y la Linux Foundation <a class="cite" data-ref="mjwarp,newton"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Previsión · mundos reconstruidos</span>Escenas reales reconstruidas con Gaussian Splatting como sustituto del mundo de videojuego para entrenar percepción (B3b). Es una previsión, no un hecho consolidado.</div>
+      <div class="callout clave"><span class="tag">Previsión · simuladores aprendidos</span>World models que hacen de simulador, al menos para las observaciones (A8b). La física clásica seguiría dando la dinámica del cuerpo rígido; la red, lo difícil de modelar. Previsión.</div>
+      <div class="callout error"><span class="tag">Lo que falta</span>Benchmarks estándar de simuladores para drones, que piden Dimmig et al. <a class="cite" data-ref="dimmig2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El simulador decide qué es observable</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Observabilidad parcial a la carta.</strong> El simulador conoce el estado completo. Tú decides qué ve la política (observación) y qué ve el crítico o el profesor (estado privilegiado, A6b). Esa separación es la base del entrenamiento de beliefs.</li>
+        <li><strong>El belief como objetivo de entrenamiento.</strong> Con el estado verdadero en cada paso, puedes supervisar un belief aprendido (error de estimación, NEES) además de la recompensa.</li>
+        <li><strong>Lo que el simulador no tiene, el belief no lo aprende:</strong> arrastre, retardo de motor, latencias. Si quieres que tu world model capture la incertidumbre de modelo, tienes que variar esos factores (aleatorización, B7).</li>
+        <li><strong>Cómputo:</strong> el número de pasos por segundo con observación (no sin ella) es el que fija cuántos experimentos te caben en la tesis.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>De este tema salen cuatro decisiones de B8: integrador (RK4, salvo contactos), paso (≤ 1 ms para el motor o integración exacta de su primer orden), modelo de motor y arrastre leído de un vehículo real, y un reloj explícito con latencias.</div>
+      <div class="callout clave"><span class="tag">Para el hito H2</span>Tu simulador de H1 ganará capas de realismo en B2–B4 y se paralelizará en B6. Guarda una versión «sin capas» para medir qué aporta cada una (B7a).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Preguntas abiertas para tu tesis</p>
+  <h2>Cuatro preguntas que este tema deja planteadas</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card"><span class="meta">FIDELIDAD</span><h3>¿Cuánta física necesita un belief?</h3><p>Una política con memoria puede compensar parte del error de modelo. ¿Cuánto, y a qué coste de entrenamiento?</p></div>
+    <div class="card"><span class="meta">SIM-TO-SIM</span><h3>¿Predice el sim-to-sim el sim-to-real?</h3><p>Si la caída al cambiar de simulador correlaciona con la caída en vuelo real, tienes una métrica barata. ¿Lo hace?</p></div>
+    <div class="card"><span class="meta">OBSERVACIÓN</span><h3>¿Píxeles o características?</h3><p>Entrenar el world model con imágenes cuesta mil veces más pasos que con estados. ¿Qué ganas?</p></div>
+    <div class="card"><span class="meta">HÍBRIDO</span><h3>¿Física más residuo aprendido?</h3><p>Un modelo físico sencillo con una corrección aprendida de logs reales (B2) puede ser mejor simulador que uno fiel. ¿Para qué tareas?</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de B1</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un simulador son seis modelos (mundo, física, actuadores, sensores, render, interfaces) y un reloj, cada uno con parámetros por defecto que hay que leer.</li>
+    <li>Integrador: Euler semiimplícito por defecto en MuJoCo; RK4 es entre cuatro y cinco órdenes de magnitud más preciso a igual coste en vuelo libre, pero pierde orden con saturaciones y contactos.</li>
+    <li>Paso: 2 ms en MuJoCo, 4 ms en el mundo de PX4 con Gazebo, 5 ms en SIH. Compáralo con las constantes de tiempo de tu dron.</li>
+    <li>Actuadores: Menagerie usa empuje instantáneo; Gazebo, motor de primer orden y \(k\Omega^2\); SIH, 50 ms y arrastre lineal. A 5 m/s, el mismo x500 vuela inclinado 0°, 3,5° o 13,9°.</li>
+    <li><em>Lockstep</em>: determinismo a cambio de cálculo instantáneo; el SITL no reproduce las latencias ni las frecuencias del vuelo real.</li>
+    <li>Universales (Gazebo, SIH), fotorrealistas (AirSim, Flightmare, Isaac Sim) y masivos en GPU (Isaac Lab, Aerial Gym, OmniDrones, MJX, L2F).</li>
+    <li>Las cifras de rendimiento no son comparables entre artículos; el render es mil veces más caro que la física.</li>
+    <li>Se diseña una cadena de simuladores, y cada eslabón valida al anterior sin reentrenar.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Integración y paso</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. En un vuelo libre sin saturaciones, divides entre 2 el paso de RK4. ¿Cuánto baja el error global de posición?</p>
+      <ol class="opts">
+        <li><button type="button">A la mitad</button></li>
+        <li><button type="button">A la cuarta parte</button></li>
+        <li><button type="button">Unas 16 veces</button></li>
+        <li><button type="button">No cambia: RK4 ya es exacto</button></li>
+      </ol>
+      <p class="explain">El error global de un método de orden \(p\) es \(O(h^p)\): \(2^4 = 16\). En la figura del x500 sin saturación, la pendiente medida fue 4,06; con saturaciones, 2,09.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. Simulas con Euler explícito un modo oscilatorio poco amortiguado de 10 Hz con un paso de 4 ms. ¿Cuánto crece su energía en 1 s?</p>
+      <ol class="opts">
+        <li><button type="button">Nada: Euler conserva la energía</button></li>
+        <li><button type="button">Un 6 %</button></li>
+        <li><button type="button">Unas \(4\cdot10^6\) veces</button></li>
+        <li><button type="button">Se divide por 2</button></li>
+      </ol>
+      <p class="explain">\(z = h\omega = 0{,}004 \cdot 2\pi \cdot 10 = 0{,}251\). Cada paso multiplica la energía por \(1+z^2 = 1{,}063\); en 250 pasos, \(1{,}063^{250} = e^{15{,}3} \approx 4{,}5\cdot10^6\). Con Euler semiimplícito, la energía queda acotada.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Modelos y reloj</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">3. Un dron de 2 kg con arrastre lineal \(D\) = 0,5 N/(m/s) vuela recto a 8 m/s. ¿Con qué inclinación?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 5,8°</button></li>
+        <li><button type="button">≈ 11,5°</button></li>
+        <li><button type="button">≈ 22°</button></li>
+        <li><button type="button">0°: el arrastre no inclina</button></li>
+      </ol>
+      <p class="explain">\(\tan\theta = Dv/(mg) = 4/19{,}62 = 0{,}204\), \(\theta = 11{,}5°\). Un simulador sin arrastre diría 0°, y tu controlador de posición sin integral se quedaría atrás \(Dv/(mK_p)\).</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. ¿Qué <strong>no</strong> reproduce un PX4 SITL en <em>lockstep</em>?</p>
+      <ol class="opts">
+        <li><button type="button">Los mensajes que el EKF recibe de los sensores</button></li>
+        <li><button type="button">La lógica de modos y failsafes</button></li>
+        <li><button type="button">La posibilidad de ir más rápido que el tiempo real</button></li>
+        <li><button type="button">El tiempo de cálculo y el jitter del controlador en la placa</button></li>
+      </ol>
+      <p class="explain">En <em>lockstep</em>, el tiempo simulado no avanza hasta que PX4 termina: su cálculo dura cero. Por eso las latencias de cómputo hay que inyectarlas a propósito (B4) o medirlas en HIL (B5).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Leer cifras y diseñar</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">5. El simulador A anuncia 40 M de pasos/s y el B, 0,5 M. ¿Qué necesitas saber para compararlos?</p>
+      <ol class="opts">
+        <li><button type="button">Solo la GPU usada</button></li>
+        <li><button type="button">Solo el número de entornos</button></li>
+        <li><button type="button">Solo si hay render</button></li>
+        <li><button type="button">Todo eso, y además qué cuenta como paso y qué hace el robot</button></li>
+      </ol>
+      <p class="explain">El caso Genesis: con el brazo quieto la mayor parte del benchmark, 43 M de FPS; con el brazo moviéndose, 0,29 M según una réplica (no revisada por pares). La definición de paso y la tarea pesan tanto como el hardware.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: entrenas en tu simulador JAX una política de navegación con belief que usa profundidad. ¿Qué cadena de simuladores usas para convencerte de que funcionará en el x500 real antes de volarlo?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Una cadena defendible: (1) entrenar en JAX con aleatorización de masa, motor (\(\tau\) entre 10 y 60 ms), arrastre y latencias, y profundidad por ray casting con ruido; (2) evaluar sin reentrenar en otro motor (Aerial Gym o Isaac Lab con el mismo x500 y la misma API) y medir la caída; (3) llevarla a PX4 SITL con Gazebo y ROS 2, con la política fuera de la placa y las latencias reales de la cadena de comunicación, para probar interfaces, modos y failsafes; (4) probar la percepción con imagen y profundidad más realistas (Isaac Sim o una escena 3DGS); (5) HIL con la Pixhawk y comparación con logs públicos. En cada paso, el criterio de paso al siguiente es un umbral de éxito y de error fijado de antemano.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ARXIV</span>
+      <h3>La revisión de simuladores para UAV <a class="cite" data-ref="dimmig2025"></a></h3>
+      <p><strong>Lee:</strong> los criterios de selección (tabla II), la taxonomía (tabla III) y la discusión.</p>
+      <p><strong>Busca:</strong> por qué no comparan velocidades y qué dicen de la aerodinámica.</p>
+      <p><strong>Responde:</strong> con sus diez criterios, puntúa tu simulador JAX actual. ¿Dónde está peor?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · ARXIV</span>
+      <h3>Aerial Gym Simulator <a class="cite" data-ref="kulkarni2025"></a></h3>
+      <p><strong>Lee:</strong> la arquitectura, el ray casting con Warp y la tabla I.</p>
+      <p><strong>Busca:</strong> cómo miden la física y el render, y qué condiciones cambian entre columnas.</p>
+      <p><strong>Responde:</strong> ¿cuántos pasos con profundidad de 270×480 tendrías en una noche de entrenamiento en su hardware?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · DOCUMENTACIÓN</span>
+      <h3>MuJoCo, capítulo «Computation» <a class="cite" data-ref="mujocodoc"></a></h3>
+      <p><strong>Lee:</strong> la integración numérica, el modelo de actuadores y el de contacto.</p>
+      <p><strong>Busca:</strong> por qué no hay Euler explícito y qué hace <code>implicitfast</code>.</p>
+      <p><strong>Responde:</strong> ¿con qué integrador y qué <code>dyntype</code> modelarías el motor del x500?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Isaac Gym <a class="cite" data-ref="makoviychuk2021"></a>; Flightmare <a class="cite" data-ref="song2020"></a>; OmniDrones <a class="cite" data-ref="xu2024"></a>; L2F <a class="cite" data-ref="eschmann2024"></a>; MuJoCo Playground <a class="cite" data-ref="zakka2025"></a>; FlightBench, un benchmark de navegación con visión <a class="cite" data-ref="yu2025"></a>; la revisión de motores de física de Collins et al. <a class="cite" data-ref="collins2021"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>El mismo dron en dos simuladores</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>El x500 en MuJoCo:</strong> un MJCF con la masa, las inercias y los cuatro rotores del x500, con el motor como filtro de primer orden (<code>dyntype="filter"</code>).</li>
+        <li><strong>Mismo controlador, dos simuladores:</strong> tu simulador JAX de A1–A2 y MuJoCo, con los tres ensayos de la presentación.</li>
+        <li><strong>Integradores y paso</strong> en los dos: error frente a coste.</li>
+        <li><strong>Rendimiento:</strong> pasos por segundo frente al número de entornos (JAX con <code>vmap</code>, MuJoCo en CPU y, si tienes GPU, MJX o MuJoCo Warp).</li>
+        <li><strong>PX4 SIH en SITL</strong> (opcional): leer sus parámetros y comparar su escalón con el tuyo.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Pendientes 1 y 4 del error (y la pérdida de orden con saturación); inclinación de 0°, 3,5° y 13,9° a 5 m/s; retrasos de 15 y 61 cm; sobreoscilación del 4 % con el motor de 50 ms.</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>MuJoCo y tu simulador corren en CPU. La GPU solo hace falta para la parte de MJX o MuJoCo Warp del paso 4. SIH no necesita ni Gazebo ni GPU.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b1.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-koenig2004">Koenig, N., Howard, A. (2004). Design and use paradigms for Gazebo, an open-source multi-robot simulator. <span class="venue">IROS 2004</span>, vol. 3, 2149–2154. <a href="https://doi.org/10.1109/IROS.2004.1389727">doi:10.1109/IROS.2004.1389727</a></li>
+    <li id="ref-berndt2004">Berndt, J. S. (2004). JSBSim: An open source flight dynamics model in C++. <span class="venue">AIAA Modeling and Simulation Technologies Conference and Exhibit</span>. <a href="https://doi.org/10.2514/6.2004-4923">doi:10.2514/6.2004-4923</a></li>
+    <li id="ref-todorov2012">Todorov, E., Erez, T., Tassa, Y. (2012). MuJoCo: A physics engine for model-based control. <span class="venue">IROS 2012</span>, 5026–5033. <a href="https://doi.org/10.1109/IROS.2012.6386109">doi:10.1109/IROS.2012.6386109</a></li>
+    <li id="ref-furrer2016">Furrer, F., Burri, M., Achtelik, M., Siegwart, R. (2016). RotorS—A modular Gazebo MAV simulator framework. En A. Koubaa (ed.), <span class="venue">Robot Operating System (ROS): The Complete Reference (Volume 1)</span>, Springer, 595–625. <a href="https://doi.org/10.1007/978-3-319-26054-9_23">doi:10.1007/978-3-319-26054-9_23</a></li>
+    <li id="ref-shah2017">Shah, S., Dey, D., Lovett, C., Kapoor, A. (2018). AirSim: High-fidelity visual and physical simulation for autonomous vehicles. En <span class="venue">Field and Service Robotics (FSR 2017)</span>, Springer Proceedings in Advanced Robotics, 621–635. <a href="https://doi.org/10.1007/978-3-319-67361-5_40">doi:10.1007/978-3-319-67361-5_40</a>. <a href="https://arxiv.org/abs/1705.05065">arXiv:1705.05065</a></li>
+    <li id="ref-guerra2019">Guerra, W., Tal, E., Murali, V., Ryou, G., Karaman, S. (2019). FlightGoggles: Photorealistic sensor simulation for perception-driven robotics using photogrammetry and virtual reality. <span class="venue">IROS 2019</span>, 6941–6948. <a href="https://doi.org/10.1109/IROS40897.2019.8968116">doi:10.1109/IROS40897.2019.8968116</a>. Las citas y la cifra de 960 Hz salen de la versión ampliada, <a href="https://arxiv.org/abs/1905.11377">arXiv:1905.11377</a> (v2, 2021)</li>
+    <li id="ref-song2020">Song, Y., Naji, S., Kaufmann, E., Loquercio, A., Scaramuzza, D. (2020). Flightmare: A flexible quadrotor simulator. <span class="venue">Conference on Robot Learning (CoRL 2020)</span>. <a href="https://arxiv.org/abs/2009.00563">arXiv:2009.00563</a></li>
+    <li id="ref-panerati2021">Panerati, J., Zheng, H., Zhou, S., Xu, J., Prorok, A., Schoellig, A. P. (2021). Learning to fly—a Gym environment with PyBullet physics for reinforcement learning of multi-agent quadcopter control. <span class="venue">IROS 2021</span>, 7512–7519. <a href="https://doi.org/10.1109/IROS51168.2021.9635857">doi:10.1109/IROS51168.2021.9635857</a>. <a href="https://arxiv.org/abs/2103.02142">arXiv:2103.02142</a></li>
+    <li id="ref-makoviychuk2021">Makoviychuk, V., Wawrzyniak, L., Guo, Y., Lu, M., Storey, K., Macklin, M., Hoeller, D., Rudin, N., Allshire, A., Handa, A., State, G. (2021). Isaac Gym: High performance GPU-based physics simulation for robot learning. <span class="venue">NeurIPS 2021, Datasets and Benchmarks Track</span>. <a href="https://arxiv.org/abs/2108.10470">arXiv:2108.10470</a></li>
+    <li id="ref-airsimrepo">Microsoft. AirSim: README y anuncio <code>project_airsim.md</code> («This repository will be archived in the coming year»), consultado el 7 de noviembre de 2026. <a href="https://github.com/microsoft/AirSim">github.com/microsoft/AirSim</a></li>
+    <li id="ref-xu2024">Xu, B., Gao, F., Yu, C., Zhang, R., Wu, Y., Wang, Y. (2024). OmniDrones: An efficient and flexible platform for reinforcement learning in drone control. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(3), 2838–2844. <a href="https://doi.org/10.1109/LRA.2024.3356168">doi:10.1109/LRA.2024.3356168</a>. Cifras de <a href="https://arxiv.org/abs/2309.12825">arXiv:2309.12825</a> (v1)</li>
+    <li id="ref-eschmann2024">Eschmann, J., Albani, D., Loianno, G. (2024). Learning to fly in seconds. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(7), 6336–6343. <a href="https://doi.org/10.1109/LRA.2024.3396025">doi:10.1109/LRA.2024.3396025</a>. <a href="https://arxiv.org/abs/2311.13081">arXiv:2311.13081</a></li>
+    <li id="ref-genesis">Genesis-Embodied-AI. Genesis (repositorio <code>genesis-world</code>). La cifra de 43 millones de FPS, en el README del <em>commit</em> 7e2c55c (30 de diciembre de 2024); ya no figura en el actual. <a href="https://github.com/Genesis-Embodied-AI/genesis-world">github.com/Genesis-Embodied-AI/genesis-world</a></li>
+    <li id="ref-tao2024">Tao, S. (2024, 20 de diciembre). How fast is the new hyped Genesis simulator? Blog en Substack (no revisado por pares; el autor desarrolla ManiSkill). <a href="https://stoneztao.substack.com/p/the-new-hyped-genesis-simulator-is">stoneztao.substack.com</a></li>
+    <li id="ref-kulkarni2025">Kulkarni, M., Rehberg, W., Alexis, K. (2025). Aerial Gym Simulator: A framework for highly parallelized simulation of aerial robots. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(4), 4093–4100. <a href="https://doi.org/10.1109/LRA.2025.3548507">doi:10.1109/LRA.2025.3548507</a>. Cifras de <a href="https://arxiv.org/abs/2503.01471">arXiv:2503.01471</a> (v1)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="16">
+    <li id="ref-zakka2025">Zakka, K., Tabanpour, B., Liao, Q., Haiderbhai, M., Holt, S., Luo, J. Y., Allshire, A., Frey, E., Sreenath, K., Kahrs, L. A., Sferrazza, C., Tassa, Y., Abbeel, P. (2025). MuJoCo Playground. <a href="https://arxiv.org/abs/2502.08844">arXiv:2502.08844</a> (preprint; cifras de la v1)</li>
+    <li id="ref-dimmig2025">Dimmig, C. A., Silano, G., McGuire, K., Gabellieri, C., Hönig, W., Moore, J., Kobilarov, M. (2025). Survey of simulators for aerial robots: An overview and in-depth systematic comparisons. <span class="venue">IEEE Robotics &amp; Automation Magazine</span>, 32(2), 153–166. <a href="https://doi.org/10.1109/MRA.2024.3433171">doi:10.1109/MRA.2024.3433171</a>. <a href="https://arxiv.org/abs/2311.02296">arXiv:2311.02296</a></li>
+    <li id="ref-isaaclab3">NVIDIA. Isaac Lab 3.0.0, notas de la versión (20 de octubre de 2026). <a href="https://github.com/isaac-sim/IsaacLab">github.com/isaac-sim/IsaacLab</a></li>
+    <li id="ref-mujoco4">Google DeepMind. MuJoCo 4.0.0, notas de la versión (6 de noviembre de 2026): contactos especulativos y elastoplasticidad. <a href="https://github.com/google-deepmind/mujoco">github.com/google-deepmind/mujoco</a></li>
+    <li id="ref-jacinto2024">Jacinto, M., Pinto, J., Patrikar, J., Keller, J., Cunha, R., Scherer, S., Pascoal, A. (2024). Pegasus Simulator: An Isaac Sim framework for multiple aerial vehicles simulation. <span class="venue">ICUAS 2024</span>, 917–922. <a href="https://doi.org/10.1109/ICUAS60882.2024.10556959">doi:10.1109/ICUAS60882.2024.10556959</a></li>
+    <li id="ref-mujocodoc">MuJoCo. Documentación: <em>XML Reference</em> (<code>option/timestep</code>, <code>option/integrator</code>, <code>actuator/dyntype</code>) y capítulo <em>Computation</em> (integración numérica), versión estable, consultada el 7 de noviembre de 2026. <a href="https://mujoco.readthedocs.io/en/stable/computation/index.html">mujoco.readthedocs.io</a></li>
+    <li id="ref-px4gzmodels">PX4. PX4-gazebo-models: <code>worlds/default.sdf</code>, <code>models/x500</code> y <code>x500_base</code> (commit e5997f4), y <code>gz_bridge/server.config</code> de PX4-Autopilot, consultado el 7 de noviembre de 2026. <a href="https://github.com/PX4/PX4-gazebo-models">github.com/PX4/PX4-gazebo-models</a></li>
+    <li id="ref-px4sih">PX4. Módulo <code>simulator_sih</code> (<code>sih.cpp</code>, <code>sih.hpp</code>, <code>sih_params.yaml</code>) y parámetros <code>IMU_GYRO_RATEMAX</code> e <code>IMU_INTEG_RATE</code>, rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-menagerie">Google DeepMind. MuJoCo Menagerie: <code>skydio_x2/x2.xml</code> y <code>bitcraze_crazyflie_2/cf2.xml</code>, consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco_menagerie">github.com/google-deepmind/mujoco_menagerie</a></li>
+    <li id="ref-gzmotor">Gazebo. Sistema <code>MulticopterMotorModel</code> de gz-sim (<code>MulticopterMotorModel.cc</code>, rama main), consultado el 7 de noviembre de 2026. <a href="https://github.com/gazebosim/gz-sim">github.com/gazebosim/gz-sim</a></li>
+    <li id="ref-faessler2018">Faessler, M., Franchi, A., Scaramuzza, D. (2018). Differential flatness of quadrotor dynamics subject to rotor drag for accurate tracking of high-speed trajectories. <span class="venue">IEEE RA-L</span>, 3(2), 620–626. <a href="https://arxiv.org/abs/1712.02402">arXiv:1712.02402</a></li>
+    <li id="ref-px4simdoc">PX4. <em>Simulation</em> y <em>Gazebo Simulation</em>, guía del usuario (fuente en <code>docs/en/simulation/index.md</code> y <code>docs/en/sim_gazebo_gz/index.md</code>), consultada el 7 de noviembre de 2026. <a href="https://docs.px4.io/main/en/simulation/">docs.px4.io</a></li>
+    <li id="ref-gzreleases">Gazebo. <em>Gazebo Releases</em> (calendario de versiones y fin de soporte), consultado el 7 de noviembre de 2026. <a href="https://gazebosim.org/docs/latest/releases/">gazebosim.org/docs</a></li>
+    <li id="ref-gzphysics">Gazebo. Sistema <code>Physics</code> de gz-sim (<code>Physics.cc</code>: DART por defecto), consultado el 7 de noviembre de 2026. <a href="https://github.com/gazebosim/gz-sim">github.com/gazebosim/gz-sim</a></li>
+    <li id="ref-projectairsim">IAMAI Consulting. Project AirSim (README y versiones; licencia MIT), consultado el 7 de noviembre de 2026. <a href="https://github.com/iamaisim/ProjectAirSim">github.com/iamaisim/ProjectAirSim</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="31">
+    <li id="ref-mittal2025">Mittal, M., Roth, P., Tigue, J., et al. (2025). Isaac Lab: A GPU-accelerated simulation framework for multi-modal robot learning. <a href="https://arxiv.org/abs/2511.04831">arXiv:2511.04831</a> (informe técnico, preprint)</li>
+    <li id="ref-mujocorepo">Google DeepMind. MuJoCo y MJX (<code>mjx/README.md</code>: reimplementación en JAX), consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco">github.com/google-deepmind/mujoco</a></li>
+    <li id="ref-mjwarp">Google DeepMind y NVIDIA. MuJoCo Warp (MJWarp), README, consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco_warp">github.com/google-deepmind/mujoco_warp</a></li>
+    <li id="ref-newton">Newton (proyecto de la Linux Foundation). README, consultado el 7 de noviembre de 2026. <a href="https://github.com/newton-physics/newton">github.com/newton-physics/newton</a></li>
+    <li id="ref-jsbsimrepo">JSBSim Team. JSBSim, README, consultado el 7 de noviembre de 2026. <a href="https://github.com/JSBSim-Team/jsbsim">github.com/JSBSim-Team/jsbsim</a></li>
+    <li id="ref-brax">Google. Brax, README (solo <code>brax/training</code> se mantiene desde la versión 0.13.0), consultado el 7 de noviembre de 2026. <a href="https://github.com/google/brax">github.com/google/brax</a></li>
+    <li id="ref-li2024">Li, F., Sun, F., Zhang, T., Zou, D. (2024). VisFly: An efficient and versatile simulator for training vision-based flight. <a href="https://arxiv.org/abs/2407.14783">arXiv:2407.14783</a> (preprint)</li>
+    <li id="ref-zhang2025">Zhang, Y., Hu, Y., Song, Y., Zou, D., Lin, W. (2025). Learning vision-based agile flight via differentiable physics. <span class="venue">Nature Machine Intelligence</span>, 7(6), 954–966. <a href="https://doi.org/10.1038/s42256-025-01048-0">doi:10.1038/s42256-025-01048-0</a></li>
+    <li id="ref-yu2025">Yu, S.-A., Yu, C., Gao, F., Wu, Y., Wang, Y. (2025). FlightBench: Benchmarking learning-based methods for ego-vision-based quadrotors navigation. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(7), 6888–6895. <a href="https://doi.org/10.1109/LRA.2025.3573167">doi:10.1109/LRA.2025.3573167</a>. <a href="https://arxiv.org/abs/2406.05687">arXiv:2406.05687</a></li>
+    <li id="ref-collins2021">Collins, J., Chand, S., Vanderkop, A., Howard, D. (2021). A review of physics simulators for robotic applications. <span class="venue">IEEE Access</span>, 9, 51416–51431. <a href="https://doi.org/10.1109/ACCESS.2021.3068769">doi:10.1109/ACCESS.2021.3068769</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
