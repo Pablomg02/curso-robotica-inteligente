@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Medir lo que cuesta representar las acciones de un dron como tokens y si un VLA cabe en el presupuesto de tiempo de su bucle de control. Comprueba con tus números lo que calculan los scripts de la presentación (`figuras/figuras_a12a.py` y `figuras/latencia_smolvla.py`, con sus salidas en `figuras/`):
+Medir lo que cuesta representar las acciones de un dron como tokens y si un VLA cabe en el presupuesto de tiempo de su bucle de control. Comprueba con tus números lo que calculan los scripts de la presentación (`figuras/figuras_a12a.py` y `figuras/latencia_smolvla.py`, con sus salidas en `figuras/`; las cuentas de las derivaciones de la presentación —casillas, DCT a mano, Parseval, ruido y tiempo real— están en `figuras/ejemplos_a12a.py` y `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación | Valor | Paso |
 |---|---|---|
