@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A13 · Arquitecturas jerárquicas y fusión de modelos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A13" data-deck-title="Arquitecturas jerárquicas y fusión de modelos · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 4 · Jornada 32 · Curso de robótica inteligente</p>
+  <h1>Arquitecturas jerárquicas y fusión de modelos</h1>
+  <p class="subtitle">Por qué un robot que piensa despacio necesita una capa que reaccione deprisa: escalas de tiempo, el precio del retardo, jerarquías en RL, sistemas lentos y rápidos en robots de 2024–2025, inferencia asíncrona con trozos y formas de fusionar lo aprendido con lo basado en modelo. Con un dron que sigue a una persona entre árboles y un planificador cada vez más lento.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A2, A3b, A6, A11, A12</span>
+    <span><b>Prepara</b> A14, B7</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A13</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar por qué un retardo limita el ancho de banda de un lazo y calcular cuánto.</li>
+    <li>Describir las jerarquías clásicas de RL (opciones, feudal) y las de los robots actuales (sistema lento y rápido).</li>
+    <li>Diseñar la interfaz entre niveles: qué pasa del lento al rápido (lenguaje, latente, trozo de acciones, trayectoria).</li>
+    <li>Ejecutar un planificador lento de forma asíncrona sin que su latencia desestabilice el lazo.</li>
+    <li>Elegir cómo fusionar una política aprendida con un controlador basado en modelo.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Los mejores drones autónomos ya son jerárquicos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>En el vuelo rápido entre árboles de Loquercio et al., una red predice trayectorias a 24,7 Hz, un MPC las sigue a 100 Hz y el controlador de bajo nivel corre a 2 kHz <a class="cite" data-ref="loquercio2021"></a>.</li>
+        <li>Swift, que ganó a campeones de carreras de drones, combina un estimador, un detector de puertas, una política de dos capas y el PID de Betaflight <a class="cite" data-ref="kaufmann2023"></a>.</li>
+        <li>HiRT mantiene el VLM a baja frecuencia y una política rápida guiada por él: dobla la frecuencia y pasa del 48 % al 75 % en tareas con objetos en movimiento <a class="cite" data-ref="zhang2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu dron tendrá varios niveles: misión (A11), búsqueda con belief (A7), trayectoria (A3, A6) y actitud (A2). Este tema trata de cómo se hablan y de qué pasa cuando el de arriba llega tarde.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Un dron sigue a una persona entre árboles con un planificador MPPI cuya latencia va de 50 a 800 ms, con cinco arquitecturas: del modelo lento que manda directo a la jerarquía que compensa su latencia. <code>figuras_a13.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De las opciones de RL a los sistemas lento y rápido</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1992–1999</span>RL feudal: jefes que fijan objetivos a subordinados <a class="cite" data-ref="dayan1992"></a>. Opciones: acciones que duran varios pasos <a class="cite" data-ref="sutton1999"></a>.</div>
+    <div class="ev"><span class="yr">2017–2019</span>FeUdal Networks <a class="cite" data-ref="vezhnevets2017"></a>, Option-Critic <a class="cite" data-ref="bacon2017"></a>, HIRO <a class="cite" data-ref="nachum2018"></a>. RL residual sobre un controlador clásico <a class="cite" data-ref="johannink2019"></a>.</div>
+    <div class="ev"><span class="yr">2021–2023</span>Vuelo rápido entre árboles con red, MPC y bajo nivel <a class="cite" data-ref="loquercio2021"></a>. Agilicious <a class="cite" data-ref="foehn2022"></a>. Swift <a class="cite" data-ref="kaufmann2023"></a>. Trozos de acciones y ensamblado temporal en ACT <a class="cite" data-ref="zhao2023"></a>.</div>
+    <div class="ev"><span class="yr">2024–2025</span>TD-MPC2 <a class="cite" data-ref="hansen2024"></a>. HiRT <a class="cite" data-ref="zhang2024"></a>, RoboDual <a class="cite" data-ref="bu2024"></a>, códigos latentes como puente <a class="cite" data-ref="shentu2024"></a>, Hi Robot <a class="cite" data-ref="shi2025"></a>. Decodificación bidireccional de trozos <a class="cite" data-ref="liu2025"></a>. MPC dentro de un actor-crítico <a class="cite" data-ref="romero2025"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Escalas de tiempo">
+  <p class="num">Parte 1</p>
+  <h2>Escalas de tiempo y el precio del retardo</h2>
+  <p>Por qué no se puede poner el modelo más lento en el lazo más rápido.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas · un dron real</p>
+  <h2>Cada nivel corre a la frecuencia que necesita su problema</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 280" role="img" aria-label="Pila de niveles de un dron, de arriba abajo: misión, búsqueda, trayectoria, actitud y velocidad angular, motores; con sus frecuencias">
+        <g font-size="14">
+          <rect class="box-accent" x="10" y="10" width="330" height="40" rx="5"/><text x="20" y="35">misión: interpretar la orden (A11)</text>
+          <rect class="box-accent" x="10" y="60" width="330" height="40" rx="5"/><text x="20" y="85">búsqueda: hacia dónde mirar (A7)</text>
+          <rect class="box-tesis" x="10" y="110" width="330" height="40" rx="5"/><text x="20" y="135">trayectoria: MPC o política (A3, A6)</text>
+          <rect class="box-time" x="10" y="160" width="330" height="40" rx="5"/><text x="20" y="185">actitud y velocidad angular (A2)</text>
+          <rect class="box" x="10" y="210" width="330" height="40" rx="5"/><text x="20" y="235">motores y ESC</text>
+        </g>
+        <g class="t-mono" font-size="13">
+          <text x="360" y="35">una vez / al cambiar</text>
+          <text x="360" y="85">1–10 Hz</text>
+          <text x="360" y="135">≈ 25–100 Hz</text>
+          <text x="360" y="185">800 Hz (PX4)</text>
+          <text x="360" y="235">kHz</text>
+        </g>
+      </svg>
+      <figcaption>Frecuencias: la trayectoria, de Loquercio et al. (red a 24,7 Hz y MPC a 100 Hz); el lazo de velocidad angular de PX4 en multirrotor, 800 Hz por defecto (<code>IMU_GYRO_RATEMAX</code>, que <code>rc.mc_defaults</code> sube de 400 a 800). Los niveles de arriba son orientativos.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>PX4 usa una cascada estándar: posición (P) → velocidad (PID) → actitud (P sobre cuaterniones) → velocidad angular (PID) <a class="cite" data-ref="px4"></a>.</li>
+        <li>En Agilicious, la latencia medida del mando a la fuerza es de 35 ms con su controladora y de más de 75 ms si el control va fuera del dron; la constante de tiempo de los motores, 39,1 ms <a class="cite" data-ref="foehn2022"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La regla</span>Cuanto más abajo, más deprisa y más sencillo. Lo que tarda cientos de milisegundos solo puede ir arriba.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas · el retardo en dibujo</p>
+  <h2>Un retardo no cambia el tamaño de la señal, pero la llega tarde</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 220" role="img" aria-label="Una sinusoide y la misma sinusoide retrasada: el retraso en tiempo es un desfase que crece con la frecuencia">
+        <line x1="20" y1="110" x2="490" y2="110" class="ln-rule"/>
+        <path d="M20,110 C 50,30 90,30 120,110 S 190,190 220,110 S 290,30 320,110 S 390,190 420,110 S 470,50 490,70" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <path d="M60,110 C 90,30 130,30 160,110 S 230,190 260,110 S 330,30 360,110 S 430,190 460,110 S 480,90 490,80" fill="none" class="ln-time ln-dash" stroke-width="2.2"/>
+        <line x1="70" y1="40" x2="110" y2="40" class="ln"/><text x="72" y="30" font-size="13" class="t-muted">τ</text>
+        <text x="20" y="210" class="t-muted" font-size="13">azul: lo que manda el controlador; ocre: lo que le llega al dron τ segundos después</text>
+      </svg>
+      <figcaption>Esquema: con el mismo retraso \(\tau\), una señal lenta apenas se desfasa y una rápida se desfasa mucho.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Un retardo puro de \(\tau\) segundos deja pasar cada frecuencia con la misma amplitud, pero retrasada.</li>
+        <li>Retrasar \(\tau\) una oscilación de \(\omega\) rad/s es desfasarla \(\omega\tau\) radianes: el desfase crece con la frecuencia.</li>
+        <li>En un lazo cerrado, ese desfase se resta del margen de fase: si se agota, el lazo oscila.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">La consecuencia</span>Un nivel lento (un VLM que tarda 250 ms) solo puede cerrar lazos lentos. Lo rápido tiene que hacerlo otro nivel.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escalas · el retardo paso a paso</p>
+  <h2>Cuánto ancho de banda permite un retardo</h2>
+  <p><strong>Notación:</strong> \(\tau\), retardo (s); \(\omega\), frecuencia (rad/s); \(G(s)\), función de transferencia; \(\omega_c\), frecuencia de cruce del lazo (A2), que fija lo rápido que responde; \(z\), cero en el semiplano derecho.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(G(s) = e^{-s\tau}\)</td><td>Transformada de Laplace de un retraso de \(\tau\) segundos</td></tr>
+      <tr><td><strong>2</strong></td><td>\(|G(i\omega)| = 1,\quad \arg G(i\omega) = -\omega\tau\)</td><td>Con \(s = i\omega\), \(e^{-i\omega\tau}\) tiene módulo 1 y ángulo \(-\omega\tau\)</td></tr>
+      <tr><td><strong>3</strong></td><td>el margen de fase baja \(\omega_c\,\tau\) radianes</td><td>El margen se mide en \(\omega_c\), y el retardo resta su fase ahí</td></tr>
+      <tr><td><strong>4</strong></td><td>\(e^{-s\tau} \approx \dfrac{1 - s\tau/2}{1 + s\tau/2} = \dfrac{2/\tau - s}{2/\tau + s}\)</td><td>Aproximación de Padé de primer orden: un cero en \(z = 2/\tau\), en el semiplano derecho</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\omega_c &lt; 0{,}6\,z = 1{,}2/\tau\)</td><td>Un cero en el semiplano derecho limita el cruce a unas 0,6 veces su valor (Åström y Murray); juntar los pasos 4 y 5 es una cuenta del curso</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script (derivaciones_a13.py)</span><p>Con cruce a 2 Hz (\(\omega_c = 12{,}57\) rad/s), 20 ms de retardo se comen 14 grados de fase; 100 ms, 72; 250 ms, 180 (el lazo es inestable). Con 250 ms, el cruce no debería pasar de 0,76 Hz; con 800 ms, de 0,24 Hz <a class="cite" data-ref="astrom2021"></a>.</p></div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Jerarquías en RL">
+  <p class="num">Parte 2</p>
+  <h2>Jerarquías en aprendizaje por refuerzo</h2>
+  <p>Opciones, jefes y subordinados, y por qué es difícil aprender las dos capas a la vez.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Jerarquías · opciones y feudal</p>
+  <h2>Un nivel alto que decide cada cierto tiempo y uno bajo que ejecuta</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 480 240" role="img" aria-label="El nivel alto elige un objetivo u opción cada varios pasos; el nivel bajo genera una acción en cada paso hasta que la opción termina">
+        <defs><marker id="fo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="14">
+          <rect class="box-accent" x="140" y="15" width="200" height="50" rx="5"/><text x="240" y="37" text-anchor="middle">nivel alto (jefe)</text><text x="240" y="55" text-anchor="middle" font-size="12">elige un objetivo cada c pasos</text>
+          <rect class="box-time" x="140" y="120" width="200" height="50" rx="5"/><text x="240" y="142" text-anchor="middle">nivel bajo (subordinado)</text><text x="240" y="160" text-anchor="middle" font-size="12">una acción en cada paso</text>
+          <rect class="box" x="140" y="200" width="200" height="34" rx="5"/><text x="240" y="222" text-anchor="middle">entorno</text>
+        </g>
+        <g class="ln" marker-end="url(#fo)"><path d="M240,65 L240,118"/><path d="M240,170 L240,198"/><path d="M340,217 C 430,217 430,40 342,40"/></g>
+        <text x="250" y="96" class="t-muted" font-size="12">objetivo u opción</text>
+        <text x="400" y="130" class="t-muted" font-size="12">estado</text>
+      </svg>
+      <figcaption>Esquema común a las opciones, el RL feudal, FeUdal Networks y HIRO.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Opciones</strong> <a class="cite" data-ref="sutton1999"></a>: acciones que duran varios pasos, definidas por dónde pueden empezar, qué política siguen y cuándo terminan; el nivel alto planifica sobre ellas como en un semi-MDP.</li>
+        <li><strong>FeUdal Networks</strong> <a class="cite" data-ref="vezhnevets2017"></a>: el jefe trabaja a menor resolución temporal y fija objetivos abstractos; el trabajador genera una acción en cada paso.</li>
+        <li><strong>Option-Critic</strong> <a class="cite" data-ref="bacon2017"></a> aprende a la vez las políticas internas, sus condiciones de terminación y la política sobre opciones, sin recompensas ni subobjetivos extra.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Jerarquías · el problema de aprender las dos capas</p>
+  <h2>Si el subordinado cambia, las decisiones pasadas del jefe dejan de valer</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>HIRO</strong> <a class="cite" data-ref="nachum2018"></a>: el nivel alto propone objetivos que supervisan al bajo. Pero al aprender, el nivel bajo cambia, y con él lo que significaba cada objetivo: los datos viejos del jefe ya no describen lo que pasaría hoy.</li>
+        <li>Su solución, una corrección fuera de política: reetiquetar cada objetivo pasado con el que mejor explica lo que el subordinado de ahora habría hecho.</li>
+      </ul>
+      <div class="aparte"><span class="rotulo">La misma idea, fuera del RL</span><p>Es la no estacionariedad de A15a (cada agente ve a los demás como parte del entorno cambiante), aquí entre dos niveles del mismo robot.</p></div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">En la práctica de 2024–2025</span>Los robots actuales evitan aprender las dos capas a la vez: el nivel alto es un VLM preentrenado o un planificador, y el bajo se entrena o se diseña aparte. La parte 3 muestra cómo.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Tu planificador con belief puede ser el nivel alto de un controlador ya probado: no hace falta aprenderlo todo de extremo a extremo para tener jerarquía.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Lento y rápido">
+  <p class="num">Parte 3</p>
+  <h2>Un sistema lento y uno rápido</h2>
+  <p>Cómo lo hacen los robots de 2024–2025 y qué viaja entre los dos niveles.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lento y rápido · la interfaz</p>
+  <h2>Lo que pasa de arriba abajo decide lo que puede hacer cada nivel</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Sistema</th><th>Lento</th><th>Rápido</th><th>Qué pasa entre los dos</th></tr></thead>
+      <tbody>
+        <tr><td>Hi Robot <a class="cite" data-ref="shi2025"></a></td><td>VLM, cada 1 s o al intervenir el usuario</td><td>π0</td><td>una orden sencilla en lenguaje</td></tr>
+        <tr><td>LCB <a class="cite" data-ref="shentu2024"></a></td><td>LLaVA</td><td>política de bajo nivel</td><td>el vector de un token &lt;ACT&gt;: un objetivo latente</td></tr>
+        <tr><td>HiRT <a class="cite" data-ref="zhang2024"></a></td><td>VLM, de forma asíncrona</td><td>política visual rápida</td><td>rasgos latentes que cambian despacio</td></tr>
+        <tr><td>RoboDual <a class="cite" data-ref="bu2024"></a></td><td>OpenVLA (generalista)</td><td>transformer de difusión de 20 M (especialista)</td><td>acciones discretas y comprensión de la tarea</td></tr>
+        <tr><td>Loquercio et al. <a class="cite" data-ref="loquercio2021"></a></td><td>red, 24,7 Hz</td><td>MPC, 100 Hz; bajo nivel, 2 kHz</td><td>una trayectoria</td></tr>
+        <tr><td>GR00T N1, Helix (A12b)</td><td>VLM, 7–10 Hz</td><td>120–200 Hz</td><td>rasgos del VLM o un latente continuo</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:8px">
+    <div class="callout clave"><span class="tag">Lenguaje frente a latente</span>El lenguaje se puede leer, verificar y corregir (A11); un latente transmite más detalle, pero no se puede inspeccionar. LCB supera a usar solo lenguaje como interfaz.</div>
+    <div class="callout tesis"><span class="tag">Para un dron</span>Una trayectoria o un punto de paso es la interfaz más fácil de verificar con un filtro de seguridad (A14).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lento y rápido · HiRT y RoboDual</p>
+  <h2>Actualizar menos el modelo lento da frecuencia y cuesta éxito</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>HiRT, tabla 4</th><th>Frecuencia</th><th>Éxito (tareas vistas)</th></tr></thead>
+          <tbody>
+            <tr><td>VLM en cada paso</td><td class="n">1,97 Hz</td><td class="n">94,2 %</td></tr>
+            <tr><td>VLM cada 6 pasos</td><td class="n">13,42 Hz</td><td class="n">63,4 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>HiRT <a class="cite" data-ref="zhang2024"></a>: en su tabla 1, 9,8 Hz frente a 4,1 Hz de un VLA normal; en tareas con objetos que se mueven a 1 cm/s, del 48 % al 75 %.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>RoboDual <a class="cite" data-ref="bu2024"></a> (preprint): 15 Hz frente a 3,9 Hz de OpenVLA, bajo un controlador de 20 Hz; un 26,7 % mejor que OpenVLA en robots reales, con un especialista de 20 M.</li>
+        <li>Entrena el especialista con salidas del generalista retrasadas un número variable de pasos, para que aprenda a usarlas aunque lleguen tarde.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">El compromiso</span>Más frecuencia con información más vieja. Cuánto se puede espaciar el nivel lento depende de lo deprisa que cambie la escena.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Asincronía">
+  <p class="num">Parte 4</p>
+  <h2>Inferencia asíncrona y trozos de acciones</h2>
+  <p>Seguir actuando mientras el modelo lento piensa.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · síncrona frente a asíncrona</p>
+  <h2>Esperar al modelo o seguir con el plan anterior</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 230" role="img" aria-label="Arriba, ejecución síncrona: el robot se para mientras el modelo calcula. Abajo, asíncrona: el robot sigue el plan anterior mientras el modelo calcula el siguiente">
+        <text x="10" y="22" font-size="13" class="t-muted">síncrona</text>
+        <rect class="box-time" x="10" y="32" width="90" height="30" rx="4"/><text x="55" y="52" text-anchor="middle" font-size="12">piensa</text>
+        <rect class="box-accent" x="100" y="32" width="110" height="30" rx="4"/><text x="155" y="52" text-anchor="middle" font-size="12">actúa</text>
+        <rect class="box-time" x="210" y="32" width="90" height="30" rx="4"/><text x="255" y="52" text-anchor="middle" font-size="12">piensa</text>
+        <rect class="box-accent" x="300" y="32" width="110" height="30" rx="4"/><text x="355" y="52" text-anchor="middle" font-size="12">actúa</text>
+        <text x="10" y="112" font-size="13" class="t-muted">asíncrona</text>
+        <rect class="box-accent" x="10" y="122" width="500" height="30" rx="4"/><text x="260" y="142" text-anchor="middle" font-size="12">actúa siempre (sigue el plan más reciente)</text>
+        <rect class="box-time" x="10" y="160" width="160" height="26" rx="4"/><text x="90" y="178" text-anchor="middle" font-size="12">piensa el plan 2</text>
+        <rect class="box-time" x="170" y="160" width="160" height="26" rx="4"/><text x="250" y="178" text-anchor="middle" font-size="12">piensa el plan 3</text>
+        <rect class="box-time" x="330" y="160" width="160" height="26" rx="4"/><text x="410" y="178" text-anchor="middle" font-size="12">piensa el plan 4</text>
+        <text x="10" y="215" font-size="12" class="t-muted">cada plan llega con la latencia δ y se calculó con lo observado δ antes</text>
+      </svg>
+      <figcaption>Esquema. En la síncrona, el robot no recibe mandos nuevos mientras el modelo piensa; en la asíncrona, nunca deja de actuar, pero con planes algo viejos.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>SmolVLA mide un 30 % menos de tiempo por tarea con inferencia asíncrona (9,7 s frente a 13,75 s) <a class="cite" data-ref="shukor2025"></a>; la ejecución en tiempo real de Black et al. funciona con más de 300 ms de retraso <a class="cite" data-ref="black2025"></a>.</li>
+        <li>Lo que hay que resolver es el empalme: cuando llega el plan nuevo, la parte que corresponde al pasado ya no sirve y la del presente tiene que enlazar con lo que se está ejecutando.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · ensamblado temporal de ACT</p>
+  <h2>Promediar las predicciones de una misma acción</h2>
+  <p><strong>Notación:</strong> \(A_t[i]\), la acción para el instante \(t\) que predijo el trozo \(i\)-ésimo (de los que se solapan en \(t\), con \(i = 0\) el más antiguo); \(w_i\), su peso; \(m\), velocidad con que se incorporan las predicciones nuevas.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>se consulta la política en cada paso; cada consulta da un trozo de acciones futuras</td><td>Así, para cada instante \(t\) hay varias predicciones de trozos que se solapan</td></tr>
+      <tr><td><strong>2</strong></td><td>\(w_i = e^{-m\,i}\)</td><td>Pesos exponenciales; según ACT, \(w_0\) es el de la acción más antigua</td></tr>
+      <tr><td><strong>3</strong></td><td>\(a_t = \dfrac{\sum_i w_i\,A_t[i]}{\sum_i w_i}\)</td><td>Media ponderada; dividir por la suma de pesos la deja en la escala de las acciones</td></tr>
+      <tr><td><strong>4</strong></td><td>\(m\) pequeño: pesos casi iguales; \(m\) grande: domina la más antigua</td><td>Según ACT, un \(m\) menor incorpora antes las observaciones nuevas; no cuesta entrenamiento, solo cálculo al ejecutar</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>Con cuatro predicciones y \(m = 0{,}1\), los pesos normalizados son 0,289, 0,261, 0,236, 0,214; con \(m = 0{,}5\), 0,455, 0,276, 0,167, 0,102. En ACT, el ensamblado mejora un 3,3 % su propio método <a class="cite" data-ref="zhao2023"></a>; la decodificación bidireccional de Liu et al. elige entre varios trozos candidatos y mejora un 32 % relativo, un 46 % combinada con una media exponencial <a class="cite" data-ref="liu2025"></a>.</p></div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Fusión">
+  <p class="num">Parte 5</p>
+  <h2>Fusionar lo aprendido y lo basado en modelo</h2>
+  <p>Residuos, referencias, modelos aprendidos dentro del MPC y MPC dentro del RL.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fusión · tres formas</p>
+  <h2>Sumar, encadenar o meter uno dentro del otro</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">SUMAR</span><h3>RL residual</h3><p>La política final es la suma del mando de un controlador convencional y una corrección aprendida con RL <a class="cite" data-ref="johannink2019"></a>. El controlador da un comportamiento razonable desde el principio; el RL corrige lo que el modelo no capta.</p></div>
+    <div class="card"><span class="meta">ENCADENAR</span><h3>Red y MPC</h3><p>La red propone trayectorias desde la percepción y un MPC las sigue con el modelo del dron (Loquercio et al.) <a class="cite" data-ref="loquercio2021"></a>. El MPC impone la dinámica y los límites que la red no garantiza.</p></div>
+    <div class="card"><span class="meta">DENTRO</span><h3>TD-MPC2 y AC-MPC</h3><p>TD-MPC2 planifica con MPPI en el espacio latente de un world model aprendido <a class="cite" data-ref="hansen2024"></a>. Actor-Critic MPC mete un MPC diferenciable dentro de un actor-crítico y vuela a 21 m/s <a class="cite" data-ref="romero2025"></a>.</p></div>
+  </div>
+  <div class="aparte"><span class="rotulo">Números de TD-MPC2</span><p>Horizonte de 3 pasos, 6 iteraciones y 512 trayectorias por plan (tabla 8), con una función de valor aprendida más allá del horizonte; un solo agente de 317 M parámetros hace 80 tareas.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fusión · cuál elegir</p>
+  <h2>Qué garantiza cada fusión y qué deja sin garantizar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Forma</th><th>Lo bueno</th><th>Lo que no garantiza</th></tr></thead>
+      <tbody>
+        <tr><td>Residual</td><td>arranca seguro; aprende con pocos datos</td><td>la corrección puede romper la estabilidad del controlador si no se acota</td></tr>
+        <tr><td>Red → referencia → MPC</td><td>el MPC impone dinámica y límites</td><td>que la referencia sea buena: si la red se equivoca, el MPC sigue una mala trayectoria</td></tr>
+        <tr><td>MPC con modelo o valor aprendido</td><td>replanifica con el estado real en cada paso</td><td>que el modelo aprendido sea fiel fuera de los datos (A8a)</td></tr>
+        <tr><td>MPC dentro del RL</td><td>la estructura del MPC ayuda a generalizar</td><td>coste de cálculo del MPC en cada paso de entrenamiento</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout tesis" style="margin-top:8px"><span class="tag">Para tu tesis</span>Un planificador sobre un belief aprendido (A8a) es la forma «dentro»: la calidad del plan depende de lo fiel que sea el modelo. Combinarlo con un seguidor de trayectorias clásico es la forma «encadenar».</div>
+</section>
+
+<!-- ============ PARTE 6 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 6</p>
+  <h2>Seguir a una persona con un planificador cada vez más lento</h2>
+  <p>Cinco arquitecturas y una latencia que va de 50 a 800 ms.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>Un planificador MPPI lento y un seguidor PD a 100 Hz</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 250" role="img" aria-label="El planificador lento recibe la posición observada de la persona y el estado del dron y, tras una latencia delta, entrega un plan; el seguidor rápido lo sigue a 100 Hz con el estado actual">
+        <defs><marker id="fe" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box" x="10" y="20" width="140" height="50" rx="5"/><text x="80" y="41" text-anchor="middle">persona observada</text><text x="80" y="58" text-anchor="middle">y árboles</text>
+          <rect class="box-accent" x="190" y="20" width="150" height="50" rx="5"/><text x="265" y="41" text-anchor="middle">lento: MPPI, 2 s</text><text x="265" y="58" text-anchor="middle">tarda δ (50–800 ms)</text>
+          <rect class="box-time" x="190" y="120" width="150" height="50" rx="5"/><text x="265" y="141" text-anchor="middle">rápido: PD</text><text x="265" y="158" text-anchor="middle">100 Hz</text>
+          <rect class="box" x="380" y="120" width="110" height="50" rx="5"/><text x="435" y="141" text-anchor="middle">dron (con</text><text x="435" y="158" text-anchor="middle">arrastre real)</text>
+        </g>
+        <g class="ln" marker-end="url(#fe)"><path d="M150,45 L188,45"/><path d="M265,70 L265,118"/><path d="M340,145 L378,145"/><path d="M435,170 C 435,230 120,230 120,72"/></g>
+        <text x="275" y="100" class="t-muted" font-size="12">trayectoria de referencia</text>
+        <text x="200" y="215" class="t-muted" font-size="12">estado del dron</text>
+      </svg>
+      <figcaption>Esquema de las arquitecturas C y D. En A y B no hay seguidor: los mandos del plan van directos al dron.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>40 × 40 m con 8 copas de árbol (radio de 1,5 a 3 m); la persona camina a 1,5 m/s con giros aleatorios y pasa por debajo de los árboles.</li>
+        <li>Dron: aceleración pedida de hasta 6 m/s², seguida con 0,08 s de retraso, y arrastre que el planificador no conoce.</li>
+        <li>Planificador: 256 trayectorias de 2 s sobre un doble integrador; predice a la persona con velocidad constante y evita las copas. Una llamada tarda 1,4 ms en CPU: la latencia se simula.</li>
+      </ul>
+      <p class="xsmall muted">100 escenas de 20 s por condición. Métrica: fracción del tiempo (de 3 a 20 s) a menos de 2,5 m de la persona, contando como lejos lo que queda tras un choque. <code>figuras_a13.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · las cinco arquitecturas</p>
+  <h2>Del modelo lento que manda directo a la jerarquía que compensa</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Arquitectura</th><th>Qué recibe el dron</th><th>A qué se parece</th></tr></thead>
+      <tbody>
+        <tr><td>A · Solo lento</td><td>el primer mando del plan, mantenido hasta el plan siguiente</td><td>un VLA que manda directamente a su frecuencia</td></tr>
+        <tr><td>B · Lento con trozos</td><td>los mandos del plan uno tras otro, sin realimentación</td><td>un VLA con trozos de acciones en lazo abierto</td></tr>
+        <tr><td>C · Jerárquica</td><td>un PD a 100 Hz que sigue la trayectoria del plan; el plan se empieza a seguir desde el principio cuando llega</td><td>sistema lento y rápido sin tener en cuenta la latencia</td></tr>
+        <tr><td>D · Jerárquica con compensación</td><td>como C, pero el plan se calcula desde el estado previsto para cuando llegue y se sigue en tiempo absoluto</td><td>la idea de RTC y RoboDual</td></tr>
+        <tr><td>E · Solo rápido</td><td>un PD hacia la posición actual de la persona, sin planificador</td><td>un controlador reactivo que no ve los árboles</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="aparte" style="margin-top:8px"><span class="rotulo">Detalle de D</span><p>Estado previsto = estado actual más lo que el plan en curso prevé moverse durante \(\delta\). El arranque en caliente del MPPI se desplaza los pasos que hayan pasado desde que empezó el plan anterior.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · resultados</p>
+  <h2>A 400 ms, el planificador que manda directo choca en el 82 % de los vuelos; con un lazo rápido debajo, en ninguno</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 540 280" role="img" aria-label="Fracción del tiempo cerca de la persona frente a la latencia del planificador, para las cinco arquitecturas">
+        <line x1="60" y1="230" x2="500" y2="230" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="230" class="ln-rule"/>
+        <text x="52" y="234" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="134" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="248">50</text><text x="170" y="248">100</text><text x="280" y="248">200</text><text x="390" y="248">400</text><text x="500" y="248">800 ms</text>
+        </g>
+        <path d="M60,126.5 L500,126.5" fill="none" class="ln ln-dash" stroke-width="1.6"/>
+        <path d="M60.0,35.8 L170.0,37.2 L280.0,63.7 L390.0,202.3 L500.0,226.8" fill="none" class="ln-time" stroke-width="2.4"/>
+        <path d="M60.0,35.8 L170.0,37.8 L280.0,51.1 L390.0,170.7 L500.0,220.5" fill="none" class="ln-time ln-dash" stroke-width="2.2"/>
+        <path d="M60.0,36.0 L170.0,37.3 L280.0,41.1 L390.0,50.8 L500.0,116.5" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <path d="M60.0,35.2 L170.0,36.0 L280.0,37.4 L390.0,47.8 L500.0,154.1" fill="none" class="ln-tesis" stroke-width="2.4"/>
+        <text x="506.0" y="231.0" font-size="13" font-weight="700" class="t-time">A</text><text x="506.0" y="218.7" font-size="13" font-weight="700" class="t-time">B</text><text x="506.0" y="114.1" font-size="13" font-weight="700" class="t-accent">C</text><text x="506.0" y="158.3" font-size="13" font-weight="700" class="t-tesis">D</text><text x="506" y="130.5" font-size="13" font-weight="700" class="t-muted">E</text>
+        <text x="280" y="272" text-anchor="middle" class="t-muted" font-size="13">latencia del planificador (escala logarítmica)</text>
+      </svg>
+      <figcaption>Fracción del tiempo a menos de 2,5 m de la persona. Ocre: A (continua) y B (discontinua); azul: C; morado: D; gris discontinuo: E, sin planificador.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Choques</th><th>200 ms</th><th>400 ms</th><th>800 ms</th></tr></thead>
+          <tbody>
+            <tr><td>A · Solo lento</td><td class="n">0,19</td><td class="n">0,82</td><td class="n">0,92</td></tr>
+            <tr><td>B · Lento con trozos</td><td class="n">0,08</td><td class="n">0,67</td><td class="n">0,91</td></tr>
+            <tr><td>C · Jerárquica</td><td class="n">0,00</td><td class="n">0,00</td><td class="n">0,08</td></tr>
+            <tr><td>D · Con compensación</td><td class="n">0,00</td><td class="n">0,00</td><td class="n">0,02</td></tr>
+            <tr><td>E · Solo rápido</td><td class="n" colspan="3">0,69 (sin planificador)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Fracción de los 100 episodios con choque contra una copa.</p>
+      <div class="callout clave"><span class="tag">Lo que sale</span>Hasta 100 ms todas las arquitecturas con planificador pasan más del 95 % del tiempo cerca. Desde 200 ms, A y B se hunden: a 400 ms, 0,14 y 0,30. C y D aguantan (0,90 y 0,91, sin choques). Sin planificador (E), 0,52 y choques en el 69 %.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · las cuentas</p>
+  <h2>Por qué el modelo lento solo se hunde y la jerarquía no</h2>
+  <p><strong>Notación:</strong> \(a\), aceleración mandada (m/s²); \(\delta\), latencia del planificador (s); \(v_p\), velocidad de la persona (m/s).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>A mantiene un mando de aceleración \(\delta\) segundos más de lo que debería</td><td>Hasta que llega el plan nuevo no hay otro mando</td></tr>
+      <tr><td><strong>2</strong></td><td>error de velocidad \(a\,\delta\); de posición \(a\,\delta^2/2\)</td><td>Integrar una vez y dos veces una aceleración constante durante \(\delta\)</td></tr>
+      <tr><td><strong>3</strong></td><td>con \(a = 6\) y \(\delta = 0{,}4\): 2,4 m/s y 0,48 m de golpe, en cada plan</td><td>Sin realimentación, nada corrige ese error hasta el plan siguiente: se acumula y acaba en choque</td></tr>
+      <tr><td><strong>4</strong></td><td>C y D corrigen a 100 Hz; el plan viejo solo los retrasa, unos \(v_p\,\delta\)</td><td>El PD sigue una referencia que va por detrás de la persona el tiempo que tarda el plan</td></tr>
+      <tr><td><strong>5</strong></td><td>con \(v_p = 1{,}5\) y \(\delta = 0{,}8\): 1,2 m de retraso, por debajo de los 2,5 m de la métrica</td><td>Por eso C aún pasa la mitad del tiempo cerca a 800 ms</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Comparación con el retardo de la parte 1</span><p>A cierra el lazo con el planificador: su latencia entra entera en el lazo y, con cruce a 0,5 Hz, 800 ms se comerían 144 grados de fase. En C y D el lazo rápido no tiene ese retardo; el lento solo mueve la referencia.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura</p>
+  <h2>La latencia dentro del lazo desestabiliza; fuera de él, solo retrasa</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul><li><strong>Jerarquía:</strong> el mismo planificador, con un seguidor a 100 Hz debajo, pasa de chocar en el 82 % de los vuelos a ninguno a 400 ms.</li><li><strong>Trozos sin realimentación (B):</strong> algo mejor que mantener un mando (A) a 200–400 ms, pero también se hunden.</li><li><strong>Compensar la latencia (D):</strong> ayuda poco hasta 400 ms (0,91 frente a 0,90) y a 800 ms empeora (0,38 frente a 0,57): prever el estado 0,8 s adelante con un plan viejo acumula error.</li><li><strong>Planificar importa:</strong> el seguidor solo, sin planificador, choca en el 69 % de los vuelos.</li></ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Un plano 2D, un doble integrador como modelo del planificador, una persona que no se esconde y latencias simuladas, no medidas. Las cifras son de este montaje; lo robusto es la forma de las curvas y la ausencia de choques con un lazo rápido.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Si tu planificador con belief tarda cientos de milisegundos, no lo pongas en el lazo: que mueva la referencia de un seguidor rápido, y mide cuánto tolera tu tarea.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Niveles que se entrenan aparte y se hablan con interfaces verificables</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">HECHO</span><h3>Jerarquía en los mejores sistemas</h3><p>Vuelo rápido, carreras y manipulación con VLM usan un nivel lento y uno rápido <a class="cite" data-ref="loquercio2021,kaufmann2023,zhang2024"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Asincronía consciente de la latencia</h3><p>Entrenar el nivel rápido con salidas retrasadas del lento <a class="cite" data-ref="bu2024"></a> y empalmar trozos sin saltos <a class="cite" data-ref="liu2025"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Qué interfaz</h3><p>Lenguaje (legible), latente (rico) o trayectoria (verificable): no hay acuerdo <a class="cite" data-ref="shi2025,shentu2024"></a>.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>Un retardo come margen de fase en el lazo donde está. Por eso lo lento va arriba moviendo referencias, y lo rápido abajo cerrando el lazo con el estado actual.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El belief, en el nivel lento; el control, en el rápido</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Nivel lento:</strong> actualizar el belief (A7a, A8a) y decidir hacia dónde mirar, a 1–10 Hz o cuando llegue una observación importante.</li>
+        <li><strong>Interfaz:</strong> puntos de paso o un trozo de trayectoria, verificables por el filtro de seguridad (A14).</li>
+        <li><strong>Nivel rápido:</strong> MPC o una política pequeña (A6, A10) que sigue la referencia a 50–100 Hz, sobre la controladora a 800 Hz.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cuánta latencia del planificador con belief tolera una búsqueda real, y cómo se entrena el nivel rápido para que use bien planes que llegan tarde?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> 250 ms limitan el cruce a menos de 1 Hz. <strong>Observabilidad parcial:</strong> el lento predice a la persona con su última observación. <strong>Sim-to-real:</strong> el arrastre que el planificador no conoce lo corrige el rápido. <strong>Cómputo:</strong> 1,4 ms por plan en CPU.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A13</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un retardo \(\tau\) resta \(\omega\tau\) de fase; el cruce del lazo no debería pasar de unos \(1{,}2/\tau\) rad/s.</li>
+    <li>Las jerarquías de RL (opciones, feudal, HIRO) tienen que lidiar con que el nivel bajo cambia mientras aprende; los robots actuales entrenan los niveles por separado.</li>
+    <li>Entre niveles puede pasar lenguaje, un latente, un trozo de acciones o una trayectoria; cuanto más verificable, más fácil de proteger.</li>
+    <li>Con inferencia asíncrona el robot nunca deja de actuar; hay que empalmar los planes y, si se puede, entrenar con su retraso.</li>
+    <li>En el experimento, el lazo rápido elimina los choques hasta 400 ms de latencia; compensar la latencia ayuda poco y no siempre.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Retardo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Un lazo cruza a 2 Hz y le añades 100 ms de retardo. ¿Cuánto margen de fase pierde?</p>
+      <ol class="opts">
+        <li><button type="button">7,2 grados</button></li>
+        <li><button type="button">72 grados</button></li>
+        <li><button type="button">Nada: el retardo no cambia la amplitud</button></li>
+        <li><button type="button">180 grados</button></li>
+      </ol>
+      <p class="explain">\(\omega_c\tau = 2\pi \cdot 2 \cdot 0{,}1 = 1{,}26\) rad, unos 72 grados. La amplitud no cambia, pero la fase sí.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">2. Tu planificador tarda 250 ms. ¿Qué frecuencia de cruce, como mucho, puede tener un lazo que lo incluya?</p>
+      <ol class="opts">
+        <li><button type="button">Unos 4 Hz</button></li>
+        <li><button type="button">Unos 25 Hz</button></li>
+        <li><button type="button">Cualquiera, si el planificador es bueno</button></li>
+        <li><button type="button">Menos de 1 Hz: \(1{,}2/\tau = 4{,}8\) rad/s, unos 0,76 Hz</button></li>
+      </ol>
+      <p class="explain">Por Padé, el retardo actúa como un cero en el semiplano derecho en \(2/\tau\), que limita el cruce a unas 0,6 veces su valor.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Niveles y trozos</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. En HiRT, actualizar el VLM cada 6 pasos en vez de cada paso sube la frecuencia de 1,97 a 13,42 Hz. ¿Qué pasa con el éxito?</p>
+      <ol class="opts">
+        <li><button type="button">Baja del 94,2 % al 63,4 %: la información del nivel lento envejece</button></li>
+        <li><button type="button">Sube, por ir más deprisa</button></li>
+        <li><button type="button">No cambia</button></li>
+        <li><button type="button">Baja a cero</button></li>
+      </ol>
+      <p class="explain">Más frecuencia con información más vieja: cuánto se puede espaciar depende de lo deprisa que cambie la escena.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">4. En el ensamblado temporal de ACT, \(w_i = e^{-m i}\) con \(w_0\) para la predicción más antigua. ¿Qué hace un \(m\) más pequeño?</p>
+      <ol class="opts">
+        <li><button type="button">Da todo el peso a la predicción más antigua</button></li>
+        <li><button type="button">Da todo el peso a la más nueva</button></li>
+        <li><button type="button">Iguala los pesos, así que las predicciones nuevas entran antes en la media</button></li>
+        <li><button type="button">Nada</button></li>
+      </ol>
+      <p class="explain">Con \(m = 0{,}01\) los pesos son casi iguales; con \(m = 0{,}5\) domina la más antigua.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>En tu dron</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. En el experimento, ¿por qué la arquitectura «solo lento» choca a 400 ms y la jerárquica no?</p>
+      <ol class="opts">
+        <li><button type="button">Porque la jerárquica usa un planificador mejor</button></li>
+        <li><button type="button">Porque sin realimentación rápida el error de mantener un mando durante la latencia se acumula; la jerárquica lo corrige a 100 Hz</button></li>
+        <li><button type="button">Porque la jerárquica no ve los árboles</button></li>
+        <li><button type="button">Por azar</button></li>
+      </ol>
+      <p class="explain">El planificador es el mismo; lo que cambia es dónde está la latencia: dentro del lazo (A) o moviendo la referencia (C, D).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña la arquitectura de tu dron de búsqueda con un VLM a bordo que tarda 300 ms. ¿Qué niveles pones, a qué frecuencia, qué pasa entre ellos y cómo pruebas que tolera la latencia?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p>Cuatro niveles. Arriba, el VLM y el belief deciden la siguiente zona o punto de paso cada 0,5–1 s, de forma asíncrona. Entre medias, un planificador de trayectorias (MPC o una política pequeña) convierte el punto de paso en una trayectoria y la sigue a 50–100 Hz con el estado actual; recibe planes que llegan tarde y los empalma en tiempo absoluto. Debajo, la controladora a 800 Hz. Un filtro de seguridad (A14) comprueba cada referencia. Lo probaría como en el experimento: barrer la latencia del nivel alto en simulación, con latencias medidas a bordo, y mirar éxito, choques y retraso respecto al objetivo; y entrenaría el nivel medio con referencias retrasadas, como RoboDual.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN · SCI. ROBOT.</span>
+      <h3>Loquercio et al. 2021 <a class="cite" data-ref="loquercio2021"></a></h3>
+      <p><strong>Lee:</strong> la arquitectura y el material suplementario de la plataforma.</p>
+      <p><strong>Responde:</strong> ¿qué nivel absorbe los errores de la red?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · CORL</span>
+      <h3>HiRT <a class="cite" data-ref="zhang2024"></a></h3>
+      <p><strong>Lee:</strong> la operación asíncrona y la tabla 4.</p>
+      <p><strong>Responde:</strong> ¿cada cuánto actualizarías tu nivel lento?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 40 MIN · RSS</span>
+      <h3>ACT <a class="cite" data-ref="zhao2023"></a></h3>
+      <p><strong>Lee:</strong> trozos de acciones y ensamblado temporal.</p>
+      <p><strong>Responde:</strong> ¿qué \(m\) usarías en un dron?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> opciones <a class="cite" data-ref="sutton1999"></a>; HIRO <a class="cite" data-ref="nachum2018"></a>; RoboDual <a class="cite" data-ref="bu2024"></a>; Hi Robot <a class="cite" data-ref="shi2025"></a>; TD-MPC2 <a class="cite" data-ref="hansen2024"></a>; Åström y Murray, capítulos de análisis en frecuencia y límites <a class="cite" data-ref="astrom2021"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Sistema lento y rápido con inferencia asíncrona</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
+        <li><strong>Escenas y dron:</strong> árboles, persona y dinámica con arrastre.</li>
+        <li><strong>Planificador MPPI</strong> y seguidor PD.</li>
+        <li><strong>Latencia simulada</strong> y las cinco arquitecturas.</li>
+        <li><strong>Barrido</strong> de 50 a 800 ms y figura.</li>
+        <li><strong>Mejorar D:</strong> otra forma de prever el estado o entrenar con retraso.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Que la latencia dentro del lazo desestabiliza y fuera de él solo retrasa, y cuánto tolera tu tarea.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Solo CPU: todo el barrido tardó unos 5 minutos con numpy.</div>
+      <p class="xsmall muted">Los scripts que generan las cifras de esta presentación están en <code>figuras/</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-loquercio2021">Loquercio, A., Kaufmann, E., Ranftl, R., Müller, M., Koltun, V., Scaramuzza, D. (2021). Learning high-speed flight in the wild. <span class="venue">Science Robotics</span>, 6(59), eabg5810. <a href="https://doi.org/10.1126/scirobotics.abg5810">doi:10.1126/scirobotics.abg5810</a>. <a href="https://arxiv.org/abs/2110.05113">arXiv:2110.05113</a></li>
+    <li id="ref-kaufmann2023">Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Champion-level drone racing using deep reinforcement learning. <span class="venue">Nature</span>, 620(7976), 982–987. <a href="https://doi.org/10.1038/s41586-023-06419-4">doi:10.1038/s41586-023-06419-4</a></li>
+    <li id="ref-zhang2024">Zhang, J., Guo, Y., Chen, X., Wang, Y.-J., Hu, Y., Shi, C., Chen, J. (2024). HiRT: Enhancing robotic control with hierarchical robot transformers. <span class="venue">CoRL 2024</span> (según arXiv). <a href="https://arxiv.org/abs/2410.05273">arXiv:2410.05273</a></li>
+    <li id="ref-dayan1992">Dayan, P., Hinton, G. E. (1992). Feudal reinforcement learning. <span class="venue">Advances in Neural Information Processing Systems 5</span>. <a href="https://proceedings.neurips.cc/paper_files/paper/1992/hash/d14220ee66aeec73c49038385428ec4c-Abstract.html">proceedings.neurips.cc</a></li>
+    <li id="ref-sutton1999">Sutton, R. S., Precup, D., Singh, S. (1999). Between MDPs and semi-MDPs: A framework for temporal abstraction in reinforcement learning. <span class="venue">Artificial Intelligence</span>, 112(1–2), 181–211. <a href="https://doi.org/10.1016/S0004-3702(99)00052-1">doi:10.1016/S0004-3702(99)00052-1</a></li>
+    <li id="ref-vezhnevets2017">Vezhnevets, A. S., Osindero, S., Schaul, T., Heess, N., Jaderberg, M., Silver, D., Kavukcuoglu, K. (2017). FeUdal networks for hierarchical reinforcement learning. <span class="venue">ICML 2017</span>, PMLR 70, 3540–3549. <a href="https://arxiv.org/abs/1703.01161">arXiv:1703.01161</a></li>
+    <li id="ref-bacon2017">Bacon, P.-L., Harb, J., Precup, D. (2017). The option-critic architecture. <span class="venue">AAAI 2017</span>, 31(1). <a href="https://doi.org/10.1609/aaai.v31i1.10916">doi:10.1609/aaai.v31i1.10916</a>. <a href="https://arxiv.org/abs/1609.05140">arXiv:1609.05140</a></li>
+    <li id="ref-nachum2018">Nachum, O., Gu, S., Lee, H., Levine, S. (2018). Data-efficient hierarchical reinforcement learning. <span class="venue">NeurIPS 2018</span>. <a href="https://arxiv.org/abs/1805.08296">arXiv:1805.08296</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="9">
+    <li id="ref-johannink2019">Johannink, T., Bahl, S., Nair, A., Luo, J., Kumar, A., Loskyll, M., Aparicio Ojea, J., Solowjow, E., Levine, S. (2019). Residual reinforcement learning for robot control. <span class="venue">ICRA 2019</span>, 6023–6029. <a href="https://doi.org/10.1109/ICRA.2019.8794127">doi:10.1109/ICRA.2019.8794127</a>. <a href="https://arxiv.org/abs/1812.03201">arXiv:1812.03201</a></li>
+    <li id="ref-foehn2022">Foehn, P., Kaufmann, E., Romero, A., Penicka, R., Sun, S., Bauersfeld, L., Laengle, T., Cioffi, G., Song, Y., Loquercio, A., Scaramuzza, D. (2022). Agilicious: Open-source and open-hardware agile quadrotor for vision-based flight. <span class="venue">Science Robotics</span>, 7(67), eabl6259. <a href="https://doi.org/10.1126/scirobotics.abl6259">doi:10.1126/scirobotics.abl6259</a>. <a href="https://arxiv.org/abs/2307.06100">arXiv:2307.06100</a></li>
+    <li id="ref-zhao2023">Zhao, T. Z., Kumar, V., Levine, S., Finn, C. (2023). Learning fine-grained bimanual manipulation with low-cost hardware. <span class="venue">Robotics: Science and Systems XIX</span>. <a href="https://doi.org/10.15607/RSS.2023.XIX.016">doi:10.15607/RSS.2023.XIX.016</a>. <a href="https://arxiv.org/abs/2304.13705">arXiv:2304.13705</a></li>
+    <li id="ref-hansen2024">Hansen, N., Su, H., Wang, X. (2024). TD-MPC2: Scalable, robust world models for continuous control. <span class="venue">ICLR 2024</span> (según arXiv). <a href="https://arxiv.org/abs/2310.16828">arXiv:2310.16828</a></li>
+    <li id="ref-bu2024">Bu, Q., Li, H., Chen, L., Cai, J., Zeng, J., Cui, H., Yao, M., Qiao, Y. (2024). Towards synergistic, generalized, and efficient dual-system for robotic manipulation. <a href="https://arxiv.org/abs/2410.08001">arXiv:2410.08001</a> (preprint)</li>
+    <li id="ref-shentu2024">Shentu, Y., Wu, P., Rajeswaran, A., Abbeel, P. (2024). From LLMs to actions: Latent codes as bridges in hierarchical robot control. <a href="https://arxiv.org/abs/2405.04798">arXiv:2405.04798</a> (preprint)</li>
+    <li id="ref-shi2025">Shi, L. X., Ichter, B., Equi, M., Ke, L., Pertsch, K., Vuong, Q., Tanner, J., Walling, A., Wang, H., Fusai, N., Li-Bell, A., Driess, D., Groom, L., Levine, S., Finn, C. (2025). Hi Robot: Open-ended instruction following with hierarchical vision-language-action models. <span class="venue">ICML 2025</span> (según arXiv). <a href="https://arxiv.org/abs/2502.19417">arXiv:2502.19417</a></li>
+    <li id="ref-liu2025">Liu, Y., Hamid, J. I., Xie, A., Lee, Y., Du, M., Finn, C. (2025). Bidirectional decoding: Improving action chunking via guided test-time sampling. <span class="venue">ICLR 2025</span> (según su PDF). <a href="https://arxiv.org/abs/2408.17355">arXiv:2408.17355</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="17">
+    <li id="ref-romero2025">Romero, A., Aljalbout, E., Song, Y., Scaramuzza, D. (2025). Actor–critic model predictive control: Differentiable optimization meets reinforcement learning for agile flight. <span class="venue">IEEE Transactions on Robotics</span>, 42, 673–692 (número de 2026 según Crossref). <a href="https://doi.org/10.1109/TRO.2025.3644945">doi:10.1109/TRO.2025.3644945</a>. <a href="https://arxiv.org/abs/2306.09852">arXiv:2306.09852</a></li>
+    <li id="ref-px4">PX4 Autopilot. Controller diagrams (documentación), <a href="https://docs.px4.io/main/en/flight_stack/controller_diagrams.html">docs.px4.io</a>; parámetro <code>IMU_GYRO_RATEMAX</code> y el guion <code>rc.mc_defaults</code> en <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a> (consultados el 2026-11-07)</li>
+    <li id="ref-astrom2021">Åström, K. J., Murray, R. M. (2021). <em>Feedback Systems: An Introduction for Scientists and Engineers</em>, 2.ª ed. Princeton University Press. Los resultados citados (fase de un retardo y límite por un cero en el semiplano derecho) están en los capítulos de análisis en frecuencia y de límites fundamentales; comprobados en la versión en línea 2.10c</li>
+    <li id="ref-shukor2025">Shukor, M., Aubakirova, D., Capuano, F., et al. (2025). SmolVLA: A vision-language-action model for affordable and efficient robotics. <a href="https://arxiv.org/abs/2506.01844">arXiv:2506.01844</a> (preprint)</li>
+    <li id="ref-black2025">Black, K., Galliker, M. Y., Levine, S. (2025). Real-time execution of action chunking flow policies. <span class="venue">NeurIPS 2025</span> (según su PDF). <a href="https://arxiv.org/abs/2506.07339">arXiv:2506.07339</a></li>
+  </ol>
+</section>
+
+</main>
+<aside id="glosario" hidden>
+<h3>El precio del retardo</h3>
+<p>Parte 1: análisis en frecuencia de un retardo puro (A2).</p>
+<dl>
+<dt>\(\tau\)</dt><dd data-hojas="8">Retardo puro, en s: lo que tarda una señal en llegar.</dd>
+<dt>\(\omega\)</dt><dd data-hojas="8">Frecuencia angular, en rad/s (\(2\pi\) por la frecuencia en Hz).</dd>
+<dt>\(G(s)\)</dt><dd data-hojas="8">Función de transferencia; la de un retardo es \(e^{-s\tau}\).</dd>
+<dt>\(s\)</dt><dd data-hojas="8">Variable de Laplace; en régimen sinusoidal, \(s = i\omega\).</dd>
+<dt>\(i\)</dt><dd data-hojas="8">Unidad imaginaria, \(i^2 = -1\).</dd>
+<dt>\(|\cdot|,\ \arg\)</dt><dd data-hojas="8">Módulo y ángulo (fase) de un número complejo.</dd>
+<dt>\(\omega_c\)</dt><dd data-hojas="8">Frecuencia de cruce del lazo: donde la ganancia vale 1; fija lo rápido que responde.</dd>
+<dt>\(z\)</dt><dd data-hojas="8">Cero en el semiplano derecho; la aproximación de Padé de un retardo lo pone en \(2/\tau\).</dd>
+</dl>
+<h3>Jerarquías</h3>
+<p>Partes 2 y 4.</p>
+<dl>
+<dt>\(c\)</dt><dd data-hojas="10">Cada cuántos pasos decide el nivel alto en el esquema de la parte 2.</dd>
+<dt>\(A_t[i]\)</dt><dd data-hojas="17">Acción para el instante \(t\) que predijo el trozo \(i\)-ésimo de los que se solapan (\(i = 0\), el más antiguo).</dd>
+<dt>\(w_i\)</dt><dd data-hojas="17">Peso de la predicción \(i\) en el ensamblado temporal: \(e^{-m i}\).</dd>
+<dt>\(m\)</dt><dd data-hojas="17">Parámetro del ensamblado temporal de ACT: con \(m\) menor, las predicciones nuevas entran antes.</dd>
+<dt>\(a_t\)</dt><dd data-hojas="17">Acción ejecutada en \(t\): media ponderada de las predicciones.</dd>
+</dl>
+<h3>Experimento</h3>
+<p>Parte 6.</p>
+<dl>
+<dt>\(\delta\)</dt><dd data-hojas="25">Latencia del planificador, en s: de 0,05 a 0,8 en el experimento.</dd>
+<dt>\(a\)</dt><dd data-hojas="25">Aceleración mandada al dron, en m/s² (hasta 6).</dd>
+<dt>\(v_p\)</dt><dd data-hojas="25">Velocidad de la persona que se sigue (1,5 m/s).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>RL</dt><dd data-hojas="1">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>MPC</dt><dd data-hojas="3">Model predictive control: control predictivo (A3).</dd>
+<dt>MPPI</dt><dd data-hojas="3">Model predictive path integral: MPC por muestreo (A3b).</dd>
+<dt>PD, PID</dt><dd data-hojas="22">Controladores proporcional-derivativo y proporcional-integral-derivativo (A2).</dd>
+<dt>VLM, VLA</dt><dd data-hojas="3">Modelos de visión y lenguaje, y de visión, lenguaje y acción (A11, A12).</dd>
+<dt>HIRO</dt><dd data-hojas="4">Hierarchical RL with off-policy correction: jerarquía de dos niveles que reetiqueta los objetivos pasados.</dd>
+<dt>ACT</dt><dd data-hojas="4">Action chunking with transformers: trozos de acciones con ensamblado temporal (A10).</dd>
+<dt>HiRT</dt><dd data-hojas="3">Hierarchical robot transformer: VLM lento asíncrono y política visual rápida.</dd>
+<dt>LCB</dt><dd data-hojas="13">Latent codes as bridges: un token latente como interfaz entre el LLM y la política.</dd>
+<dt>TD-MPC2</dt><dd data-hojas="4">MPC con MPPI en el espacio latente de un world model aprendido.</dd>
+<dt>PX4</dt><dd data-hojas="6">Software abierto de control de vuelo (B5).</dd>
+<dt>ESC</dt><dd data-hojas="6">Electronic speed controller: el variador de cada motor.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
+</body>
+</html>

@@ -59,7 +59,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 | A11 | LLMs y VLMs para razonar y planificar | ⬜ | | |
 | A12a | VLAs: fundamentos | ✅ | 2026-11-07 | 36 hojas, con el formato de la segunda petición (derivaciones en tablas paso / por qué, apartes, sin letra pequeña) y glosario: RT-1, RT-2, OpenVLA, Octo, OpenVLA-OFT, SmolVLA, FAST, datos (OXE, DROID, Bridge, LIBERO), robustez (LIBERO-PRO, VLATest) y RTC; acciones CTBR tokenizadas por casillas, con BPE y con DCT (800 frente a 31 tokens por segundo a 200 Hz; el ruido rompe la DCT a escala alta, con la derivación), latencia del modelo de 12B de A11 generando tokens de acción (30 tokens por segundo como máximo) y SmolVLA medido (109 ms por trozo en la GPU, 920 ms en CPU) |
 | A12b | VLAs en 2025–2026 y VLAs para drones | ⬜ | | |
-| A13 | Arquitecturas jerárquicas y fusión de modelos | ⬜ | | |
+| A13 | Arquitecturas jerárquicas y fusión de modelos | ✅ | 2026-11-07 | 37 hojas con el formato de la segunda petición y glosario: escalas de tiempo de un dron (PX4 a 800 Hz, Loquercio, Agilicious), el retardo paso a paso (fase \(-\omega\tau\), Padé, cruce < 1,2/τ), opciones, FeUdal, HIRO, HiRT, RoboDual, Hi Robot, LCB, ensamblado temporal de ACT, BID, fusión (residual, red + MPC, TD-MPC2, AC-MPC); experimento en CPU: seguir a una persona entre árboles con MPPI de 50 a 800 ms de latencia y cinco arquitecturas (a 400 ms, el planificador que manda directo choca en el 82 % de los vuelos y la jerarquía en ninguno; compensar la latencia ayuda poco y a 800 ms empeora) |
 | A14 | Seguridad y garantías | ⬜ 🛑 | | Fin de fase 4 |
 
 ## Fase 5 · Desplegar
