@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<link rel="stylesheet" href="../../assets/curso.css?v=10">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -48,7 +48,7 @@
   <h2>Un modelo que mira, lee la orden y mueve el robot, si le da tiempo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>RT-2 trató las acciones como texto: en situaciones no vistas, 62 % de éxito medio frente al 32 % de RT-1 <a class="cite" data-ref="zitkovich2023"></a>. Pero la versión de 55B se servía desde la nube a 1–3 Hz.</li>
         <li>OpenVLA, abierto y de 7B, supera a RT-2-X (55B) en 16,5 puntos absolutos con 7 veces menos parámetros, y corre a unos 6 Hz en una RTX 4090 <a class="cite" data-ref="kim2024"></a>.</li>
         <li>Con decodificación en paralelo, trozos de acciones y una cabeza continua, OpenVLA-OFT pasa de 4,2 a 108,8 acciones por segundo y del 76,5 % al 97,1 % en LIBERO <a class="cite" data-ref="kim2025"></a>.</li>
@@ -84,7 +84,7 @@
   <h2>RT-1: un Transformer que clasifica acciones en 256 casillas</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>130 000 episodios, más de 700 tareas, 13 robots y 17 meses de recogida de datos; 35 M parámetros; decide a 3 Hz, con menos de 100 ms de cálculo <a class="cite" data-ref="brohan2023"></a>.</li>
         <li>Cada dimensión de la acción (7 del brazo, 3 de la base y un modo) se discretiza en 256 casillas uniformes; la política predice una distribución categórica por dimensión.</li>
       </ul>
@@ -100,9 +100,7 @@
       </div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: clasificar en casillas</summary>
-        <p class="small">Con \(N\) casillas de ancho \(\Delta = 2/N\) en \([-1, 1]\), predecir la casilla con entropía cruzada maximiza una verosimilitud discretizada: la red puede representar distribuciones multimodales (A10) sin suponer una gaussiana. Si el valor está repartido uniformemente dentro de su casilla, el error de devolver el centro tiene desviación típica \(\Delta/\sqrt{12}\): con 256 casillas, \(2/256/\sqrt{12} \approx 0{,}0023\), es decir, un 0,1 % del rango.</p>
-      </details>
+      <div class="aparte"><span class="rotulo">Por qué clasificar y no regresar</span><p>Con \(N\) casillas de ancho \(\Delta = 2/N\) en \([-1, 1]\), la red da una probabilidad por casilla y se entrena con entropía cruzada. Así puede representar distribuciones con varios modos (A10) sin suponer una gaussiana. El precio es un error de redondeo de desviación \(\Delta/\sqrt{12}\), que se deriva en la parte 3.</p></div>
       <div class="callout clave"><span class="tag">El precio</span>Un token por dimensión y por paso: 7 dimensiones a 50 Hz son 350 tokens por segundo de acciones. Con decodificación autorregresiva, eso es lo que limita la frecuencia.</div>
     </div>
   </div>
@@ -113,7 +111,7 @@
   <h2>RT-2: las acciones, como palabras de un VLM</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Un VLM preentrenado en la web (PaLI-X o PaLM-E) se ajusta a la vez con datos de la web y de robots, y la acción se escribe como una cadena de enteros <a class="cite" data-ref="zitkovich2023"></a>.</li>
         <li>Con PaLI-X, cada casilla es el token del entero correspondiente (tiene uno por entero hasta 1000); con PaLM-E, se sobrescriben los 256 tokens menos usados.</li>
         <li>Generalización: 62 % de media en situaciones no vistas frente al 32 % de RT-1.</li>
@@ -159,14 +157,14 @@
   <h2>OpenVLA: abierto y de 7B; OFT: el mismo modelo, 26 veces más rápido</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>OpenVLA</strong> <a class="cite" data-ref="kim2024"></a>: codificadores SigLIP y DINOv2 (Prismatic) sobre Llama 2; 970 000 episodios de Open X-Embodiment.</li>
         <li><strong>Cuantizar</strong> (tabla 2): bf16, 71,3 % de éxito y 16,8 GB; int8, 58,1 % y 10,2 GB; int4, 71,9 % y 7,0 GB. En una A5000, int8 va a 1,2 Hz e int4 a 3 Hz.</li>
         <li><strong>Ajuste fino con LoRA</strong> (rango 32): 68,2 % frente al 69,7 % de ajustar todo, pero 59,7 GB de memoria con lotes de 16 y 10–15 h en una A100: no es de GPU de consumo.</li>
       </ul>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>OpenVLA-OFT</strong> <a class="cite" data-ref="kim2025"></a>: decodificar todas las acciones del trozo en paralelo (no de una en una), trozos de acciones (A10) y una cabeza continua con pérdida L1. En LIBERO, del 76,5 % al 97,1 %; 26 veces más rendimiento con trozos de 8 y 43 veces con trozos de 25.</li>
       </ul>
       <div class="callout clave"><span class="tag">La lección</span>Lo que hace lento a un VLA no es el VLM, sino generar la acción token a token. Con trozos y decodificación en paralelo, el mismo modelo pasa de 4,2 a más de 100 acciones por segundo.</div>
@@ -186,42 +184,65 @@
   <h2>A alta frecuencia, cada token casi repite el anterior</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Con casillas por paso, los datos de alta frecuencia producen fácilmente cientos de tokens por trozo de acciones, lo que dificulta el entrenamiento y hace lenta la inferencia <a class="cite" data-ref="pertsch2025"></a>.</li>
-        <li>El argumento de FAST: lo que aprende un modelo autorregresivo es proporcional a la información de cada token dado los anteriores, y con casillas por paso esa información tiende a cero al subir la frecuencia.</li>
+        <li>El argumento de FAST: un modelo autorregresivo aprende en proporción a la información nueva de cada token dados los anteriores, y con casillas por paso esa información tiende a cero al subir la frecuencia.</li>
         <li>Su experimento con curvas suaves: el error crece con la frecuencia hasta que el modelo simplemente copia la primera acción.</li>
       </ul>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: la DCT concentra la energía de una señal suave</summary>
-        <p class="small">La DCT-II de \(x_0, \dots, x_{H-1}\) es \(c_k = \alpha_k\sum_n x_n\cos\!\big(\tfrac{\pi}{H}(n + \tfrac12)k\big)\): una base de cosenos ortonormal. Si \(x\) es una señal suave muestreada a frecuencia \(f\), su contenido está por debajo de una frecuencia física fija; el coeficiente \(k\) corresponde a \(k f/(2H)\) Hz, así que con un trozo de 1 s (\(H = f\)) solo los primeros coeficientes son grandes, <em>independientemente de \(f\)</em>. Redondear \(\gamma c_k\) anula el resto. Muestrear más deprisa añade ceros, no información.</p>
-      </details>
-      <div class="callout clave"><span class="tag">FAST</span>DCT por dimensión, escalar y redondear (escala 10 por defecto), aplanar con las bajas frecuencias de todas las dimensiones primero y comprimir con BPE (vocabulario de 1024).</div>
+      <div class="callout clave"><span class="tag">La idea de FAST</span>No tokenizar las muestras, sino una representación en la que una señal suave ocupe pocos números: la transformada discreta del coseno (DCT). Las dos hojas siguientes la explican.</div>
+      <div class="aparte"><span class="rotulo">Un ejemplo con números</span><p>En nuestras acciones de dron, el 40 % de los tokens por casillas a 200 Hz es igual al del paso anterior en la misma dimensión (14 % a 50 Hz): información repetida que el modelo tiene que generar token a token.</p></div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Tokenizar · las cuentas</p>
-  <h2>El error de las casillas y lo que hace el ruido con la DCT</h2>
+  <p class="kicker">Tokenizar · la DCT en dibujo</p>
+  <h2>Una señal suave se describe con unos pocos cosenos</h2>
   <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 640 260" role="img" aria-label="Un trozo de 1 s de la velocidad angular de cabeceo a 50 Hz, a la izquierda, y sus 50 coeficientes de la DCT, a la derecha: casi toda la energía está en los primeros">
+        <line x1="40" y1="130" x2="300" y2="130" class="ln-rule"/>
+        <path d="M40.0,152.0 L45.3,143.7 L50.6,134.7 L55.9,125.6 L61.2,116.9 L66.5,109.1 L71.8,102.5 L77.1,97.2 L82.4,93.1 L87.8,90.3 L93.1,88.5 L98.4,87.6 L103.7,87.6 L109.0,88.1 L114.3,89.3 L119.6,91.0 L124.9,93.1 L130.2,95.8 L135.5,98.9 L140.8,102.6 L146.1,106.9 L151.4,111.8 L156.7,117.3 L162.0,123.7 L167.3,130.8 L172.7,138.6 L178.0,147.2 L183.3,156.4 L188.6,166.0 L193.9,175.7 L199.2,185.2 L204.5,194.2 L209.8,202.1 L215.1,208.6 L220.4,213.2 L225.7,215.7 L231.0,216.0 L236.3,214.2 L241.6,210.5 L246.9,205.3 L252.2,198.9 L257.6,191.8 L262.9,184.3 L268.2,176.9 L273.5,169.6 L278.8,162.7 L284.1,156.3 L289.4,150.6 L294.7,145.5 L300.0,141.1" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <path d="M40.0,144.8 L45.3,141.2 L50.6,134.7 L55.9,126.3 L61.2,117.3 L66.5,109.1 L71.8,102.4 L77.1,97.7 L82.4,95.1 L87.8,94.0 L93.1,93.8 L98.4,93.9 L103.7,93.9 L109.0,93.8 L114.3,93.6 L119.6,93.7 L124.9,94.6 L130.2,96.6 L135.5,99.6 L140.8,103.7 L146.1,108.4 L151.4,113.6 L156.7,119.1 L162.0,124.9 L167.3,131.1 L172.7,138.1 L178.0,146.2 L183.3,155.6 L188.6,165.9 L193.9,176.9 L199.2,187.7 L204.5,197.4 L209.8,205.3 L215.1,210.8 L220.4,213.8 L225.7,214.5 L231.0,213.4 L236.3,211.0 L241.6,207.9 L246.9,204.5 L252.2,200.6 L257.6,196.0 L262.9,190.4 L268.2,183.5 L273.5,175.3 L278.8,166.2 L284.1,156.9 L289.4,148.4 L294.7,142.0 L300.0,138.5" fill="none" class="ln-time ln-dash" stroke-width="1.6"/>
+        <text x="40" y="250" class="t-mono t-faint" font-size="12">0 s</text>
+        <text x="300" y="250" text-anchor="end" class="t-mono t-faint" font-size="12">1 s</text>
+        <text x="40" y="22" class="t-muted" font-size="13">acción x_n, 50 muestras</text>
+        <line x1="364" y1="150" x2="624" y2="150" class="ln-rule"/>
+        <path d="M364.0,150 L364.0,192.4 M369.2,150 L369.2,50.0 M374.4,150 L374.4,150.9 M379.6,150 L379.6,229.5 M384.8,150 L384.8,138.2 M390.0,150 L390.0,167.0 M395.2,150 L395.2,160.0 M400.4,150 L400.4,154.7 M405.6,150 L405.6,153.2 M410.8,150 L410.8,153.9 M416.0,150 L416.0,151.0 M421.2,150 L421.2,152.3 M426.4,150 L426.4,150.7 M431.6,150 L431.6,151.4 M436.8,150 L436.8,150.5 M442.0,150 L442.0,151.0 M447.2,150 L447.2,150.3 M452.4,150 L452.4,150.8 M457.6,150 L457.6,150.2 M462.8,150 L462.8,150.6 M468.0,150 L468.0,150.2 M473.2,150 L473.2,150.5 M478.4,150 L478.4,150.1 M483.6,150 L483.6,150.4 M488.8,150 L488.8,150.1 M494.0,150 L494.0,150.3 M499.2,150 L499.2,150.1 M504.4,150 L504.4,150.3 M509.6,150 L509.6,150.1 M514.8,150 L514.8,150.2 M520.0,150 L520.0,150.1 M525.2,150 L525.2,150.2 M530.4,150 L530.4,150.1 M535.6,150 L535.6,150.2 M540.8,150 L540.8,150.0 M546.0,150 L546.0,150.1 M551.2,150 L551.2,150.0 M556.4,150 L556.4,150.1 M561.6,150 L561.6,150.0 M566.8,150 L566.8,150.1 M572.0,150 L572.0,150.0 M577.2,150 L577.2,150.1 M582.4,150 L582.4,150.0 M587.6,150 L587.6,150.1 M592.8,150 L592.8,150.0 M598.0,150 L598.0,150.0 M603.2,150 L603.2,150.0 M608.4,150 L608.4,150.0 M613.6,150 L613.6,150.0 M618.8,150 L618.8,150.0" fill="none" class="ln-tesis" stroke-width="3.2"/>
+        <text x="364" y="250" class="t-mono t-faint" font-size="12">k = 0</text>
+        <text x="624" y="250" text-anchor="end" class="t-mono t-faint" font-size="12">k = 49</text>
+        <text x="364" y="22" class="t-muted" font-size="13">coeficientes c_k</text>
+        <text x="332" y="136" text-anchor="middle" class="t-muted" font-size="18">→</text>
+      </svg>
+      <figcaption>Azul: un trozo de la velocidad angular de cabeceo normalizada. Morado: sus 50 coeficientes de la DCT. Ocre discontinuo: la señal reconstruida tras redondear los coeficientes con escala 10. <code>figura_dct.py</code>.</figcaption>
+    </figure>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación 1: el error de las casillas es \(\Delta/\sqrt{12}\)</summary>
-        <p class="small"><strong>Notación.</strong> Acción \(x \in [-1, 1]\), \(N\) casillas de ancho \(\Delta = 2/N\); se devuelve el centro \(c\) de la casilla y el error es \(e = x - c \in [-\Delta/2, \Delta/2]\).</p>
-        <p class="small"><strong>Supuesto.</strong> Si la señal recorre muchas casillas, \(e\) se reparte uniformemente: densidad \(1/\Delta\) en ese intervalo.</p>
-        <p class="small"><strong>Varianza.</strong> \(\mathrm{Var}(e) = \int_{-\Delta/2}^{\Delta/2} e^2 \tfrac{1}{\Delta}\,de = \tfrac{1}{\Delta}\big[\tfrac{e^3}{3}\big]_{-\Delta/2}^{\Delta/2} = \tfrac{1}{\Delta}\cdot\tfrac{2}{3}\big(\tfrac{\Delta}{2}\big)^3 = \tfrac{\Delta^2}{12}\).</p>
-        <p class="small"><strong>Ejemplo del script.</strong> \(N = 256\): \(\Delta = 0,0078\) y \(\Delta/\sqrt{12} = 0,00226\). El RMSE medido es 0,0023 a 50 Hz y 0,0023 a 200 Hz: la fórmula acierta y no depende de la frecuencia.</p>
-      </details>
-    </div>
-    <div class="stack">
-      <details class="deriv" open><summary>Derivación 2: la DCT no comprime el ruido blanco</summary>
-        <p class="small"><strong>Ortonormal.</strong> La DCT es \(c = Cx\) con \(CC^\top = I\). Si \(x = s + n\) con ruido \(n \sim \mathcal N(0, \sigma^2 I)\), entonces \(c = Cs + Cn\) y \(\mathrm{Cov}(Cn) = \sigma^2 CC^\top = \sigma^2 I\): cada coeficiente lleva ruido de desviación \(\sigma\), igual que cada muestra.</p>
-        <p class="small"><strong>Redondeo.</strong> \(\mathrm{round}(\gamma c_k) = 0\) si y solo si \(|c_k| &lt; 1/(2\gamma)\). Para un coeficiente sin señal, \(P(\ne 0) = 2\,\big(1 - \Phi\big(\tfrac{1}{2\gamma\sigma}\big)\big)\).</p>
-        <p class="small"><strong>Ejemplo del script.</strong> \(\sigma = 0{,}02\): con \(\gamma = 10\), el umbral es \(2{,}5\sigma\) y sobrevive el 1,2 % de los coeficientes de ruido; con \(\gamma = 50\), es \(0{,}5\sigma\) y sobrevive el 61,7 %. A 200 Hz se miden 6,4 % y 64,2 % de coeficientes no nulos (sin ruido, 5,1 % y 10,6 %): de ahí los 369 tokens.</p>
-      </details>
+      <ul>
+        <li>Cada coeficiente \(c_k\) mide cuánto se parece el trozo a un coseno que oscila \(k/2\) veces en el trozo: \(c_0\) es la media, \(c_1\) una subida o bajada, y los siguientes, ondulaciones cada vez más rápidas.</li>
+        <li>En este trozo, los 5 primeros coeficientes tienen el 97,6 % de la energía; tras redondear con escala 10 quedan 8 coeficientes distintos de cero de 50, con un RMSE de 0,0173.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">De aquí sale la compresión</span>Muchos ceros seguidos se comprimen muy bien con BPE, igual que las palabras frecuentes en un texto.</div>
     </div>
   </div>
-  <p class="xsmall muted"><code>ruido_dct.py</code> y <code>figuras_a12a.py</code>; \(\Phi\) es la función de distribución de la normal estándar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tokenizar · la DCT paso a paso</p>
+  <h2>Por qué el número de coeficientes no crece con la frecuencia</h2>
+  <p><strong>Notación:</strong> trozo de \(H\) muestras \(x_0, \dots, x_{H-1}\) tomadas a frecuencia \(f\) (en Hz), así que dura \(H/f\) segundos; \(c_k\), coeficiente \(k\) de la DCT, con \(k = 0, \dots, H-1\); \(\alpha_k\), factor de normalización (\(\sqrt{1/H}\) si \(k = 0\), \(\sqrt{2/H}\) si no); \(f_{\max}\), frecuencia más alta que contiene la acción; \(\gamma\), escala de redondeo.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(c_k = \alpha_k \sum_{n=0}^{H-1} x_n \cos\!\big(\tfrac{\pi}{H}(n + \tfrac12)k\big)\)</td><td>Definición de la DCT-II ortonormal: proyecta el trozo sobre \(H\) cosenos</td></tr>
+      <tr><td><strong>2</strong></td><td>el coseno \(k\) oscila \(k/2\) veces en el trozo, a \(\dfrac{k/2}{H/f} = \dfrac{k f}{2H}\) Hz</td><td>Su argumento avanza \(\pi k\) entre \(n = 0\) y \(n = H\): media vuelta por cada unidad de \(k\)</td></tr>
+      <tr><td><strong>3</strong></td><td>solo cuentan los \(k \le 2 H f_{\max}/f\)</td><td>Los cosenos más rápidos que la señal apenas se le parecen: su coeficiente es casi cero</td></tr>
+      <tr><td><strong>4</strong></td><td>trozo de 1 s: \(H = f\), así que \(k \le 2 f_{\max}\)</td><td>El número de coeficientes útiles depende de lo rápida que es la señal, no de la frecuencia de muestreo</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mathrm{round}(\gamma\, c_k) = 0\) para los demás</td><td>Redondear con escala \(\gamma\) anula los coeficientes con \(|c_k| &lt; 1/(2\gamma)\)</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Comprobación con nuestros datos</span><p>Con escala 10, los coeficientes no nulos son el 14,9 % a 50 Hz y el 5,1 % a 200 Hz: en número, unos 7 y unos 10 por dimensión y segundo. Muestrear 4 veces más deprisa apenas añade coeficientes.</p></div>
 </section>
 
 <section class="slide">
@@ -240,16 +261,50 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">Tabla I de Pertsch et al. <a class="cite" data-ref="pertsch2025"></a>, con precisión de reconstrucción comparable.</p>
+      <p class="xsmall muted">Tabla I de Pertsch et al. <a class="cite" data-ref="pertsch2025"></a>, con precisión de reconstrucción comparable. FAST: DCT por dimensión, escala 10, bajas frecuencias de todas las dimensiones primero y BPE con vocabulario de 1024.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>π0 con FAST converge mucho más deprisa que π0 con difusión: 5 veces menos horas de GPU de entrenamiento.</li>
-        <li>Pero en inferencia, π0 con difusión predice un trozo de 1 s en unos 100 ms en una RTX 4090, y con FAST necesita unos 750 ms: hay que decodificar de 30 a 60 tokens con el modelo de 2B entero, frente a 10 pasos de un experto de 300 M.</li>
+        <li>En inferencia es al revés: π0 con difusión predice un trozo de 1 s en unos 100 ms en una RTX 4090; con FAST, en unos 750 ms, porque decodifica de 30 a 60 tokens con el modelo de 2B entero en vez de 10 pasos de un experto de 300 M.</li>
       </ul>
-      <div class="callout realidad"><span class="tag">Entrenar frente a ejecutar</span>Los tokens discretos se entrenan mejor; las cabezas continuas se ejecutan antes. Para un dron, donde manda la latencia, la segunda es la que vuela, y la primera puede servir para preentrenar.</div>
+      <div class="callout realidad"><span class="tag">Entrenar frente a ejecutar</span>Los tokens discretos se entrenan mejor; las cabezas continuas se ejecutan antes. En un dron manda la latencia.</div>
     </div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tokenizar · el error de las casillas</p>
+  <h2>El error de las casillas es \(\Delta/\sqrt{12}\), a cualquier frecuencia</h2>
+  <p><strong>Notación:</strong> acción \(x \in [-1, 1]\); \(N\) casillas de ancho \(\Delta = 2/N\); se devuelve el centro \(c\) de la casilla; error \(e = x - c\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(e \in [-\Delta/2,\ \Delta/2]\)</td><td>El centro está a medio ancho de cada borde</td></tr>
+      <tr><td><strong>2</strong></td><td>\(e\) uniforme en ese intervalo: densidad \(1/\Delta\)</td><td>Supuesto: la señal recorre muchas casillas y cae en cualquier punto de la suya con igual probabilidad</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathrm{E}[e] = 0\), así que \(\mathrm{Var}(e) = \mathrm{E}[e^2] = \int_{-\Delta/2}^{\Delta/2} e^2\,\tfrac{1}{\Delta}\,de\)</td><td>El intervalo es simétrico alrededor de cero</td></tr>
+      <tr><td><strong>4</strong></td><td>\(= \tfrac{1}{\Delta}\big[\tfrac{e^3}{3}\big]_{-\Delta/2}^{\Delta/2} = \tfrac{1}{\Delta}\cdot \tfrac{2}{3}\big(\tfrac{\Delta}{2}\big)^3 = \tfrac{\Delta^2}{12}\)</td><td>Integral de \(e^2\); los dos extremos aportan lo mismo</td></tr>
+      <tr><td><strong>5</strong></td><td>desviación típica \(= \Delta/\sqrt{12}\)</td><td>Raíz de la varianza; es también el RMSE, porque la media es cero</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>Con \(N = 256\): \(\Delta = 0,0078\) y \(\Delta/\sqrt{12} = 0,00226\). El RMSE medido es 0,0023 a 50 Hz y 0,0023 a 200 Hz: la fórmula acierta y no depende de la frecuencia (<code>ruido_dct.py</code>, <code>figuras_a12a.py</code>).</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Tokenizar · el ruido y la DCT</p>
+  <h2>La DCT no comprime el ruido blanco</h2>
+  <p><strong>Notación:</strong> trozo \(x = s + n\), con \(s\) la parte suave y \(n\) ruido de desviación \(\sigma\) en cada muestra; \(C\), matriz de la DCT (\(c = Cx\)); \(n_k\), ruido del coeficiente \(k\); \(\Phi\), función de distribución de la normal estándar.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(c = Cs + Cn\)</td><td>La DCT es lineal</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathrm{Cov}(Cn) = C\,\mathrm{Cov}(n)\,C^\top = \sigma^2 C C^\top = \sigma^2 I\)</td><td>Ruido blanco: \(\mathrm{Cov}(n) = \sigma^2 I\); la DCT ortonormal cumple \(CC^\top = I\)</td></tr>
+      <tr><td><strong>3</strong></td><td>cada \(n_k\) tiene desviación \(\sigma\), también los de alta frecuencia</td><td>La diagonal de \(\sigma^2 I\); el ruido no se concentra como la señal</td></tr>
+      <tr><td><strong>4</strong></td><td>un coeficiente sin señal sobrevive al redondeo si \(|n_k| \ge 1/(2\gamma)\)</td><td>Paso 5 de la DCT paso a paso</td></tr>
+      <tr><td><strong>5</strong></td><td>\(P(\ne 0) = 2\,\big(1 - \Phi\big(\tfrac{1}{2\gamma\sigma}\big)\big)\)</td><td>Probabilidad de que una normal de desviación \(\sigma\) supere el umbral por arriba o por abajo</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>\(\sigma = 0{,}02\). Con \(\gamma = 10\), el umbral es \(2{,}5\sigma\) y sobrevive el 1,2 % de los coeficientes de ruido; con \(\gamma = 50\), es \(0{,}5\sigma\) y sobrevive el 61,7 %. A 200 Hz se miden 6,4 % y 64,2 % de coeficientes no nulos (sin ruido, 5,1 % y 10,6 %): de ahí los 369 tokens con escala 50.</p></div>
 </section>
 
 <!-- ============ PARTE 4 ============ -->
@@ -264,35 +319,65 @@
   <h2>Un millón de trayectorias, casi todas de brazos sobre una mesa</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Open X-Embodiment</strong> <a class="cite" data-ref="oxe2024"></a>: 22 robots de 21 instituciones, 527 habilidades (160 266 tareas) y más de un millón de trayectorias. RT-1-X mejora un 50 % al método original o a RT-1 en los dominios con pocos datos.</li>
-        <li><strong>DROID</strong> <a class="cite" data-ref="khazatsky2024"></a>: 76 000 demostraciones (350 h) en 564 escenas y 86 tareas, recogidas por 50 personas en tres continentes durante 12 meses con brazos Franka.</li>
+      <ul>
+        <li><strong>Open X-Embodiment</strong> <a class="cite" data-ref="oxe2024"></a>: 22 robots de 21 instituciones, 527 habilidades y más de un millón de trayectorias. RT-1-X mejora un 50 % al método original o a RT-1 en los dominios con pocos datos.</li>
+        <li><strong>DROID</strong> <a class="cite" data-ref="khazatsky2024"></a>: 76 000 demostraciones (350 h) en 564 escenas y 86 tareas, con brazos Franka.</li>
         <li><strong>BridgeData V2</strong> <a class="cite" data-ref="walke2023"></a>: 60 096 trayectorias en 24 entornos con un WidowX a 5 Hz.</li>
-        <li><strong>LIBERO</strong> <a class="cite" data-ref="liu2023"></a>: cuatro grupos de tareas (130 en total) en simulación, con demostraciones de personas.</li>
+        <li><strong>LIBERO</strong> <a class="cite" data-ref="liu2023"></a>: 130 tareas en simulación, con demostraciones de personas.</li>
       </ul>
     </div>
     <div class="stack">
-      <div class="callout tesis"><span class="tag">Y los drones</span>Estos conjuntos son de manipulación. Para un dron no hay nada parecido en tamaño; la alternativa es el simulador (fase 2) con expertos privilegiados (A6b, A10) y datos reales de vuelo públicos para comprobar. A12b recoge lo que hay.</div>
-      <div class="callout clave"><span class="tag">Datos frente a modelo</span>Lo que generaliza un VLA depende sobre todo de la variedad de sus datos: escenas, objetos, robots. Más parámetros sin más variedad no lo arreglan.</div>
+      <div class="callout tesis"><span class="tag">Y los drones</span>No hay nada parecido para drones. La alternativa es el simulador (fase 2) con expertos privilegiados (A6b, A10) y datos reales públicos para comprobar. A12b recoge lo que hay.</div>
+      <div class="callout clave"><span class="tag">Datos frente a modelo</span>Lo que generaliza un VLA depende sobre todo de la variedad de sus datos: escenas, objetos, robots.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Datos · evaluar y ejecutar</p>
-  <h2>Más del 90 % en LIBERO, 0 % si se cambia algo; y la latencia del prellenado</h2>
+  <p class="kicker">Datos · evaluar</p>
+  <h2>Más del 90 % en LIBERO, 0 % si se cambia algo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>LIBERO-PRO</strong> (preprint) <a class="cite" data-ref="zhou2025"></a>: modelos que superan el 90 % en la evaluación estándar de LIBERO caen al 0,0 % al perturbar objetos, posiciones iniciales, instrucciones o entornos; siguen intentando agarrar aunque el objeto se haya cambiado por otro.</li>
         <li><strong>VLATest</strong> <a class="cite" data-ref="wang2025"></a>: pruebas automáticas de siete VLA con objetos de confusión, luz, posición de la cámara y órdenes cambiadas; les falta la robustez necesaria para usarlos en la práctica.</li>
       </ul>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Ejecución en tiempo real</strong> <a class="cite" data-ref="black2025"></a>: con una RTX 4090, π0 (3B) gasta 46 ms solo en el prellenado de la caché KV, cuando el paso de control a 50 Hz es de 20 ms. Generar el siguiente trozo mientras se ejecuta el anterior, congelando las acciones que se van a ejecutar seguro y completando el resto, funciona con retrasos de más de 300 ms.</li>
+      <div class="callout realidad"><span class="tag">Qué significa</span>Un banco de pruebas en el que se entrena y se evalúa con las mismas escenas mide memoria, no generalización. Para tu tesis: evalúa siempre en escenas, objetos y órdenes que no estén en los datos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Datos · tiempo real</p>
+  <h2>El prellenado ya no cabe en un paso de control</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 220" role="img" aria-label="Línea temporal: el robot ejecuta el trozo anterior mientras el modelo calcula el siguiente, que llega con un retraso de varios pasos de control">
+        <line x1="20" y1="60" x2="500" y2="60" class="ln-rule"/>
+        <text x="20" y="40" class="t-muted" font-size="13">pasos de control de 20 ms (50 Hz)</text>
+        <g class="ln">
+          <line x1="20" y1="54" x2="20" y2="66"/><line x1="68" y1="54" x2="68" y2="66"/><line x1="116" y1="54" x2="116" y2="66"/><line x1="164" y1="54" x2="164" y2="66"/><line x1="212" y1="54" x2="212" y2="66"/><line x1="260" y1="54" x2="260" y2="66"/><line x1="308" y1="54" x2="308" y2="66"/><line x1="356" y1="54" x2="356" y2="66"/><line x1="404" y1="54" x2="404" y2="66"/><line x1="452" y1="54" x2="452" y2="66"/><line x1="500" y1="54" x2="500" y2="66"/>
+        </g>
+        <rect x="20" y="90" width="300" height="34" class="box-accent"/>
+        <text x="30" y="112" font-size="14">se ejecuta el trozo anterior</text>
+        <rect x="20" y="140" width="110" height="34" class="box-time"/>
+        <text x="28" y="162" font-size="13">prellenado 46 ms</text>
+        <rect x="130" y="140" width="150" height="34" class="box-tesis"/>
+        <text x="138" y="162" font-size="13">resto del cálculo</text>
+        <rect x="280" y="90" width="220" height="34" class="box-accent"/>
+        <text x="290" y="112" font-size="14">trozo nuevo</text>
+        <text x="20" y="205" class="t-muted" font-size="13">el trozo nuevo llega con varios pasos de retraso: los primeros se congelan</text>
+      </svg>
+      <figcaption>Esquema de la ejecución en tiempo real de Black et al.: el modelo genera el trozo siguiente mientras se ejecuta el actual. Solo el prellenado de π0 (46 ms en una RTX 4090) es una cifra del artículo; el resto del dibujo es ilustrativo.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Con una RTX 4090, π0 (3B) gasta 46 ms solo en el prellenado de la caché KV, cuando el paso de control a 50 Hz es de 20 ms <a class="cite" data-ref="black2025"></a>.</li>
+        <li>Solución: generar el siguiente trozo mientras se ejecuta el anterior, congelando las acciones que se van a ejecutar seguro y completando el resto. Funciona con retrasos de más de 300 ms.</li>
       </ul>
-      <div class="callout realidad"><span class="tag">Para un dron</span>Un VLA no cabe en un lazo de 20 ms: o genera trozos que cubren su propia latencia, o manda referencias lentas a un controlador rápido. La parte 5 lo mide en tu hardware.</div>
+      <div class="callout realidad"><span class="tag">Para un dron</span>Un VLA no cabe en un lazo de 20 ms: o genera trozos que cubren su latencia, o manda referencias lentas a un controlador rápido (A13).</div>
     </div>
   </div>
 </section>
@@ -386,30 +471,19 @@
 <section class="slide">
   <p class="kicker">Experimento · las cuentas</p>
   <h2>Cuántos tokens de acción caben en un segundo</h2>
-  <div class="cols">
-    <div class="stack">
-      <details class="deriv" open><summary>Derivación: la condición de tiempo real para un trozo</summary>
-        <p class="small"><strong>Notación.</strong> \(t_{\text{pre}}\): prellenado (imagen y texto); \(r\): tokens por segundo al decodificar; \(N\): tokens del trozo; \(T\): segundos de acciones que cubre el trozo.</p>
-        <p class="small"><strong>Tiempo de un trozo.</strong> El prellenado se hace una vez y cada token cuesta \(1/r\): \(t_{\text{trozo}} = t_{\text{pre}} + N/r\).</p>
-        <p class="small"><strong>Tiempo real.</strong> El trozo siguiente tiene que estar listo antes de que se acabe el actual: \(t_{\text{trozo}} \le T\), es decir, \(N \le r\,(T - t_{\text{pre}})\).</p>
-        <p class="small"><strong>Con casillas.</strong> \(N = d\,f\,T\) (dimensiones × frecuencia × duración), así que la condición es \(d\,f \le r\,(1 - t_{\text{pre}}/T)\): la frecuencia máxima no depende de \(T\).</p>
-      </details>
-    </div>
-    <div class="stack">
-      <div class="table-wrap">
-        <table class="t">
-          <thead><tr><th>Ejemplo del script (Gemma 4 de 12B)</th><th>Valor</th></tr></thead>
-          <tbody>
-            <tr><td>\(t_{\text{pre}}\), \(r\)</td><td class="n">0,156 s, 35,5 tokens/s</td></tr>
-            <tr><td>Máximo de tokens por trozo de 1 s</td><td class="n">\(35,5 \times (1 - 0,156) \approx 30\)</td></tr>
-            <tr><td>Casillas, 4 dimensiones a 50 Hz</td><td class="n">200: 6,7 veces de más</td></tr>
-            <tr><td>DCT + BPE a 50 / 200 Hz (con ruido)</td><td class="n">26 / 44</td></tr>
-            <tr><td>Frecuencia máxima con casillas (\(d = 4\))</td><td class="n">7,5 Hz</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="callout realidad"><span class="tag">Con el ancho de banda (A11)</span>Aunque la decodificación llegara a la cota del ancho de banda de esta GPU (unos 41 tokens/s con 7 GB de pesos), no pasarían de unos 35 tokens por segundo de acciones: con casillas, menos de 9 Hz para un dron de 4 mandos.</div>
-    </div>
+  <p><strong>Notación:</strong> \(t_{\text{pre}}\), tiempo de prellenado (imagen y texto); \(r\), tokens por segundo al decodificar; \(N\), tokens del trozo; \(T\), segundos de acciones que cubre el trozo; \(d\), dimensiones de la acción; \(f\), frecuencia de control.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(t_{\text{trozo}} = t_{\text{pre}} + N/r\)</td><td>El prellenado se hace una vez por trozo; después, cada token cuesta \(1/r\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(t_{\text{trozo}} \le T\)</td><td>Tiempo real: el trozo siguiente tiene que estar listo antes de que se acabe el actual</td></tr>
+      <tr><td><strong>3</strong></td><td>\(N \le r\,(T - t_{\text{pre}})\)</td><td>Despejar \(N\) de los pasos 1 y 2</td></tr>
+      <tr><td><strong>4</strong></td><td>casillas: \(N = d\,f\,T\), así que \(d\,f \le r\,(1 - t_{\text{pre}}/T)\)</td><td>Un token por dimensión y paso; dividir por \(T\)</td></tr>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:6px">
+    <div class="aparte"><span class="rotulo">Ejemplo del script (Gemma 4 de 12B)</span><p>\(t_{\text{pre}} = 0,156\) s y \(r = 35,5\) tokens/s, así que \(N \le 35,5 \times (1 - 0,156) \approx 30\) tokens por trozo de 1 s. Casillas a 50 Hz: 200 tokens, 6,7 veces de más; frecuencia máxima con \(d = 4\): 7,5 Hz. DCT con BPE: 26 tokens a 50 Hz (cabe) y 44 a 200 Hz (no cabe).</p></div>
+    <div class="callout realidad"><span class="tag">Con el ancho de banda (A11)</span>Aunque la decodificación llegara a la cota del ancho de banda de esta GPU (unos 41 tokens/s con 7 GB de pesos), no pasaría de unos 35 tokens por segundo de acciones: con casillas, menos de 9 Hz para un dron de 4 mandos.</div>
   </div>
 </section>
 
@@ -431,7 +505,7 @@
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
   <h2>VLAs más pequeños, más rápidos y evaluados con más honestidad</h2>
-  <div class="cols c3 body cards-sm">
+  <div class="cols c3 body">
     <div class="card"><span class="meta">HECHO</span><h3>El VLM sirve de base</h3><p>Reutilizar un VLM preentrenado mejora la generalización de la política <a class="cite" data-ref="zitkovich2023,kim2024"></a>, y los datos de muchos robots ayudan a los dominios pequeños <a class="cite" data-ref="oxe2024"></a>.</p></div>
     <div class="card"><span class="meta">TENDENCIA</span><h3>Trozos y cabezas continuas</h3><p>Decodificar en paralelo, generar trozos y ejecutar mientras se piensa el siguiente <a class="cite" data-ref="kim2025,black2025"></a>; modelos de cientos de millones de parámetros <a class="cite" data-ref="shukor2025"></a>.</p></div>
     <div class="card"><span class="meta">ABIERTO</span><h3>Robustez y otros cuerpos</h3><p>Resultados que se hunden con perturbaciones sencillas <a class="cite" data-ref="zhou2025,wang2025"></a>; casi todo es manipulación sobre una mesa (A12b: otros robots y drones).</p></div>
@@ -444,7 +518,7 @@
   <h2>¿Un VLA en un dron que busca?</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Arriba en la jerarquía:</strong> un VLA que, con la imagen y la orden, proponga hacia dónde mirar o el siguiente punto de paso a unos Hz, y un controlador clásico o una política pequeña (A6, A10) que vuele a 50–800 Hz.</li>
         <li><strong>Belief:</strong> un VLA decide con la imagen actual (y como mucho unas pocas anteriores); no tiene un belief explícito. Combinarlo con el filtro de A7a o con el latente de A8a es una pregunta abierta.</li>
         <li><strong>Datos:</strong> sin conjuntos grandes de drones, el simulador con expertos privilegiados es la fuente; FAST o un experto de flow matching, la representación.</li>
@@ -540,7 +614,7 @@
     <div class="stack">
       <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tienes un dron con un ordenador de a bordo que ejecuta SmolVLA en unos cientos de milisegundos. ¿Qué le harías generar, a qué frecuencia y qué debajo?</p>
       <details class="deriv"><summary>Ver respuesta</summary>
-        <p class="small">No mandos de motor ni CTBR a 50 Hz: no le da tiempo y un fallo tira el dron. Puntos de paso o velocidades de referencia para el próximo segundo, como un trozo de acciones que cubre su propia latencia, generado cada 0,5–1 s mientras se ejecuta el anterior. Debajo, un seguidor de trayectorias (MPC o una política pequeña destilada, A10) a 50 Hz y el lazo de rate de la controladora a 800 Hz, con un filtro de seguridad (A14) que compruebe que las referencias no llevan a una zona prohibida ni a una colisión. Mediría la latencia y su peor caso a bordo, el éxito de la tarea y qué pasa si el VLA deja de responder.</p>
+        <p>No mandos de motor ni CTBR a 50 Hz: no le da tiempo y un fallo tira el dron. Puntos de paso o velocidades de referencia para el próximo segundo, como un trozo de acciones que cubre su propia latencia, generado cada 0,5–1 s mientras se ejecuta el anterior. Debajo, un seguidor de trayectorias (MPC o una política pequeña destilada, A10) a 50 Hz y el lazo de rate de la controladora a 800 Hz, con un filtro de seguridad (A14) que compruebe que las referencias no llevan a una zona prohibida ni a una colisión. Mediría la latencia y su peor caso a bordo, el éxito de la tarea y qué pasa si el VLA deja de responder.</p>
       </details>
     </div>
   </div>
@@ -549,7 +623,7 @@
 <section class="slide">
   <p class="kicker">Lecturas guiadas</p>
   <h2>Tres lecturas esenciales y por dónde entrarles</h2>
-  <div class="cols c3 body cards-sm">
+  <div class="cols c3 body">
     <div class="card">
       <span class="meta">ESENCIAL 1 · 60 MIN · CORL</span>
       <h3>OpenVLA <a class="cite" data-ref="kim2024"></a></h3>
@@ -577,8 +651,8 @@
   <h2>Inferencia y latencia de un VLA pequeño</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Acciones de dron</strong> por planitud diferencial a 50 y 200 Hz.</li>
         <li><strong>Tres tokenizadores:</strong> casillas, casillas + BPE, DCT + BPE.</li>
         <li><strong>Latencia de decodificación</strong> con un VLM local.</li>
@@ -623,6 +697,68 @@
 </section>
 
 </main>
-<script src="../../assets/curso.js?v=3"></script>
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<p>Las acciones se normalizan a \([-1, 1]\) por dimensión antes de tokenizarlas.</p>
+<dl>
+<dt>\(\mathrm{E}[\cdot]\)</dt><dd data-hojas="16">Esperanza (media) de una variable aleatoria.</dd>
+<dt>\(\mathrm{Var}(\cdot)\)</dt><dd data-hojas="16">Varianza: media del cuadrado de la desviación respecto de la media.</dd>
+<dt>\(\mathrm{Cov}(\cdot)\)</dt><dd data-hojas="17">Matriz de covarianza de un vector aleatorio.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="17">Traspuesta de una matriz.</dd>
+<dt>\(I\)</dt><dd data-hojas="17">Matriz identidad.</dd>
+<dt>\(\mathrm{round}\)</dt><dd data-hojas="14">Redondeo al entero más cercano.</dd>
+</dl>
+<h3>Tokenizar por casillas</h3>
+<p>Partes 1 y 3: RT-1, RT-2 y OpenVLA discretizan cada dimensión de la acción.</p>
+<dl>
+<dt>\(x\)</dt><dd data-hojas="16">Valor de una dimensión de la acción, normalizado en \([-1, 1]\).</dd>
+<dt>\(N\)</dt><dd data-hojas="6">Número de casillas por dimensión (256 en RT-1, RT-2 y OpenVLA).</dd>
+<dt>\(\Delta\)</dt><dd data-hojas="6">Ancho de cada casilla, \(\Delta = 2/N\); con \(N = 256\), 0,0078.</dd>
+<dt>\(c\)</dt><dd data-hojas="16">Centro de la casilla, el valor que se devuelve al destokenizar.</dd>
+<dt>\(e\)</dt><dd data-hojas="16">Error de cuantización, \(e = x - c\); su desviación típica es \(\Delta/\sqrt{12}\).</dd>
+</dl>
+<h3>La DCT y FAST</h3>
+<p>Parte 3: la transformada discreta del coseno de un trozo de acciones.</p>
+<dl>
+<dt>\(H\)</dt><dd data-hojas="14">Número de muestras del trozo; con un trozo de 1 s, \(H = f\).</dd>
+<dt>\(f\)</dt><dd data-hojas="14">Frecuencia de las acciones (de muestreo o de control), en Hz.</dd>
+<dt>\(x_n\)</dt><dd data-hojas="14">Muestra \(n\) del trozo de una dimensión de la acción, \(n = 0, \dots, H-1\).</dd>
+<dt>\(c_k\)</dt><dd data-hojas="14">Coeficiente \(k\) de la DCT: cuánto se parece el trozo a un coseno que oscila \(k/2\) veces en él.</dd>
+<dt>\(\alpha_k\)</dt><dd data-hojas="14">Factor de normalización de la DCT ortonormal: \(\sqrt{1/H}\) si \(k = 0\), \(\sqrt{2/H}\) si no.</dd>
+<dt>\(f_{\max}\)</dt><dd data-hojas="14">Frecuencia más alta que contiene la acción, en Hz.</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="14">Escala de redondeo de los coeficientes (10 por defecto en FAST): se guarda \(\mathrm{round}(\gamma c_k)\).</dd>
+<dt>\(C\)</dt><dd data-hojas="17">Matriz de la DCT, \(c = Cx\); es ortonormal, \(CC^\top = I\).</dd>
+<dt>\(s\)</dt><dd data-hojas="17">Parte suave del trozo.</dd>
+<dt>\(n\)</dt><dd data-hojas="17">Ruido blanco del trozo, de desviación \(\sigma\) en cada muestra.</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="17">Desviación típica del ruido (0,02 en el experimento).</dd>
+<dt>\(n_k\)</dt><dd data-hojas="17">Ruido del coeficiente \(k\); también tiene desviación \(\sigma\).</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="17">Función de distribución de la normal estándar.</dd>
+</dl>
+<h3>Tiempo real</h3>
+<p>Parte 5: cuándo un modelo que genera tokens llega a tiempo.</p>
+<dl>
+<dt>\(t_{\text{pre}}\)</dt><dd data-hojas="25">Tiempo de prellenado de la imagen y el texto, en s.</dd>
+<dt>\(r\)</dt><dd data-hojas="25">Tokens por segundo al decodificar.</dd>
+<dt>\(N\)</dt><dd data-hojas="25">En la parte 5: número de tokens del trozo de acciones.</dd>
+<dt>\(T\)</dt><dd data-hojas="25">Segundos de acciones que cubre un trozo.</dd>
+<dt>\(d\)</dt><dd data-hojas="25">Dimensiones de la acción (4 en CTBR).</dd>
+<dt>\(t_{\text{trozo}}\)</dt><dd data-hojas="25">Tiempo de generar un trozo: \(t_{\text{pre}} + N/r\).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>VLA</dt><dd data-hojas="1">Vision-language-action model: modelo de visión, lenguaje y acción.</dd>
+<dt>VLM</dt><dd data-hojas="2">Vision-language model: modelo de visión y lenguaje, la base de un VLA.</dd>
+<dt>DCT</dt><dd data-hojas="2">Discrete cosine transform: transformada discreta del coseno.</dd>
+<dt>BPE</dt><dd data-hojas="3">Byte-pair encoding: compresión que une los pares de símbolos más frecuentes en tokens nuevos.</dd>
+<dt>FAST</dt><dd data-hojas="1">Tokenizador de acciones de Pertsch et al.: DCT, redondeo y BPE.</dd>
+<dt>CTBR</dt><dd data-hojas="3">Collective thrust and body rates: empuje colectivo y velocidades angulares, el mando de A6b.</dd>
+<dt>RMSE</dt><dd data-hojas="13">Root mean square error: raíz del error cuadrático medio.</dd>
+<dt>LoRA</dt><dd data-hojas="10">Low-rank adaptation: ajuste fino de una corrección de rango bajo (se explica en A12b).</dd>
+<dt>KV</dt><dd data-hojas="21">Caché de claves y valores de la atención, que se llena en el prellenado.</dd>
+<dt>OFT</dt><dd data-hojas="1">Nombre de la receta de ajuste de OpenVLA-OFT (Kim, Finn y Liang): decodificación en paralelo, trozos y cabeza continua.</dd>
+<dt>OXE</dt><dd data-hojas="4">Open X-Embodiment: conjunto de datos de 22 robots.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
 </body>
 </html>
