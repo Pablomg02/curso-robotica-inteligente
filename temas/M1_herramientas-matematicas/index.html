@@ -25,7 +25,7 @@
   <h1>Rotaciones, incertidumbre e información</h1>
   <p class="subtitle">Grupos de Lie para estados que no son vectores, inferencia variacional para beliefs que no se pueden calcular y teoría de la información para medir lo que el robot sabe y lo que le falta.</p>
   <div class="meta-row">
-    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Duración</b> ≈ 6 h + laboratorio</span>
     <span><b>Prerrequisitos</b> álgebra lineal, probabilidad, cálculo</span>
     <span><b>Prepara</b> A1, A2, A4, A7, A8, A9</span>
   </div>
@@ -104,25 +104,219 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Definiciones</p>
-  <h2>SO(3), su álgebra so(3) y la cinemática de la actitud</h2>
-  <div class="cols">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(W\), \(B\)</td><td>Marcos de referencia: <strong>mundo</strong> (fijo al suelo) y <strong>cuerpo</strong> (fijo al dron, se mueve con él)</td><td>En PX4, NED y FRD</td></tr>
+      <tr><td>\(\mathbf p^W\), \(\mathbf p^B\)</td><td>El <em>mismo</em> vector escrito con las coordenadas de \(W\) o con las de \(B\)</td><td>La cámara, 1 m delante del dron: \(\mathbf p^B = (1, 0, 0)\)</td></tr>
+      <tr><td>\(R\) (o \(R_{WB}\))</td><td>Matriz de rotación 3×3: la <strong>orientación</strong> del dron. Pasa coordenadas de cuerpo a mundo: \(\mathbf p^W = R\,\mathbf p^B\)</td><td>Ver las dos hojas siguientes</td></tr>
+      <tr><td>\(\boldsymbol\omega = (p, q, r)\)</td><td>Velocidad angular en ejes cuerpo, en rad/s. Es lo que mide el giróscopo</td><td>Una voltereta por segundo: \(\|\boldsymbol\omega\| = 2\pi\) rad/s</td></tr>
+      <tr><td>\(\theta\), \(\mathbf u\)</td><td>Ángulo de giro (rad) y eje de giro (vector unitario, \(\|\mathbf u\| = 1\))</td><td>90° alrededor de z: \(\theta = \pi/2\), \(\mathbf u = (0,0,1)\)</td></tr>
+      <tr><td>\(\boldsymbol\phi = \theta\,\mathbf u\)</td><td><strong>Vector de rotación</strong>: eje multiplicado por ángulo. Tres números que describen un giro</td><td>\(\boldsymbol\phi = (0, 0, \pi/2)\)</td></tr>
+      <tr><td>\([\mathbf a]_\times\) y \((\cdot)^\vee\)</td><td>\([\mathbf a]_\times\) es la matriz que hace el producto vectorial: \([\mathbf a]_\times\mathbf b = \mathbf a\times\mathbf b\). \(\vee\) es la operación inversa (de matriz a vector). Se llaman <em>hat</em> y <em>vee</em></td><td>Hoja «El producto vectorial como matriz»</td></tr>
+      <tr><td>\(\mathrm{Exp}\), \(\mathrm{Log}\)</td><td>Pasan de vector de rotación a matriz de rotación y viceversa</td><td>\(\mathrm{Exp}(0,0,\pi/2)\) = giro de 90° en z</td></tr>
+      <tr><td>\(X\), \(\boldsymbol\tau\), \(\oplus\), \(\ominus\)</td><td>Un elemento cualquiera del grupo (rotación o pose), un vector pequeño de corrección, «aplicar una corrección» y «diferencia entre dos rotaciones»</td><td>Hojas de Exp y Log</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotaciones · 1</p>
+  <h2>Qué es una matriz de rotación y por qué sus columnas importan</h2>
+  <div class="cols w60">
     <div class="stack">
-      <p>Un <strong>grupo de Lie</strong> es a la vez un grupo (composición, inversa, identidad) y una variedad diferenciable. Las rotaciones 3D:</p>
-      \[ SO(3) = \{ R \in \mathbb R^{3\times 3} : R^\top R = I,\ \det R = 1 \} \]
-      <p>Su espacio tangente en la identidad, el <strong>álgebra de Lie</strong> so(3), son las matrices antisimétricas. Se identifican con vectores de \(\mathbb R^3\) mediante <em>hat</em> y <em>vee</em>:</p>
-      \[ [\boldsymbol\omega]_\times = \begin{bmatrix} 0 & -\omega_3 & \omega_2 \\ \omega_3 & 0 & -\omega_1 \\ -\omega_2 & \omega_1 & 0 \end{bmatrix},\qquad [\boldsymbol\omega]_\times \mathbf v = \boldsymbol\omega \times \mathbf v \]
+      <p>Las columnas de \(R\) son los tres ejes del dron escritos en coordenadas del mundo:</p>
+      \[ R = \big[\ \mathbf x_B^W \;\big|\; \mathbf y_B^W \;\big|\; \mathbf z_B^W\ \big] \]
+      <p>Por eso \(\mathbf p^W = R\,\mathbf p^B = p_1\,\mathbf x_B^W + p_2\,\mathbf y_B^W + p_3\,\mathbf z_B^W\): «avanza \(p_1\) por el eje x del dron, \(p_2\) por su eje y y \(p_3\) por su eje z».</p>
+      <ul class="small">
+        <li><strong>\(R^\top R = I\)</strong>: las columnas tienen longitud 1 y son perpendiculares entre sí (la entrada \((i,j)\) de \(R^\top R\) es el producto escalar de las columnas \(i\) y \(j\)). Consecuencia: \(R\) no cambia longitudes ni ángulos.</li>
+        <li><strong>\(\det R = +1\)</strong>: los ejes forman un triedro a derechas. Con \(-1\) sería un espejo, no un giro.</li>
+        <li><strong>Inversa = traspuesta</strong>: \(R_{BW} = R_{WB}^{-1} = R_{WB}^\top\). Pasar de mundo a cuerpo es gratis.</li>
+        <li><strong>Composición</strong>: \(R_{WC} = R_{WB}\,R_{BC}\). Los subíndices interiores «se cancelan», como en una cadena de cambios de base.</li>
+      </ul>
     </div>
     <div class="stack">
-      <p>La cinemática de la actitud con velocidad angular en ejes cuerpo:</p>
-      \[ \dot R = R\,[\boldsymbol\omega]_\times \]
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">Derivando \(R^\top R = I\): \(\dot R^\top R + R^\top \dot R = 0\), es decir, \(R^\top\dot R = -(R^\top \dot R)^\top\). Luego \(R^\top \dot R\) es antisimétrica y existe \(\boldsymbol\omega\) con \(R^\top \dot R = [\boldsymbol\omega]_\times\). Despejando, \(\dot R = R[\boldsymbol\omega]_\times\). Ese \(\boldsymbol\omega\) es la velocidad angular expresada en ejes cuerpo, la que mide el giróscopo. Con la velocidad en ejes mundo se obtiene \(\dot R = [\boldsymbol\omega^W]_\times R\).</p>
-      </details>
-      <div class="callout tesis"><span class="tag">Conexión</span>El giróscopo mide un elemento del álgebra de Lie. Por eso los controladores de rate (y políticas como la de Swift) trabajan con \(\boldsymbol\omega\) y no con la actitud: es un vector de verdad.</div>
+      <figure class="fig">
+        <svg viewBox="0 0 360 300" style="max-height:255px" role="img" aria-label="Vista cenital: ejes del mundo y un dron con guiñada de 90 grados cuyo morro apunta al eje y del mundo">
+          <defs>
+            <marker id="m1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+            <marker id="m1ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+            <marker id="m1rt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+          </defs>
+          <path class="ln" d="M40 270 H330" marker-end="url(#m1r)"/>
+          <path class="ln" d="M40 270 V30" marker-end="url(#m1r)"/>
+          <text x="318" y="290" class="t-mono t-muted" font-size="14">x_W</text>
+          <text x="48" y="36" class="t-mono t-muted" font-size="14">y_W</text>
+          <circle cx="40" cy="270" r="5" class="fill-ink3"/>
+          <text x="50" y="290" class="t-mono t-faint" font-size="12">z_W hacia ti</text>
+          <rect class="box-soft" x="182" y="142" width="36" height="36" rx="6"/>
+          <path class="ln-accent" d="M200 160 V62" marker-end="url(#m1ra)" stroke-width="2.4"/>
+          <path class="ln-tesis" d="M200 160 H102" marker-end="url(#m1rt)" stroke-width="2.4"/>
+          <text x="210" y="70" class="t-accent t-mono" font-size="14">x_B (morro)</text>
+          <text x="96" y="148" class="t-tesis t-mono" font-size="14">y_B</text>
+          <circle cx="200" cy="62" r="5" class="fill-time"/>
+          <text x="210" y="96" class="t-time t-mono" font-size="13">p: 1 m delante</text>
+          <text x="228" y="196" class="t-mono t-faint" font-size="12">z_B hacia ti</text>
+        </svg>
+        <figcaption>Dron con guiñada de 90° (z hacia arriba, giro positivo en sentido antihorario). Calculado en <code>figuras/ejemplos_m1.py</code>, ejemplo 1.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Ejemplo</span>El morro apunta a \(+y_W\), el eje y del dron a \(-x_W\) y su eje z sigue vertical, así que
+        \(R = \left[\begin{smallmatrix}0&-1&0\\1&0&0\\0&0&1\end{smallmatrix}\right]\). Un punto 1 m delante del dron, \(\mathbf p^B=(1,0,0)\), está en \(\mathbf p^W = R\mathbf p^B = (0,1,0)\): la primera columna.</div>
     </div>
   </div>
 </section>
+
+<section class="slide">
+  <p class="kicker">Rotaciones · 2</p>
+  <h2>Rotaciones elementales y ángulos de Euler</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un giro de ángulo \(\psi\) alrededor de z se construye columna a columna: el eje x va a \((\cos\psi, \sin\psi, 0)\), el eje y a \((-\sin\psi, \cos\psi, 0)\) y el eje z no se mueve.</p>
+      \[ R_z(\psi) = \begin{bmatrix}\cos\psi & -\sin\psi & 0\\ \sin\psi & \cos\psi & 0\\ 0&0&1\end{bmatrix} \]
+      \[ R_y(\theta) = \begin{bmatrix}\cos\theta & 0 & \sin\theta\\ 0&1&0\\ -\sin\theta & 0 & \cos\theta\end{bmatrix} \]
+      \[ R_x(\phi) = \begin{bmatrix}1&0&0\\ 0&\cos\phi & -\sin\phi\\ 0&\sin\phi & \cos\phi\end{bmatrix} \]
+      <p class="small">Con \(\psi = 90°\) sale la matriz del ejemplo anterior.</p>
+    </div>
+    <div class="stack">
+      <p>Los <strong>ángulos de Euler</strong> describen cualquier orientación con tres giros elementales seguidos. El convenio aeronáutico (ZYX) es:</p>
+      \[ R(\phi, \theta, \psi) = R_z(\psi)\,R_y(\theta)\,R_x(\phi) \]
+      <ul class="small">
+        <li>\(\psi\), <strong>guiñada</strong> (<em>yaw</em>): hacia dónde apunta el morro en el plano horizontal.</li>
+        <li>\(\theta\), <strong>cabeceo</strong> (<em>pitch</em>): morro arriba o abajo, alrededor del eje y ya girado.</li>
+        <li>\(\phi\), <strong>alabeo</strong> (<em>roll</em>): inclinación lateral, alrededor del eje x ya girado.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué gustan</span>Son tres números con significado físico inmediato: perfectos para mostrar al piloto o fijar una consigna. El problema aparece al <em>calcular</em> con ellos, y se ve en la hoja siguiente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotaciones · 3</p>
+  <h2>El gimbal lock, con números</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con cabeceo \(\theta = 90°\), multiplicando las tres matrices y usando las fórmulas del seno y el coseno de una resta:</p>
+      \[ R(\phi, 90°, \psi) = \begin{bmatrix}0 & \sin(\phi-\psi) & \cos(\phi-\psi)\\ 0 & \cos(\phi-\psi) & -\sin(\phi-\psi)\\ -1 & 0 & 0\end{bmatrix} \]
+      <p><strong>Solo importa \(\phi - \psi\)</strong>: \((\phi,\psi) = (30°, 10°)\) y \((50°, 30°)\) dan exactamente la misma matriz. Alabeo y guiñada giran ahora alrededor del mismo eje y se ha perdido un grado de libertad.</p>
+      <p class="xsmall muted">Comprobado en <code>figuras/ejemplos_m1.py</code>, ejemplo 2.</p>
+    </div>
+    <div class="stack">
+      <p>La cinemática lo convierte en una división por cero. La velocidad angular \(\boldsymbol\omega = (p,q,r)\) y las derivadas de los ángulos se relacionan así:</p>
+      \[ \begin{aligned}\dot\phi &= p + (q\sin\phi + r\cos\phi)\tan\theta\\ \dot\theta &= q\cos\phi - r\sin\phi\\ \dot\psi &= (q\sin\phi + r\cos\phi)/\cos\theta\end{aligned} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Cabeceo \(\theta\)</th><th>0°</th><th>60°</th><th>80°</th><th>89°</th><th>89,9°</th></tr>
+          <tr><td>\(1/\cos\theta\)</td><td class="n">1</td><td class="n">2</td><td class="n">5,8</td><td class="n">57</td><td class="n">573</td></tr>
+        </table>
+      </div>
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">\(\boldsymbol\omega\) es la suma de las tres velocidades de giro, cada una escrita en ejes cuerpo: \(\boldsymbol\omega = (\dot\phi,0,0) + R_x(\phi)^\top(0,\dot\theta,0) + R_x(\phi)^\top R_y(\theta)^\top(0,0,\dot\psi)\). Operando, \(\boldsymbol\omega = M\dot{\boldsymbol\eta}\) con \(M = \left[\begin{smallmatrix}1&0&-\sin\theta\\0&\cos\phi&\sin\phi\cos\theta\\0&-\sin\phi&\cos\phi\cos\theta\end{smallmatrix}\right]\) y \(\det M = \cos\theta\). Invertir \(M\) da las tres ecuaciones; con \(\theta = \pm 90°\), \(M\) es singular y no se puede.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Herramienta · el producto vectorial</p>
+  <h2>El producto vectorial como matriz: hat y vee</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Escribe \(\mathbf a\times\mathbf b\) por componentes y ordénalo como matriz por vector:</p>
+      \[ \mathbf a\times\mathbf b = \begin{bmatrix}a_2b_3 - a_3b_2\\ a_3b_1 - a_1b_3\\ a_1b_2 - a_2b_1\end{bmatrix} = \underbrace{\begin{bmatrix}0 & -a_3 & a_2\\ a_3 & 0 & -a_1\\ -a_2 & a_1 & 0\end{bmatrix}}_{[\mathbf a]_\times}\begin{bmatrix}b_1\\ b_2\\ b_3\end{bmatrix} \]
+      <p class="small"><strong>Ejemplo:</strong> \(\mathbf a = (1,2,3)\), \(\mathbf b = (0,0,1)\). La tercera columna de \([\mathbf a]_\times\) es \((2, -1, 0)\), que es \(\mathbf a\times\mathbf b\).</p>
+      <p class="small">\([\mathbf a]_\times\) es <strong>antisimétrica</strong> (\([\mathbf a]_\times^\top = -[\mathbf a]_\times\)), y toda matriz antisimétrica 3×3 es de esta forma: tiene solo tres números libres. \(\vee\) los recupera: \(([\mathbf a]_\times)^\vee = \mathbf a\).</p>
+    </div>
+    <div class="stack">
+      <p>Cuatro propiedades que se usan en todas las hojas siguientes:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:44%">Propiedad</th><th>Por qué</th></tr>
+          <tr><td>\([\mathbf a]_\times\mathbf b = -[\mathbf b]_\times\mathbf a\)</td><td>\(\mathbf a\times\mathbf b = -\mathbf b\times\mathbf a\)</td></tr>
+          <tr><td>\([\mathbf a]_\times\mathbf a = \mathbf 0\)</td><td>Un vector por sí mismo da cero</td></tr>
+          <tr><td>\([\mathbf u]_\times^2 = \mathbf u\mathbf u^\top - I\) si \(\|\mathbf u\| = 1\)</td><td>\(\mathbf u\times(\mathbf u\times\mathbf v) = \mathbf u(\mathbf u\cdot\mathbf v) - \mathbf v(\mathbf u\cdot\mathbf u)\), la regla del doble producto vectorial</td></tr>
+          <tr><td>\([\mathbf u]_\times^3 = -[\mathbf u]_\times\) si \(\|\mathbf u\| = 1\)</td><td>Multiplica la anterior por \([\mathbf u]_\times\): \([\mathbf u]_\times\mathbf u\mathbf u^\top = 0\) por la segunda propiedad</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Por qué importa</span>La última dice que las potencias de \([\mathbf u]_\times\) se repiten cada dos con un cambio de signo. De ahí saldrá la fórmula de Rodrigues.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cinemática de la actitud</p>
+  <h2>De dónde sale \(\dot R = R\,[\boldsymbol\omega]_\times\)</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(R(t)^\top R(t) = I\) en todo instante</td><td>\(R(t)\) es una rotación siempre</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\dot R^\top R + R^\top\dot R = 0\)</td><td>Derivar un producto; la derivada de \(I\) es 0</td></tr>
+        <tr><td><strong>3</strong></td><td>\(R^\top\dot R = -(R^\top\dot R)^\top\)</td><td>El primer término es el traspuesto del segundo</td></tr>
+        <tr><td><strong>4</strong></td><td>\(R^\top\dot R = [\boldsymbol\omega]_\times\) para algún \(\boldsymbol\omega\)</td><td>Es antisimétrica, y toda antisimétrica 3×3 es un \([\cdot]_\times\)</td></tr>
+        <tr><td><strong>5</strong></td><td>\(\dot R = R\,[\boldsymbol\omega]_\times\)</td><td>Multiplicar por \(R\) a la izquierda (\(RR^\top = I\))</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Qué es ese \(\boldsymbol\omega\).</strong> Mira la columna \(i\) de la ecuación: \(\dot{\mathbf x}_B = R[\boldsymbol\omega]_\times\mathbf e_1 = R(\boldsymbol\omega\times\mathbf e_1)\). Es la velocidad de la punta de un eje que gira con velocidad angular \(\boldsymbol\omega\) expresada <strong>en ejes cuerpo</strong>: justo lo que mide un giróscopo atornillado al dron.</p>
+      <p class="small">Si la velocidad angular se expresa en ejes mundo, \(\boldsymbol\omega^W = R\boldsymbol\omega\), la ecuación se escribe \(\dot R = [\boldsymbol\omega^W]_\times R\). Son la misma ecuación.</p>
+      <div class="callout realidad"><span class="tag">Compruébalo</span>Guiñada constante a \(r\) rad/s: \(R(t) = R_z(rt)\). Derivando cada entrada, \(\dot R = r\left[\begin{smallmatrix}-\sin & -\cos & 0\\ \cos & -\sin & 0\\ 0&0&0\end{smallmatrix}\right]\), y eso es \(R_z(rt)\,[(0,0,r)]_\times\). Ejemplo 4 del script.</div>
+    </div>
+  </div>
+  <div class="callout tesis"><span class="tag">Conexión</span>El giróscopo mide un vector de verdad, \(\boldsymbol\omega\), que se puede sumar, promediar y filtrar. Por eso los controladores de <em>rate</em> (y políticas como la de Swift) trabajan con \(\boldsymbol\omega\) y no con la actitud.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Grupos de Lie · empezar en 2D</p>
+  <h2>Qué es un grupo de Lie, con el ejemplo del círculo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un <strong>grupo de Lie</strong> es un conjunto que es a la vez:</p>
+      <ul class="small">
+        <li>un <strong>grupo</strong>: se pueden componer elementos (\(XY\)), hay identidad (\(I\)) e inversa (\(X^{-1}\));</li>
+        <li>una <strong>superficie suave</strong> (variedad): se puede derivar sobre él, y en cada punto tiene un plano tangente.</li>
+      </ul>
+      <p>Las rotaciones del plano, SO(2), son el ejemplo más sencillo:</p>
+      \[ R(\alpha) = \begin{bmatrix}\cos\alpha & -\sin\alpha\\ \sin\alpha & \cos\alpha\end{bmatrix},\qquad R(\alpha)\,R(\beta) = R(\alpha+\beta) \]
+      <p class="small">Son 4 números pero un solo grado de libertad: SO(2) es un círculo dentro de \(\mathbb R^{4}\). Su tangente en la identidad tiene dimensión 1: el ritmo de giro, un número.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo: promediar 359° y 1°</span>
+        <p class="small">Como vectores, \((359 + 1)/2 = 180°\): absurdo. En el grupo se calcula la diferencia en el tangente y se aplica la mitad:</p>
+        <p class="small">\(\tau = \mathrm{Log}\big(R(359°)^{-1}R(1°)\big) = \mathrm{Log}\,R(2°) = +2°\)</p>
+        <p class="small">media \(= R(359°)\,\mathrm{Exp}(\tau/2) = R(360°) = R(0°)\). Correcto.</p>
+      </div>
+      <p class="small">En SO(2), \(\mathrm{Exp}(\alpha) = R(\alpha)\) y \(\mathrm{Log}(R) = \operatorname{atan2}(R_{21}, R_{11})\): ya los usas cuando envuelves un rumbo entre −180° y 180°.</p>
+      <div class="callout clave"><span class="tag">Lo que cambia en 3D</span>SO(3) tiene dimensión 3 y <strong>no es conmutativo</strong>: girar 90° en x y luego en z no es lo mismo que al revés. Por eso en 3D importa por qué lado se aplica una corrección.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Definiciones en 3D</p>
+  <h2>SO(3), su álgebra so(3) y dónde vive cada cosa</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ SO(3) = \{ R \in \mathbb R^{3\times 3} : R^\top R = I,\ \det R = 1 \} \]
+      <p class="small">Nueve números con seis restricciones (\(R^\top R = I\) es simétrica: 6 ecuaciones independientes), así que quedan <strong>3 grados de libertad</strong>.</p>
+      <p class="small">Su <strong>álgebra de Lie</strong>, so(3), es el espacio tangente en la identidad. Por el paso 4 de la cinemática, las velocidades \(R^\top\dot R\) son matrices antisimétricas, así que so(3) son las matrices \([\boldsymbol\omega]_\times\), que se identifican con vectores de \(\mathbb R^3\) mediante hat y vee.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Objeto</th><th>Vive en</th><th>¿Se puede sumar?</th></tr>
+          <tr><td>Orientación \(R\)</td><td>SO(3), el grupo</td><td>No: \(R_1 + R_2\notin SO(3)\)</td></tr>
+          <tr><td>Velocidad angular \(\boldsymbol\omega\)</td><td>so(3) \(\cong\mathbb R^3\)</td><td>Sí</td></tr>
+          <tr><td>Error de orientación pequeño \(\delta\boldsymbol\phi\)</td><td>so(3) \(\cong\mathbb R^3\)</td><td>Sí</td></tr>
+          <tr><td>Covarianza de la actitud</td><td>Matriz 3×3 sobre \(\delta\boldsymbol\phi\)</td><td>Es álgebra lineal normal</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">La estrategia</span>Guardar la orientación en el grupo y hacer todas las cuentas de vectores (sumas, covarianzas, gradientes) en el tangente. Falta el puente entre los dos: Exp y Log.</div>
+    </div>
+  </div>
+</section>
+
 
 <section class="slide">
   <p class="kicker">La idea central</p>
@@ -153,43 +347,216 @@
       <p>Con la convención de perturbaciones locales (por la derecha) de Solà et al. <a class="cite" data-ref="sola2018"></a>:</p>
       \[ Y = X \oplus \boldsymbol\tau = X\,\mathrm{Exp}(\boldsymbol\tau) \]
       \[ \boldsymbol\tau = Y \ominus X = \mathrm{Log}(X^{-1} Y) \]
-      <p>\(\boldsymbol\tau\) es un vector de \(\mathbb R^3\) (o \(\mathbb R^6\) en SE(3)): sobre él se suman correcciones, se calculan gradientes y se definen covarianzas.</p>
-      <div class="callout clave"><span class="tag">Idea clave</span>Toda la "maquinaria de vectores" (Kalman, Gauss-Newton, descenso de gradiente) se aplica a \(\boldsymbol\tau\), y el resultado se devuelve al grupo con Exp. La restricción \(R^\top R=I\) se cumple siempre por construcción.</div>
+      <ul>
+        <li>\(X\): la orientación de partida (por ejemplo, la estimación actual).</li>
+        <li>\(\boldsymbol\tau\): un giro pequeño expresado <strong>en los ejes del propio dron</strong>, 3 números.</li>
+        <li>\(Y\): el resultado de aplicar ese giro. \(\ominus\) hace lo contrario: dado \(X\) e \(Y\), qué giro lleva de uno a otro.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Idea clave</span>Toda la maquinaria de vectores (Kalman, Gauss-Newton, descenso de gradiente) trabaja con \(\boldsymbol\tau\), y el resultado vuelve al grupo con Exp. \(R^\top R=I\) se cumple siempre por construcción.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Exponencial y logaritmo en SO(3)</p>
-  <h2>La fórmula de Rodrigues</h2>
+  <p class="kicker">Exp · de dónde sale</p>
+  <h2>Por qué una exponencial: girar a velocidad constante</h2>
   <div class="cols">
     <div class="stack">
-      <p>Para \(\boldsymbol\phi = \theta\,\mathbf u\), con \(\|\mathbf u\| = 1\) y \(\theta = \|\boldsymbol\phi\|\):</p>
-      \[ \mathrm{Exp}(\boldsymbol\phi) = I + \sin\theta\,[\mathbf u]_\times + (1-\cos\theta)\,[\mathbf u]_\times^2 \]
-      <details class="deriv" open><summary>Derivación</summary>
-        <p class="small">\(\mathrm{Exp}(\boldsymbol\phi) = \exp([\boldsymbol\phi]_\times) = \sum_{k\ge 0}\frac{\theta^k}{k!}[\mathbf u]_\times^k\). Para un eje unitario, \([\mathbf u]_\times^2 = \mathbf u\mathbf u^\top - I\) y \([\mathbf u]_\times^3 = -[\mathbf u]_\times\), así que las potencias se repiten con periodo 2 salvo el signo. Los términos impares suman \([\mathbf u]_\times(\theta - \tfrac{\theta^3}{3!} + \dots) = \sin\theta\,[\mathbf u]_\times\). Los pares con \(k\ge 2\) suman \([\mathbf u]_\times^2(\tfrac{\theta^2}{2!} - \tfrac{\theta^4}{4!} + \dots) = (1-\cos\theta)[\mathbf u]_\times^2\).</p>
+      <p>Recuerda el caso escalar: la solución de \(\dot x = a\,x\) es \(x(t) = e^{at}x_0\). La cinemática de la actitud tiene la misma forma, con matrices:</p>
+      \[ \dot R = R\,[\boldsymbol\omega]_\times,\ \ \boldsymbol\omega\ \text{constante}\quad\Longrightarrow\quad R(t) = R_0\,\exp\!\big(t\,[\boldsymbol\omega]_\times\big) \]
+      <p>donde la exponencial de una matriz se define con la misma serie que la de un número:</p>
+      \[ \exp(A) = I + A + \frac{A^2}{2!} + \frac{A^3}{3!} + \cdots \]
+      <details class="deriv" open><summary>Comprobación</summary>
+        <p class="small">Derivando la serie término a término, \(\frac{d}{dt}\exp(tA) = A + tA^2 + \frac{t^2A^3}{2!} + \cdots = \exp(tA)\,A\). Con \(A = [\boldsymbol\omega]_\times\): \(\frac{d}{dt}\big(R_0\exp(tA)\big) = R_0\exp(tA)\,A = R\,[\boldsymbol\omega]_\times\). Y en \(t = 0\) vale \(R_0\).</p>
       </details>
     </div>
     <div class="stack">
-      <p>El logaritmo invierte la fórmula usando la traza y la parte antisimétrica:</p>
-      \[ \theta = \arccos\frac{\operatorname{tr}(R) - 1}{2},\qquad [\boldsymbol\phi]_\times = \frac{\theta}{2\sin\theta}\,(R - R^\top) \]
-      <div class="callout realidad"><span class="tag">En código</span>Cerca de \(\theta = 0\), usa desarrollos de Taylor (\(\sin\theta/\theta \approx 1 - \theta^2/6\)) para no dividir por cero. Cerca de \(\theta = \pi\), \(R - R^\top \to 0\) y el eje se obtiene de \(R + I\). Las librerías serias (manif, Sophus, jaxlie) ya lo hacen <a class="cite" data-ref="manif,jaxlie"></a>.</div>
-      <p class="small">Integración exacta con \(\boldsymbol\omega\) constante en un paso: \(R_{k+1} = R_k\,\mathrm{Exp}(\boldsymbol\omega_k\,\Delta t)\). Integrar con Euler, \(R_k + R_k[\boldsymbol\omega]_\times\Delta t\), saca a \(R\) del grupo y obliga a reortonormalizar.</p>
+      <p>Se define entonces, para un vector de rotación \(\boldsymbol\phi\):</p>
+      \[ \mathrm{Exp}(\boldsymbol\phi) \triangleq \exp\big([\boldsymbol\phi]_\times\big) \]
+      <div class="callout clave"><span class="tag">Cómo leerlo</span>\(\mathrm{Exp}(\boldsymbol\phi)\) es la orientación a la que llegas si giras durante 1 s con velocidad angular constante \(\boldsymbol\phi\). Es decir, un giro de ángulo \(\theta = \|\boldsymbol\phi\|\) alrededor del eje \(\mathbf u = \boldsymbol\phi/\theta\).</div>
+      <div class="callout realidad"><span class="tag">Compruébalo</span>Con \(\boldsymbol\omega = (0{,}4,\ -0{,}3,\ 1{,}1)\) rad/s, integrar \(\dot R = R[\boldsymbol\omega]_\times\) con 20 000 pasos de Euler durante 1 s llega a la misma matriz que \(\mathrm{Exp}(\boldsymbol\omega)\), con un error de \(8\cdot 10^{-8}\) grados. Ejemplo 5 del script.</div>
+      <p class="small">Sumar la serie entera sería caro. La fórmula de Rodrigues la suma en forma cerrada.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Cuaterniones</p>
+  <p class="kicker">Exp en SO(3) · paso a paso</p>
+  <h2>La fórmula de Rodrigues</h2>
+  \[ \mathrm{Exp}(\theta\,\mathbf u) = I + \sin\theta\,[\mathbf u]_\times + (1-\cos\theta)\,[\mathbf u]_\times^2 \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\displaystyle \mathrm{Exp}(\theta\mathbf u) = \sum_{k\ge 0}\frac{\theta^k}{k!}\,[\mathbf u]_\times^k\)</td><td>Definición, con \([\boldsymbol\phi]_\times = \theta[\mathbf u]_\times\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\([\mathbf u]_\times^3 = -[\mathbf u]_\times,\quad [\mathbf u]_\times^4 = -[\mathbf u]_\times^2,\quad [\mathbf u]_\times^5 = [\mathbf u]_\times,\ \dots\)</td><td>Propiedad \([\mathbf u]_\times^3 = -[\mathbf u]_\times\) aplicada una y otra vez: solo quedan dos matrices distintas</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\displaystyle k\ \text{impar:}\quad [\mathbf u]_\times\Big(\theta - \frac{\theta^3}{3!} + \frac{\theta^5}{5!} - \cdots\Big)\)</td><td>Se agrupan los términos con \([\mathbf u]_\times\); el signo alterna por el paso 2</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\displaystyle k\ \text{par} \ge 2:\quad [\mathbf u]_\times^2\Big(\frac{\theta^2}{2!} - \frac{\theta^4}{4!} + \cdots\Big)\)</td><td>Igual con \([\mathbf u]_\times^2\); el término \(k=0\) es la \(I\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\theta - \frac{\theta^3}{3!} + \cdots = \sin\theta,\qquad \frac{\theta^2}{2!} - \frac{\theta^4}{4!} + \cdots = 1 - \cos\theta\)</td><td>Series de Taylor del seno y del coseno (\(\cos\theta = 1 - \frac{\theta^2}{2!} + \frac{\theta^4}{4!} - \cdots\))</td></tr>
+      <tr><td><strong>6</strong></td><td>\(I + \sin\theta\,[\mathbf u]_\times + (1-\cos\theta)\,[\mathbf u]_\times^2\)</td><td>Sumar \(I\) + impares + pares</td></tr>
+    </table>
+  </div>
+  <p class="small">Lo publicó Olinde Rodrigues en 1840. Con \(\boldsymbol\phi\) en vez de \(\mathbf u\): \(\mathrm{Exp}(\boldsymbol\phi) = I + \frac{\sin\theta}{\theta}[\boldsymbol\phi]_\times + \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times^2\), con \(\theta = \|\boldsymbol\phi\|\).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rodrigues en dibujo</p>
+  <h2>La misma fórmula, vista como geometría</h2>
+  <div class="cols w40 center">
+    <figure class="fig">
+      <svg viewBox="0 0 380 330" role="img" aria-label="Un vector v descompuesto en su parte paralela al eje u, que no cambia, y su parte perpendicular, que gira un ángulo theta en el plano perpendicular al eje">
+        <defs>
+          <marker id="m1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="m1ga" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="m1gt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <path class="ln" d="M190 300 V22" marker-end="url(#m1g)" stroke-width="1.6"/>
+        <text x="198" y="30" class="t-bold" font-size="16">u</text>
+        <ellipse cx="190" cy="120" rx="130" ry="38" class="ln-rule" fill="none" stroke-width="1.4"/>
+        <circle cx="190" cy="260" r="4" class="fill-ink3"/>
+        <text x="200" y="278" class="t-muted" font-size="13">origen</text>
+        <path class="ln ln-dash" d="M190 260 V124"/>
+        <text x="197" y="226" class="t-mono t-muted" font-size="13">v∥</text>
+        <path class="ln-accent" d="M190 260 L318 122" marker-end="url(#m1ga)" stroke-width="2.2"/>
+        <text x="270" y="210" class="t-accent t-mono" font-size="15">v</text>
+        <path class="ln-accent ln-dash" d="M190 120 H316" marker-end="url(#m1ga)"/>
+        <text x="262" y="112" class="t-accent t-mono" font-size="13">v⊥</text>
+        <path class="ln-time" d="M190 120 L190 156" marker-end="url(#m1g)" stroke-width="2.2"/>
+        <text x="197" y="178" class="t-mono t-time" font-size="13">u × v</text>
+        <path class="ln-tesis" d="M190 260 L125 153" marker-end="url(#m1gt)" stroke-width="2.2"/>
+        <path class="ln-tesis ln-dash" d="M190 120 L127 151" marker-end="url(#m1gt)"/>
+        <text x="96" y="146" class="t-tesis t-mono t-bold" font-size="15" text-anchor="end">Rv</text>
+        <path class="ln-time" d="M250 120 A60 18 0 0 1 157 136" fill="none" stroke-width="1.6"/>
+        <text x="226" y="152" class="t-time t-mono" font-size="14">θ</text>
+      </svg>
+      <figcaption>La parte de \(\mathbf v\) a lo largo del eje no se mueve; la perpendicular gira \(\theta\) en su plano.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Separa \(\mathbf v\) en una parte paralela al eje y otra perpendicular: \(\mathbf v = \mathbf v_\parallel + \mathbf v_\perp\). El giro deja \(\mathbf v_\parallel\) quieta y gira \(\mathbf v_\perp\) dentro del plano perpendicular al eje, que tiene por ejes \(\mathbf v_\perp\) y \(\mathbf u\times\mathbf v\).</p>
+      \[ R\mathbf v = \mathbf v_\parallel + \cos\theta\,\mathbf v_\perp + \sin\theta\,(\mathbf u\times\mathbf v) \]
+      <p class="small">Traducido a matrices: \(\mathbf u\times\mathbf v = [\mathbf u]_\times\mathbf v\) y, por la propiedad del doble producto, \(\mathbf v_\perp = \mathbf v - \mathbf u(\mathbf u\cdot\mathbf v) = -[\mathbf u]_\times^2\mathbf v\). Sustituyendo \(\mathbf v_\parallel = \mathbf v - \mathbf v_\perp\):</p>
+      \[ R\mathbf v = \mathbf v - (1-\cos\theta)\,\mathbf v_\perp + \sin\theta\,[\mathbf u]_\times\mathbf v \]
+      \[ \phantom{R\mathbf v} = \big(I + \sin\theta\,[\mathbf u]_\times + (1-\cos\theta)\,[\mathbf u]_\times^2\big)\,\mathbf v \]
+      <div class="callout clave"><span class="tag">Idea clave</span>Las dos derivaciones llegan a lo mismo: la serie de la exponencial y la geometría del giro. \([\mathbf u]_\times\) gira 90° la parte perpendicular y \(-[\mathbf u]_\times^2\) la extrae.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rodrigues con números</p>
+  <h2>Un giro de 120° alrededor de la diagonal (1, 1, 1)</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>\(\mathbf u = \tfrac{1}{\sqrt3}(1,1,1)\), \(\theta = 120°\): \(\ \sin\theta = \tfrac{\sqrt3}{2}\), \(\ 1-\cos\theta = \tfrac32\).</p>
+      \[ [\mathbf u]_\times = \tfrac{1}{\sqrt3}\begin{bmatrix}0&-1&1\\1&0&-1\\-1&1&0\end{bmatrix},\quad [\mathbf u]_\times^2 = \tfrac13\begin{bmatrix}-2&1&1\\1&-2&1\\1&1&-2\end{bmatrix} \]
+      <p>Sustituyendo en Rodrigues:</p>
+      \[ \begin{aligned} R &= I + \tfrac12\begin{bmatrix}0&-1&1\\1&0&-1\\-1&1&0\end{bmatrix} + \tfrac12\begin{bmatrix}-2&1&1\\1&-2&1\\1&1&-2\end{bmatrix}\\ &= I + \begin{bmatrix}-1&0&1\\1&-1&0\\0&1&-1\end{bmatrix} = \begin{bmatrix}0&0&1\\1&0&0\\0&1&0\end{bmatrix}\end{aligned} \]
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cómo leer el resultado</span>Las columnas dicen adónde va cada eje: x → y, y → z, z → x. Girar 120° alrededor de la diagonal de un cubo permuta sus tres ejes, como se ve al hacer girar un dado sujeto por dos vértices opuestos.</div>
+      <p class="small"><strong>La versión geométrica</strong>, para \(\mathbf v = \mathbf e_x\):</p>
+      <ul class="small">
+        <li>\(\mathbf v_\parallel = (\mathbf u\cdot\mathbf v)\,\mathbf u = (\tfrac13,\tfrac13,\tfrac13)\)</li>
+        <li>\(\mathbf v_\perp = \mathbf v - \mathbf v_\parallel = (\tfrac23, -\tfrac13, -\tfrac13)\)</li>
+        <li>\(\mathbf u\times\mathbf v = \tfrac{1}{\sqrt3}(0, 1, -1)\)</li>
+        <li>\(R\mathbf v = \mathbf v_\parallel - \tfrac12\mathbf v_\perp + \tfrac{\sqrt3}{2}\,\mathbf u\times\mathbf v = (0, 1, 0)\). Coincide con la primera columna.</li>
+      </ul>
+      <p class="xsmall muted">Ejemplo 6 de <code>figuras/ejemplos_m1.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Log en SO(3) · paso a paso</p>
+  <h2>El logaritmo: recuperar eje y ángulo de una matriz</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>El ángulo</strong> sale de la traza (suma de la diagonal) de Rodrigues:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td>\(\operatorname{tr} I = 3,\quad \operatorname{tr}[\mathbf u]_\times = 0\)</td><td>La diagonal de \([\mathbf u]_\times\) es nula</td></tr>
+          <tr><td>\(\operatorname{tr}[\mathbf u]_\times^2 = \operatorname{tr}(\mathbf u\mathbf u^\top) - 3 = 1 - 3 = -2\)</td><td>\([\mathbf u]_\times^2 = \mathbf u\mathbf u^\top - I\) y \(\operatorname{tr}(\mathbf u\mathbf u^\top) = \|\mathbf u\|^2\)</td></tr>
+          <tr><td>\(\operatorname{tr}R = 3 - 2(1 - \cos\theta) = 1 + 2\cos\theta\)</td><td>La traza es lineal</td></tr>
+          <tr><td>\(\theta = \arccos\dfrac{\operatorname{tr}(R) - 1}{2}\)</td><td>Despejar</td></tr>
+        </table>
+      </div>
+      <p><strong>El eje</strong> sale de la parte antisimétrica. \(I\) y \([\mathbf u]_\times^2\) son simétricas y se cancelan al restar la traspuesta:</p>
+      \[ R - R^\top = 2\sin\theta\,[\mathbf u]_\times\ \Longrightarrow\ \boldsymbol\phi = \theta\,\mathbf u = \frac{\theta}{2\sin\theta}\,(R - R^\top)^\vee \]
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con el ejemplo anterior</span>\(\operatorname{tr}R = 0\), así que \(\cos\theta = -\tfrac12\) y \(\theta = 120°\). Y \(R - R^\top = \left[\begin{smallmatrix}0&-1&1\\1&0&-1\\-1&1&0\end{smallmatrix}\right] = 2\cdot\tfrac{\sqrt3}{2}\,[\mathbf u]_\times\) con \(\mathbf u = \tfrac{1}{\sqrt3}(1,1,1)\). Vuelve el eje de partida.</div>
+      <div class="callout error"><span class="tag">En código: los dos casos límite</span>Cerca de \(\theta = 0\), \(\theta/\sin\theta\) es 0/0: usa su desarrollo de Taylor (\(\sin\theta/\theta \approx 1 - \theta^2/6\)). Cerca de \(\theta = \pi\), \(\sin\theta\to 0\) y \(R - R^\top\to 0\): el eje se saca de \(R + I = 2\mathbf u\mathbf u^\top\). Las librerías serias (manif, Sophus, jaxlie) ya lo hacen <a class="cite" data-ref="manif,jaxlie"></a>.</div>
+      <p class="small">Log devuelve el giro con \(\theta\in[0,\pi]\): el más corto. El giro de 270° en z sale como −90° en z, que lleva a la misma orientación.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Integrar la actitud</p>
+  <h2>Por qué se integra con Exp y no sumando</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con la medida del giróscopo \(\boldsymbol\omega_k\), constante durante un paso \(\Delta t\):</p>
+      \[ R_{k+1} = R_k\,\mathrm{Exp}(\boldsymbol\omega_k\Delta t)\qquad\text{(exacta si }\boldsymbol\omega\text{ es constante)} \]
+      <p>El atajo de primer orden, \(R_{k+1} = R_k(I + [\boldsymbol\omega_k]_\times\Delta t)\), se sale del grupo. Basta comprobar si el factor es una rotación:</p>
+      \[ (I + [\boldsymbol\omega]_\times\Delta t)^\top(I + [\boldsymbol\omega]_\times\Delta t) = I - [\boldsymbol\omega]_\times^2\,\Delta t^2 \neq I \]
+      <p class="small">Los términos cruzados se cancelan porque \([\boldsymbol\omega]_\times^\top = -[\boldsymbol\omega]_\times\); queda el de segundo orden. En cada paso, las columnas perpendiculares a \(\boldsymbol\omega\) se alargan un factor \(\sqrt{1 + (\|\boldsymbol\omega\|\Delta t)^2}\), y los alargamientos se acumulan.</p>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Con números:</strong> una voltereta por segundo (\(\|\boldsymbol\omega\| = 2\pi\) rad/s, 360 °/s) integrada durante 1 s:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Método</th><th>Frecuencia</th><th>\(\|R^\top R - I\|_F\)</th><th>Longitud de la columna x</th></tr>
+          <tr><td>Primer orden</td><td class="n">250 Hz</td><td class="n">0,24</td><td class="n">1,082</td></tr>
+          <tr><td>Primer orden</td><td class="n">1000 Hz</td><td class="n">0,057</td><td class="n">1,020</td></tr>
+          <tr><td>Exp</td><td class="n">250 Hz</td><td class="n">3·10⁻¹⁴</td><td class="n">1,000</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo 7 de <code>figuras/ejemplos_m1.py</code>. El 3·10⁻¹⁴ es redondeo de coma flotante.</p>
+      <div class="callout clave"><span class="tag">Idea clave</span>Con Exp, el único error es suponer \(\boldsymbol\omega\) constante dentro del paso; la matriz siempre es una rotación. Con el primer orden, además, el dron «engorda» un 8 % en un segundo de voltereta a 250 Hz y hay que reortonormalizar.</div>
+    </div>
+  </div>
+</section>
+
+
+<section class="slide">
+  <p class="kicker">Cuaterniones · 1</p>
+  <h2>Qué es cada número de un cuaternión</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ \mathbf q = \begin{bmatrix} q_w \\ \mathbf q_v \end{bmatrix} = \begin{bmatrix} \cos(\theta/2) \\ \mathbf u\,\sin(\theta/2) \end{bmatrix},\qquad \|\mathbf q\| = 1 \]
+      <ul class="small">
+        <li>\(q_w\): parte escalar; dice cuánto se gira (\(q_w = 1\): nada).</li>
+        <li>\(\mathbf q_v = (q_x, q_y, q_z)\): parte vectorial; apunta a lo largo del eje.</li>
+        <li>Producto de Hamilton, el que compone giros: \(\mathbf q_{AC} = \mathbf q_{AB}\otimes\mathbf q_{BC}\), con
+        \[ \mathbf q\otimes\mathbf p = \begin{bmatrix} q_w p_w - \mathbf q_v\cdot\mathbf p_v \\ q_w\mathbf p_v + p_w\mathbf q_v + \mathbf q_v\times\mathbf p_v\end{bmatrix} \]</li>
+        <li>Girar un vector: \((0, \mathbf v') = \mathbf q\otimes(0,\mathbf v)\otimes\mathbf q^*\), con \(\mathbf q^* = (q_w, -\mathbf q_v)\).</li>
+      </ul>
+      <p class="small"><strong>¿Por qué \(\theta/2\)?</strong> Porque \(\mathbf q\) aparece dos veces al girar un vector: cada aparición aporta medio giro.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo: 90° en z aplicado a \(\mathbf e_x\)</span>
+        <p class="small">\(\mathbf q = (\cos 45°, 0, 0, \sin 45°) = (0{,}707,\ 0,\ 0,\ 0{,}707)\).</p>
+        <p class="small">1. \(\mathbf q\otimes(0, 1, 0, 0)\): parte escalar \(0 - 0 = 0\); parte vectorial \(0{,}707\,(1,0,0) + (0,0,0{,}707)\times(1,0,0) = (0{,}707,\ 0{,}707,\ 0)\).</p>
+        <p class="small">2. \((0,\ 0{,}707,\ 0{,}707,\ 0)\otimes\mathbf q^* = (0,\ 0,\ 1,\ 0)\). El eje x va al eje y, como con \(R_z(90°)\).</p>
+      </div>
+      <p class="small"><strong>Doble cubrimiento:</strong> con \(-\mathbf q\) los dos signos se cancelan en \(\mathbf q\otimes\mathbf v\otimes\mathbf q^*\) y sale el mismo giro. Además, \(\theta\) y \(\theta + 360°\) dan cuaterniones opuestos: el cuaternión «da dos vueltas» por cada vuelta de la rotación.</p>
+      <p class="xsmall muted">Ejemplo 8 de <code>figuras/ejemplos_m1.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cuaterniones · 2</p>
   <h2>La parametrización más usada, y sus trampas</h2>
   <div class="cols">
     <div class="stack">
-      \[ \mathbf q = \begin{bmatrix} \cos(\theta/2) \\ \mathbf u\,\sin(\theta/2) \end{bmatrix},\qquad \|\mathbf q\| = 1 \]
       <ul class="small">
-        <li>Cuatro números en lugar de nueve, sin singularidades y con composición barata: \(\mathbf q_{AC} = \mathbf q_{AB}\otimes \mathbf q_{BC}\).</li>
-        <li><strong>Doble cubrimiento:</strong> \(\mathbf q\) y \(-\mathbf q\) representan la misma rotación. Al comparar o promediar, alinea los signos primero.</li>
-        <li>Integración con velocidad angular en cuerpo: \(\mathbf q_{k+1} = \mathbf q_k \otimes \begin{bmatrix}\cos(\|\boldsymbol\omega\|\Delta t/2) \\ \tfrac{\boldsymbol\omega}{\|\boldsymbol\omega\|}\sin(\|\boldsymbol\omega\|\Delta t/2)\end{bmatrix}\).</li>
-        <li>En un filtro, el estado guarda el cuaternión, pero el error y la covarianza viven en 3 dimensiones (el tangente).</li>
+        <li>Cuatro números en lugar de nueve, sin singularidades y con composición barata (16 productos frente a 27 de una matriz).</li>
+        <li><strong>Doble cubrimiento:</strong> al comparar o promediar, alinea los signos primero (si \(\mathbf q_1\cdot\mathbf q_2 \lt 0\), cambia el signo de uno).</li>
+        <li><strong>Integración</strong> con velocidad angular en cuerpo: es el Exp de los cuaterniones,
+        \[ \mathbf q_{k+1} = \mathbf q_k \otimes \begin{bmatrix}\cos(\|\boldsymbol\omega\|\Delta t/2) \\ \tfrac{\boldsymbol\omega}{\|\boldsymbol\omega\|}\sin(\|\boldsymbol\omega\|\Delta t/2)\end{bmatrix} \]</li>
+        <li><strong>En un filtro</strong>, el estado guarda el cuaternión, pero el error y la covarianza viven en 3 dimensiones (el tangente): una covarianza 4×4 sería singular, porque la norma unidad quita un grado de libertad.</li>
       </ul>
     </div>
     <div class="stack">
@@ -206,47 +573,174 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Poses</p>
-  <h2>SE(3): rotación y traslación acopladas</h2>
+  <p class="kicker">Perturbaciones · local o global</p>
+  <h2>Corregir una rotación: ¿en ejes del dron o del mundo?</h2>
   <div class="cols">
     <div class="stack">
-      \[ T = \begin{bmatrix} R & \mathbf t \\ \mathbf 0^\top & 1 \end{bmatrix},\qquad \mathrm{Exp}\!\begin{pmatrix}\boldsymbol\rho\\ \boldsymbol\phi\end{pmatrix} = \begin{bmatrix}\mathrm{Exp}(\boldsymbol\phi) & V(\boldsymbol\phi)\,\boldsymbol\rho \\ \mathbf 0^\top & 1\end{bmatrix} \]
-      \[ V(\boldsymbol\phi) = I + \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times + \frac{\theta-\sin\theta}{\theta^3}[\boldsymbol\phi]_\times^2 \]
-      <p class="small">\(V\) es el jacobiano izquierdo de SO(3). Hace que un "giro con avance" constante describa una hélice (un tornillo), no una recta más un giro.</p>
+      <p>Como SO(3) no es conmutativo, hay dos formas de aplicar una corrección \(\boldsymbol\tau\) a una orientación \(X\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:30%">Forma</th><th>Fórmula</th><th>Significado</th></tr>
+          <tr><td><strong>Local</strong> (por la derecha)</td><td>\(X\,\mathrm{Exp}(\boldsymbol\tau)\)</td><td>\(\boldsymbol\tau\) en ejes del dron: «alabea 30° sobre tu propio morro»</td></tr>
+          <tr><td><strong>Global</strong> (por la izquierda)</td><td>\(\mathrm{Exp}(\boldsymbol\tau)\,X\)</td><td>\(\boldsymbol\tau\) en ejes del mundo: «gira 30° alrededor del eje x del mundo»</td></tr>
+        </table>
+      </div>
+      <p class="small">Este curso usa la <strong>local</strong>, como Solà et al. <a class="cite" data-ref="sola2018"></a> y el ESKF de A4: el giróscopo mide en ejes cuerpo y los errores del estimador se expresan ahí.</p>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">SE(3) o SO(3) × ℝ³</span>Como conjuntos son iguales, pero sus perturbaciones no. En SE(3), una corrección de rotación también mueve la posición; en SO(3) × ℝ³ son independientes. La elección cambia la interpolación, las jacobianas y las propiedades de convergencia de un filtro.</div>
-      <p class="small">Los filtros invariantes de la navegación inercial van un paso más allá y meten posición y velocidad en un mismo grupo, SE<sub>2</sub>(3), con lo que la ecuación del error deja de depender del estado estimado en sistemas "group-affine" <a class="cite" data-ref="barrau2017"></a>.</p>
+      <div class="callout realidad"><span class="tag">Ejemplo con números</span>
+        <p class="small">Dron con guiñada de 90° (\(X = R_z(90°)\), morro hacia \(+y_W\)) y \(\boldsymbol\tau = (30°, 0, 0)\):</p>
+        <ul class="small">
+          <li><strong>Local:</strong> alabea sobre su morro. El morro sigue en \((0, 1, 0)\) y su eje z se inclina hacia \(+x_W\): \((0{,}5,\ 0,\ 0{,}866)\).</li>
+          <li><strong>Global:</strong> gira sobre \(x_W\), que para este dron es su eje lateral: cabecea. El morro sube a \((0,\ 0{,}866,\ 0{,}5)\).</li>
+        </ul>
+        <p class="small">El mismo \(\boldsymbol\tau\) da dos actitudes distintas. Mezclar los convenios entre el estimador y el controlador es un error silencioso.</p>
+      </div>
+      <p class="xsmall muted">Ejemplo 9 de <code>figuras/ejemplos_m1.py</code>.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Adjunto y jacobianas</p>
-  <h2>Mover perturbaciones de marco y derivar sobre el grupo</h2>
+  <p class="kicker">El adjunto</p>
+  <h2>Pasar una corrección de los ejes del dron a los del mundo</h2>
   <div class="cols">
     <div class="stack">
-      <h3>Adjunto</h3>
-      <p class="small">Una perturbación local se puede reescribir como global: \(X\oplus\boldsymbol\tau = \mathrm{Exp}(\mathrm{Ad}_X\boldsymbol\tau)\,X\), con \(\mathrm{Ad}_X\boldsymbol\tau = (X\boldsymbol\tau^\wedge X^{-1})^\vee\). En SO(3), \(\mathrm{Ad}_R = R\): girar el vector de rotación al otro marco.</p>
-      <h3>Jacobiana sobre el grupo</h3>
-      \[ \frac{\partial f(X)}{\partial X} \triangleq \lim_{\boldsymbol\tau\to 0}\frac{f(X\oplus\boldsymbol\tau)\ominus f(X)}{\boldsymbol\tau} \]
-      <p class="small">La más usada: la acción de una rotación sobre un punto.</p>
-      \[ \frac{\partial\, (R\oplus\boldsymbol\theta)\,\mathbf p}{\partial\boldsymbol\theta}\Big|_{\boldsymbol\theta=0} = -R\,[\mathbf p]_\times \]
+      <p>Buscamos el \(\boldsymbol\tau'\) global que produce lo mismo que un \(\boldsymbol\tau\) local: \(\mathrm{Exp}(\boldsymbol\tau')\,X = X\,\mathrm{Exp}(\boldsymbol\tau)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(X\,\mathrm{Exp}(\boldsymbol\tau) = \big(X\,\mathrm{Exp}(\boldsymbol\tau)\,X^\top\big)\,X\)</td><td>Insertar \(X^\top X = I\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(X\exp([\boldsymbol\tau]_\times)X^\top = \exp\!\big(X[\boldsymbol\tau]_\times X^\top\big)\)</td><td>En la serie, \((XAX^\top)^k = XA^kX^\top\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(X[\boldsymbol\tau]_\times X^\top = [X\boldsymbol\tau]_\times\)</td><td>Girar conserva el producto vectorial: \(X(\boldsymbol\tau\times X^\top\mathbf v) = (X\boldsymbol\tau)\times\mathbf v\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(X\,\mathrm{Exp}(\boldsymbol\tau) = \mathrm{Exp}(X\boldsymbol\tau)\,X\)</td><td>Juntar 1–3</td></tr>
+        </table>
+      </div>
+      <p>Así que \(\boldsymbol\tau' = \mathrm{Ad}_X\,\boldsymbol\tau\) con \(\mathrm{Ad}_X = X\) en SO(3): basta girar el vector de corrección.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">\(R\,\mathrm{Exp}(\boldsymbol\theta)\mathbf p \approx R(I + [\boldsymbol\theta]_\times)\mathbf p = R\mathbf p + R[\boldsymbol\theta]_\times\mathbf p = R\mathbf p - R[\mathbf p]_\times\boldsymbol\theta\), usando \([\mathbf a]_\times\mathbf b = -[\mathbf b]_\times\mathbf a\).</p>
-      </details>
-      <p class="small">El <strong>jacobiano derecho</strong> relaciona sumas en el tangente con composiciones en el grupo:</p>
-      \[ \mathrm{Exp}(\boldsymbol\phi + \delta\boldsymbol\phi) \approx \mathrm{Exp}(\boldsymbol\phi)\,\mathrm{Exp}\big(J_r(\boldsymbol\phi)\,\delta\boldsymbol\phi\big) \]
-      \[ J_r(\boldsymbol\phi) = I - \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times + \frac{\theta-\sin\theta}{\theta^3}[\boldsymbol\phi]_\times^2 \]
+      <div class="callout realidad"><span class="tag">Con el ejemplo anterior</span>\(X\boldsymbol\tau = R_z(90°)\,(30°, 0, 0) = (0, 30°, 0)\): alabear 30° sobre el morro equivale a girar 30° alrededor de \(y_W\), que es hacia donde apunta el morro.</div>
+      <p class="small"><strong>Para qué sirve.</strong> Pasar covarianzas de un marco a otro: si \(\boldsymbol\tau\) tiene covarianza \(\Sigma\), \(\mathrm{Ad}_X\boldsymbol\tau\) tiene \(\Sigma^{G} = \mathrm{Ad}_X\,\Sigma\,\mathrm{Ad}_X^\top\) (la regla \(\mathrm{Cov}(A\boldsymbol\tau) = A\Sigma A^\top\) de la hoja de propagación).</p>
+      <p class="small">En general \(\mathrm{Ad}_X\boldsymbol\tau = (X\boldsymbol\tau^\wedge X^{-1})^\vee\). En SE(3), con \(\boldsymbol\tau = (\boldsymbol\rho, \boldsymbol\phi)\), es la matriz 6×6 \(\left[\begin{smallmatrix} R & [\mathbf t]_\times R\\ 0 & R\end{smallmatrix}\right]\): una corrección de giro también mueve la posición <a class="cite" data-ref="sola2018"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Derivar sobre el grupo</p>
+  <h2>La jacobiana respecto a una rotación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>El problema.</strong> Una cámara montada en \(\mathbf p\) (ejes cuerpo) está en \(f(R) = R\mathbf p\) en el mundo. Un estimador necesita \(\partial f/\partial R\), pero \(R\) son 9 números atados por 6 restricciones. Solución: perturbar \(R\) con un giro pequeño \(\boldsymbol\theta\) en el tangente y ver cómo cambia \(f\):</p>
+      \[ \frac{\partial f}{\partial R} \triangleq \lim_{\boldsymbol\theta\to 0}\frac{f(R\oplus\boldsymbol\theta) - f(R)}{\boldsymbol\theta}\quad(\text{matriz } 3\times 3) \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(R\,\mathrm{Exp}(\boldsymbol\theta)\,\mathbf p \approx R\,(I + [\boldsymbol\theta]_\times)\,\mathbf p\)</td><td>Serie de Exp cortada en primer orden</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= R\mathbf p + R\,[\boldsymbol\theta]_\times\mathbf p\)</td><td>Distribuir</td></tr>
+          <tr><td><strong>3</strong></td><td>\(= R\mathbf p - R\,[\mathbf p]_\times\boldsymbol\theta\)</td><td>\(\boldsymbol\theta\times\mathbf p = -\mathbf p\times\boldsymbol\theta\), para dejar \(\boldsymbol\theta\) a la derecha</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\dfrac{\partial (R\mathbf p)}{\partial R} = -R\,[\mathbf p]_\times\)</td><td>Lo que multiplica a \(\boldsymbol\theta\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>
+        <p class="small">\(R = R_z(90°)\) y \(\mathbf p = (1, 0, 0)\), que está en \((0,1,0)\) del mundo:</p>
+        \[ J = -R[\mathbf p]_\times = \begin{bmatrix}0&0&-1\\0&0&0\\0&-1&0\end{bmatrix} \]
+        <ul class="small">
+          <li>Columna 1 nula: alabear sobre el eje que pasa por el punto no lo mueve.</li>
+          <li>Columna 3: una guiñada de 0,01 rad mueve el punto \((-0{,}01,\ 0,\ 0)\) m. Gira hacia \(-x_W\).</li>
+          <li>Columna 2: un cabeceo de 0,01 rad lo baja 1 cm.</li>
+        </ul>
+        <p class="small">Las diferencias finitas dan la misma matriz (ejemplo 10 del script).</p>
+      </div>
       <p class="xsmall muted">Tablas completas de jacobianas para SO(2), SE(2), SO(3) y SE(3) en el apéndice de Solà et al. <a class="cite" data-ref="sola2018"></a>.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Incertidumbre en el grupo</p>
+  <p class="kicker">Jacobiano derecho · 1</p>
+  <h2>Sumar en el tangente no es componer en el grupo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Si \(\boldsymbol\phi\) cambia un poco, \(\boldsymbol\phi + \delta\boldsymbol\phi\), ¿qué giro pequeño hay que añadir a \(\mathrm{Exp}(\boldsymbol\phi)\)? Por la no conmutatividad, <strong>no</strong> es \(\delta\boldsymbol\phi\):</p>
+      \[ \mathrm{Exp}(\boldsymbol\phi + \delta\boldsymbol\phi) \approx \mathrm{Exp}(\boldsymbol\phi)\,\mathrm{Exp}\big(J_r(\boldsymbol\phi)\,\delta\boldsymbol\phi\big) \]
+      \[ J_r(\boldsymbol\phi) = I - \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times + \frac{\theta-\sin\theta}{\theta^3}[\boldsymbol\phi]_\times^2 \]
+      <p class="small">\(J_r\) es el <strong>jacobiano derecho</strong>: traduce un cambio en las coordenadas \(\boldsymbol\phi\) a un giro local. Para \(\boldsymbol\phi\) pequeño, \(J_r\approx I - \tfrac12[\boldsymbol\phi]_\times\), y con \(\boldsymbol\phi = 0\) es la identidad.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números</span>\(\boldsymbol\phi = (0{,}3,\ -0{,}2,\ 0{,}5)\) rad y \(\delta\boldsymbol\phi\) de tamaño \(10^{-3}\):
+        <ul class="small">
+          <li>error de \(\mathrm{Exp}(\boldsymbol\phi)\,\mathrm{Exp}(\delta\boldsymbol\phi)\): \(3{,}9\cdot 10^{-2}\) grados, del orden del propio \(\delta\boldsymbol\phi\)</li>
+          <li>error de \(\mathrm{Exp}(\boldsymbol\phi)\,\mathrm{Exp}(J_r\,\delta\boldsymbol\phi)\): \(1{,}6\cdot 10^{-5}\) grados, de segundo orden.</li>
+        </ul>
+        Ejemplo 11 del script.</div>
+      <div class="callout clave"><span class="tag">Dónde aparece</span>En la preintegración de IMU, para corregir la integral cuando cambia el sesgo estimado sin reintegrar; en las jacobianas de Log; y en cualquier optimizador que parametrice un giro con \(\boldsymbol\phi\). Lo pide el test 3 del laboratorio.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Jacobiano derecho · 2</p>
+  <h2>De dónde sale \(J_r\): derivación completa</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\displaystyle \frac{d}{d\varepsilon}\exp(A + \varepsilon B)\Big|_{\varepsilon=0} = \exp(A)\int_0^1 \exp(-sA)\,B\,\exp(sA)\,ds\)</td><td>Derivada de la exponencial de matrices (se comprueba desarrollando las dos series)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\exp(-s[\boldsymbol\phi]_\times)\,[\delta\boldsymbol\phi]_\times\,\exp(s[\boldsymbol\phi]_\times) = \big[\mathrm{Exp}(-s\boldsymbol\phi)\,\delta\boldsymbol\phi\big]_\times\)</td><td>Con \(A = [\boldsymbol\phi]_\times\), \(B = [\delta\boldsymbol\phi]_\times\), y el paso 3 del adjunto con \(X = \mathrm{Exp}(-s\boldsymbol\phi)\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathrm{Exp}(\boldsymbol\phi + \delta\boldsymbol\phi) \approx \mathrm{Exp}(\boldsymbol\phi)\big(I + [J_r\,\delta\boldsymbol\phi]_\times\big)\), \(\ \ \displaystyle J_r = \int_0^1\mathrm{Exp}(-s\boldsymbol\phi)\,ds\)</td><td>Sacar el vector de la integral; \(I + [\mathbf a]_\times\approx\mathrm{Exp}(\mathbf a)\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\displaystyle \int_0^1\!\big(I - \sin(s\theta)[\mathbf u]_\times + (1 - \cos(s\theta))[\mathbf u]_\times^2\big)ds = I - \frac{1-\cos\theta}{\theta}[\mathbf u]_\times + \Big(1 - \frac{\sin\theta}{\theta}\Big)[\mathbf u]_\times^2\)</td><td>Rodrigues con ángulo \(-s\theta\) e integrar término a término</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\displaystyle J_r = I - \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times + \frac{\theta-\sin\theta}{\theta^3}[\boldsymbol\phi]_\times^2\)</td><td>\([\mathbf u]_\times = [\boldsymbol\phi]_\times/\theta\)</td></tr>
+    </table>
+  </div>
+  <p class="small">El mismo razonamiento con \(\int_0^1\mathrm{Exp}(+s\boldsymbol\phi)\,ds\) da el <strong>jacobiano izquierdo</strong> \(J_l\), que reaparece enseguida como la \(V\) de SE(3). El script comprueba las dos integrales numéricamente (ejemplo 11).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Poses · 1</p>
+  <h2>SE(3): rotación y traslación en una matriz 4×4</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Una pose es una orientación \(R\) más una posición \(\mathbf t\) (dónde está el origen del dron, en ejes mundo). Con un 1 de más, se escribe como una sola matriz:</p>
+      \[ T = \begin{bmatrix} R & \mathbf t \\ \mathbf 0^\top & 1 \end{bmatrix},\qquad T\begin{bmatrix}\mathbf p^B\\ 1\end{bmatrix} = \begin{bmatrix}R\,\mathbf p^B + \mathbf t\\ 1\end{bmatrix} \]
+      <p class="small">El 1 extra (<em>coordenadas homogéneas</em>) convierte «girar y luego trasladar» en un único producto de matrices. Así componer e invertir poses es álgebra matricial:</p>
+      \[ T_{WB}\,T_{BC} = \begin{bmatrix} R_{WB}R_{BC} & R_{WB}\mathbf t_{BC} + \mathbf t_{WB}\\ \mathbf 0^\top & 1\end{bmatrix} \]
+      \[ T^{-1} = \begin{bmatrix}R^\top & -R^\top\mathbf t\\ \mathbf 0^\top & 1\end{bmatrix} \]
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>Dron en \(\mathbf t = (2, 0, 0)\) m con guiñada de 90°. Su cámara, 1 m delante (\(\mathbf p^B = (1,0,0)\)), está en \(R_z(90°)(1,0,0) + (2,0,0) = (2, 1, 0)\) m. Ejemplo 12 del script.</div>
+      <p class="small"><strong>Grados de libertad:</strong> 3 de giro y 3 de traslación. Su tangente tiene 6 dimensiones: \(\boldsymbol\tau = (\boldsymbol\rho, \boldsymbol\phi)\), una velocidad lineal y una angular en ejes cuerpo.</p>
+      <div class="callout error"><span class="tag">Cuidado con el orden</span>\(T_{WB}\,T_{BC}\) aplica primero \(T_{BC}\) (de C a B) y luego \(T_{WB}\) (de B a W). Al revés no tiene sentido: los subíndices interiores deben coincidir.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Poses · 2</p>
+  <h2>Exp en SE(3): avanzar mientras giras traza un arco</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Igual que en SO(3), \(\mathrm{Exp}(\boldsymbol\rho,\boldsymbol\phi)\) es la pose a la que llegas en 1 s con velocidad lineal \(\boldsymbol\rho\) (en ejes cuerpo) y angular \(\boldsymbol\phi\) constantes:</p>
+      \[ \mathrm{Exp}\!\begin{pmatrix}\boldsymbol\rho\\ \boldsymbol\phi\end{pmatrix} = \begin{bmatrix}\mathrm{Exp}(\boldsymbol\phi) & V(\boldsymbol\phi)\,\boldsymbol\rho \\ \mathbf 0^\top & 1\end{bmatrix} \]
+      <p class="small"><strong>De dónde sale \(V\).</strong> La posición avanza en la dirección del cuerpo, que va girando: \(\dot{\mathbf t}(s) = R(s)\,\boldsymbol\rho\) con \(R(s) = \mathrm{Exp}(s\boldsymbol\phi)\). Integrando de 0 a 1:</p>
+      \[ \mathbf t = \int_0^1 \mathrm{Exp}(s\boldsymbol\phi)\,ds\;\boldsymbol\rho = V(\boldsymbol\phi)\,\boldsymbol\rho \]
+      \[ V = I + \frac{1-\cos\theta}{\theta^2}[\boldsymbol\phi]_\times + \frac{\theta-\sin\theta}{\theta^3}[\boldsymbol\phi]_\times^2 \]
+      <p class="small">Es la integral del paso 4 de la hoja anterior con \(+s\): \(V\) es el jacobiano izquierdo de SO(3).</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>Avanzar a 1 m/s girando 90° en 1 s: \(\boldsymbol\rho = (1,0,0)\), \(\boldsymbol\phi = (0,0,\pi/2)\). Con \(\theta = \pi/2\):
+        <p class="small">\(\mathbf t = \boldsymbol\rho + \tfrac{2}{\pi}\,\mathbf u\times\boldsymbol\rho + \big(1 - \tfrac{2}{\pi}\big)\,\mathbf u\times(\mathbf u\times\boldsymbol\rho) = (0{,}637,\ 0{,}637,\ 0)\) m.</p>
+        <p class="small">Un cuarto de circunferencia de radio \(2/\pi\) m, que mide justo 1 m. Integrando la trayectoria paso a paso sale lo mismo (ejemplo 12).</p></div>
+      <div class="callout clave"><span class="tag">SE(3) o SO(3) × ℝ³</span>Como conjuntos son iguales, pero sus perturbaciones no. En SO(3) × ℝ³, el mismo \(\boldsymbol\tau\) movería el dron en línea recta a \((1, 0, 0)\) y giraría aparte. En SE(3), una corrección de giro también mueve la posición. La elección cambia la interpolación, las jacobianas y la convergencia de un filtro.</div>
+      <p class="xsmall">Los filtros invariantes de la navegación inercial meten además la velocidad en el grupo, SE<sub>2</sub>(3), y así la ecuación del error deja de depender del estado estimado en sistemas "group-affine" <a class="cite" data-ref="barrau2017"></a>.</p>
+    </div>
+  </div>
+</section>
+
+
+<section class="slide">
+  <p class="kicker">Incertidumbre en el grupo · 1</p>
   <h2>Una gaussiana en el tangente no es una elipse en el mundo</h2>
   <div class="cols w40 center">
     <figure class="fig">
@@ -262,28 +756,98 @@
       <figcaption>160 muestras: el robot avanza 5 m (σ = 0,1 m) con rumbo incierto (σ = 0,35 rad). Ejes a la misma escala.</figcaption>
     </figure>
     <div class="stack">
-      <p>Se modela la incertidumbre como gaussiana en el tangente:</p>
+      <p>La incertidumbre de una orientación o una pose se modela como una gaussiana <strong>en el tangente</strong>:</p>
       \[ X = \bar X \oplus \boldsymbol\varepsilon,\qquad \boldsymbol\varepsilon\sim\mathcal N(\mathbf 0,\Sigma) \]
-      <p>y se propaga con las jacobianas sobre el grupo: \(\Sigma' = J\,\Sigma\,J^\top\). Para pasar la covarianza de marco local a global: \(\Sigma^{G} = \mathrm{Ad}_X\,\Sigma\,\mathrm{Ad}_X^\top\).</p>
-      <div class="callout realidad"><span class="tag">El "plátano"</span>La incertidumbre de rumbo hace que la posición se reparta en un arco. Una elipse en coordenadas cartesianas la representa mal: es la causa de inconsistencias en EKFs con rumbo poco observable. En coordenadas exponenciales de SE(2) o SE(3), esa misma nube sí es casi gaussiana.</div>
+      <ul class="small">
+        <li>\(\bar X\): la estimación (la «media» en el grupo).</li>
+        <li>\(\boldsymbol\varepsilon\): el error, un vector de 3 números (rotación) o 6 (pose).</li>
+        <li>\(\Sigma\): su covarianza, 3×3 o 6×6. Sus unidades son rad² y m².</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">El "plátano" con números</span>
+        <ul class="small">
+          <li>Avance medio real: 4,70 m (\(= 5\,e^{-\sigma_\psi^2/2}\)). La linealización dice 5 m.</li>
+          <li>Desviación hacia delante: 0,42 m reales frente a 0,1 m linealizados; lateral, 1,65 m frente a 1,75 m.</li>
+          <li>Dentro de la elipse de 2σ linealizada cae el 53 % de las muestras, cuando una gaussiana dejaría el 86 %.</li>
+        </ul>
+        Ejemplo 13 del script (200 000 muestras). Es la causa de inconsistencias en EKFs con rumbo poco observable. En coordenadas exponenciales de SE(2), la misma nube sí es casi gaussiana (lab, paso 3).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Incertidumbre en el grupo · 2</p>
+  <h2>Propagar la covarianza: de dónde sale \(J\Sigma J^\top\)</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Si \(Y = f(X)\) y \(X = \bar X\oplus\boldsymbol\varepsilon\), ¿qué covarianza tiene el error de \(Y\)?</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(f(\bar X\oplus\boldsymbol\varepsilon) \approx f(\bar X)\oplus J\boldsymbol\varepsilon\)</td><td>Definición de la jacobiana sobre el grupo, a primer orden</td></tr>
+          <tr><td><strong>2</strong></td><td>El error de \(Y\) es \(J\boldsymbol\varepsilon\)</td><td>Lo que se suma a \(f(\bar X)\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E[J\boldsymbol\varepsilon] = J\,\mathbb E[\boldsymbol\varepsilon] = \mathbf 0\)</td><td>La esperanza es lineal</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{Cov}(J\boldsymbol\varepsilon) = \mathbb E[J\boldsymbol\varepsilon\boldsymbol\varepsilon^\top J^\top] = J\,\Sigma\,J^\top\)</td><td>\(J\) es constante y sale de la esperanza</td></tr>
+        </table>
+      </div>
+      <p class="small">Es la misma regla que usa la predicción del filtro de Kalman, \(FPF^\top\), en la parte 2. Solo cambia que \(J\) es la jacobiana sobre el grupo.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo: dónde está la cámara</span>
+        <p class="small">Seguimos con \(R = R_z(90°)\) y la cámara en \(\mathbf p^B = (1,0,0)\). La actitud tiene un error de 0,1 rad (5,7°) en cada eje: \(\Sigma_\theta = 0{,}1^2\,I\). Con la jacobiana de antes:</p>
+        \[ \Sigma_{\mathbf p} = J\,\Sigma_\theta\,J^\top = 0{,}01\begin{bmatrix}1&0&0\\0&0&0\\0&0&1\end{bmatrix}\ \text{m}^2 \]
+        <p class="small">10 cm de incertidumbre en \(x_W\) y en \(z_W\), y <strong>cero</strong> en \(y_W\): un giro no cambia la distancia entre la cámara y el centro del dron, solo la mueve sobre una esfera. Con 20 000 muestras: 0,100, 0,010 y 0,099 m. La diferencia en \(y_W\) es de segundo orden: el plátano otra vez.</p>
+      </div>
+      <p class="xsmall muted">Ejemplo 10 del script.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
   <p class="kicker">Aplicaciones · 1</p>
-  <h2>Control geométrico y preintegración de IMU</h2>
+  <h2>Control geométrico: el error de actitud definido en el grupo</h2>
   <div class="cols">
     <div class="stack">
-      <h3>Control de actitud en SO(3) <a class="cite" data-ref="lee2010"></a></h3>
+      <p>Lee, Leok y McClamroch definen los errores de actitud y de velocidad angular sin ángulos <a class="cite" data-ref="lee2010"></a>:</p>
       \[ \mathbf e_R = \tfrac12\big(R_d^\top R - R^\top R_d\big)^\vee,\qquad \mathbf e_\Omega = \boldsymbol\Omega - R^\top R_d\,\boldsymbol\Omega_d \]
-      <p class="small">El error se define en el grupo, no con ángulos. El controlador resultante es estable en casi todo SO(3), sin singularidades: permite volteretas y maniobras agresivas. Es la base de muchos controladores de A2.</p>
+      <ul class="small">
+        <li>\(R\), \(\boldsymbol\Omega\): actitud y velocidad angular medidas (\(\boldsymbol\Omega\) es nuestra \(\boldsymbol\omega\)). \(R_d\), \(\boldsymbol\Omega_d\): las deseadas.</li>
+        <li>\(R_d^\top R\): el giro que lleva de la actitud deseada a la actual. Si es \(\mathrm{Exp}(\theta\mathbf u)\), por la hoja del logaritmo \(\tfrac12(E - E^\top) = \sin\theta\,[\mathbf u]_\times\), así que
+        \[ \mathbf e_R = \sin\theta\;\mathbf u \]</li>
+        <li>\(R^\top R_d\,\boldsymbol\Omega_d\): \(\boldsymbol\Omega_d\) está en ejes del cuerpo <em>deseado</em>; se pasa a ejes del cuerpo actual antes de restar. Restar vectores de marcos distintos es otro error silencioso.</li>
+      </ul>
     </div>
     <div class="stack">
-      <h3>Preintegración de IMU <a class="cite" data-ref="forster2017"></a></h3>
-      \[ \Delta R_{ij} = \prod_{k=i}^{j-1}\mathrm{Exp}\big((\tilde{\boldsymbol\omega}_k - \mathbf b^g_k)\Delta t\big) \]
-      \[ \Delta\mathbf v_{ij} = \sum_{k=i}^{j-1}\Delta R_{ik}\,(\tilde{\mathbf a}_k - \mathbf b^a_k)\,\Delta t \]
-      <p class="small">Cientos de medidas de IMU entre dos imágenes se resumen en una sola restricción relativa, con su covarianza propagada en el tangente. Así un VIO procesa la IMU a kHz y optimiza solo en los fotogramas clave. Lo verás en A4b.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Error de guiñada</th><th>\(\theta\) (rad)</th><th>\(\|\mathbf e_R\| = \sin\theta\)</th></tr>
+          <tr><td>10°</td><td class="n">0,175</td><td class="n">0,174</td></tr>
+          <tr><td>90°</td><td class="n">1,571</td><td class="n">1,000</td></tr>
+          <tr><td>170°</td><td class="n">2,967</td><td class="n">0,174</td></tr>
+        </table>
+      </div>
+      <p class="small">Para errores pequeños, \(\mathbf e_R\approx\theta\mathbf u = \mathrm{Log}(R_d^\top R)\). Cerca de 180° la señal se debilita: es el precio de no usar Log, y de ahí que la estabilidad sea en <em>casi</em> todo SO(3). Ejemplo 14 del script.</p>
+      <div class="callout clave"><span class="tag">Lo que se gana</span>Sin ángulos de Euler no hay gimbal lock: el controlador sigue funcionando en volteretas y maniobras agresivas. El par de control se construye sobre todo con \(-k_R\,\mathbf e_R - k_\Omega\,\mathbf e_\Omega\). Es la base de muchos controladores de A2.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aplicaciones · 2</p>
+  <h2>Preintegración de IMU: integrar entre fotogramas una sola vez</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Entre dos fotogramas clave \(i\) y \(j\), la IMU da muchas medidas \(k = i, \dots, j-1\) cada \(\Delta t\). Forster et al. las resumen así <a class="cite" data-ref="forster2017"></a>:</p>
+      \[ \Delta R_{ij} = \prod_{k=i}^{j-1}\mathrm{Exp}\big((\tilde{\boldsymbol\omega}_k - \mathbf b^g)\,\Delta t\big) \]
+      \[ \Delta\mathbf v_{ij} = \sum_{k=i}^{j-1}\Delta R_{ik}\,(\tilde{\mathbf a}_k - \mathbf b^a)\,\Delta t \]
+      <ul class="small">
+        <li>\(\tilde{\boldsymbol\omega}_k\), \(\tilde{\mathbf a}_k\): giróscopo y acelerómetro medidos. \(\mathbf b^g\), \(\mathbf b^a\): sus sesgos estimados.</li>
+        <li>\(\Delta R_{ij}\): el giro entre \(i\) y \(j\). Es la integración con Exp de la hoja anterior, paso a paso; el producto compone los giros pequeños.</li>
+        <li>\(\Delta\mathbf v_{ij}\): el cambio de velocidad, con cada aceleración girada a los ejes de \(i\) mediante \(\Delta R_{ik}\). La gravedad se añade después, en el residuo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Por qué «pre»</span>Estas cantidades no dependen del estado global (\(R_i\), \(\mathbf v_i\), \(\mathbf p_i\)), solo de las medidas y del sesgo. Se calculan una vez, y si el optimizador cambia el estado no hay que reintegrar. Si cambia el sesgo, se corrigen a primer orden con jacobianas, y ahí entra \(J_r\).</div>
+      <p class="small">Así un VIO procesa la IMU a cientos de Hz y optimiza solo en los fotogramas clave, con una restricción relativa por par de fotogramas y su covarianza propagada en el tangente. Lo verás en A4b.</p>
     </div>
   </div>
 </section>
@@ -337,14 +901,19 @@
         <tr><td>ROS (REP 103)</td><td class="n">ENU</td><td class="n">FLU</td></tr>
       </table>
       <p class="small">NED: norte, este, abajo. ENU: este, norte, arriba. FRD: adelante, derecha, abajo. FLU: adelante, izquierda, arriba <a class="cite" data-ref="rep103,px4ros2"></a>.</p>
-      <p class="small">Pasar de uno a otro es una rotación fija, pero hay que aplicarla a posiciones, velocidades, orientaciones, velocidades angulares y covarianzas, y en los dos marcos (mundo y cuerpo).</p>
+      <p class="small"><strong>Las conversiones son rotaciones fijas</strong> (de 180°, las dos con determinante +1):</p>
+      \[ \mathbf p^{NED} = T_W\,\mathbf p^{ENU},\ \ T_W = \begin{bmatrix}0&1&0\\1&0&0\\0&0&-1\end{bmatrix} \]
+      \[ \mathbf p^{FRD} = T_B\,\mathbf p^{FLU},\ \ T_B = \begin{bmatrix}1&0&0\\0&-1&0\\0&0&-1\end{bmatrix} \]
+      <p class="small">Y la orientación necesita las dos, una por cada lado: \(R_{NED,FRD} = T_W\,R_{ENU,FLU}\,T_B^\top\).</p>
     </div>
     <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>Un punto 3 m al este, 4 m al norte y 10 m arriba: \((3, 4, 10)\) en ENU es \((4, 3, -10)\) en NED. Un dron con guiñada de 30° en ENU (medida desde el este hacia el norte) tiene guiñada de 60° en NED (desde el norte hacia el este). Ejemplo 15 del script.</div>
       <div class="callout error"><span class="tag">Cómo se manifiesta</span>El dron sube cuando le pides bajar, gira al revés o el estimador diverge al primer giro. En simulación puede no aparecer si el simulador y tu código comparten el mismo error.</div>
-      <div class="callout clave"><span class="tag">Regla del proyecto hilo</span>Un único convenio interno, documentado en el código, y conversiones solo en las fronteras (lectura de sensores, mensajes, autopiloto), cada una con su test.</div>
+      <div class="callout clave"><span class="tag">Regla del proyecto hilo</span>Un único convenio interno, documentado en el código, y conversiones solo en las fronteras (sensores, mensajes, autopiloto), cada una con su test. Se aplican a posiciones, velocidades, orientaciones, velocidades angulares y covarianzas.</div>
     </div>
   </div>
 </section>
+
 
 <!-- ============ PARTE 2 · INFERENCIA ============ -->
 <section class="slide divider" data-section="2 · Inferencia">
@@ -354,42 +923,280 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra en filtrado e inferencia</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:31%">Ejemplo en un dron</th></tr>
+      <tr><td>\(s_t\), \(o_t\), \(a_t\)</td><td>Estado oculto, observación y acción en el instante \(t\)</td><td>Posición del objetivo; detección sí/no; adónde volar</td></tr>
+      <tr><td>\(o_{1:t}\)</td><td>Toda la secuencia \(o_1, o_2, \dots, o_t\)</td><td>Todas las imágenes hasta ahora</td></tr>
+      <tr><td>\(p(a\mid b)\)</td><td>Probabilidad (o densidad) de \(a\) sabiendo \(b\)</td><td>\(p(o_t\mid s_t)\): modelo del sensor</td></tr>
+      <tr><td>\(b_t\), \(\bar b_t\)</td><td>Belief: distribución del estado dado lo observado. Con barra, antes de incorporar \(o_t\)</td><td>Mapa de probabilidad de dónde está el objetivo</td></tr>
+      <tr><td>\(\mathcal N(\boldsymbol\mu, \Sigma)\)</td><td>Gaussiana de media \(\boldsymbol\mu\) y covarianza \(\Sigma\)</td><td>Altura \(\mathcal N(10, 4)\): 10 m ± 2 m</td></tr>
+      <tr><td>\(\mathbb E_q[f(z)]\)</td><td>Media de \(f(z)\) cuando \(z\) se distribuye según \(q\): \(\int q(z)\,f(z)\,dz\)</td><td>Error de reconstrucción medio</td></tr>
+      <tr><td>\(x\), \(z\)</td><td>En modelos con latentes: dato observado y variable oculta que lo explica</td><td>Imagen; estado comprimido del entorno</td></tr>
+      <tr><td>\(p_\theta\), \(q_\phi\)</td><td>Modelo generativo (parámetros \(\theta\)) y distribución aproximada (parámetros \(\phi\))</td><td>Decodificador y codificador de un VAE</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Dos choques de notación con la parte 1</span>Aquí \(\phi\) son parámetros de una red, no un vector de rotación, y en el filtro de Kalman \(R\) es la covarianza del ruido del sensor, no una rotación. Son los nombres que usa la literatura de cada campo.</div>
+</section>
+
+<section class="slide">
   <p class="kicker">El belief</p>
   <h2>La recursión del filtro de Bayes</h2>
   <div class="cols">
     <div class="stack">
-      <p>El belief es la distribución del estado oculto dada toda la historia: \(b_t(s_t) = p(s_t \mid o_{1:t}, a_{1:t-1})\). Con dos supuestos de Markov se actualiza de forma recursiva:</p>
+      <p>El belief es la distribución del estado oculto dada toda la historia: \(b_t(s_t) = p(s_t \mid o_{1:t}, a_{1:t-1})\). Se actualiza en dos pasos cada vez que llega una observación:</p>
+      <p><strong>1. Predicción</strong> con el modelo de transición \(p(s_t\mid s_{t-1}, a_{t-1})\):</p>
       \[ \bar b_t(s_t) = \int p(s_t\mid s_{t-1}, a_{t-1})\, b_{t-1}(s_{t-1})\, ds_{t-1} \]
+      <p><strong>2. Corrección</strong> con el modelo de observación \(p(o_t\mid s_t)\):</p>
       \[ b_t(s_t) = \eta\; p(o_t\mid s_t)\;\bar b_t(s_t) \]
-      <p class="small">Predicción con el modelo de transición; corrección con el modelo de observación. \(\eta\) normaliza.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación</summary>
-        <p class="small">Por Bayes, \(p(s_t\mid o_{1:t},a_{1:t-1}) \propto p(o_t\mid s_t, o_{1:t-1}, a_{1:t-1})\,p(s_t\mid o_{1:t-1},a_{1:t-1})\). Supuesto 1 (observación): \(o_t\) depende solo de \(s_t\), así que el primer factor es \(p(o_t\mid s_t)\). El segundo se marginaliza sobre \(s_{t-1}\): \(\int p(s_t\mid s_{t-1}, o_{1:t-1}, a_{1:t-1})\,p(s_{t-1}\mid o_{1:t-1},a_{1:t-1})\,ds_{t-1}\). Supuesto 2 (Markov): \(s_t\) depende solo de \(s_{t-1}\) y \(a_{t-1}\). El segundo término de la integral es \(b_{t-1}\), porque \(a_{t-1}\) no informa sobre \(s_{t-1}\) si la política solo usa la historia.</p>
-      </details>
+      <div class="callout clave"><span class="tag">Cómo leerlo</span>
+        <p class="small"><strong>Predicción:</strong> la probabilidad de estar ahora en \(s_t\) es la suma, sobre todos los sitios \(s_{t-1}\) donde podía estar antes, de «probabilidad de que estuviera allí» por «probabilidad de pasar de allí aquí». Con estados discretos, la integral es una suma.</p>
+        <p class="small"><strong>Corrección:</strong> se multiplica por lo compatible que es cada estado con lo observado y se renormaliza. \(\eta = 1/\sum_s p(o_t\mid s)\,\bar b_t(s)\) hace que todo sume 1.</p>
+      </div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Kalman, partículas, VIO y el RSSM de Dreamer son formas distintas de aproximar estas dos líneas. A4a las ve con modelos conocidos; A7 y A8, con modelos aprendidos.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">El caso exacto</p>
-  <h2>Condicionar una gaussiana: de aquí sale la ganancia de Kalman</h2>
+  <p class="kicker">El filtro de Bayes con números</p>
+  <h2>Un dron busca un objetivo en cuatro celdas</h2>
   <div class="cols">
     <div class="stack">
-      <p>Si \(\mathbf x\) e \(\mathbf y\) son conjuntamente gaussianas con covarianzas por bloques \(\Sigma_{xx}, \Sigma_{xy}, \Sigma_{yy}\):</p>
-      \[ \boldsymbol\mu_{x\mid y} = \boldsymbol\mu_x + \Sigma_{xy}\Sigma_{yy}^{-1}(\mathbf y - \boldsymbol\mu_y) \]
-      \[ \Sigma_{x\mid y} = \Sigma_{xx} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx} \]
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">Define \(\mathbf z = \mathbf x - \Sigma_{xy}\Sigma_{yy}^{-1}\mathbf y\). Entonces \(\mathrm{Cov}(\mathbf z,\mathbf y) = \Sigma_{xy} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yy} = 0\). Al ser conjuntamente gaussianas, incorreladas implica independientes: conocer \(\mathbf y\) no cambia \(\mathbf z\). Por tanto \(\mathbb E[\mathbf x\mid\mathbf y] = \mathbb E[\mathbf z] + \Sigma_{xy}\Sigma_{yy}^{-1}\mathbf y\), que da la media. Y \(\mathrm{Cov}(\mathbf x\mid\mathbf y) = \mathrm{Cov}(\mathbf z) = \Sigma_{xx} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx}\), el complemento de Schur.</p>
-      </details>
+      <p class="small"><strong>Modelo.</strong> El objetivo se queda en su celda con probabilidad 0,8 o pasa a la de la derecha con 0,2 (la celda 4 es la última). El dron mira la celda 2 con un detector que acierta si está con 0,8 (\(p_d\)) y da falsa alarma con 0,1 (\(p_{fa}\)). Parte de un belief uniforme y <strong>no detecta nada</strong>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Celda</th><th>\(b_0\)</th><th>\(\bar b_1\)</th><th>\(p(\text{no}\mid s)\)</th><th>producto</th><th>\(b_1\)</th></tr>
+          <tr><td>1</td><td class="n">0,25</td><td class="n">0,20</td><td class="n">0,9</td><td class="n">0,180</td><td class="n">0,248</td></tr>
+          <tr><td>2</td><td class="n">0,25</td><td class="n">0,25</td><td class="n">0,2</td><td class="n">0,050</td><td class="n">0,069</td></tr>
+          <tr><td>3</td><td class="n">0,25</td><td class="n">0,25</td><td class="n">0,9</td><td class="n">0,225</td><td class="n">0,310</td></tr>
+          <tr><td>4</td><td class="n">0,25</td><td class="n">0,30</td><td class="n">0,9</td><td class="n">0,270</td><td class="n">0,372</td></tr>
+          <tr><td>Suma</td><td class="n">1</td><td class="n">1</td><td></td><td class="n">0,725</td><td class="n">1</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
-      <p>Con una medida lineal \(\mathbf y = H\mathbf x + \mathbf v\), \(\mathbf v\sim\mathcal N(0,R)\), y un prior \(\mathcal N(\bar{\mathbf x}, P)\):</p>
-      \[ \Sigma_{xy} = PH^\top,\qquad \Sigma_{yy} = HPH^\top + R \]
+      <ul class="small">
+        <li><strong>Predicción:</strong> celda 1, \(0{,}8\cdot 0{,}25 = 0{,}20\) (nadie llega a ella); celda 2, \(0{,}8\cdot 0{,}25 + 0{,}2\cdot 0{,}25 = 0{,}25\); celda 4, \(1\cdot 0{,}25 + 0{,}2\cdot 0{,}25 = 0{,}30\).</li>
+        <li><strong>Verosimilitud de «no detecto»:</strong> \(1 - p_d = 0{,}2\) si está en la celda 2; \(1 - p_{fa} = 0{,}9\) en las demás.</li>
+        <li><strong>Normalizar:</strong> \(\eta = 1/0{,}725\). La celda 2 baja de 0,25 a 0,069 y las demás suben.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Si hubiera detectado</span>Verosimilitudes \(0{,}1,\ 0{,}8,\ 0{,}1,\ 0{,}1\): el belief pasa a \((0{,}073,\ 0{,}727,\ 0{,}091,\ 0{,}109)\). Una detección con falsas alarmas no da certeza. Ejemplo 16 del script.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Esta es la búsqueda de tu TFM en miniatura. El laboratorio y la parte 3 deciden <em>qué celda mirar</em> para que el belief se concentre antes.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">De dónde sale la recursión</p>
+  <h2>La recursión del filtro de Bayes, paso a paso</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(p(s_t\mid o_{1:t},a_{1:t-1}) \propto p(o_t\mid s_t, o_{1:t-1}, a_{1:t-1})\;p(s_t\mid o_{1:t-1},a_{1:t-1})\)</td><td>Regla de Bayes sobre \(o_t\), con el resto de la historia como condición fija</td></tr>
+      <tr><td><strong>2</strong></td><td>\(p(o_t\mid s_t, o_{1:t-1}, a_{1:t-1}) = p(o_t\mid s_t)\)</td><td><strong>Supuesto 1:</strong> la observación solo depende del estado actual</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\displaystyle p(s_t\mid o_{1:t-1},a_{1:t-1}) = \int p(s_t\mid s_{t-1}, o_{1:t-1}, a_{1:t-1})\,p(s_{t-1}\mid o_{1:t-1},a_{1:t-1})\,ds_{t-1}\)</td><td>Probabilidad total: sumar sobre todos los estados anteriores posibles</td></tr>
+      <tr><td><strong>4</strong></td><td>\(p(s_t\mid s_{t-1}, o_{1:t-1}, a_{1:t-1}) = p(s_t\mid s_{t-1}, a_{t-1})\)</td><td><strong>Supuesto 2 (Markov):</strong> el siguiente estado solo depende del actual y de la acción</td></tr>
+      <tr><td><strong>5</strong></td><td>\(p(s_{t-1}\mid o_{1:t-1},a_{1:t-1}) = p(s_{t-1}\mid o_{1:t-1},a_{1:t-2}) = b_{t-1}(s_{t-1})\)</td><td>La acción \(a_{t-1}\) se elige con la historia, así que no informa sobre \(s_{t-1}\) más allá de lo que ya contiene la historia</td></tr>
+      <tr><td><strong>6</strong></td><td>\(b_t(s_t) = \eta\,p(o_t\mid s_t)\displaystyle\int p(s_t\mid s_{t-1},a_{t-1})\,b_{t-1}(s_{t-1})\,ds_{t-1}\)</td><td>Juntar 1–5; \(\eta\) es la constante del «\(\propto\)»</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Cuándo falla</span>Si la observación depende de algo que no está en \(s_t\) (un sesgo del sensor, el viento) o la dinámica tiene memoria (retardos del motor), los supuestos 1 y 2 no se cumplen. La solución habitual es ampliar el estado: sesgos en el estado del ESKF (A4), historia de acciones en el estado de una política (B4).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El caso exacto · 1</p>
+  <h2>Dos variables gaussianas a la vez: qué es cada bloque</h2>
+  <div class="cols w40 center">
+    <figure class="fig">
+      <svg viewBox="0 0 470 380" role="img" aria-label="Elipses de la gaussiana conjunta de altura real y lectura del barómetro, una recta horizontal en la lectura 12 y la gaussiana condicionada sobre ella">
+        <path class="ln" d="M60 330 H446"/>
+        <path class="ln" d="M60 330 V14"/>
+        <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+          <text x="60" y="348">4</text><text x="186.7" y="348">8</text><text x="250" y="348">10</text><text x="313.3" y="348">12</text><text x="440" y="348">16</text>
+        </g>
+        <g class="t-mono t-faint" font-size="12" text-anchor="end">
+          <text x="52" y="334">4</text><text x="52" y="230.7">8</text><text x="52" y="179">10</text><text x="52" y="127.3">12</text><text x="52" y="24">16</text>
+        </g>
+        <text x="250" y="372" class="t-muted" font-size="13" text-anchor="middle">x: altura real (m)</text>
+        <text x="18" y="175" class="t-muted" font-size="13" text-anchor="middle" transform="rotate(-90 18 175)">y: lectura del barómetro (m)</text>
+        <path class="ln-accent" d="M376.7,71.7 L376.2,67.6 L374.7,64.3 L372.4,61.8 L369.0,60.2 L364.8,59.5 L359.7,59.7 L353.8,60.7 L347.0,62.6 L339.6,65.4 L331.4,69.0 L322.7,73.4 L313.3,78.6 L303.5,84.5 L293.3,91.1 L282.8,98.3 L272.0,106.2 L261.0,114.5 L250.0,123.3 L239.0,132.5 L228.0,142.1 L217.2,151.8 L206.7,161.8 L196.5,171.8 L186.7,181.9 L177.3,191.9 L168.6,201.8 L160.4,211.5 L153.0,220.9 L146.2,230.0 L140.3,238.7 L135.2,246.8 L131.0,254.4 L127.6,261.4 L125.3,267.8 L123.8,273.4 L123.3,278.3 L123.8,282.4 L125.3,285.7 L127.6,288.2 L131.0,289.8 L135.2,290.5 L140.3,290.3 L146.2,289.3 L153.0,287.4 L160.4,284.6 L168.6,281.0 L177.3,276.6 L186.7,271.4 L196.5,265.5 L206.7,258.9 L217.2,251.7 L228.0,243.8 L239.0,235.5 L250.0,226.7 L261.0,217.5 L272.0,207.9 L282.8,198.2 L293.3,188.2 L303.5,178.2 L313.3,168.1 L322.7,158.1 L331.4,148.2 L339.6,138.5 L347.0,129.1 L353.8,120.0 L359.7,111.3 L364.8,103.2 L369.0,95.6 L372.4,88.6 L374.7,82.2 L376.2,76.6 L376.7,71.7 Z" opacity="0.55"/>
+        <path class="ln-accent" d="M313.3,123.3 L313.1,121.3 L312.4,119.6 L311.2,118.4 L309.5,117.6 L307.4,117.3 L304.8,117.3 L301.9,117.9 L298.5,118.8 L294.8,120.2 L290.7,122.0 L286.3,124.2 L281.7,126.8 L276.8,129.8 L271.7,133.1 L266.4,136.7 L261.0,140.6 L255.5,144.8 L250.0,149.2 L244.5,153.8 L239.0,158.5 L233.6,163.4 L228.3,168.4 L223.2,173.4 L218.3,178.5 L213.7,183.5 L209.3,188.4 L205.2,193.3 L201.5,198.0 L198.1,202.5 L195.2,206.8 L192.6,210.9 L190.5,214.7 L188.8,218.2 L187.6,221.4 L186.9,224.2 L186.7,226.7 L186.9,228.7 L187.6,230.4 L188.8,231.6 L190.5,232.4 L192.6,232.7 L195.2,232.7 L198.1,232.1 L201.5,231.2 L205.2,229.8 L209.3,228.0 L213.7,225.8 L218.3,223.2 L223.2,220.2 L228.3,216.9 L233.6,213.3 L239.0,209.4 L244.5,205.2 L250.0,200.8 L255.5,196.2 L261.0,191.5 L266.4,186.6 L271.7,181.6 L276.8,176.6 L281.7,171.5 L286.3,166.5 L290.7,161.6 L294.8,156.7 L298.5,152.0 L301.9,147.5 L304.8,143.2 L307.4,139.1 L309.5,135.3 L311.2,131.8 L312.4,128.6 L313.1,125.8 L313.3,123.3 Z" stroke-width="2"/>
+        <path class="ln ln-dash" d="M123.3 304.2 L402 20"/>
+        <text x="408" y="30" class="t-muted t-mono" font-size="12">E[x | y]</text>
+        <path class="ln-time ln-dash" d="M60 123.3 H440"/>
+        <text x="68" y="140" class="t-time t-mono" font-size="12">medida y = 12</text>
+        <path class="ln-tesis" d="M60.0,123.3 L63.2,123.3 L66.3,123.3 L69.5,123.3 L72.7,123.3 L75.8,123.3 L79.0,123.3 L82.2,123.3 L85.3,123.3 L88.5,123.3 L91.7,123.3 L94.8,123.3 L98.0,123.3 L101.2,123.3 L104.3,123.3 L107.5,123.3 L110.7,123.3 L113.8,123.3 L117.0,123.3 L120.2,123.3 L123.3,123.3 L126.5,123.3 L129.7,123.3 L132.8,123.3 L136.0,123.3 L139.2,123.3 L142.3,123.3 L145.5,123.3 L148.7,123.3 L151.8,123.3 L155.0,123.3 L158.2,123.3 L161.3,123.3 L164.5,123.3 L167.7,123.3 L170.8,123.3 L174.0,123.3 L177.2,123.3 L180.3,123.3 L183.5,123.3 L186.7,123.3 L189.8,123.3 L193.0,123.3 L196.2,123.3 L199.3,123.2 L202.5,123.2 L205.7,123.1 L208.8,123.0 L212.0,122.8 L215.2,122.6 L218.3,122.4 L221.5,122.0 L224.7,121.5 L227.8,120.9 L231.0,120.1 L234.2,119.1 L237.3,117.8 L240.5,116.3 L243.7,114.5 L246.8,112.3 L250.0,109.8 L253.2,106.9 L256.3,103.7 L259.5,100.1 L262.7,96.1 L265.8,91.9 L269.0,87.5 L272.2,83.0 L275.3,78.5 L278.5,74.1 L281.7,69.9 L284.8,66.1 L288.0,62.8 L291.2,60.1 L294.3,58.1 L297.5,56.8 L300.7,56.4 L303.8,56.8 L307.0,58.1 L310.2,60.1 L313.3,62.8 L316.5,66.1 L319.7,69.9 L322.8,74.1 L326.0,78.5 L329.2,83.0 L332.3,87.5 L335.5,91.9 L338.7,96.1 L341.8,100.1 L345.0,103.7 L348.2,106.9 L351.3,109.8 L354.5,112.3 L357.7,114.5 L360.8,116.3 L364.0,117.8 L367.2,119.1 L370.3,120.1 L373.5,120.9 L376.7,121.5 L379.8,122.0 L383.0,122.4 L386.2,122.6 L389.3,122.8 L392.5,123.0 L395.7,123.1 L398.8,123.2 L402.0,123.2 L405.2,123.3 L408.3,123.3 L411.5,123.3 L414.7,123.3 L417.8,123.3 L421.0,123.3 L424.2,123.3 L427.3,123.3 L430.5,123.3 L433.7,123.3 L436.8,123.3 L440.0,123.3" stroke-width="2.4"/>
+        <circle cx="300.7" cy="123.3" r="4" class="fill-tesis"/>
+        <text x="68" y="84" class="t-tesis t-mono" font-size="12">p(x | y=12): N(11,6; 0,8)</text>
+        <path class="ln" d="M60.0,329.7 L63.2,329.6 L66.3,329.6 L69.5,329.5 L72.7,329.4 L75.8,329.3 L79.0,329.2 L82.2,329.1 L85.3,329.0 L88.5,328.8 L91.7,328.7 L94.8,328.5 L98.0,328.3 L101.2,328.1 L104.3,327.9 L107.5,327.6 L110.7,327.3 L113.8,327.0 L117.0,326.7 L120.2,326.3 L123.3,326.0 L126.5,325.5 L129.7,325.1 L132.8,324.6 L136.0,324.1 L139.2,323.5 L142.3,322.9 L145.5,322.3 L148.7,321.7 L151.8,321.0 L155.0,320.3 L158.2,319.5 L161.3,318.8 L164.5,318.0 L167.7,317.1 L170.8,316.3 L174.0,315.4 L177.2,314.6 L180.3,313.7 L183.5,312.8 L186.7,311.9 L189.8,310.9 L193.0,310.0 L196.2,309.2 L199.3,308.3 L202.5,307.4 L205.7,306.6 L208.8,305.8 L212.0,305.0 L215.2,304.3 L218.3,303.6 L221.5,303.0 L224.7,302.4 L227.8,301.9 L231.0,301.4 L234.2,301.0 L237.3,300.7 L240.5,300.4 L243.7,300.2 L246.8,300.1 L250.0,300.1 L253.2,300.1 L256.3,300.2 L259.5,300.4 L262.7,300.7 L265.8,301.0 L269.0,301.4 L272.2,301.9 L275.3,302.4 L278.5,303.0 L281.7,303.6 L284.8,304.3 L288.0,305.0 L291.2,305.8 L294.3,306.6 L297.5,307.4 L300.7,308.3 L303.8,309.2 L307.0,310.0 L310.2,310.9 L313.3,311.9 L316.5,312.8 L319.7,313.7 L322.8,314.6 L326.0,315.4 L329.2,316.3 L332.3,317.1 L335.5,318.0 L338.7,318.8 L341.8,319.5 L345.0,320.3 L348.2,321.0 L351.3,321.7 L354.5,322.3 L357.7,322.9 L360.8,323.5 L364.0,324.1 L367.2,324.6 L370.3,325.1 L373.5,325.5 L376.7,326.0 L379.8,326.3 L383.0,326.7 L386.2,327.0 L389.3,327.3 L392.5,327.6 L395.7,327.9 L398.8,328.1 L402.0,328.3 L405.2,328.5 L408.3,328.7 L411.5,328.8 L414.7,329.0 L417.8,329.1 L421.0,329.2 L424.2,329.3 L427.3,329.4 L430.5,329.5 L433.7,329.6 L436.8,329.6 L440.0,329.7" stroke-width="2"/>
+        <text x="330" y="318" class="t-muted t-mono" font-size="12">p(x): N(10; 4)</text>
+      </svg>
+      <figcaption>Elipses de 1σ y 2σ de la conjunta. Condicionar es cortar por la recta \(y = 12\). Datos de <code>figuras/ejemplos_m1.py</code>, ejemplo 17.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Juntamos lo que queremos saber, \(\mathbf x\), y lo que medimos, \(\mathbf y\), en un vector gaussiano:</p>
+      \[ \begin{bmatrix}\mathbf x\\ \mathbf y\end{bmatrix}\sim\mathcal N\!\left(\begin{bmatrix}\boldsymbol\mu_x\\ \boldsymbol\mu_y\end{bmatrix},\ \begin{bmatrix}\Sigma_{xx} & \Sigma_{xy}\\ \Sigma_{yx} & \Sigma_{yy}\end{bmatrix}\right) \]
+      <ul class="small">
+        <li>\(\boldsymbol\mu_x\), \(\boldsymbol\mu_y\): lo que esperamos de cada una antes de medir.</li>
+        <li>\(\Sigma_{xx}\), \(\Sigma_{yy}\): cuánto dudamos de cada una por separado.</li>
+        <li>\(\Sigma_{xy} = \mathbb E[(\mathbf x - \boldsymbol\mu_x)(\mathbf y - \boldsymbol\mu_y)^\top]\): cuánto varían <strong>juntas</strong>. Si es cero, medir \(\mathbf y\) no dice nada de \(\mathbf x\). \(\Sigma_{yx} = \Sigma_{xy}^\top\).</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Ejemplo: altura y barómetro</span>Altura \(x\sim\mathcal N(10, 4)\) (10 m ± 2 m). El barómetro lee \(y = x + v\) con ruido \(v\sim\mathcal N(0, 1)\). Entonces \(\mu_y = 10\), \(\Sigma_{yy} = 4 + 1 = 5\) y \(\Sigma_{xy} = 4\): correlación \(4/\sqrt{4\cdot 5} = 0{,}89\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El caso exacto · 2</p>
+  <h2>Condicionar una gaussiana: el resultado y cómo leerlo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Al conocer el valor de \(\mathbf y\), \(\mathbf x\) sigue siendo gaussiana, con</p>
+      \[ \boldsymbol\mu_{x\mid y} = \boldsymbol\mu_x + \Sigma_{xy}\Sigma_{yy}^{-1}(\mathbf y - \boldsymbol\mu_y) \]
+      \[ \Sigma_{x\mid y} = \Sigma_{xx} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx} \]
+      <ul class="small">
+        <li>\(\mathbf y - \boldsymbol\mu_y\): la <strong>sorpresa</strong>, lo que la medida tiene de inesperado. En Kalman se llama innovación.</li>
+        <li>\(\Sigma_{xy}\Sigma_{yy}^{-1}\): cuánto se mueve \(\mathbf x\) por cada unidad de sorpresa. En escalar es la pendiente de la regresión de \(x\) sobre \(y\), \(\sigma_{xy}/\sigma_y^2\): la recta discontinua de la figura.</li>
+        <li>\(\Sigma_{x\mid y}\) es \(\Sigma_{xx}\) menos algo positivo: medir nunca aumenta la incertidumbre. Y <strong>no depende del valor medido</strong>, solo de la geometría de las covarianzas.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con el barómetro</span>
+        <p class="small">El barómetro marca \(y = 12\) m:</p>
+        <p class="small">media \(= 10 + \tfrac45\,(12 - 10) = 11{,}6\) m</p>
+        <p class="small">varianza \(= 4 - \tfrac{4\cdot 4}{5} = 0{,}8\) m² (de ±2 m a ±0,89 m)</p>
+        <p class="small">La estimación se mueve el 80 % del camino hacia la medida: confiamos más en el barómetro (varianza 1) que en lo que sabíamos (varianza 4).</p>
+        <p class="small">Simulando dos millones de pares \((x, y)\) y quedándonos con los de \(y\approx 12\): media 11,60 y varianza 0,80 (ejemplo 17).</p>
+      </div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Toda la corrección del filtro de Kalman es esta fórmula. Las tres hojas siguientes la derivan y la convierten en las ecuaciones de Kalman.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El caso exacto · 3</p>
+  <h2>De dónde sale el condicionamiento gaussiano</h2>
+  <p class="small">La idea: separar \(\mathbf x\) en la parte que \(\mathbf y\) explica y una parte que \(\mathbf y\) no puede explicar. La segunda no cambia al medir.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathbf z = \mathbf x - A\,\mathbf y\), con \(A = \Sigma_{xy}\Sigma_{yy}^{-1}\)</td><td>Restar a \(\mathbf x\) su «regresión» sobre \(\mathbf y\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathrm{Cov}(\mathbf z, \mathbf y) = \Sigma_{xy} - A\,\Sigma_{yy} = \Sigma_{xy} - \Sigma_{xy} = 0\)</td><td>La covarianza es lineal en cada argumento</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathbf z\) y \(\mathbf y\) son independientes</td><td>Son conjuntamente gaussianas (\(\mathbf z\) es lineal en \(\mathbf x, \mathbf y\)) e incorreladas. Esto solo vale para gaussianas</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathbb E[\mathbf x\mid\mathbf y] = \mathbb E[\mathbf z] + A\mathbf y = \boldsymbol\mu_x - A\boldsymbol\mu_y + A\mathbf y\)</td><td>\(\mathbf x = \mathbf z + A\mathbf y\), y conocer \(\mathbf y\) no cambia la distribución de \(\mathbf z\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mathrm{Cov}(\mathbf x\mid\mathbf y) = \mathrm{Cov}(\mathbf z) = \Sigma_{xx} - \Sigma_{xy}A^\top - A\Sigma_{yx} + A\Sigma_{yy}A^\top\)</td><td>Dado \(\mathbf y\), \(A\mathbf y\) es una constante; desarrollar \(\mathrm{Cov}(\mathbf x - A\mathbf y)\)</td></tr>
+      <tr><td><strong>6</strong></td><td>\(= \Sigma_{xx} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx}\)</td><td>Los tres últimos términos valen \(\Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx}\) con signos \(-,-,+\)</td></tr>
+    </table>
+  </div>
+  <p class="small">\(\Sigma_{xx} - \Sigma_{xy}\Sigma_{yy}^{-1}\Sigma_{yx}\) se llama <strong>complemento de Schur</strong> de \(\Sigma_{yy}\). Reaparece en la marginalización de los optimizadores de VIO (A4b).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Kalman · 1</p>
+  <h2>De condicionar a Kalman: el modelo del sensor</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El filtro de Kalman no recibe \(\Sigma_{xy}\) y \(\Sigma_{yy}\): las construye a partir de dos cosas.</p>
+      <ul class="small">
+        <li><strong>El belief actual</strong> del estado: \(\mathbf x\sim\mathcal N(\bar{\mathbf x}, P)\). \(\bar{\mathbf x}\) es la estimación y \(P\) su covarianza.</li>
+        <li><strong>El modelo del sensor</strong>: \(\mathbf y = H\mathbf x + \mathbf v\), \(\mathbf v\sim\mathcal N(\mathbf 0, R)\), independiente de \(\mathbf x\). \(H\) dice qué combinación del estado ve el sensor; \(R\), cuánto ruido tiene.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Ejemplo de \(H\)</span>Estado \(\mathbf x = (z, \dot z)\): altura y velocidad vertical. El barómetro mide la altura, no la velocidad: \(H = [1\ \ 0]\). Una cámara que mide los dos tendría \(H = I\).</div>
+    </div>
+    <div class="stack">
+      <p>Los tres bloques, paso a paso:</p>
+      \[ \boldsymbol\mu_y = \mathbb E[H\mathbf x + \mathbf v] = H\bar{\mathbf x} \]
+      \[ \Sigma_{yy} = \mathrm{Cov}(H\mathbf x) + \mathrm{Cov}(\mathbf v) = HPH^\top + R \]
+      \[ \Sigma_{xy} = \mathbb E\big[(\mathbf x - \bar{\mathbf x})\,(H(\mathbf x - \bar{\mathbf x}) + \mathbf v)^\top\big] = PH^\top \]
+      <p class="small">La segunda suma covarianzas porque \(\mathbf x\) y \(\mathbf v\) son independientes; en la tercera, el término con \(\mathbf v\) tiene media cero por la misma razón.</p>
+      <p>Sustituyendo en el condicionamiento y llamando \(K = \Sigma_{xy}\Sigma_{yy}^{-1}\):</p>
       \[ K = PH^\top(HPH^\top+R)^{-1} \]
       \[ \hat{\mathbf x} = \bar{\mathbf x} + K(\mathbf y - H\bar{\mathbf x}),\qquad P^+ = (I - KH)P \]
-      <div class="callout clave"><span class="tag">Idea clave</span>La corrección del filtro de Kalman es solo esto: condicionar una gaussiana. El EKF lo aplica tras linealizar; el ESKF lo hace en el tangente del grupo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Kalman · 2</p>
+  <h2>La ganancia de Kalman: un cociente de incertidumbres</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En escalar, con \(H = 1\), todo se lee de un vistazo:</p>
+      \[ K = \frac{P}{P + R} \]
+      \[ \hat x = \bar x + K\,(y - \bar x),\qquad P^+ = (1 - K)\,P \]
+      <ul class="small">
+        <li>\(R\to 0\) (sensor perfecto): \(K\to 1\) y \(\hat x = y\). Se copia la medida.</li>
+        <li>\(P\to 0\) (ya lo sabíamos): \(K\to 0\). Se ignora la medida.</li>
+        <li>\(K\) es «qué fracción de la duda total es mía»: \(\hat x\) es una media de \(\bar x\) y de \(y\) ponderada por la confianza en cada uno.</li>
+      </ul>
+      <p>La varianza tiene una forma aún más clara:</p>
+      \[ \frac{1}{P^+} = \frac{1}{P} + \frac{1}{R} \]
+      <p class="small">Las <strong>precisiones</strong> (inversas de varianzas) se suman: cada medida independiente añade su información.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(P\)</th><th>\(R\)</th><th>\(K\)</th><th>\(P^+\)</th><th>Lectura</th></tr>
+          <tr><td class="n">4</td><td class="n">1</td><td class="n">0,8</td><td class="n">0,8</td><td>El barómetro de antes: manda la medida</td></tr>
+          <tr><td class="n">1</td><td class="n">4</td><td class="n">0,2</td><td class="n">0,8</td><td>Sensor ruidoso: manda lo que sabíamos</td></tr>
+          <tr><td class="n">4</td><td class="n">4</td><td class="n">0,5</td><td class="n">2</td><td>Mitad y mitad; la varianza se reduce a la mitad</td></tr>
+        </table>
+      </div>
+      <details class="deriv" open><summary>Derivación de 1/P⁺ = 1/P + 1/R</summary>
+        <p class="small">\(P^+ = (1-K)P = \big(1 - \tfrac{P}{P+R}\big)P = \tfrac{RP}{P+R}\). Invirtiendo, \(\tfrac{1}{P^+} = \tfrac{P+R}{RP} = \tfrac1R + \tfrac1P\). En vectores es la <em>forma de información</em>: \((P^+)^{-1} = P^{-1} + H^\top R^{-1}H\), que usaremos en la parte 3.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Idea clave</span>La corrección del filtro de Kalman es condicionar una gaussiana. El EKF lo hace tras linealizar \(H\); el ESKF de A4 lo hace con el error en el tangente del grupo, con lo visto en la parte 1.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Kalman · 3</p>
+  <h2>El ciclo completo: predecir y corregir</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La <strong>predicción</strong> es el paso 1 del filtro de Bayes con un modelo lineal, \(\mathbf x_{k+1} = F\mathbf x_k + \mathbf w_k\), \(\mathbf w_k\sim\mathcal N(\mathbf 0, Q)\):</p>
+      \[ \bar{\mathbf x}_{k+1} = F\hat{\mathbf x}_k,\qquad \bar P_{k+1} = F P_k F^\top + Q \]
+      <ul class="small">
+        <li>\(F\): cómo evoluciona el estado en un paso. Velocidad constante con paso \(\Delta t\): \(F = \left[\begin{smallmatrix}1 & \Delta t\\ 0 & 1\end{smallmatrix}\right]\) (la altura sube \(\dot z\,\Delta t\)).</li>
+        <li>\(Q\): lo que el modelo no capta (ráfagas, empuje desconocido). Añade incertidumbre en cada paso.</li>
+        <li>\(FPF^\top\): la regla \(\mathrm{Cov}(F\mathbf x) = F\,\mathrm{Cov}(\mathbf x)\,F^\top\), la misma que \(J\Sigma J^\top\) en la parte 1. Se suma \(Q\) porque \(\mathbf w\) es independiente.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Detalle importante</span>La predicción <strong>crea correlación</strong> entre altura y velocidad: si la velocidad era mayor de lo estimado, la altura también lo será. Esa correlación (el elemento fuera de la diagonal de \(\bar P\)) es lo que permite después corregir la velocidad con un sensor que solo mide altura. Se ve con números en la hoja siguiente.</div>
+      <div class="callout clave"><span class="tag">El ciclo</span>
+        <p class="small">1. Predecir con \(F\) y \(Q\) a la frecuencia del modelo o de la IMU.</p>
+        <p class="small">2. Corregir con \(H\) y \(R\) cada vez que llega una medida (barómetro a decenas de Hz, GNSS a pocos Hz).</p>
+        <p class="small">Cada sensor tiene su \(H\) y su \(R\); el filtro los fusiona sin más que repetir la corrección.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Kalman · 4</p>
+  <h2>Ejemplo completo: altura y velocidad con un barómetro</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Partida:</strong> \(\hat{\mathbf x}_0 = (10\ \text{m},\ 0{,}5\ \text{m/s})\), \(P_0 = I\). Paso \(\Delta t = 1\) s, \(Q = \mathrm{diag}(0,\ 0{,}2)\).</p>
+      <p class="small"><strong>1. Predicción</strong></p>
+      \[ \bar{\mathbf x} = \begin{bmatrix}1&1\\0&1\end{bmatrix}\begin{bmatrix}10\\0{,}5\end{bmatrix} = \begin{bmatrix}10{,}5\\0{,}5\end{bmatrix},\quad \bar P = FF^\top + Q = \begin{bmatrix}2 & 1\\ 1 & 1{,}2\end{bmatrix} \]
+      <p class="small">Ha aparecido una covarianza de 1 entre altura y velocidad.</p>
+      <p class="small"><strong>2. Corrección</strong> con el barómetro: \(y = 11{,}5\) m, \(H = [1\ \ 0]\), \(R = 0{,}5\).</p>
+      \[ HPH^\top + R = 2 + 0{,}5 = 2{,}5,\qquad K = \frac{1}{2{,}5}\begin{bmatrix}2\\1\end{bmatrix} = \begin{bmatrix}0{,}8\\0{,}4\end{bmatrix} \]
+      \[ \hat{\mathbf x} = \begin{bmatrix}10{,}5\\0{,}5\end{bmatrix} + \begin{bmatrix}0{,}8\\0{,}4\end{bmatrix}(11{,}5 - 10{,}5) = \begin{bmatrix}11{,}3\\0{,}9\end{bmatrix} \]
+      \[ P^+ = (I - KH)\,\bar P = \begin{bmatrix}0{,}4 & 0{,}2\\ 0{,}2 & 0{,}8\end{bmatrix} \]
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lo que hay que ver</span>El barómetro no mide la velocidad, y aun así la velocidad estimada pasa de 0,5 a 0,9 m/s y su varianza de 1,2 a 0,8. Lo hace el segundo elemento de \(K\), que es \(\bar P_{21}/(HPH^\top + R)\): la correlación creada por la predicción.</div>
+      <p class="small"><strong>Lectura física:</strong> el dron está 1 m más alto de lo predicho. La explicación más probable reparte el metro entre «partí más alto» y «subía más deprisa», según las covarianzas.</p>
+      <p class="xsmall muted">Ejemplo 18 de <code>figuras/ejemplos_m1.py</code>. A4a lleva este filtro a 3D con IMU, GNSS y barómetro.</p>
     </div>
   </div>
 </section>
@@ -423,31 +1230,64 @@
   <div class="callout clave"><span class="tag">Idea clave</span>Los world models y los beliefs aprendidos usan la tercera familia, a menudo <strong>amortizada</strong>: una red que, dada la observación, devuelve directamente los parámetros de \(q\). Revisión de referencia: Blei et al. <a class="cite" data-ref="blei2017"></a>.</div>
 </section>
 
+
 <section class="slide">
-  <p class="kicker">Divergencia de Kullback-Leibler</p>
+  <p class="kicker">Divergencia de Kullback-Leibler · 1</p>
   <h2>KL: cuánto se equivoca \(q\) al describir \(p\)</h2>
   <div class="cols">
     <div class="stack">
-      \[ \mathrm{KL}(q\,\|\,p) = \mathbb E_{q}\!\left[\log\frac{q(z)}{p(z)}\right] \;\ge\; 0 \]
+      \[ \mathrm{KL}(q\,\|\,p) = \mathbb E_{z\sim q}\!\left[\log\frac{q(z)}{p(z)}\right] = \sum_z q(z)\,\log\frac{q(z)}{p(z)} \]
       <ul class="small">
-        <li>Vale 0 si y solo si \(q = p\) (casi en todas partes).</li>
-        <li><strong>No es simétrica</strong>: \(\mathrm{KL}(q\|p) \neq \mathrm{KL}(p\|q)\). No es una distancia.</li>
-        <li>Se mide en nats (logaritmo natural) o bits (base 2).</li>
+        <li>\(\log\frac{q(z)}{p(z)}\): cuánto más probable cree \(q\) que es \(z\) que \(p\). Positivo donde \(q\) exagera, negativo donde se queda corta.</li>
+        <li>Se promedia con los pesos de \(q\): pesan los sitios donde \(q\) pone masa.</li>
+        <li>Interpretación en códigos: los bits (o nats) de más que gastas, en media, si los datos salen de \(q\) y los codificas con un código pensado para \(p\).</li>
+        <li>Unidades: nats con logaritmo natural, bits con base 2 (1 nat = 1,44 bits). Con densidades, la suma es una integral.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo: dos monedas</span>
+        <p class="small">\(p = (0{,}5;\ 0{,}5)\), moneda justa. \(q = (0{,}9;\ 0{,}1)\), moneda trucada.</p>
+        <p class="small">\(\mathrm{KL}(q\|p) = 0{,}9\ln\tfrac{0{,}9}{0{,}5} + 0{,}1\ln\tfrac{0{,}1}{0{,}5} = 0{,}529 - 0{,}161 = 0{,}368\) nats</p>
+        <p class="small">\(\mathrm{KL}(p\|q) = 0{,}5\ln\tfrac{0{,}5}{0{,}9} + 0{,}5\ln\tfrac{0{,}5}{0{,}1} = -0{,}294 + 0{,}805 = 0{,}511\) nats</p>
+        <p class="small"><strong>No es simétrica.</strong> La segunda es mayor porque \(p\) da probabilidad 0,5 a la cruz, que \(q\) casi descarta (0,1): ese término domina. Ejemplo 19 del script.</p>
+      </div>
+      <ul class="small">
+        <li>Vale 0 si y solo si \(q = p\), y nunca es negativa (hoja siguiente).</li>
+        <li>No es una distancia: no es simétrica ni cumple la desigualdad triangular.</li>
         <li>Es invariante a cambios de variable invertibles, a diferencia de la entropía diferencial.</li>
       </ul>
-      <details class="deriv" open><summary>Derivación (desigualdad de Gibbs)</summary>
-        <p class="small">\(-\mathrm{KL}(q\|p) = \mathbb E_q[\log(p/q)] \le \log\mathbb E_q[p/q] = \log\int p\,dz = 0\), por la desigualdad de Jensen y la concavidad del logaritmo.</p>
-      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Divergencia de Kullback-Leibler · 2</p>
+  <h2>Por qué la KL nunca es negativa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Desigualdad de Jensen.</strong> Para una función cóncava \(f\) (curvada hacia abajo, como \(\log\)), la media de \(f\) es menor o igual que \(f\) de la media:</p>
+      \[ \mathbb E[f(X)] \le f\big(\mathbb E[X]\big) \]
+      <p class="small">Ejemplo: \(X\) vale 1 o 9 con igual probabilidad. \(\mathbb E[\log_3 X] = (0 + 2)/2 = 1\), mientras que \(\log_3\mathbb E[X] = \log_3 5 = 1{,}46\). Las cuerdas de una curva cóncava quedan por debajo de ella.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:52%">Paso (desigualdad de Gibbs)</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(-\mathrm{KL}(q\|p) = \mathbb E_q\big[\log\tfrac{p(z)}{q(z)}\big]\)</td><td>Darle la vuelta al cociente cambia el signo del log</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\le \log\mathbb E_q\big[\tfrac{p(z)}{q(z)}\big]\)</td><td>Jensen con \(f = \log\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(= \log\sum_z q(z)\tfrac{p(z)}{q(z)} = \log\sum_z p(z) = \log 1 = 0\)</td><td>Las \(q\) se cancelan; \(p\) suma 1</td></tr>
+        </table>
+      </div>
+      <p class="small">La igualdad en Jensen exige que \(p/q\) sea constante, es decir, \(p = q\).</p>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Dónde la verás</span>
         <ul class="small">
-          <li>Entrenar con entropía cruzada = minimizar \(\mathrm{KL}(p_{\text{datos}}\|q_\theta)\).</li>
+          <li>Entrenar con entropía cruzada es minimizar \(\mathrm{KL}(p_{\text{datos}}\|q_\theta)\).</li>
           <li>PPO y TRPO limitan la KL entre la política nueva y la vieja <a class="cite" data-ref="trpo,ppo"></a>.</li>
           <li>Los world models penalizan la KL entre posterior y prior <a class="cite" data-ref="planet,dreamerv2"></a>.</li>
           <li>El objetivo de la inferencia variacional es una KL.</li>
         </ul>
       </div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Que la KL sea no negativa es lo que convertirá el ELBO en una <em>cota</em>: todo el edificio de la inferencia variacional se apoya en estos tres pasos.</div>
     </div>
   </div>
 </section>
@@ -471,67 +1311,213 @@
           <text x="70" y="84" class="t-tesis">q que minimiza KL(q‖p): un modo, σ ≈ 0,6</text>
         </g>
       </svg>
-      <figcaption>\(p = \tfrac12\mathcal N(-2, 0{,}6^2) + \tfrac12\mathcal N(2, 0{,}6^2)\). Curvas calculadas, no dibujadas a mano.</figcaption>
+      <figcaption>\(p = \tfrac12\mathcal N(-2, 0{,}6^2) + \tfrac12\mathcal N(2, 0{,}6^2)\). Curvas calculadas, no dibujadas a mano; los dos ajustes se recalculan en el ejemplo 20 del script.</figcaption>
     </figure>
     <div class="stack small">
-      <p><strong>\(\mathrm{KL}(p\|q)\), directa:</strong> penaliza que \(q\) sea pequeña donde \(p\) tiene masa. Para una gaussiana, el óptimo iguala media y varianza de \(p\) (<em>moment matching</em>): cubre los dos modos y pone masa donde no hay nada.</p>
-      <p><strong>\(\mathrm{KL}(q\|p)\), inversa:</strong> penaliza que \(q\) ponga masa donde \(p\) es pequeña. Se queda con un modo.</p>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>La inferencia variacional estándar minimiza la KL inversa. Si el belief verdadero es multimodal ("el objetivo está detrás de la pared A o de la B"), una \(q\) gaussiana elegirá una hipótesis y la defenderá con confianza. Es un riesgo real en búsqueda y rescate.</div>
+      <p><strong>\(\mathrm{KL}(p\|q)\), directa</strong> \(= \int p\log\frac pq\). Si \(q\approx 0\) donde \(p\) tiene masa, \(\log\frac pq\to\infty\) con peso \(p\): \(q\) está obligada a cubrir todo lo que cubre \(p\). Para una gaussiana, el óptimo iguala media y varianza de \(p\) (<em>moment matching</em>): media 0 y \(\sigma = \sqrt{0{,}6^2 + 2^2} = 2{,}09\). Cubre los dos modos y pone masa donde no hay nada.</p>
+      <p><strong>\(\mathrm{KL}(q\|p)\), inversa</strong> \(= \int q\log\frac qp\). Ahora el peso es \(q\): lo prohibido es poner masa donde \(p\approx 0\), como el hueco entre los modos. \(q\) se encoge sobre un modo: media 2, \(\sigma = 0{,}6\), y KL \(=0{,}69\approx\ln 2\) nats (pierde la mitad de la masa de \(p\)).</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La inferencia variacional estándar minimiza la KL inversa. Si el belief verdadero es multimodal («el objetivo está detrás de la pared A o de la B»), una \(q\) gaussiana elegirá una hipótesis y la defenderá con confianza. Es un riesgo real en búsqueda y rescate.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">La cota inferior de la evidencia</p>
-  <h2>El ELBO</h2>
+  <p class="kicker">Inferencia variacional · 1</p>
+  <h2>El problema: el posterior de un modelo con latentes</h2>
   <div class="cols">
     <div class="stack">
-      <p>Modelo con latente: \(p(x,z) = p(x\mid z)\,p(z)\). Queremos el posterior \(p(z\mid x)\) y la evidencia \(\log p(x)\), ambos intratables. Para cualquier \(q(z)\):</p>
-      \[ \log p(x) = \underbrace{\mathbb E_q\!\left[\log\frac{p(x,z)}{q(z)}\right]}_{\text{ELBO}} + \mathrm{KL}\big(q(z)\,\|\,p(z\mid x)\big) \]
-      <details class="deriv" open><summary>Derivación</summary>
-        <p class="small">\(\mathrm{KL}(q\|p(z\mid x)) = \mathbb E_q[\log q(z) - \log p(z\mid x)] = \mathbb E_q[\log q(z) - \log p(x,z)] + \log p(x)\), porque \(p(z\mid x) = p(x,z)/p(x)\) y \(\log p(x)\) no depende de \(z\). Reordenando se obtiene la igualdad.</p>
+      <p>Un <strong>modelo con latentes</strong> explica cada dato observado \(x\) con una causa oculta \(z\):</p>
+      \[ p(x, z) = \underbrace{p(x\mid z)}_{\text{verosimilitud}}\;\underbrace{p(z)}_{\text{prior}} \]
+      <ul class="small">
+        <li>\(x\): lo observado. Una imagen de la cámara.</li>
+        <li>\(z\): lo que no se ve y la produce. Dónde está el objetivo, cómo es la escena; en un world model, un vector aprendido.</li>
+        <li>\(p(z)\): lo que creemos de \(z\) antes de mirar.</li>
+        <li>\(p(x\mid z)\): cómo se genera la imagen si conocemos \(z\). En un modelo aprendido es una red (el <em>decodificador</em>).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p>Lo que queremos es el <strong>posterior</strong>, qué causas son compatibles con lo visto:</p>
+      \[ p(z\mid x) = \frac{p(x\mid z)\,p(z)}{p(x)},\qquad p(x) = \int p(x\mid z)\,p(z)\,dz \]
+      <p class="small">\(p(x)\) es la <strong>evidencia</strong>: lo probable que es el dato según el modelo. Calcularla exige integrar sobre todos los \(z\) posibles, pasando cada uno por la red. Con \(z\) de 32 dimensiones y una rejilla de solo 10 valores por dimensión serían \(10^{32}\) evaluaciones.</p>
+      <div class="callout clave"><span class="tag">La idea variacional</span>Elegir una familia manejable \(q_\phi(z)\) (por ejemplo, gaussianas con media y varianza ajustables) y buscar la que más se parece a \(p(z\mid x)\), minimizando \(\mathrm{KL}(q\|p(z\mid x))\). Problema: esa KL contiene \(p(z\mid x)\), que es justo lo que no sabemos calcular. El ELBO lo resuelve.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Inferencia variacional · 2</p>
+  <h2>El ELBO: la cota inferior de la evidencia, paso a paso</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathrm{KL}\big(q(z)\,\|\,p(z\mid x)\big) = \mathbb E_q\big[\log q(z) - \log p(z\mid x)\big]\)</td><td>Definición de la KL</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\log p(z\mid x) = \log p(x,z) - \log p(x)\)</td><td>Bayes: \(p(z\mid x) = p(x,z)/p(x)\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathrm{KL} = \mathbb E_q\big[\log q(z) - \log p(x,z)\big] + \log p(x)\)</td><td>\(\log p(x)\) no depende de \(z\) y sale de la esperanza</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\displaystyle \log p(x) = \underbrace{\mathbb E_q\!\left[\log\frac{p(x,z)}{q(z)}\right]}_{\text{ELBO}(q)} + \mathrm{KL}\big(q(z)\,\|\,p(z\mid x)\big)\)</td><td>Despejar \(\log p(x)\)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Por qué es una cota.</strong> La KL es \(\ge 0\) (Gibbs), así que \(\text{ELBO}(q)\le\log p(x)\) para <em>cualquier</em> \(q\). De ahí el nombre: <em>evidence lower bound</em>.</p>
+      <p class="small"><strong>Por qué resuelve el problema.</strong> El ELBO solo contiene \(p(x, z) = p(x\mid z)p(z)\) y \(q\), que sí sabemos evaluar. Y como \(\log p(x)\) no depende de \(q\), subir el ELBO es lo mismo que bajar la KL al posterior.</p>
+    </div>
+    <div class="callout clave"><span class="tag">Idea clave</span>Maximizar el ELBO en \(q\) acerca \(q\) al posterior verdadero. La brecha entre el ELBO y \(\log p(x)\) es exactamente lo que \(q\) se equivoca. Si la familia de \(q\) contiene el posterior, la cota se cierra.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Inferencia variacional · 3</p>
+  <h2>Las dos piezas del ELBO: reconstruir y no alejarse del prior</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Separando \(p(x,z) = p(x\mid z)\,p(z)\) dentro del logaritmo:</p>
+      \[ \begin{aligned}\text{ELBO} &= \mathbb E_q[\log p(x\mid z)] + \mathbb E_q\big[\log p(z) - \log q(z)\big]\\ &= \underbrace{\mathbb E_q[\log p(x\mid z)]}_{\text{reconstruir}} - \underbrace{\mathrm{KL}\big(q(z)\,\|\,p(z)\big)}_{\text{no alejarse del prior}}\end{aligned} \]
+      <ul class="small">
+        <li><strong>Reconstruir:</strong> si saco \(z\) de \(q\), ¿explica bien el dato? Empuja a \(q\) hacia los \(z\) que generan \(x\).</li>
+        <li><strong>KL al prior:</strong> \(q\) no debe alejarse de lo que el modelo esperaba sin mirar. Funciona como regularización.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <p class="small"><strong>Amortizar.</strong> En vez de optimizar una \(q\) distinta para cada dato, una red recibe \(x\) y devuelve los parámetros de \(q_\phi(z\mid x)\) (el <em>codificador</em>). Con el decodificador \(p_\theta(x\mid z)\) también aprendido, es un <strong>VAE</strong> <a class="cite" data-ref="kingma2014"></a>.</p>
+      <div class="callout clave"><span class="tag">Idea clave</span>Un solo objetivo entrena dos cosas: el modelo \(p_\theta\) (que sube la evidencia de los datos) y el inferidor \(q_\phi\) (que cierra la brecha). Los world models de A8 son VAE secuenciales.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Inferencia variacional · 4</p>
+  <h2>Un ELBO con números, donde todo es exacto</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Modelo:</strong> \(z\sim\mathcal N(0,1)\) y \(x = z + \varepsilon\), \(\varepsilon\sim\mathcal N(0,1)\). Observamos \(x = 2\). En este caso se puede calcular todo:</p>
+      <ul class="small">
+        <li>Evidencia: \(x\sim\mathcal N(0, 2)\), así que \(\log p(2) = -\tfrac12\ln(4\pi) - \tfrac{4}{4} = -2{,}2655\).</li>
+        <li>Posterior (condicionamiento gaussiano): \(p(z\mid x = 2) = \mathcal N(1;\ 0{,}5)\).</li>
+      </ul>
+      <p class="small">Probamos tres \(q = \mathcal N(m, s^2)\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(q\)</th><th>Reconstruir</th><th>KL al prior</th><th>ELBO</th><th>Brecha</th></tr>
+          <tr><td>\(\mathcal N(0;\ 1)\), el prior</td><td class="n">−3,419</td><td class="n">0</td><td class="n">−3,419</td><td class="n">1,153</td></tr>
+          <tr><td>\(\mathcal N(0{,}5;\ 0{,}75)\)</td><td class="n">−2,419</td><td class="n">0,144</td><td class="n">−2,563</td><td class="n">0,297</td></tr>
+          <tr><td>\(\mathcal N(1;\ 0{,}5)\), el posterior</td><td class="n">−1,669</td><td class="n">0,597</td><td class="n">−2,2655</td><td class="n">0</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>El ELBO nunca supera \(\log p(x) = -2{,}2655\), y lo alcanza con el posterior exacto.</li>
+        <li>La brecha coincide con \(\mathrm{KL}(q\,\|\,\mathcal N(1;0{,}5))\) calculada aparte: el paso 4 de la derivación, con números.</li>
+        <li>El mejor \(q\) no es el que mejor reconstruye a cualquier precio: el posterior paga 0,597 nats de KL a cambio de reconstruir mucho mejor.</li>
+      </ul>
+      <details class="deriv" open><summary>Cómo se calcula cada columna</summary>
+        <p class="small">Reconstruir: \(\mathbb E_q[\log\mathcal N(x; z, 1)] = -\tfrac12\ln 2\pi - \tfrac12\mathbb E_q[(x - z)^2] = -\tfrac12\ln 2\pi - \tfrac12\big((x - m)^2 + s^2\big)\), porque \(\mathbb E[(x-z)^2]\) es el sesgo al cuadrado más la varianza. KL al prior: fórmula de la hoja «KL entre gaussianas», \(\tfrac12(s^2 + m^2 - 1 - \ln s^2)\).</p>
       </details>
-    </div>
-    <div class="stack">
-      <p>Como la KL es no negativa, el ELBO es una cota inferior de \(\log p(x)\), y <strong>maximizarlo en \(q\) equivale a minimizar la KL al posterior</strong>. Reescrito:</p>
-      \[ \text{ELBO} = \underbrace{\mathbb E_q[\log p(x\mid z)]}_{\text{reconstruir}} - \underbrace{\mathrm{KL}\big(q(z)\,\|\,p(z)\big)}_{\text{no alejarse del prior}} \]
-      <div class="callout clave"><span class="tag">Idea clave</span>Un solo objetivo entrena dos cosas: el modelo \(p_\theta\) (sube la evidencia) y el inferidor \(q_\phi\) (cierra la brecha). Con \(q_\phi(z\mid x)\) dada por una red, es un VAE <a class="cite" data-ref="kingma2014"></a>.</div>
+      <p class="xsmall muted">Ejemplo 21 de <code>figuras/ejemplos_m1.py</code>; el lab (paso 4) repite el experimento con un codificador entrenado.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Cómo se optimiza</p>
-  <h2>Reparametrización y KL entre gaussianas</h2>
+  <p class="kicker">Cómo se optimiza · 1</p>
+  <h2>El truco de reparametrización</h2>
   <div class="cols">
     <div class="stack">
-      <h3>El truco de reparametrización</h3>
-      <p class="small">El gradiente de \(\mathbb E_{q_\phi}[f(z)]\) respecto a \(\phi\) no se puede meter dentro de la esperanza, porque la distribución depende de \(\phi\). Si \(z = \mu_\phi + \sigma_\phi\odot\epsilon\) con \(\epsilon\sim\mathcal N(0,I)\):</p>
+      <p class="small"><strong>El problema.</strong> Para entrenar \(q_\phi\) con gradientes hace falta \(\nabla_\phi\,\mathbb E_{z\sim q_\phi}[f(z)]\), y \(\phi\) está en la distribución de la que se muestrea: no se puede derivar «a través» de un muestreo.</p>
+      <p class="small"><strong>La solución.</strong> Escribir la muestra como una función determinista de \(\phi\) y de un ruido que no depende de \(\phi\):</p>
+      \[ z = \mu_\phi + \sigma_\phi\odot\epsilon,\qquad \epsilon\sim\mathcal N(0,I) \]
       \[ \nabla_\phi\,\mathbb E_{q_\phi}[f(z)] = \mathbb E_{\epsilon}\big[\nabla_\phi f(\mu_\phi + \sigma_\phi\odot\epsilon)\big] \]
-      <p class="small">La alternativa es el estimador de la función de puntuación, \(\mathbb E_q[f(z)\,\nabla_\phi\log q_\phi(z)]\). Es <strong>el mismo estimador que REINFORCE</strong> en RL, y tiene mucha más varianza <a class="cite" data-ref="kingma2014,rezende2014"></a>.</p>
+      <p class="small">Ahora la esperanza es sobre \(\epsilon\), que no depende de \(\phi\), y el gradiente entra dentro. \(\odot\) es el producto componente a componente.</p>
+      <p class="small"><strong>La alternativa</strong>, el estimador de la función de puntuación: \(\mathbb E_q[f(z)\,\nabla_\phi\log q_\phi(z)]\). Es <strong>el mismo estimador que REINFORCE</strong> en RL <a class="cite" data-ref="kingma2014,rezende2014"></a>.</p>
+      <details class="deriv" open><summary>De dónde sale la función de puntuación</summary>
+        <p class="small">\(\nabla_\phi\int q_\phi f\,dz = \int f\,\nabla_\phi q_\phi\,dz = \int f\,q_\phi\,\nabla_\phi\log q_\phi\,dz\), usando \(\nabla q = q\,\nabla\log q\). No necesita derivar \(f\), por eso sirve en RL, donde \(f\) es la recompensa del entorno.</p>
+      </details>
     </div>
     <div class="stack">
-      <h3>KL entre gaussianas (forma cerrada)</h3>
-      \[ \begin{aligned}\mathrm{KL}\big(\mathcal N_1\|\mathcal N_2\big) = \tfrac12\Big[&\operatorname{tr}(\Sigma_2^{-1}\Sigma_1) + \boldsymbol\Delta^\top\Sigma_2^{-1}\boldsymbol\Delta \\ &- k + \ln\tfrac{\det\Sigma_2}{\det\Sigma_1}\Big],\qquad \boldsymbol\Delta = \boldsymbol\mu_2-\boldsymbol\mu_1\end{aligned} \]
-      <p class="small">Con \(q\) diagonal y prior \(\mathcal N(0,I)\): \(\ \tfrac12\sum_i\big(\sigma_i^2 + \mu_i^2 - 1 - \ln\sigma_i^2\big)\).</p>
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">\(\mathrm{KL} = \mathbb E_1[\log\mathcal N_1 - \log\mathcal N_2]\). El término \(\mathbb E_1[\log\mathcal N_1] = -\tfrac12\ln\det(2\pi\Sigma_1) - \tfrac k2\). El otro: \(\mathbb E_1[\log\mathcal N_2] = -\tfrac12\ln\det(2\pi\Sigma_2) - \tfrac12\mathbb E_1[(\mathbf x-\boldsymbol\mu_2)^\top\Sigma_2^{-1}(\mathbf x-\boldsymbol\mu_2)]\). Usando \(\mathbb E[\mathbf x^\top A\mathbf x] = \operatorname{tr}(A\Sigma) + \boldsymbol\mu^\top A\boldsymbol\mu\) con \(\mathbf x - \boldsymbol\mu_2 \sim \mathcal N(\boldsymbol\mu_1 - \boldsymbol\mu_2, \Sigma_1)\), queda \(\operatorname{tr}(\Sigma_2^{-1}\Sigma_1) + (\boldsymbol\mu_1-\boldsymbol\mu_2)^\top\Sigma_2^{-1}(\boldsymbol\mu_1-\boldsymbol\mu_2)\). Restando se obtiene la fórmula.</p>
-      </details>
+      <div class="callout realidad"><span class="tag">Ejemplo: \(f(z) = z^2\), \(z\sim\mathcal N(\mu, \sigma^2)\)</span>
+        <p class="small">Exacto: \(\mathbb E[z^2] = \mu^2 + \sigma^2\), así que \(\partial/\partial\mu = 2\mu\).</p>
+        <p class="small"><strong>Reparametrización:</strong> \(f = (\mu + \sigma\epsilon)^2\), cuya derivada en \(\mu\) es \(2(\mu + \sigma\epsilon)\). Media \(2\mu\). Varianza \(4\sigma^2\).</p>
+        <p class="small"><strong>Puntuación:</strong> \(\nabla_\mu\log q = (z - \mu)/\sigma^2\), así que cada muestra aporta \(z^2(z-\mu)/\sigma^2\). Media \(2\mu\) también.</p>
+        <p class="small">Con \(\mu = \sigma = 1\): varianza <strong>4</strong> frente a <strong>30</strong>. Los dos aciertan en media, pero el segundo necesita unas 7,5 veces más muestras para el mismo error. Ejemplo 22 del script.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">El ELBO en el tiempo</p>
-  <h2>El objetivo de un world model es un ELBO secuencial</h2>
-  <div class="stack">
-    <p>Para una secuencia de observaciones con latentes \(z_{1:T}\), transición \(p(z_t\mid z_{t-1},a_{t-1})\) y filtro aproximado \(q(z_t\mid o_{\le t}, a_{<t})\):</p>
-    \[ \log p(o_{1:T}\mid a_{1:T}) \;\ge\; \sum_{t=1}^{T}\Big(\underbrace{\mathbb E_{q}\big[\log p(o_t\mid z_t)\big]}_{\text{reconstrucción}} \;-\; \underbrace{\mathbb E_{q}\big[\mathrm{KL}\big(q(z_t\mid o_{\le t},a_{<t})\,\|\,p(z_t\mid z_{t-1},a_{t-1})\big)\big]}_{\text{el filtro no debe alejarse de la predicción}}\Big) \]
-    <details class="deriv"><summary>Derivación</summary>
-      <p class="small">Aplica el ELBO a \(x = o_{1:T}\), \(z = z_{1:T}\) con \(p(o_{1:T}, z_{1:T}\mid a) = \prod_t p(o_t\mid z_t)\,p(z_t\mid z_{t-1}, a_{t-1})\) y \(q(z_{1:T}) = \prod_t q(z_t\mid o_{\le t}, a_{<t}, z_{t-1})\). El logaritmo del cociente se separa en una suma sobre \(t\): términos \(\log p(o_t\mid z_t)\) y términos \(\log\frac{p(z_t\mid z_{t-1},a_{t-1})}{q(z_t\mid\cdot)}\), cuya esperanza condicionada a \(z_{t-1}\) es menos una KL. Es la forma que usan PlaNet y Dreamer <a class="cite" data-ref="planet"></a>; Krishnan et al. la propusieron como "deep Kalman filter" <a class="cite" data-ref="krishnan2015"></a>.</p>
-    </details>
+  <p class="kicker">Cómo se optimiza · 2</p>
+  <h2>KL entre dos gaussianas, paso a paso (caso escalar)</h2>
+  \[ \mathrm{KL}\big(\mathcal N(\mu_1,\sigma_1^2)\,\|\,\mathcal N(\mu_2,\sigma_2^2)\big) = \ln\frac{\sigma_2}{\sigma_1} + \frac{\sigma_1^2 + (\mu_1-\mu_2)^2}{2\sigma_2^2} - \frac12 \]
+  <div class="table-wrap" style="padding-bottom:8px">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathrm{KL} = \mathbb E_1\big[\log\mathcal N_1(x) - \log\mathcal N_2(x)\big]\)</td><td>Definición, con \(x\sim\mathcal N_1\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\log\mathcal N(x;\mu,\sigma^2) = -\tfrac12\ln(2\pi\sigma^2) - \dfrac{(x-\mu)^2}{2\sigma^2}\)</td><td>Logaritmo de la densidad gaussiana</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathbb E_1[(x-\mu_1)^2] = \sigma_1^2,\qquad \mathbb E_1[(x-\mu_2)^2] = \sigma_1^2 + (\mu_1-\mu_2)^2\)</td><td>Varianza; y «error cuadrático = varianza + sesgo²»</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathrm{KL} = -\tfrac12\ln\sigma_1^2 - \tfrac12 + \tfrac12\ln\sigma_2^2 + \dfrac{\sigma_1^2 + (\mu_1-\mu_2)^2}{2\sigma_2^2}\)</td><td>Sustituir; se cancelan los \(\ln 2\pi\)</td></tr>
+    </table>
   </div>
-  <div class="callout tesis"><span class="tag">Tu tesis</span>Esta línea responde a la pregunta del sondeo. El <strong>posterior \(q\)</strong> es el filtro: corrige con la observación, es el belief. El <strong>prior \(p(z_t\mid z_{t-1},a_{t-1})\)</strong> es la predicción: el world model con el que se imagina. Y la KL obliga a que ambos coincidan, es decir, a que el modelo prediga bien lo que el filtro va a ver.</div>
+  <div class="cols">
+    <p class="small"><strong>Cómo leerla:</strong> el logaritmo y \(\sigma_1^2/2\sigma_2^2\) comparan anchuras; \((\mu_1-\mu_2)^2/2\sigma_2^2\) es la distancia entre medias en unidades de la desviación de la segunda. Con \(\mathcal N_1 = \mathcal N_2\) da 0.</p>
+    <div class="callout realidad"><span class="tag">Con números</span>\(\mathrm{KL}(\mathcal N(0;1)\,\|\,\mathcal N(1;0{,}5))\) \(= \ln\sqrt{0{,}5} + \frac{1 + 1}{2\cdot 0{,}5} - \frac12\) \(= -0{,}347 + 2 - 0{,}5 = 1{,}153\) nats: la brecha de la primera fila del ejemplo del ELBO.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cómo se optimiza · 3</p>
+  <h2>KL entre gaussianas en varias dimensiones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Para \(\mathcal N_1 = \mathcal N(\boldsymbol\mu_1,\Sigma_1)\) y \(\mathcal N_2 = \mathcal N(\boldsymbol\mu_2,\Sigma_2)\) en dimensión \(k\), con \(\boldsymbol\Delta = \boldsymbol\mu_2-\boldsymbol\mu_1\):</p>
+      \[ \begin{aligned}\mathrm{KL}(\mathcal N_1\|\mathcal N_2) = \tfrac12\Big[&\operatorname{tr}(\Sigma_2^{-1}\Sigma_1) + \boldsymbol\Delta^\top\Sigma_2^{-1}\boldsymbol\Delta\\ &- k + \ln\tfrac{\det\Sigma_2}{\det\Sigma_1}\Big]\end{aligned} \]
+      <p class="small">Cada término generaliza uno del caso escalar: la traza compara anchuras, la forma cuadrática compara medias (distancia de Mahalanobis) y el cociente de determinantes compara volúmenes.</p>
+      <details class="deriv" open><summary>Derivación</summary>
+        <p class="small">Igual que en escalar. \(\mathbb E_1[\log\mathcal N_1] = -\tfrac12\ln\det(2\pi\Sigma_1) - \tfrac k2\). Para el otro término hace falta \(\mathbb E[\mathbf x^\top A\mathbf x] = \operatorname{tr}(A\Sigma) + \boldsymbol\mu^\top A\boldsymbol\mu\) con \(\mathbf x - \boldsymbol\mu_2 \sim \mathcal N(\boldsymbol\mu_1 - \boldsymbol\mu_2, \Sigma_1)\), que da \(\operatorname{tr}(\Sigma_2^{-1}\Sigma_1) + \boldsymbol\Delta^\top\Sigma_2^{-1}\boldsymbol\Delta\). Restando se obtiene la fórmula.</p>
+      </details>
+    </div>
+    <div class="stack">
+      <p><strong>El caso del VAE:</strong> \(q\) diagonal, \(\mathcal N(\boldsymbol\mu, \mathrm{diag}(\boldsymbol\sigma^2))\), frente al prior \(\mathcal N(\mathbf 0, I)\). Las dimensiones se separan y cada una es el caso escalar con \(\mu_2 = 0\), \(\sigma_2 = 1\):</p>
+      \[ \mathrm{KL} = \tfrac12\sum_{i=1}^{k}\big(\sigma_i^2 + \mu_i^2 - 1 - \ln\sigma_i^2\big) \]
+      <div class="callout realidad"><span class="tag">Con números</span>\(\boldsymbol\mu = (1, 0)\), \(\boldsymbol\sigma^2 = (0{,}5;\ 2)\): la primera dimensión aporta \(\tfrac12(0{,}5 + 1 - 1 - \ln 0{,}5) = 0{,}597\) y la segunda \(\tfrac12(2 - 1 - \ln 2) = 0{,}153\). Total 0,750 nats, igual que con la fórmula general (ejemplo 23).</div>
+      <p class="small">Es una línea de código diferenciable: por eso el término KL de un VAE o de un world model se calcula exacto y solo la reconstrucción se estima con muestras.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El ELBO en el tiempo · 1</p>
+  <h2>El objetivo de un world model es un ELBO secuencial</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El mismo ELBO, ahora con una secuencia. Cada pieza tiene un nombre:</p>
+      <ul class="small">
+        <li>\(o_{1:T}\), \(a_{1:T}\): observaciones y acciones del episodio.</li>
+        <li>\(z_t\): el latente en \(t\), el estado comprimido del mundo.</li>
+        <li>\(p(o_t\mid z_t)\): el decodificador. ¿Explica \(z_t\) lo que se ve?</li>
+        <li>\(p(z_t\mid z_{t-1}, a_{t-1})\): la <strong>transición</strong> o prior. Predice el latente sin mirar \(o_t\).</li>
+        <li>\(q(z_t\mid o_{\le t}, a_{\lt t})\): el <strong>filtro</strong> o posterior. Estima el latente mirando \(o_t\). \(o_{\le t}\) son las observaciones hasta \(t\) inclusive; \(a_{\lt t}\), las acciones anteriores a \(t\).</li>
+      </ul>
+    </div>
+    <div class="callout tesis"><span class="tag">Tu tesis</span>Esta ecuación responde a la pregunta del sondeo. El <strong>posterior \(q\)</strong> es el filtro: corrige con la observación, es el belief. El <strong>prior \(p(z_t\mid z_{t-1},a_{t-1})\)</strong> es la predicción: el world model con el que se imagina. Y la KL obliga a que coincidan, es decir, a que el modelo prediga bien lo que el filtro va a ver.</div>
+  </div>
+  \[ \begin{aligned} \log p(o_{1:T}\mid a_{1:T}) \;\ge\; \sum_{t=1}^{T}\Big(&\underbrace{\mathbb E_{q}\big[\log p(o_t\mid z_t)\big]}_{\text{reconstrucción}}\\ &-\ \underbrace{\mathbb E_{q}\Big[\mathrm{KL}\big(q(z_t\mid o_{\le t},a_{\lt t})\,\big\|\,p(z_t\mid z_{t-1},a_{t-1})\big)\Big]}_{\text{el filtro no debe alejarse de la predicción}}\Big) \end{aligned} \]
+</section>
+
+<section class="slide">
+  <p class="kicker">El ELBO en el tiempo · 2</p>
+  <h2>De dónde sale el ELBO secuencial: el caso de dos pasos</h2>
+  <p class="small">Se aplica el ELBO de siempre con \(x = (o_1, o_2)\) y \(z = (z_1, z_2)\). Para \(t = 1\), el prior \(p(z_1)\) hace de \(p(z_1\mid z_0, a_0)\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(p(o_{1:2}, z_{1:2}\mid a_1) = p(z_1)\,p(o_1\mid z_1)\,p(z_2\mid z_1,a_1)\,p(o_2\mid z_2)\)</td><td>Modelo generativo: cada latente sale del anterior y genera su observación</td></tr>
+      <tr><td><strong>2</strong></td><td>\(q(z_{1:2}) = q(z_1\mid o_1)\;q(z_2\mid z_1, a_1, o_2)\)</td><td>Filtro: cada latente se estima con lo anterior y la observación nueva</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\log\dfrac{p}{q} = \log p(o_1\mid z_1) + \log p(o_2\mid z_2) + \log\dfrac{p(z_1)}{q(z_1\mid o_1)} + \log\dfrac{p(z_2\mid z_1,a_1)}{q(z_2\mid z_1,a_1,o_2)}\)</td><td>El log de un producto es la suma de logs</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathbb E_{q}\Big[\log\dfrac{p(z_2\mid z_1,a_1)}{q(z_2\mid\cdot)}\Big] = -\,\mathbb E_{q(z_1)}\Big[\mathrm{KL}\big(q(z_2\mid\cdot)\,\|\,p(z_2\mid z_1,a_1)\big)\Big]\)</td><td>Esperanza en dos etapas: primero sobre \(z_2\) dado \(z_1\) (que da menos una KL), luego sobre \(z_1\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\text{ELBO} = \sum_{t=1}^{2}\mathbb E_q[\log p(o_t\mid z_t)] - \mathrm{KL}_1 - \mathbb E_q[\mathrm{KL}_2]\)</td><td>Igual con el término de \(z_1\). Con \(T\) pasos se repite y sale la suma</td></tr>
+    </table>
+  </div>
+  <p class="small">Es la forma que usan PlaNet y Dreamer <a class="cite" data-ref="planet"></a>; Krishnan et al. la propusieron como "deep Kalman filter" <a class="cite" data-ref="krishnan2015"></a>. Compárala con Kalman: la transición es la predicción \(F\), \(Q\); el filtro es la corrección; la KL mide cuánto corrige cada observación.</p>
 </section>
 
 <section class="slide">
@@ -599,6 +1585,7 @@
   </div>
 </section>
 
+
 <!-- ============ PARTE 3 · INFORMACIÓN ============ -->
 <section class="slide divider" data-section="3 · Información">
   <p class="num">Parte 3</p>
@@ -607,31 +1594,68 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Entropía</p>
-  <h2>La incertidumbre de una distribución, en bits o nats</h2>
+  <p class="kicker">Entropía · 1</p>
+  <h2>La entropía es la sorpresa media</h2>
   <div class="cols">
     <div class="stack">
-      \[ H(X) = -\sum_x p(x)\log p(x) \]
-      \[ h(X) = -\int p(x)\log p(x)\,dx \]
+      <p>La <strong>sorpresa</strong> de un resultado \(x\) es \(-\log p(x)\): vale 0 si era seguro y crece cuanto menos probable era. La entropía es su media:</p>
+      \[ H(X) = \mathbb E\big[-\log p(X)\big] = -\sum_x p(x)\log p(x) \]
       <ul class="small">
-        <li>Shannon (1948): longitud media del código óptimo, o sorpresa media <a class="cite" data-ref="shannon1948"></a>.</li>
-        <li>Máxima para la uniforme; cero para un resultado seguro (caso discreto).</li>
-        <li>La <strong>entropía diferencial</strong> puede ser negativa y cambia con las unidades: no la compares entre representaciones distintas.</li>
+        <li>Con \(\log_2\) se mide en <strong>bits</strong>; con \(\ln\), en <strong>nats</strong>.</li>
+        <li>Shannon (1948): es la longitud media del código óptimo para \(X\), es decir, cuántas preguntas de sí o no hacen falta, en media, para averiguarlo <a class="cite" data-ref="shannon1948"></a>.</li>
+        <li>Es máxima para la uniforme (\(\log_2 n\) bits con \(n\) valores) y 0 si un resultado es seguro.</li>
       </ul>
     </div>
     <div class="stack">
-      <p>Para una gaussiana de dimensión \(k\):</p>
-      \[ h\big(\mathcal N(\boldsymbol\mu,\Sigma)\big) = \tfrac12\log\big((2\pi e)^k\det\Sigma\big) \]
-      <details class="deriv" open><summary>Derivación</summary>
-        <p class="small">\(h = -\mathbb E[\log p] = \tfrac12\log\det(2\pi\Sigma) + \tfrac12\mathbb E[(\mathbf x-\boldsymbol\mu)^\top\Sigma^{-1}(\mathbf x-\boldsymbol\mu)]\). La esperanza vale \(\operatorname{tr}(\Sigma^{-1}\Sigma) = k\), y \(\tfrac k2 = \tfrac12\log e^k\).</p>
-      </details>
-      <div class="callout clave"><span class="tag">Idea clave</span>Para un belief gaussiano, la entropía solo depende de \(\det\Sigma\): el volumen de la elipse de incertidumbre. Reducir la entropía es encoger ese volumen.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Distribución</th><th>Cuenta</th><th>\(H\)</th></tr>
+          <tr><td>Moneda justa</td><td>\(-2\cdot 0{,}5\log_2 0{,}5\)</td><td class="n">1 bit</td></tr>
+          <tr><td>Moneda trucada (0,9; 0,1)</td><td>\(-0{,}9\log_2 0{,}9 - 0{,}1\log_2 0{,}1\)</td><td class="n">0,469 bits</td></tr>
+          <tr><td>Objetivo en 8 celdas, uniforme</td><td>\(\log_2 8\)</td><td class="n">3 bits</td></tr>
+          <tr><td>Belief de las 4 celdas, antes de mirar</td><td>\(\log_2 4\)</td><td class="n">2 bits</td></tr>
+          <tr><td>El mismo, tras no detectar</td><td>\((0{,}248;\ 0{,}069;\ 0{,}310;\ 0{,}372)\)</td><td class="n">1,82 bits</td></tr>
+        </table>
+      </div>
+      <p class="small">La última fila es el belief del ejemplo del filtro de Bayes: mirar y no ver nada ha quitado 0,18 bits de incertidumbre. Ejemplo 24 del script.</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La entropía del belief es la medida natural de «cuánto le falta al dron por saber». Una política de búsqueda puede intentar reducirla lo más deprisa posible.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Información mutua</p>
+  <p class="kicker">Entropía · 2</p>
+  <h2>Entropía diferencial y la entropía de una gaussiana</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Con variables continuas, la suma pasa a integral:</p>
+      \[ h(X) = -\int p(x)\log p(x)\,dx \]
+      \[ h\big(\mathcal N(\boldsymbol\mu,\Sigma)\big) = \tfrac12\log\big((2\pi e)^k\det\Sigma\big) \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(-\log p(\mathbf x) = \tfrac12\log\det(2\pi\Sigma) + \tfrac12(\mathbf x-\boldsymbol\mu)^\top\Sigma^{-1}(\mathbf x-\boldsymbol\mu)\)</td><td>Logaritmo de la densidad gaussiana</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathbb E\big[(\mathbf x-\boldsymbol\mu)^\top\Sigma^{-1}(\mathbf x-\boldsymbol\mu)\big] = \operatorname{tr}(\Sigma^{-1}\Sigma) = k\)</td><td>\(\mathbb E[\mathbf e^\top A\mathbf e] = \operatorname{tr}(A\,\mathrm{Cov}(\mathbf e))\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(h = \tfrac12\log\det(2\pi\Sigma) + \tfrac k2 = \tfrac12\log\big((2\pi e)^k\det\Sigma\big)\)</td><td>\(\tfrac k2 = \tfrac12\log e^k\) y \(\det(2\pi\Sigma) = (2\pi)^k\det\Sigma\)</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Idea clave</span>Para un belief gaussiano, la entropía solo depende de \(\det\Sigma\): el volumen de la elipse de incertidumbre. Reducir la entropía es encoger ese volumen.</div>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Cuidado: puede ser negativa y depende de las unidades</span>
+        <ul class="small">
+          <li>Posición con \(\sigma = 1\) m: \(h = \tfrac12\log_2(2\pi e) = 2{,}05\) bits.</li>
+          <li>Con \(\sigma = 0{,}1\) m: \(-1{,}27\) bits. Negativa.</li>
+          <li>La misma \(\sigma = 0{,}1\) m escrita en centímetros (\(\sigma = 10\)): \(5{,}37\) bits.</li>
+        </ul>
+        <p class="small">El valor absoluto no significa nada por sí solo. Las <strong>diferencias</strong> sí: pasar de 1 m a 0,1 m reduce la entropía en \(\log_2 10 = 3{,}32\) bits en cualquier unidad. Por eso la información mutua, que es una diferencia, no tiene este problema. Ejemplo 24.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Información mutua · 1</p>
   <h2>Cuánto reduce \(Y\) la incertidumbre sobre \(X\)</h2>
   <div class="cols w40 center">
     <figure class="fig">
@@ -646,29 +1670,89 @@
       </svg>
     </figure>
     <div class="stack">
-      \[ I(X;Y) = H(X) - H(X\mid Y) = \mathrm{KL}\big(p(x,y)\,\|\,p(x)p(y)\big) \ge 0 \]
-      <p>Es simétrica, vale cero si y solo si \(X\) e \(Y\) son independientes, y es invariante a cambios de variable invertibles.</p>
-      <p>Para un estado gaussiano observado de forma lineal, la covarianza posterior no depende del valor medido, y la información mutua es la reducción de "volumen":</p>
-      \[ I(X;Y) = \tfrac12\log\frac{\det\Sigma_{\text{prior}}}{\det\Sigma_{\text{post}}} \]
+      \[ I(X;Y) = H(X) - H(X\mid Y),\qquad H(X\mid Y) = \sum_y p(y)\,H(X\mid Y = y) \]
+      <ul class="small">
+        <li>\(H(X\mid Y)\): la incertidumbre que queda sobre \(X\) después de ver \(Y\), promediada sobre lo que \(Y\) puede salir.</li>
+        <li>\(I(X;Y)\): lo que \(Y\) quita, en media. Es simétrica, vale 0 si y solo si son independientes y nunca es negativa, porque también es una KL: \(I = \mathrm{KL}\big(p(x,y)\,\|\,p(x)p(y)\big)\).</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Ejemplo: un detector</span>
+        <p class="small">\(X\): el objetivo está o no (50 %). \(Y\): el detector salta o no, con \(p_d = 0{,}8\) y \(p_{fa} = 0{,}1\).</p>
+        <p class="small">Salta con probabilidad \(0{,}5\cdot 0{,}8 + 0{,}5\cdot 0{,}1 = 0{,}45\). Si salta, \(p(\text{está}) = 0{,}4/0{,}45 = 0{,}889\); si no, \(0{,}1/0{,}55 = 0{,}182\).</p>
+        <p class="small">\(H(X\mid Y) = 0{,}45\,H(0{,}889) + 0{,}55\,H(0{,}182) = 0{,}603\) bits, así que \(I = 1 - 0{,}603 = 0{,}397\) bits por mirada. Ejemplo 25.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Percepción activa</p>
-  <h2>Elegir la observación que más informa</h2>
+  <p class="kicker">Información mutua · 2</p>
+  <h2>La información de una medida gaussiana</h2>
   <div class="cols">
     <div class="stack">
-      <p>Con belief \(\mathcal N(\bar{\mathbf x}, P)\) y una acción \(a\) que produce la medida \(\mathbf y = H_a\mathbf x + \mathbf v\), \(\mathbf v\sim\mathcal N(0, R_a)\):</p>
+      <p>Para un estado gaussiano medido de forma lineal (el caso de Kalman), las dos entropías son de gaussianas:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(h(X) = \tfrac12\log\big((2\pi e)^k\det P\big)\)</td><td>El prior es \(\mathcal N(\bar{\mathbf x}, P)\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(h(X\mid Y = \mathbf y) = \tfrac12\log\big((2\pi e)^k\det P^+\big)\) para todo \(\mathbf y\)</td><td>El posterior es gaussiano y \(P^+\) no depende de \(\mathbf y\) (hoja del condicionamiento)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(I(X;Y) = h(X) - h(X\mid Y) = \tfrac12\log\dfrac{\det P}{\det P^+}\)</td><td>Restar; los \((2\pi e)^k\) se cancelan</td></tr>
+        </table>
+      </div>
+      <p class="small">La información es la reducción del volumen de la elipse de incertidumbre, en escala logarítmica.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números</span>Altura con varianza a priori 4 m², barómetro con ruido de varianza 1: \(P^+ = 1/(1/4 + 1) = 0{,}8\), y la información es \(I = \tfrac12\ln(4/0{,}8) = \tfrac12\ln 5 = 0{,}805\) nats \(= 1{,}16\) bits. Ejemplo 26.</div>
+      <div class="callout clave"><span class="tag">La propiedad que lo cambia todo</span>Como \(P^+\) no depende del valor medido, la información de una medida se puede calcular <strong>antes de hacerla</strong>. Eso permite planificar: comparar sensores, puntos de vista o trayectorias por lo que van a enseñar, sin volar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · 1</p>
+  <h2>Elegir la observación que más informa</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p>Cada acción \(a\) (mirar aquí, volar allá) produce una medida \(\mathbf y = H_a\mathbf x + \mathbf v\), \(\mathbf v\sim\mathcal N(0, R_a)\). Su ganancia de información esperada es</p>
       \[ \mathrm{IG}(a) = \tfrac12\log\det\big(I + R_a^{-1}H_a P H_a^\top\big) \]
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">En forma de información, \(P_+^{-1} = P^{-1} + H^\top R^{-1}H\). Entonces \(\det P/\det P_+ = \det(P\,P_+^{-1}) = \det(I + PH^\top R^{-1}H)\), y por la identidad de Sylvester, \(\det(I + AB) = \det(I + BA)\), es igual a \(\det(I + R^{-1}HPH^\top)\). Sustituyendo en \(\tfrac12\log(\det P/\det P_+)\) queda la fórmula.</p>
-      </details>
-      <p class="small">Regla: <strong>mira donde tu incertidumbre proyectada (\(HPH^\top\)) es grande comparada con el ruido del sensor (\(R\))</strong>.</p>
+      <ul class="small">
+        <li>\(H_aPH_a^\top\): la incertidumbre del estado <strong>proyectada</strong> en lo que mide el sensor.</li>
+        <li>\(R_a\): el ruido del sensor.</li>
+        <li>Regla: <strong>mira donde tu incertidumbre proyectada es grande comparada con el ruido</strong>. En escalar, \(\mathrm{IG} = \tfrac12\log(1 + \text{incertidumbre}/\text{ruido})\).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:4%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\((P^+)^{-1} = P^{-1} + H^\top R^{-1}H\)</td><td>Forma de información de Kalman: las precisiones se suman</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{\det P}{\det P^+} = \det\big(P\,(P^+)^{-1}\big) = \det(I + PH^\top R^{-1}H)\)</td><td>\(\det A/\det B = \det(AB^{-1})\); sustituir 1</td></tr>
+          <tr><td><strong>3</strong></td><td>\(= \det(I + R^{-1}HPH^\top)\)</td><td>Identidad de Sylvester, \(\det(I + AB) = \det(I + BA)\), con \(A = PH^\top\), \(B = R^{-1}H\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{IG} = \tfrac12\log\det(I + R^{-1}HPH^\top)\)</td><td>Sustituir en \(\tfrac12\log(\det P/\det P^+)\)</td></tr>
+        </table>
+      </div>
+      <p class="small">La identidad de Sylvester cambia un determinante del tamaño del estado por uno del tamaño de la medida: con un estado de 1000 dimensiones y una medida escalar, el determinante es de 1×1.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Percepción activa · 2</p>
+  <h2>Qué medir, con números</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small"><strong>Caso 1.</strong> Posición del objetivo con \(P = \mathrm{diag}(4, 1)\) m² (dudamos más en \(x\)). Dos sensores con el mismo ruido \(R = 1\): uno mide \(x\), otro mide \(y\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Medir</th><th>\(H\)</th><th>\(HPH^\top\)</th><th>IG</th></tr>
+          <tr><td>\(x\)</td><td>\([1\ \ 0]\)</td><td class="n">4</td><td class="n">½ ln 5 = 1,16 bits</td></tr>
+          <tr><td>\(y\)</td><td>\([0\ \ 1]\)</td><td class="n">1</td><td class="n">½ ln 2 = 0,50 bits</td></tr>
+        </table>
+      </div>
+      <p class="small"><strong>Caso 2.</strong> Ahora \(x\) e \(y\) están correladas: \(P = \left[\begin{smallmatrix}4 & 1{,}8\\ 1{,}8 & 1\end{smallmatrix}\right]\) (por ejemplo, el objetivo se mueve por una carretera diagonal). Medir solo \(y\) baja la varianza de \(x\) de 4 a 2,38 m², por la correlación, igual que el barómetro corregía la velocidad. Ejemplo 27 del script.</p>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">En robots</span>La exploración y el mapeado activo eligen trayectorias maximizando la información mutua entre el mapa y las medidas futuras <a class="cite" data-ref="julian2014"></a>. Con beliefs no gaussianos se estima por muestreo, que es caro: por eso se buscan aproximaciones.</div>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu TFM era búsqueda y rescate con drones. "¿Adónde vuelo para encontrar antes al objetivo?" es exactamente maximizar la ganancia de información esperada sobre el belief de su posición, y con varios drones, repartirse esa información. Lo formaliza A7.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu TFM era búsqueda y rescate con drones. «¿Adónde vuelo para encontrar antes al objetivo?» es exactamente maximizar la ganancia de información esperada sobre el belief de su posición, y con varios drones, repartirse esa información. Lo formaliza A7.</div>
     </div>
   </div>
 </section>
@@ -680,6 +1764,7 @@
     <div class="stack small">
       <p><strong>1. Máxima entropía (SAC).</strong> Se maximiza la recompensa más la entropía de la política <a class="cite" data-ref="sac"></a>:</p>
       \[ J(\pi) = \sum_t \mathbb E\big[r(s_t,a_t) + \alpha\,\mathcal H(\pi(\cdot\mid s_t))\big] \]
+      <p>\(\mathcal H(\pi(\cdot\mid s))\) es la entropía de la distribución de acciones en el estado \(s\): alta si la política aún duda entre varias acciones. \(\alpha\) (la temperatura) fija cuánto vale esa duda frente a la recompensa. Premia explorar y evita que la política se vuelva determinista antes de tiempo.</p>
       <p><strong>2. Regiones de confianza (TRPO, PPO).</strong> La política nueva no puede alejarse de la vieja más que \(\delta\) en KL; PPO lo aproxima recortando el cociente de probabilidades <a class="cite" data-ref="trpo,ppo"></a>.</p>
     </div>
     <div class="stack small">
@@ -691,26 +1776,54 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Información de Fisher</p>
-  <h2>Cuánto puedes llegar a saber de un parámetro</h2>
+  <p class="kicker">Información de Fisher · 1</p>
+  <h2>Cuánto informan los datos sobre un parámetro</h2>
   <div class="cols">
     <div class="stack">
+      <p>Ahora lo desconocido es un <strong>parámetro fijo</strong> \(\boldsymbol\theta\) (una masa, un coeficiente de arrastre) y los datos \(\mathbf y\) siguen \(p(\mathbf y;\boldsymbol\theta)\).</p>
       \[ \mathcal I(\boldsymbol\theta) = \mathbb E\big[\nabla_{\boldsymbol\theta}\log p(\mathbf y;\boldsymbol\theta)\,\nabla_{\boldsymbol\theta}\log p(\mathbf y;\boldsymbol\theta)^\top\big] \]
+      <ul class="small">
+        <li>\(\nabla_{\boldsymbol\theta}\log p\), la <strong>puntuación</strong>: cuánto cambia la verosimilitud de los datos si cambias \(\boldsymbol\theta\) un poco.</li>
+        <li>\(\mathcal I\) es su covarianza (su media es cero). Si la verosimilitud es muy sensible a \(\boldsymbol\theta\), los datos «delatan» su valor: mucha información.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo: la media de \(N\) medidas</span>
+        <p class="small">\(y_i = \theta + v_i\), \(v_i\sim\mathcal N(0,\sigma^2)\), \(i = 1\dots N\).</p>
+        <p class="small">1. \(\log p = -\sum_i (y_i - \theta)^2/(2\sigma^2) + \text{cte}\).</p>
+        <p class="small">2. Puntuación: \(\sum_i (y_i - \theta)/\sigma^2 = \sum_i v_i/\sigma^2\).</p>
+        <p class="small">3. Su varianza: \(N\sigma^2/\sigma^4 = N/\sigma^2\). Esa es \(\mathcal I\).</p>
+        <p class="small">Con \(N = 25\) y \(\sigma = 2\): \(\mathcal I = 6{,}25\). La información crece con el número de datos y baja con el ruido.</p>
+      </div>
+      <p class="small muted">La información de Fisher es también la métrica del gradiente natural, del que TRPO es una aproximación práctica.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Información de Fisher · 2</p>
+  <h2>La cota de Cramér-Rao y lo que no se puede identificar</h2>
+  <div class="cols">
+    <div class="stack">
       \[ \mathrm{Cov}(\hat{\boldsymbol\theta}) \succeq \mathcal I(\boldsymbol\theta)^{-1} \]
-      <p>La cota de Cramér-Rao: ningún estimador insesgado puede tener menos varianza que la inversa de la información de Fisher. Si \(\mathcal I\) es singular, hay combinaciones de parámetros que esos datos <strong>no pueden</strong> identificar.</p>
+      <p class="small">Ningún estimador insesgado puede tener menos varianza que la inversa de la información de Fisher (\(\succeq\): la diferencia es semidefinida positiva).</p>
+      <p class="small"><strong>Con el ejemplo anterior:</strong> varianza mínima \(1/6{,}25 = 0{,}16\), desviación 0,4. La media muestral la alcanza: su varianza en 200 000 repeticiones es 0,160 (ejemplo 28).</p>
+      <p class="small"><strong>Cuando \(\mathcal I\) es singular.</strong> Si medimos \(y = \theta_1 + \theta_2 + v\) con \(\sigma = 0{,}5\):</p>
+      \[ \mathcal I = \frac{1}{\sigma^2}\begin{bmatrix}1&1\\1&1\end{bmatrix},\quad\text{autovalores } 8 \text{ y } 0 \]
+      <p class="small">La dirección del autovalor nulo, \((1,-1)\), es invisible: subir \(\theta_1\) y bajar \(\theta_2\) lo mismo no cambia los datos. Solo la suma es identificable, por muchos datos que haya.</p>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Para qué sirve</span>
         <ul class="small">
           <li><strong>Identificación de sistemas (B2):</strong> qué maniobras excitan la masa, la inercia o los coeficientes de arrastre.</li>
           <li><strong>Observabilidad (A4):</strong> qué estados se pueden estimar con un conjunto de sensores; por ejemplo, el rumbo con solo IMU y GNSS en vuelo estacionario.</li>
-          <li><strong>Adaptación (A9):</strong> una política que adapta en línea solo puede inferir lo que sus propios datos hacen observable.</li>
+          <li><strong>Adaptación (A9):</strong> una política que adapta en línea solo puede inferir lo que sus propios datos hacen observable. Si el coeficiente de empuje y la masa son desconocidos, la aceleración solo depende de su cociente: es el ejemplo de \(\theta_1+\theta_2\) en versión física (en logaritmos, un cociente es una resta).</li>
         </ul>
       </div>
-      <p class="small muted">La información de Fisher es también la métrica del gradiente natural, del que TRPO es una aproximación práctica.</p>
     </div>
   </div>
 </section>
+
 
 <!-- ============ CIERRE ============ -->
 <section class="slide" data-section="Cierre">
@@ -733,15 +1846,22 @@
 <section class="slide">
   <p class="kicker">Resumen</p>
   <h2>Lo que te llevas de M1</h2>
-  <ul class="body" style="font-size:19px; gap:10px;">
-    <li>Las orientaciones viven en SO(3) y las poses en SE(3). Se opera en el grupo y se linealiza en el tangente con \(\oplus\), \(\ominus\), Exp y Log; las covarianzas y los gradientes viven en el tangente.</li>
-    <li>Rodrigues sale de la serie de la exponencial y de \([\mathbf u]_\times^3 = -[\mathbf u]_\times\). Integrar con Exp mantiene la rotación en el grupo.</li>
-    <li>Cuidado con las convenciones: Hamilton frente a JPL, orden del cuaternión, NED/FRD frente a ENU/FLU.</li>
-    <li>La corrección de Kalman es condicionar una gaussiana. El filtro de Bayes es la definición del belief.</li>
-    <li>El ELBO es \(\log p(x)\) menos la KL al posterior. Su versión secuencial es el objetivo de Dreamer: el posterior es el belief y el prior es el world model.</li>
-    <li>La KL inversa elige un modo: un riesgo para beliefs multimodales.</li>
-    <li>Entropía, información mutua y Fisher miden incertidumbre, información que aporta una observación y lo que es identificable.</li>
-  </ul>
+  <div class="cols">
+    <ul style="font-size:17.5px; gap:8px;">
+      <li>Una orientación es una matriz \(R\) cuyas columnas son los ejes del dron en el mundo. Vive en SO(3); las poses, en SE(3). No se suman: se componen.</li>
+      <li>Los ángulos de Euler pierden un grado de libertad con cabeceo de 90°, y su cinemática divide por \(\cos\theta\).</li>
+      <li>\(\mathrm{Exp}(\boldsymbol\phi)\) es girar 1 s a velocidad constante \(\boldsymbol\phi\). Rodrigues sale de la serie y de \([\mathbf u]_\times^3 = -[\mathbf u]_\times\); Log, de la traza y la parte antisimétrica.</li>
+      <li>Correcciones, covarianzas y gradientes viven en el tangente: \(X\oplus\boldsymbol\tau = X\,\mathrm{Exp}(\boldsymbol\tau)\). El adjunto pasa de ejes del dron a ejes del mundo; \(J_r\) corrige sumar frente a componer.</li>
+      <li>Cuidado con las convenciones: local o global, Hamilton o JPL, orden del cuaternión, NED/FRD o ENU/FLU.</li>
+    </ul>
+    <ul style="font-size:17.5px; gap:8px;">
+      <li>El filtro de Bayes es predecir con la transición y corregir con el sensor. Kalman es su caso gaussiano: la corrección es condicionar una gaussiana, y \(K\) es un cociente de incertidumbres.</li>
+      <li>La predicción crea correlaciones que permiten corregir estados que no se miden.</li>
+      <li>El ELBO es \(\log p(x)\) menos la KL al posterior. Su versión secuencial es el objetivo de Dreamer: el posterior es el belief y el prior es el world model.</li>
+      <li>La KL no es simétrica: la inversa elige un modo, un riesgo para beliefs multimodales.</li>
+      <li>Entropía, información mutua y Fisher miden incertidumbre, lo que aporta una observación (calculable antes de medir) y lo que es identificable.</li>
+    </ul>
+  </div>
 </section>
 
 <section class="slide">
@@ -926,6 +2046,7 @@
     <li id="ref-murphy2023">Murphy, K. P. (2023). <em>Probabilistic Machine Learning: Advanced Topics</em>. MIT Press. <a href="https://probml.github.io/pml-book/book2.html">probml.github.io</a></li>
   </ol>
 </section>
+
 
 </main>
 <script src="../../assets/curso.js?v=3"></script>

@@ -11,6 +11,7 @@ Curso autodidacta de Pablo Magariños para empezar al día su doctorado (*belief
 - Investigar a fondo antes de escribir: revisiones recientes, papers seminales, trabajo de 2025–2026, documentación oficial y cifras de sistemas reales. Estructura pasado → presente → futuro.
 - Cada referencia y cada cifra se verifica en su fuente. Nunca inventar referencias, autores, páginas ni números; si algo no se puede confirmar, se omite o se marca. Las cifras que solo publica una empresa se presentan como afirmaciones suyas.
 - Derivaciones completas (plegables), figuras SVG y datos de figuras calculados con un script.
+- Matemáticas desplegadas, sin densidad: notación de cada símbolo, de dónde sale cada fórmula, derivación paso a paso con el porqué de cada línea y un ejemplo numérico del script; mejor más hojas que hojas comprimidas (`CONTINUAR.md` §4, M1 como modelo).
 - Hilos en todos los temas: latencia y frecuencia, observabilidad parcial, sim-to-real y cómputo limitado. Cerrar cada tema con su conexión con la tesis.
 - Laboratorios independientes del hardware de Pablo: PC con GPU NVIDIA de consumo o nube, con CPU como alternativa. Nunca se vuela un dron; los datos reales salen de datasets públicos. Una Pixhawk solo como hardware-in-the-loop opcional.
 - Ningún tema se da por terminado sin comprobar en el navegador que `curso.checkOverflow()` devuelve `[]` a 1440×900 y que nada desborda en horizontal a ancho de móvil (`CONTINUAR.md` §6). Al cambiar `assets/`, subir el `?v=` en todas las páginas.

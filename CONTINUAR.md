@@ -50,7 +50,17 @@ Pablo pidió paralelizar siempre que no reste calidad. El reparto que la mantien
 
 ## 4. Estructura de cada presentación
 
-Basada en M0 y M1, entre 40 y 60 hojas según la profundidad:
+Basada en M0 y M1, entre 40 y 60 hojas según la profundidad (más si el tema es muy matemático; M1 tiene 84).
+
+**Cómo se presenta la matemática** (petición de Pablo del 2026-11-07, con M1 como modelo): ninguna fórmula entra sin que quede claro qué es cada símbolo, de dónde sale y por qué tiene esa forma. Para cada bloque:
+
+- una hoja de **notación** al empezar cada parte (símbolo, qué es, ejemplo en un dron), y avisos cuando una letra cambia de significado (la \(R\) de rotación frente a la del ruido en Kalman);
+- el **origen** de la fórmula en palabras, antes de la fórmula;
+- la **derivación paso a paso** en una tabla «# · paso · por qué», visible en la hoja (no solo plegada) cuando la derivación es el contenido central;
+- un **ejemplo numérico** con números pequeños que se puedan seguir a mano, calculado en el script de `figuras/`;
+- mejor partir en dos o tres hojas que comprimir: una idea por hoja.
+
+En HTML, el signo «menor que» dentro de una fórmula se escribe `\lt` (o `&lt;`): `a_{<t}` lo interpreta el navegador como una etiqueta y se come el resto de la fórmula sin dar error.
 
 1. **Portada** (`title-slide`): kicker con fase y jornada, título, subtítulo y meta (duración, prerrequisitos, qué prepara).
 2. **Objetivos**: 4–6, verificables ("derivar", "explicar", "calcular").

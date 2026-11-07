@@ -9,7 +9,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
 | M0 | Mapa del campo | ✅ | 2026-11-06 | 55 hojas + lab 0. Plantilla de referencia. |
-| M1 | Herramientas matemáticas | ✅ | 2026-11-06 | 44 hojas + lab. Modelo para temas con muchas derivaciones. |
+| M1 | Herramientas matemáticas | ✅ | 2026-11-06 | 84 hojas + lab (eran 44; rehecho el 2026-11-07 tras la revisión de Pablo). Modelo para temas con muchas derivaciones: notación por parte, derivaciones en tablas «paso / por qué» y ejemplos numéricos calculados en `figuras/ejemplos_m1.py`. |
 
 ## Fase 1 · El robot y su control
 
@@ -96,6 +96,7 @@ Anota aquí cada revisión: fecha, qué temas revisó y qué pidió cambiar. Lo 
 | 2026-11-06 | Temario y hardware | Laboratorios independientes del hardware; nunca volar un dron; Pixhawk solo como HIL opcional | Sí |
 | 2026-11-06 | A1 | Corregir lo que quedó dudoso en A1. No parar tras cada tema: solo al acabar la fase 1 (H1) y la fase 2 (B6). Paralelizar el trabajo con subagentes siempre que no reste calidad. | Sí: fuentes pendientes de A1 verificadas con agentes; investigación de cada tema en paralelo y revisión independiente antes del commit (`CONTINUAR.md` §3) |
 | 2026-11-06 | — | El ritmo de consumo de IA es alto: usar los subagentes con más cuidado. | Sí: como mucho un agente de investigación por tema, con encargo acotado; consultas de código y documentación hechas directamente; revisión independiente solo en temas con muchas derivaciones (`CONTINUAR.md` §3.1) |
+| 2026-11-07 | M1 | La hoja 26 tenía la ecuación rota. La formulación matemática es demasiado densa: no queda claro qué es cada letra, de dónde salen las ecuaciones ni por qué son así (ejemplo: el condicionamiento gaussiano). Prefiere más hojas con ejemplos y expresiones detalladas paso a paso, sobre todo en rotaciones, y en todo el tema. | Sí: M1 rehecho (44 → 84 hojas). La ecuación rota era `a_{<t}`, que el navegador leía como una etiqueta HTML; se escribe `\lt`. Cada bloque matemático tiene ahora hoja de notación, origen de la fórmula, derivación paso a paso con el porqué de cada línea y un ejemplo numérico del script. Se aplica a los temas siguientes (`CONTINUAR.md` §4). Mismo fallo del `<` detectado en A3a, hoja 11 (`\sum_{j<k}`), sin corregir. |
 | 2026-11-07 | Fase 1 (A1–A5, H1) | «Se ve bien». Seguir hasta el final sin parar, revisando la calidad a medida que se avanza: completo, riguroso y de la máxima calidad. | Sí: las paradas 🛑 pasan a ser revisiones propias de fase (relectura de las hojas, comprobación de cifras y referencias cruzadas, anotadas en este fichero) sin esperar respuesta; se mantiene la política de agentes del 2026-11-06 |
 
 ## Revisión propia de la fase 2 (2026-11-07)

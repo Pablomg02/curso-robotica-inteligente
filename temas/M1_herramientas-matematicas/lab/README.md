@@ -27,6 +27,7 @@ Tests mínimos en `tests/test_so3.py`:
 3. `exp(phi + dphi) ≈ exp(phi) @ exp(jr(phi) @ dphi)` para `dphi` pequeño (error de segundo orden).
 4. Coincidencia con `jaxlie.SO3.exp(phi).as_matrix()`.
 5. Gradientes finitos de `exp` y `log` en `θ = 0`, con `jax.grad`.
+6. Los ejemplos de la presentación: `exp` de 120° alrededor de `(1,1,1)/√3` es la permutación cíclica de los ejes y `log` devuelve el vector de partida; con `phi = (0.3, -0.2, 0.5)` y `dphi` de tamaño `1e-3`, el error sin `jr` es de unos 0,04° y con `jr` de unos 2·10⁻⁵°. Contrasta tus números con la salida de `temas/M1_herramientas-matematicas/figuras/ejemplos_m1.py`.
 
 ## 2. Tres formas de integrar la actitud (40 min)
 
@@ -77,7 +78,7 @@ Un objetivo está en una posición 2D desconocida con belief \(\mathcal N(\bar{\
 
 ## Entregables
 
-- `so3.py` con los cinco tests en verde.
+- `so3.py` con los seis tests en verde.
 - Un cuaderno o script con cuatro figuras: error de integración, plátano, ELBO frente a log p(x), y KL directa frente a inversa.
 - Una tabla con la IG de los 8 puntos de vista y el resultado de la simulación.
 
