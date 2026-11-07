@@ -1,0 +1,183 @@
+
+============================================================================
+1. La atención a mano: tres tokens, d = 2
+============================================================================
+  Q =
+ [[1. 0.]
+ [0. 1.]
+ [2. 0.]] 
+  K =
+ [[1. 0.]
+ [0. 1.]
+ [1. 1.]] 
+  V =
+ [[1.  0. ]
+ [0.  1. ]
+ [0.5 0.5]]
+  Q K^T =
+ [[1. 0. 1.]
+ [0. 1. 1.]
+ [2. 0. 2.]]
+  dividido por raíz de d = 1.414:
+ [[0.707 0.    0.707]
+ [0.    0.707 0.707]
+ [1.414 0.    1.414]]
+  con la máscara causal (-inf donde j > i):
+ [[0.707  -inf  -inf]
+ [0.    0.707  -inf]
+ [1.414 0.    1.414]]
+  pesos (softmax por filas):
+ [[1.    0.    0.   ]
+ [0.33  0.67  0.   ]
+ [0.446 0.108 0.446]]
+  salida = pesos V:
+ [[1.    0.   ]
+ [0.33  0.67 ]
+ [0.669 0.331]]
+  fila 3 paso a paso: exp(1,414) = 4.113, exp(0) = 1, exp(1,414) = 4.113; suma = 9.227; pesos = [0.446 0.108 0.446]
+  salida 3 = 0.446·(1, 0) + 0.108·(0, 1) + 0.446·(0,5; 0,5) = [0.669 0.331]
+
+============================================================================
+2. Por qué sqrt(d): el softmax saturado y su gradiente
+============================================================================
+  z = [16.0, 0.0, -16.0]: pesos = [0.9999999 0.0000001 0.       ]; derivada dw1/dz1 = w1 (1 - w1) = 1.13e-07
+  z = [1.0, 0.0, -1.0]: pesos = [0.665241  0.2447285 0.0900306]; derivada dw1/dz1 = w1 (1 - w1) = 2.23e-01
+  figura: d = 64, 8 claves; q·k_j = [-5.1 -3.2 -2.4 -2.5 13.8  2.4 -0.3  7.3]
+  pesos sin escalar        = [0.    0.    0.    0.    0.999 0.    0.    0.001]
+  pesos dividiendo por 8  = [0.04  0.051 0.057 0.056 0.431 0.103 0.073 0.189]
+
+============================================================================
+3. La cota r <= B/M con los números de la RTX 4060 Ti y Gemma 4 de 12B en 4 bits
+============================================================================
+  B = 128 bits / 8 x 18 Gbit/s = 288 GB/s;  M = 6.98 GB
+  tiempo mínimo por token = M / B = 6.98 / 288 = 24.2 ms  ->  r <= 41.3 tokens/s
+  medido: 33.9 tokens/s = 29.5 ms por token = 82 % de la cota
+  parámetros x 4 bits: 12e9 x 0,5 bytes = 6.0 GB (el fichero ocupa 6.98 GB)
+  prellenado: 1218 tokens en 0.65 s = 1874 tokens/s; si lo limitara la memoria, una lectura de los pesos, 24.2 ms: tarda 27 veces más -> lo limita el cálculo
+  generación de 146 tokens a 33.9 tokens/s: 4.31 s
+  intensidad aritmética: 2 operaciones por parámetro y token / 0,5 bytes por parámetro = 4 op/byte al decodificar; en el prellenado de 1218 tokens, 4872 op/byte
+  pregunta del test: 400 GB/s / 8 GB = 50 tokens/s
+  con dos ejemplos: 132 tokens / 33.9 tokens/s = 3.9 s (medido 4.5 s)
+  verificador que exige un plan: 369 tokens / 33.9 tokens/s = 10.9 s (medido 12.1 s)
+  razonamiento, temperatura 0: 6000 tokens / 33.9 tokens/s = 177.0 s (medido 184.4 s)
+  razonamiento con muestreo: 10726 tokens / 33.9 tokens/s = 316.4 s (medido 331.1 s)
+  razonamiento con muestreo frente a dos ejemplos: 81 veces más tokens, 74 veces más tiempo
+
+============================================================================
+4. Elegir el siguiente token: temperatura, top-k y top-p
+============================================================================
+  T = 1.0: softmax(z / T) = [0.496 0.301 0.111 0.067 0.025]
+  T = 0.5: softmax(z / T) = [0.695 0.256 0.035 0.013 0.002]
+  T = 0.1: softmax(z / T) = [0.993 0.007 0.    0.    0.   ]
+  T -> 0: todo el peso en el máximo (Wait)
+  top-k con k = 2: se quedan ['Wait', 'Then'], renormalizados [0.622 0.378 0.    0.    0.   ]
+  probabilidades ordenadas [0.496 0.301 0.111 0.067 0.025], acumuladas [0.496 0.797 0.908 0.975 1.   ]
+  top-p con p = 0.8: el conjunto más pequeño cuya suma llega a 0.8: ['Wait', 'Then', 'So'], renormalizados [0.547 0.331 0.122 0.    0.   ]
+  top-p con p = 0.95: el conjunto más pequeño cuya suma llega a 0.95: ['Wait', 'Then', 'So', 'The'], renormalizados [0.509 0.309 0.114 0.069 0.   ]
+
+============================================================================
+5. RL con recompensa verificable: la ventaja relativa al grupo (GRPO)
+============================================================================
+  recompensas [1 0 0 1]: media 0.50, desviación 0.500 -> ventajas [ 1. -1. -1.  1.]
+  recompensas [1 0 0 0]: media 0.25, desviación 0.433 -> ventajas [ 1.73 -0.58 -0.58 -0.58]
+  recompensas [0 0 0 0]: media 0.00, desviación 0.000 -> ventajas [0. 0. 0. 0.]
+
+============================================================================
+6. Una imagen en tokens (cifras de Gemma 3)
+============================================================================
+  256 tokens = rejilla de 16 x 16; cada token resume 56 x 56 píxeles de media
+  un mapa de 100 m a 896 píxeles: 6.25 m por token; el margen del verificador es de 2 m
+
+============================================================================
+7. Un problema de planificación clásica, a mano: dos bloques
+============================================================================
+  s0 = ['en_mesa(B)', 'libre(A)', 'mano_vacia', 'sobre(A,B)']; meta = ['sobre(B,A)']
+  desapilar(A,B): pre ['libre(A)', 'mano_vacia', 'sobre(A,B)']; añade ['en_mano(A)', 'libre(B)']; borra ['libre(A)', 'mano_vacia', 'sobre(A,B)']
+     -> ['en_mano(A)', 'en_mesa(B)', 'libre(B)']
+  dejar(A): pre ['en_mano(A)']; añade ['en_mesa(A)', 'libre(A)', 'mano_vacia']; borra ['en_mano(A)']
+     -> ['en_mesa(A)', 'en_mesa(B)', 'libre(A)', 'libre(B)', 'mano_vacia']
+  coger(B): pre ['en_mesa(B)', 'libre(B)', 'mano_vacia']; añade ['en_mano(B)']; borra ['en_mesa(B)', 'libre(B)', 'mano_vacia']
+     -> ['en_mano(B)', 'en_mesa(A)', 'libre(A)']
+  apilar(B,A): pre ['en_mano(B)', 'libre(A)']; añade ['libre(B)', 'mano_vacia', 'sobre(B,A)']; borra ['en_mano(B)', 'libre(A)']
+     -> ['en_mesa(A)', 'libre(B)', 'mano_vacia', 'sobre(B,A)']
+  ¿meta en el estado final? True
+  plan erróneo, empezar por coger(B): precondiciones que faltan ['libre(B)']
+
+============================================================================
+8. LLM-Modulo con las cifras del experimento: tiempo del bucle y tabla de aceptados
+============================================================================
+  verificador que exige un plan: 2,47 intentos de media x 4,5 s por intento = 11.1 s (medido 12,1 s)
+  sin verificador (dos ejemplos): 25 posibles -> 8 correctos, 17 con un cruce que se volarían; 5 imposibles -> 5 planes que se volarían
+  con el verificador que exige un plan: 16 correctos aceptados; 9 sin plan válido tras 4 intentos (no se vuelan); 5 imposibles rechazadas; planes incorrectos aceptados: 0, porque el verificador define qué es correcto
+
+============================================================================
+9. SayCan a mano (ilustrativo, inventado)
+============================================================================
+  paso 1, coger la esponja: 0.55 x 0.05 = 0.028
+  paso 1, ir a la encimera: 0.30 x 0.90 = 0.270
+  paso 1, coger la lata: 0.10 x 0.80 = 0.080
+  paso 1, hecho: 0.05 x 1.00 = 0.050
+  paso 1: solo el LLM -> coger la esponja; SayCan -> ir a la encimera
+  paso 2 (ya en la encimera, la esponja a la vista), coger la esponja: 0.70 x 0.85 = 0.595
+  paso 2 (ya en la encimera, la esponja a la vista), ir a la encimera: 0.05 x 0.95 = 0.048
+  paso 2 (ya en la encimera, la esponja a la vista), coger la lata: 0.10 x 0.80 = 0.080
+  paso 2 (ya en la encimera, la esponja a la vista), hecho: 0.15 x 1.00 = 0.150
+  paso 2: SayCan -> coger la esponja
+  puntuar un texto de 3 tokens: 0.6 x 0.9 x 0.95 = 0.513
+
+============================================================================
+10. Predicción conforme a mano: 9 casos de calibración
+============================================================================
+  p del LLM a la opción correcta: [0.9  0.8  0.75 0.7  0.6  0.55 0.4  0.3  0.15]
+  sorpresas s_j = 1 - p: [0.1  0.2  0.25 0.3  0.4  0.45 0.6  0.7  0.85]; ordenadas: [0.1  0.2  0.25 0.3  0.4  0.45 0.6  0.7  0.85]
+  n = 9, eps = 0.2: k = ceil((n+1)(1-eps)) = ceil(8.0) = 8; q = la 8.ª menor = 0.70
+  regla: una opción entra si 1 - p <= 0.70, es decir, si p >= 0.30
+  garantía: k / (n+1) = 8/10 = 0.80 >= 1 - eps = 0.80
+  caso nuevo 1: p = [0.45, 0.35, 0.15, 0.05] -> conjunto ['A', 'B'] -> pregunta
+  caso nuevo 2: p = [0.8, 0.1, 0.06, 0.04] -> conjunto ['A'] -> actúa
+  n = 9: k = 8, k/(n+1) = 0.800
+  n = 19: k = 16, k/(n+1) = 0.800
+  n = 99: k = 80, k/(n+1) = 0.800
+  n = 400: k = 321, k/(n+1) = 0.800
+  -- el mismo 'LLM' de juguete de derivaciones_a11.py, recalibrando 500 veces con 400 casos (eps = 0,15):
+  cobertura media 0.850; percentiles 5 y 95: 0.822 y 0.876; por debajo de 0,85 en el 47 % de las calibraciones
+  histograma de la cobertura (figura): [0.79, 0.80) 1; [0.80, 0.81) 4; [0.81, 0.82) 17; [0.82, 0.83) 42; [0.83, 0.84) 63; [0.84, 0.85) 107; [0.85, 0.86) 123; [0.86, 0.87) 91; [0.87, 0.88) 35; [0.88, 0.89) 16; [0.89, 0.90) 1; [0.90, 0.91) 0
+  fuera del histograma: 0 por debajo, 0 por encima
+
+============================================================================
+11. El verificador del experimento con la misión 1
+============================================================================
+  autonomía 430 m; máximo con 20 % de reserva 344 m; energía óptima 280.9 m
+  Z1 jardín (8, 57, 28, 75): centro (18.0, 66.0), área 360 m², barrido área/5 = 72 m
+  Z2 almacén (74, 79, 92, 91): centro (83.0, 85.0), área 216 m², barrido área/5 = 43 m
+  Z3 invernadero (78, 33, 93, 52): centro (85.5, 42.5), área 285 m², barrido área/5 = 57 m
+  Z4 aparcamiento (37, 30, 56, 40): centro (46.5, 35.0), área 190 m², barrido área/5 = 38 m
+  Z5 huerto (12, 17, 30, 31): centro (21.0, 24.0), área 252 m², barrido área/5 = 50 m
+  Z6 patio (65, 9, 76, 19): centro (70.5, 14.0), área 110 m², barrido área/5 = 22 m
+  tramo (0,0)->(46,5; 35) frente a Z2 inflada 2 m [72,94]x[77,93]: t en x [1.548 2.022], t en y [2.2   2.657] -> intervalo [2.200, 1.000] -> no cruza (función del script: False)
+  tramo (0,0)->(46,5; 35) frente a Z5 inflada 2 m [10,32]x[15,33]: t en x [0.215 0.688], t en y [0.429 0.943] -> intervalo [0.429, 0.688] -> cruza (función del script: True)
+  con dos ejemplos: fallo; energía 278.7 m (/ óptima 0.992); errores ['cruce: el tramo 2, de (0, 0) a (46, 35), pasa por la zona prohibida Z5 (huerto) o a menos de 2 m']
+     tramos [58.2  0.  42.1  0.  68.4] suman 168.7 m
+  con verificador: ok; energía 289.4 m (/ óptima 1.030); errores []
+     tramos [48.9 20.   0.  42.1  0.  68.4] suman 179.4 m
+  óptimo: ok; energía 280.9 m (/ óptima 1.000); errores []
+     tramos [35.6 24.8 42.1 68.4] suman 170.9 m
+
+============================================================================
+12. Coordenadas de las figuras nuevas (SVG)
+============================================================================
+  a) barras, x = 70 + 52 j; alto sin escalar: [ 0.   0.   0.   0.  89.9  0.   0.   0.1] ; alto escalado: [ 3.6  4.6  5.1  5.  38.8  9.3  6.6 17. ]
+  b) prellenado de x = 40.0 a 183.0; decodificación de 183.0 a 1130.5; un token = 6.49 px; marcas de 1 s en 40, 260, 480, 700, 920, 1140
+     rayas de los tokens: M189.5,64 v42 M196.0,64 v42 M202.5,64 v42 M209.0,64 v42 M215.4,64 v42 M221.9,64 v42 M228.4,64 v42 M234.9,64 v42 M241.4,64 v42 M247.9,64 v42 M254.4,64 v42 M260.9,64 v42 M267.4,64 v42 M273.9,64 v42 M280.3,64 v42 M286.8,64 v42 M293.3,64 v42 M299.8,64 v42 M306.3,64 v42 M312.8,64 v42 M319.3,64 v42 M325.8,64 v42 M332.3,64 v42 M338.8,64 v42 M345.2,64 v42 M351.7,64 v42 M358.2,64 v42 M364.7,64 v42 M371.2,64 v42 M377.7,64 v42 M384.2,64 v42 M390.7,64 v42 M397.2,64 v42 M403.6,64 v42 M410.1,64 v42 M416.6,64 v42 M423.1,64 v42 M429.6,64 v42 M436.1,64 v42 M442.6,64 v42 M449.1,64 v42 M455.6,64 v42 M462.1,64 v42 M468.5,64 v42 M475.0,64 v42 M481.5,64 v42 M488.0,64 v42 M494.5,64 v42 M501.0,64 v42 M507.5,64 v42 M514.0,64 v42 M520.5,64 v42 M527.0,64 v42 M533.4,64 v42 M539.9,64 v42 M546.4,64 v42 M552.9,64 v42 M559.4,64 v42 M565.9,64 v42 M572.4,64 v42 M578.9,64 v42 M585.4,64 v42 M591.8,64 v42 M598.3,64 v42 M604.8,64 v42 M611.3,64 v42 M617.8,64 v42 M624.3,64 v42 M630.8,64 v42 M637.3,64 v42 M643.8,64 v42 M650.3,64 v42 M656.7,64 v42 M663.2,64 v42 M669.7,64 v42 M676.2,64 v42 M682.7,64 v42 M689.2,64 v42 M695.7,64 v42 M702.2,64 v42 M708.7,64 v42 M715.2,64 v42 M721.6,64 v42 M728.1,64 v42 M734.6,64 v42 M741.1,64 v42 M747.6,64 v42 M754.1,64 v42 M760.6,64 v42 M767.1,64 v42 M773.6,64 v42 M780.1,64 v42 M786.5,64 v42 M793.0,64 v42 M799.5,64 v42 M806.0,64 v42 M812.5,64 v42 M819.0,64 v42 M825.5,64 v42 M832.0,64 v42 M838.5,64 v42 M844.9,64 v42 M851.4,64 v42 M857.9,64 v42 M864.4,64 v42 M870.9,64 v42 M877.4,64 v42 M883.9,64 v42 M890.4,64 v42 M896.9,64 v42 M903.4,64 v42 M909.8,64 v42 M916.3,64 v42 M922.8,64 v42 M929.3,64 v42 M935.8,64 v42 M942.3,64 v42 M948.8,64 v42 M955.3,64 v42 M961.8,64 v42 M968.3,64 v42 M974.7,64 v42 M981.2,64 v42 M987.7,64 v42 M994.2,64 v42 M1000.7,64 v42 M1007.2,64 v42 M1013.7,64 v42 M1020.2,64 v42 M1026.7,64 v42 M1033.1,64 v42 M1039.6,64 v42 M1046.1,64 v42 M1052.6,64 v42 M1059.1,64 v42 M1065.6,64 v42 M1072.1,64 v42 M1078.6,64 v42 M1085.1,64 v42 M1091.6,64 v42 M1098.0,64 v42 M1104.5,64 v42 M1111.0,64 v42 M1117.5,64 v42 M1124.0,64 v42
+  c) planificador exacto: x = 167.9
+  c) actitud 200-800 Hz: x = 229.3 a 322.2
+  c) trayectoria 10-50 Hz: x = 415.0 a 522.9
+  c) búsqueda 1-10 Hz: x = 522.9 a 677.2
+  c) LLM, dos ejemplos: x = 778.0
+  c) LLM con verificador: x = 844.3
+  c) LLM razonando con muestreo: x = 1066.0
+     marcas: 0.0001 s -> 60.0, 0.001 s -> 214.3, 0.01 s -> 368.6, 0.1 s -> 522.9, 1 s -> 677.2, 10 s -> 831.5, 100 s -> 985.8, 1000 s -> 1140.1
+     de 1,25 ms a 331,1 s: 5.4 órdenes de magnitud
+  d) sorpresas de calibración en x = [120.0, 180.0, 210.0, 240.0, 300.0, 330.0, 420.0, 480.0, 570.0] ; q = 480.0
+  e) barras del histograma (x, alto): [(60.0, 1.2), (95.0, 4.8), (130.0, 20.4), (165.0, 50.4), (200.0, 75.6), (235.0, 128.4), (270.0, 147.6), (305.0, 109.2), (340.0, 42.0), (375.0, 19.2), (410.0, 1.2), (445.0, 0.0)] ; media en x = 270.7; 0,85 en x = 270.0
+  f) Z5 (124, 83) a (250, 181) ; inflada (110, 69) a (264, 195) ; Z4 (299, 20) a (432, 90) ; centro Z4 (365.5, 55) ; entrada (179.5, 195.0) ; salida (263.9, 131.4) ; punto de paso del verificador (365.5, 195)
