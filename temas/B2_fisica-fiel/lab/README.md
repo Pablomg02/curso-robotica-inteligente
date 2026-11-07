@@ -16,7 +16,7 @@ Añadir al simulador del proyecto hilo las capas de realismo de la presentación
 | Desviación típica en estacionario con esa turbulencia y viento medio de 5 m/s | 4,0 cm (arrastre de Gazebo) y 15,9 cm (SIH) | 3 |
 | Desviación relativa de \(\hat k_h\) con datos hasta 1, 2 y 4 m/s (datos sintéticos) | 33 %, 7,5 % y 1,9 % | 4 |
 
-El script de las figuras está en `../figuras/figuras_b2.py`. Los parámetros marcados como SUPUESTOS en él (pala, motor eléctrico, batería) son valores típicos, no medidas de un fabricante: úsalos para reproducir las cifras y cámbialos por los de tu dron cuando los tengas.
+El script de las figuras está en `../figuras/figuras_b2.py`, y el de los ejemplos numéricos de las hojas (pala, motor, batería, Dryden y mínimos cuadrados con números pequeños), en `../figuras/ejemplos_b2.py`, con su salida en `../figuras/salida_ejemplos.txt`. Los parámetros marcados como SUPUESTOS en él (pala, motor eléctrico, batería) son valores típicos, no medidas de un fabricante: úsalos para reproducir las cifras y cámbialos por los de tu dron cuando los tengas.
 
 ## 1. Motor, ESC y batería (50 min)
 

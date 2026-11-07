@@ -19,7 +19,6 @@
 <body data-deck-id="B2" data-deck-title="Física fiel · Curso de robótica inteligente">
 <main class="deck">
 
-<!-- ============ APERTURA ============ -->
 <section class="slide title-slide" data-section="Apertura">
   <p class="kicker">Fase 2 · Jornada 12 · Curso de robótica inteligente</p>
   <h1>Física fiel</h1>
@@ -45,16 +44,15 @@
 
 <section class="slide">
   <p class="kicker">Por qué importa</p>
-  <h2>En B1 viste que el modelo del motor y del arrastre cambia el vuelo. Ahora toca hacerlo bien</h2>
+  <h2>Lo que en B1 cambiaba el vuelo, ahora bien modelado</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>El mismo x500 volaba a 5 m/s inclinado 0°, 3,5° o 13,9° según el simulador. ¿Cuál se parece al real? Solo lo dicen los datos.</li>
         <li>Una política aprende a explotar lo que el simulador hace mal: si el motor responde al instante, aprende mandos que en el real no se pueden seguir.</li>
         <li>Fidelidad no es complejidad: cada efecto se modela si cambia la decisión del controlador o la evaluación del experimento, y con el detalle que los datos permiten identificar.</li>
         <li>Lo que no se puede modelar bien se aleatoriza (B7) o se aprende (modelos híbridos, al final de este tema).</li>
       </ul>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model aprende la dinámica a partir de datos. Este tema te da la física contra la que comparar lo que aprende, y los modelos híbridos que mezclan las dos cosas.</div>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -72,6 +70,7 @@
       <p class="xsmall muted">Cálculos de esta presentación (<code>figuras_b2.py</code>) con el x500 de Gazebo y parámetros supuestos donde no hay datos: los iremos viendo.</p>
     </div>
   </div>
+  <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model aprende la dinámica a partir de datos. Este tema te da la física contra la que comparar lo que aprende, y los modelos híbridos que mezclan las dos cosas.</div>
 </section>
 
 <section class="slide">
@@ -119,25 +118,267 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Rotor · teoría del elemento de pala</p>
-  <h2>Elemento de pala + cantidad de movimiento: el empuje con el flujo de entrada</h2>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra del rotor</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:27%">Ejemplo: nuestra pala del x500</th></tr>
+      <tr><td>\(\Omega\), \(R\), \(\Omega R\)</td><td>Velocidad de giro (rad/s), <strong>radio</strong> del rotor y velocidad de la punta de la pala</td><td>769,6 rad/s; 0,127 m; 97,7 m/s</td></tr>
+      <tr><td>\(r\), \(x\), \(dr\)</td><td>Radio de una sección, el mismo sin dimensiones (\(x = r/R\)) y anchura del anillo</td><td>\(x = 0{,}75\): \(r\) = 9,5 cm</td></tr>
+      <tr><td>\(N\), \(c\), \(\sigma\)</td><td>Palas, cuerda y <strong>solidez</strong> \(\sigma = Nc/(\pi R)\): la fracción del disco que ocupan</td><td>2; 2 cm; 0,100</td></tr>
+      <tr><td>\(\theta\), \(\theta_0\), \(\theta_{tw}\)</td><td>Paso (cuerda frente al plano del disco), lineal: \(\theta = \theta_0 + \theta_{tw}x\), con \(\theta_{tw}\) la torsión</td><td>19,3° y −11,5°</td></tr>
+      <tr><td>\(U_T\), \(U_P\), \(\phi\)</td><td>Aire que ve la sección en el plano del disco y perpendicular; ángulo \(\phi \approx U_P/U_T\)</td><td>73,3 y 6,4 m/s; 5,0°</td></tr>
+      <tr><td>\(a\), \(C_l\)</td><td>Pendiente de sustentación del perfil y coeficiente \(C_l = a\,(\theta - \phi)\)</td><td>\(a\) = 5,7 por radián</td></tr>
+      <tr><td>\(T\), \(C_T\), \(\rho\), \(A\)</td><td>Empuje de un rotor, \(C_T = T/(\rho A(\Omega R)^2)\), densidad del aire y área \(\pi R^2\)</td><td>5,06 N; 0,00854</td></tr>
+      <tr><td>\(v_i\), \(\lambda_i\), \(\lambda_c\), \(\lambda\)</td><td>Velocidad inducida y flujos por el disco en unidades de \(\Omega R\): inducido \(\lambda_i = v_i/(\Omega R)\), el de la maniobra \(\lambda_c\), total \(\lambda = \lambda_c + \lambda_i\)</td><td>\(v_h\) = 6,4 m/s, \(\lambda_h\) = 0,065</td></tr>
+      <tr><td>\(V\), \(\alpha\), \(\mu\), \(\psi\)</td><td>Velocidad respecto al aire, inclinación del disco, \(\mu = V\cos\alpha/(\Omega R)\) y acimut</td><td>4 m/s; 10,7°; 0,040</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Letras que cambian</span>En A1, \(\alpha\) era el ángulo de ataque de la sección y \(b\) el número de palas. Aquí \(\alpha\) es la inclinación del disco, el ángulo de ataque se escribe \(\theta - \phi\) y las palas son \(N\). En la parte 2, \(R\) será una resistencia.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · qué resolvemos</p>
+  <h2>Dos teorías que se necesitan la una a la otra</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Cada sección de pala, a radio \(r\), ve una velocidad \(U_T = \Omega r\) en el plano y \(U_P\) perpendicular (subida más flujo inducido). Su sustentación por unidad de longitud, con pendiente \(a\) y paso \(\theta(r)\):</p>
-      \[ dL = \tfrac12\rho\,U_T^2\,c\,a\Big(\theta - \frac{U_P}{U_T}\Big)dr . \]
-      <p class="small">Integrando en las \(N\) palas, con paso lineal \(\theta = \theta_0 + \theta_{tw}\,r/R\), solidez \(\sigma = Nc/(\pi R)\), avance \(\mu = V\cos\alpha/(\Omega R)\) y flujo total \(\lambda\) (en unidades de \(\Omega R\)):</p>
-      \[ C_T = \frac{\sigma a}{2}\left[\frac{\theta_0}{3}\Big(1+\tfrac32\mu^2\Big) + \frac{\theta_{tw}}{4}\big(1+\mu^2\big) - \frac{\lambda}{2}\right]. \]
-      <p class="small">La teoría de cantidad de movimiento de Glauert cierra el sistema:</p>
-      \[ \lambda = \lambda_c + \frac{C_T}{2\sqrt{\mu^2+\lambda^2}},\qquad \lambda_c = \frac{V\sin\alpha}{\Omega R}. \]
+      <p><strong>Entra</strong> la velocidad de giro \(\Omega\), la geometría de la pala y el aire que llega al rotor por la maniobra: subir a \(V_c\) o avanzar a \(V\) con el disco inclinado \(\alpha\). <strong>Sale</strong> el empuje \(T\) y el flujo \(\lambda\) que atraviesa el disco.</p>
+      <p>Cada teoría da media respuesta:</p>
+      <ul>
+        <li><strong>Elemento de pala</strong> (A1, hoja 20): si sé cuánto aire cruza el disco, sé con qué ángulo llega a cada sección y, con él, el empuje. Va de \(\lambda\) a \(C_T\).</li>
+        <li><strong>Cantidad de movimiento</strong> (A1, hojas 16–18): si sé el empuje, sé cuánto aire tiene que acelerar el rotor para producirlo. Va de \(C_T\) a \(\lambda\).</li>
+      </ul>
+      <p>La solución es el \(\lambda\) en el que las dos coinciden, y se encuentra dando vueltas al ciclo del dibujo. Combinarlas es la BEMT.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: de la sección de pala a \(C_T\)</summary>
-        <p class="small">Con ángulos pequeños, \(dT \approx dL\). En estacionario (\(\mu = 0\)), con \(x = r/R\) y \(\lambda\) uniforme:</p>
-        \[ C_T = \frac{N c R}{\pi R^2}\,\frac{a}{2}\int_0^1 x^2\Big(\theta(x) - \frac{\lambda}{x}\Big)dx = \frac{\sigma a}{2}\Big(\frac{\theta_0}{3} + \frac{\theta_{tw}}{4} - \frac{\lambda}{2}\Big). \]
-        <p class="small">En avance, \(U_T = \Omega r + V\cos\alpha\,\sin\psi\) depende del acimut \(\psi\); promediando \(U_T^2\) en una vuelta aparecen los factores \(1+\tfrac32\mu^2\) y \(1+\mu^2\). Por cantidad de movimiento, \(T = 2\rho A\,v_i\,|\mathbf V_\infty + \mathbf v_i|\), que en forma adimensional es la ecuación de \(\lambda\). Se resuelve por punto fijo: \(C_T\) depende de \(\lambda\) y \(\lambda\) de \(C_T\) <a class="cite" data-ref="leishman2006"></a>.</p>
-      </details>
-      <div class="callout realidad"><span class="tag">Nuestra pala (supuesta)</span>Hélice de 10" (\(R\) = 0,127 m), 2 palas de 2 cm de cuerda (\(\sigma\) = 0,100), \(a\) = 5,7, torsión de −11,5° y \(\theta_0\) = 19,3°, ajustado para dar el empuje de estacionario del x500 de Gazebo (5,06 N a 770 rad/s). Con \(C_{d0}\) = 0,02, la figura de mérito sale 0,63, en el rango medido de hélices pequeñas que viste en A1.</div>
-      <p class="xsmall muted">Con el flujo uniforme y la pala idealizada, esto es un modelo para entender tendencias, no un sustituto de medir tu hélice.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 560 310" role="img" aria-label="Ciclo entre la teoría del elemento de pala, que da el coeficiente de empuje a partir del flujo, y la de cantidad de movimiento, que da el flujo a partir del empuje">
+          <defs><marker id="b2m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <text x="280" y="26" text-anchor="middle" class="t-muted" font-size="15">entra: Ω, la pala y la maniobra (λ<tspan font-size="11" dy="4">c</tspan><tspan dy="-4">, μ)</tspan></text>
+          <g class="ln" stroke-width="1.6" fill="none" marker-end="url(#b2m1)">
+            <line x1="220" y1="36" x2="150" y2="116"/>
+            <line x1="340" y1="36" x2="410" y2="116"/>
+            <path d="M222 140 C 255 92, 305 92, 338 140"/>
+            <path d="M338 190 C 305 238, 255 238, 222 190"/>
+          </g>
+          <rect x="40" y="120" width="180" height="80" rx="8" class="box-accent"/>
+          <rect x="340" y="120" width="180" height="80" rx="8" class="box-time"/>
+          <text x="130" y="152" text-anchor="middle" class="t-bold" font-size="16">Elemento de pala</text>
+          <text x="130" y="180" text-anchor="middle" class="t-mono t-accent" font-size="16">λ → C<tspan font-size="12" dy="4">T</tspan></text>
+          <text x="430" y="152" text-anchor="middle" class="t-bold" font-size="16">Cantidad de mov.</text>
+          <text x="430" y="180" text-anchor="middle" class="t-mono t-time" font-size="16">C<tspan font-size="12" dy="4">T</tspan><tspan dy="-4"> → λ</tspan></text>
+          <text x="280" y="90" text-anchor="middle" class="t-mono" font-size="15">C<tspan font-size="11" dy="4">T</tspan></text>
+          <text x="280" y="252" text-anchor="middle" class="t-mono" font-size="15">λ</text>
+          <text x="280" y="294" text-anchor="middle" class="t-muted" font-size="15">sale: λ y T = C<tspan font-size="11" dy="4">T</tspan><tspan dy="-4"> ρA(ΩR)² cuando coinciden</tspan></text>
+        </svg>
+        <figcaption>Esquema propio. Cada caja es una ecuación; la vuelta completa es una iteración de punto fijo (hoja 12).</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">El caso de esta parte</span>Un rotor del x500 a 770 rad/s da 5,06 N en estacionario. Sin cambiar \(\Omega\), ¿cuánto da subiendo a 2 m/s, o avanzando a 4 m/s? Lo calcularemos a mano: 0,881, 1,068 y 1,018 veces.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · elemento de pala · 1</p>
+  <h2>Un anillo de pala: qué aire ve y qué fuerza da</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 300" role="img" aria-label="Izquierda: el disco del rotor visto desde arriba, con una pala y el anillo de radio r y anchura dr. Derecha: la sección de pala de ese anillo vista de lado, con la velocidad en el plano U_T, la perpendicular U_P, el ángulo de entrada phi, el paso theta y la sustentación perpendicular al aire relativo">
+        <defs>
+          <marker id="b2m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b2m2t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+          <marker id="b2m2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="b2m2s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <!-- vista desde arriba -->
+        <circle cx="140" cy="150" r="110" class="ln" fill="none"/>
+        <path d="M140,66 A84,84 0 1,0 140,234 A84,84 0 1,0 140,66 Z M140,82 A68,68 0 1,1 140,218 A68,68 0 1,1 140,82 Z" fill-rule="evenodd" class="fill-time" style="opacity:0.35"/>
+        <rect x="140" y="144" width="110" height="12" rx="4" class="box-accent"/>
+        <circle cx="140" cy="150" r="8" class="box"/>
+        <path class="ln" d="M140 150 L86.3 203.7" stroke-width="1.4" marker-end="url(#b2m2)"/>
+        <text x="102" y="178" class="t-mono" font-size="14">r</text>
+        <text x="206" y="88" class="t-mono t-time" font-size="14">dr</text>
+        <text x="236" y="136" class="t-mono t-faint" font-size="13">R</text>
+        <path class="ln" d="M262 170 A125 125 0 0 1 230 236" fill="none" stroke-width="1.6" marker-end="url(#b2m2)"/>
+        <text x="256" y="226" class="t-mono" font-size="14">Ω</text>
+        <text x="140" y="290" text-anchor="middle" class="t-muted" font-size="13">desde arriba</text>
+        <!-- sección de lado -->
+        <line x1="300" y1="170" x2="590" y2="170" class="ln-dash"/>
+        <text x="304" y="188" class="t-faint" font-size="12">plano del disco</text>
+        <path class="ln-time" d="M326 129 L466 129" stroke-width="2.2" marker-end="url(#b2m2t)"/>
+        <path class="ln-time" d="M470 129 L470 165" stroke-width="2.2" marker-end="url(#b2m2t)"/>
+        <path class="ln-accent" d="M326 129 L466 168.9" stroke-width="2" marker-end="url(#b2m2a)"/>
+        <line x1="470" y1="170" x2="364" y2="114" class="ln-dash"/>
+        <path d="M470 170 C 490 168, 530 186, 549 212 C 520 200, 486 186, 470 170 Z" class="box-soft"/>
+        <path class="ln-tesis" d="M510 191 L532 114" stroke-width="2" marker-end="url(#b2m2s)"/>
+        <path class="ln" d="M400 170 A70 70 0 0 1 402.7 150.7" fill="none" stroke-width="1.4"/>
+        <path class="ln" d="M370 170 A100 100 0 0 1 381.7 123.1" fill="none" stroke-width="1.4"/>
+        <text x="386" y="122" class="t-mono t-time" font-size="13">U<tspan font-size="10" dy="3">T</tspan><tspan dy="-3"> = Ωr</tspan></text>
+        <text x="478" y="152" class="t-mono t-time" font-size="13">U<tspan font-size="10" dy="3">P</tspan></text>
+        <text x="408" y="164" class="t-mono" font-size="13">φ</text>
+        <text x="370" y="108" class="t-mono" font-size="13">θ</text>
+        <text x="540" y="112" class="t-mono t-tesis" font-size="13">dL</text>
+        <text x="440" y="250" text-anchor="middle" class="t-muted" font-size="13">la sección de ese anillo, de lado</text>
+        <text x="440" y="270" text-anchor="middle" class="t-muted" font-size="13">ángulo de ataque = θ − φ</text>
+      </svg>
+      <figcaption>Esquema propio, ángulos exagerados. Es el triángulo de A1 (hoja 20), pero ahora \(U_P\) es todo el aire que cruza el disco: el inducido y el que trae la maniobra.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Cada anillo de anchura \(dr\) es un trozo de ala. Su sección ve el aire con dos componentes: \(U_T = \Omega r\) de frente, porque la pala avanza, y \(U_P\) desde arriba, el flujo \(\lambda\Omega R\). La sustentación, con \(C_l = a(\theta - \phi)\), es perpendicular al aire que llega.</p>
+      <div class="callout realidad"><span class="tag">Ejemplo 2 del script</span>Estacionario, \(x = 0{,}75\) (\(r\) = 9,5 cm): \(U_T\) = 73,3 m/s y \(U_P = v_h\) = 6,4 m/s, así que \(\phi\) = 6,4/73,3 = 0,087 rad = 5,0°. El paso allí es 19,3° − 0,75 · 11,5° = 10,8°: ataque de 5,8° y \(C_l\) = 0,57.<br>\(dL/dr = \tfrac12\rho U_T^2 c\,C_l\) = 37,7 N/m por pala, 75 N/m las dos.</div>
+      <p>Sumar todos los anillos de 0 a \(R\) da 5,06 N, el empuje de estacionario. La hoja siguiente hace esa suma en general.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · elemento de pala · 2</p>
+  <h2>De un anillo a todo el rotor: \(C_T\) en estacionario</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(dL = \tfrac12\rho\,U_T^2\,c\,a\big(\theta - \tfrac{U_P}{U_T}\big)dr\)</td><td>Presión dinámica por cuerda por \(C_l\), con \(\phi \approx U_P/U_T\) (ángulos pequeños)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(dT \approx N\,dL\)</td><td>Con \(\phi\) pequeño la sustentación es casi vertical; hay \(N\) palas iguales</td></tr>
+        <tr><td><strong>3</strong></td><td>\(U_T = \Omega R\,x\), \(\ U_P = \lambda\,\Omega R\), \(\ dr = R\,dx\)</td><td>Estacionario: la sección ve \(\Omega r\) de frente y el flujo \(\lambda\Omega R\) desde arriba</td></tr>
+        <tr><td><strong>4</strong></td><td>\(dT = \tfrac N2\rho(\Omega R)^2 c\,a\,(\theta x^2 - \lambda x)\,R\,dx\)</td><td>Sustituir 3 en 1 y 2: \(U_T^2\theta - U_TU_P = (\Omega R)^2(\theta x^2 - \lambda x)\)</td></tr>
+        <tr><td><strong>5</strong></td><td>\(dC_T = \tfrac{\sigma a}{2}(\theta x^2 - \lambda x)\,dx\)</td><td>Dividir por \(\rho\pi R^2(\Omega R)^2\): queda \(Nc/(\pi R) = \sigma\)</td></tr>
+        <tr><td><strong>6</strong></td><td>\(C_T = \tfrac{\sigma a}{2}\Big(\tfrac{\theta_0}{3} + \tfrac{\theta_{tw}}{4} - \tfrac{\lambda}{2}\Big)\)</td><td>Integrar de 0 a 1 con \(\theta = \theta_0 + \theta_{tw}x\): \(\int x^2 = \tfrac13\), \(\int x^3 = \tfrac14\), \(\int x = \tfrac12\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 3 del script</span>\(\sigma a/2\) = 0,2857. Con \(\theta_0\) = 0,3377 rad, \(\theta_{tw}\) = −0,20 rad y \(\lambda_h\) = 0,0653:<br>\(\theta_0/3\) = 0,1126; \(\theta_{tw}/4\) = −0,0500; \(\lambda/2\) = 0,0327.<br>\(C_T\) = 0,2857 · 0,0299 = 0,00854, y \(T = C_T\,\rho A(\Omega R)^2\) = 5,06 N.</div>
+      <div class="callout realidad"><span class="tag">Nuestra pala (supuesta)</span>Hélice de 10" (\(R\) = 0,127 m), 2 palas de 2 cm de cuerda (\(\sigma\) = 0,100), \(a\) = 5,7 y torsión de −11,5°. \(\theta_0\) = 19,3° se despeja del paso 6 para dar el empuje de estacionario del x500 de Gazebo (5,06 N a 770 rad/s).</div>
+      <div class="aparte"><span class="rotulo">Qué se ha supuesto</span>
+        <p>Flujo uniforme en todo el disco, \(a\) constante, sin pérdidas de punta. Es un modelo para entender tendencias, no un sustituto de medir tu hélice.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · cantidad de movimiento</p>
+  <h2>La otra mitad: cuánto aire tiene que mover el rotor</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>En A1 (hojas 16–18), el disco actuador daba \(T = 2\rho A\,v_i^2\) en estacionario y \(T = 2\rho A\,(V_c + v_i)\,v_i\) en subida. Glauert lo extiende a un viento en cualquier dirección <a class="cite" data-ref="leishman2006"></a>:</p>
+      <div class="table-wrap" style="padding-bottom:10px">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(T = 2\rho A\,v_i\,|\mathbf V_\infty + \mathbf v_i|\)</td><td>Flujo másico \(\rho A|\mathbf V_\infty + \mathbf v_i|\) por el cambio de velocidad \(2v_i\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|\mathbf V_\infty + \mathbf v_i|^2 = (V\cos\alpha)^2 + (V\sin\alpha + v_i)^2\)</td><td>En el plano del disco pasa \(V\cos\alpha\); a través de él, \(V\sin\alpha\) más la inducida</td></tr>
+          <tr><td><strong>3</strong></td><td>\(C_T = 2\lambda_i\sqrt{\mu^2 + \lambda^2}\)</td><td>Dividir por \(\rho A(\Omega R)^2\) con cada velocidad en unidades de \(\Omega R\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\lambda = \lambda_c + \dfrac{C_T}{2\sqrt{\mu^2+\lambda^2}}\), \(\ \lambda_c = \dfrac{V\sin\alpha}{\Omega R}\)</td><td>Despejar \(\lambda_i\) y sumarle \(\lambda_c\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Comprobación con A1</span>Estacionario, \(\mu = \lambda_c = 0\): el paso 4 da \(\lambda = C_T/(2\lambda)\), es decir \(\lambda_h = \sqrt{C_T/2} = \sqrt{0{,}00854/2}\) = 0,0653. Por \(\Omega R\) = 97,7 m/s, \(v_h\) = 6,39 m/s: lo mismo que \(\sqrt{T/(2\rho A)}\) en A1, hoja 17. Ejemplo 3 del script.</div>
+      <p>\(\lambda\) aparece a los dos lados, y además \(C_T\) depende de \(\lambda\) (hoja anterior). No hay que despejar nada: se itera.</p>
+      <div class="aparte"><span class="rotulo">Por qué \(\sqrt{\mu^2+\lambda^2}\) importa</span>
+        <p>Es el aire que «ve» el disco por segundo. En avance crece con \(\mu\) aunque nadie suba: el rotor recibe aire nuevo de frente y le basta con menos inducida. Es la sustentación de traslación (hoja 13).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · resolver a mano</p>
+  <h2>El rotor del x500 subiendo a 2 m/s, iteración a iteración</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En subida pura (\(\mu = 0\)) las dos ecuaciones son, con los números de nuestra pala:</p>
+      \[ C_T = \underbrace{0{,}01787}_{\frac{\sigma a}{2}(\frac{\theta_0}{3}+\frac{\theta_{tw}}{4})} - \underbrace{0{,}1429}_{\sigma a/4}\,\lambda,\qquad \lambda_{\text{nuevo}} = \lambda_c + \frac{C_T}{2\lambda} \]
+      <p>con \(\lambda_c\) = 2/97,7 = 0,0205. Se empieza en \(\lambda = \lambda_h + \lambda_c\), se calcula \(C_T\), luego \(\lambda_{\text{nuevo}}\), y se toma la media de \(\lambda\) y \(\lambda_{\text{nuevo}}\) como siguiente \(\lambda\).</p>
+      <div class="callout clave"><span class="tag">Resultado</span>\(\lambda\) = 0,0724 y \(C_T\) = 0,007527: \(T/T_h\) = 0,007527/0,00854 = <strong>0,881</strong>. La inducida baja de 6,4 a 5,1 m/s, pero el aire total que cruza el disco sube de 6,4 a 7,1 m/s: menos ángulo de ataque, menos empuje.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(k\)</th><th>\(\lambda\)</th><th>\(C_T\)</th><th>\(\lambda_{\text{nuevo}}\)</th></tr>
+          <tr><td class="n">0</td><td class="n">0,08580</td><td class="n">0,005615</td><td class="n">0,05318</td></tr>
+          <tr><td class="n">1</td><td class="n">0,06949</td><td class="n">0,007945</td><td class="n">0,07763</td></tr>
+          <tr><td class="n">2</td><td class="n">0,07356</td><td class="n">0,007364</td><td class="n">0,07052</td></tr>
+          <tr><td class="n">3</td><td class="n">0,07204</td><td class="n">0,007582</td><td class="n">0,07308</td></tr>
+          <tr><td class="n">4</td><td class="n">0,07256</td><td class="n">0,007507</td><td class="n">0,07219</td></tr>
+          <tr><td class="n">5</td><td class="n">0,07238</td><td class="n">0,007533</td><td class="n">0,07251</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo 4 del script. Desde la vuelta 9, \(\lambda\) ya no cambia en el quinto decimal.</p>
+      <div class="aparte"><span class="rotulo">Por qué se promedia, y una comprobación</span>
+        <p>Sin la media (\(\lambda \leftarrow \lambda_{\text{nuevo}}\)) la iteración oscila y diverge: 0,086, 0,053, 0,117, 0,025, 0,301… En subida pura hay además forma cerrada: \(2\lambda(\lambda-\lambda_c) = 0{,}01787 - 0{,}1429\,\lambda\) es de segundo grado y su raíz positiva es 0,07242, la misma. En avance no la hay.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · avance con el disco horizontal</p>
+  <h2>De dónde salen \(1 + \tfrac32\mu^2\) y la sustentación de traslación</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(U_T = \Omega r + V\cos\alpha\,\sin\psi = \Omega R\,(x + \mu\sin\psi)\)</td><td>La pala que avanza (\(\psi\) = 90°) suma la velocidad del dron; la que retrocede (270°) la resta</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\langle U_T^2\rangle = (\Omega R)^2\big(x^2 + \tfrac{\mu^2}{2}\big)\)</td><td>Promedio en una vuelta: \(\langle\sin\psi\rangle = 0\), \(\langle\sin^2\psi\rangle = \tfrac12\)</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\langle U_TU_P\rangle = (\Omega R)^2\,\lambda\,x\)</td><td>\(U_P = \lambda\Omega R\) no depende de \(\psi\) (flujo uniforme)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(dC_T = \tfrac{\sigma a}{2}\big[\theta\big(x^2 + \tfrac{\mu^2}{2}\big) - \lambda x\big]dx\)</td><td>El paso 4 de la hoja 10 con los promedios</td></tr>
+        <tr><td><strong>5</strong></td><td>\(C_T = \tfrac{\sigma a}{2}\Big[\tfrac{\theta_0}{3}\big(1+\tfrac32\mu^2\big) + \tfrac{\theta_{tw}}{4}\big(1+\mu^2\big) - \tfrac{\lambda}{2}\Big]\)</td><td>\(\int_0^1\theta_0\tfrac{\mu^2}{2}dx = \tfrac{\theta_0}{3}\cdot\tfrac32\mu^2\) y \(\int_0^1\theta_{tw}x\tfrac{\mu^2}{2}dx = \tfrac{\theta_{tw}}{4}\mu^2\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 5 del script</span>A 4 m/s, \(\mu\) = 0,041 y \(\mu^2\) = 0,0017. Con \(\lambda\) fijo en \(\lambda_h\), los factores solo suben el empuje un 0,7 %. Iterando, \(\sqrt{\mu^2+\lambda^2}\) crece, \(\lambda\) baja de 0,0653 a 0,0616 y \(T/T_h\) = <strong>1,068</strong>. A 10 m/s: 1,042 frente a 1,311.</div>
+      <div class="callout clave"><span class="tag">De dónde sale la ganancia</span>Casi toda del flujo, no de las palas: en avance el disco recibe aire nuevo, le basta con menos inducida, y menos \(\lambda\) es más ángulo de ataque en cada sección.</div>
+      <div class="aparte"><span class="rotulo">Qué se desprecia</span>
+        <p>El aleteo de las palas (A1, hoja 22) y la zona cerca del eje donde la pala que retrocede ve el aire al revés (\(x \lt \mu\)), pequeña con \(\mu\) ≈ 0,04–0,1.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · avance con el disco inclinado</p>
+  <h2>Al inclinarse, parte del avance atraviesa el disco como una subida</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 280" role="img" aria-label="Dron visto de lado avanzando hacia la derecha con el disco inclinado hacia delante un ángulo alfa: el empuje es perpendicular al disco, el peso vertical y el arrastre horizontal hacia atrás; el aire relativo llega de frente y se descompone en una parte en el plano del disco y otra que lo atraviesa">
+        <defs>
+          <marker id="b2m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b2m3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="b2m3t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+        </defs>
+        <line x1="90" y1="150" x2="300" y2="150" class="ln-dash"/>
+        <line x1="97" y1="112" x2="303" y2="188" class="ln-accent" stroke-width="5"/>
+        <rect x="186" y="140" width="28" height="20" rx="4" class="box"/>
+        <path class="ln-accent" d="M200 150 L239 42" stroke-width="2.2" marker-end="url(#b2m3a)"/>
+        <path class="ln" d="M200 150 L200 248" stroke-width="2" marker-end="url(#b2m3)"/>
+        <path class="ln" d="M186 168 L118 168" stroke-width="2" marker-end="url(#b2m3)"/>
+        <path class="ln" d="M270 150 A70 70 0 0 1 265.8 173.9" fill="none" stroke-width="1.4"/>
+        <text x="250" y="48" class="t-mono t-accent" font-size="15">T</text>
+        <text x="208" y="246" class="t-mono" font-size="16">mg</text>
+        <text x="112" y="190" class="t-mono" font-size="16">m d v</text>
+        <text x="276" y="172" class="t-mono" font-size="16">α</text>
+        <path class="ln-time" d="M500 90 L384 90" stroke-width="2" marker-end="url(#b2m3t)"/>
+        <path class="ln-time ln-dash" d="M500 90 L396 52" stroke-width="1.8" marker-end="url(#b2m3t)"/>
+        <path class="ln-time ln-dash" d="M398 53 L385 87" stroke-width="1.8" marker-end="url(#b2m3t)"/>
+        <text x="440" y="112" text-anchor="middle" class="t-mono t-time" font-size="15">V (aire relativo)</text>
+        <text x="404" y="44" class="t-mono t-time" font-size="15">V cos α → μ</text>
+        <text x="262" y="78" class="t-mono t-time" font-size="15">V sin α → λ<tspan font-size="10" dy="3">c</tspan></text>
+        <text x="260" y="272" text-anchor="middle" class="t-muted" font-size="15">el dron avanza hacia la derecha</text>
+      </svg>
+      <figcaption>Esquema propio, ángulo exagerado. El aire relativo llega de frente; lo que atraviesa el disco, \(V\sin\alpha\), entra por arriba como en una subida.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(T\cos\alpha = mg\)</td><td>Vuelo recto a velocidad constante: la vertical equilibra el peso</td></tr>
+          <tr><td><strong>2</strong></td><td>\(T\sin\alpha = m\,d\,v\)</td><td>La horizontal equilibra el arrastre de rotor (A1, hoja 23)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\tan\alpha = d\,v/g\)</td><td>Dividir 2 entre 1</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mu = \dfrac{V\cos\alpha}{\Omega R}\), \(\ \lambda_c = \dfrac{V\sin\alpha}{\Omega R}\)</td><td>Proyectar el aire relativo sobre el plano del disco y sobre su eje</td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Ejemplo 6 del script</span>Con \(d\) = 0,465 s⁻¹ (la media de \(d_x\) y \(d_y\) de Faessler et al., A1) y \(v\) = 4 m/s: \(\tan\alpha\) = 0,190, \(\alpha\) = 10,7°. Pasan 3,93 m/s en el plano y <strong>0,75 m/s a través</strong>: \(T/T_h\) = 1,018 en vez de 1,068. A 10 m/s, \(\alpha\) = 25,4° y atraviesan 4,28 m/s: \(T/T_h\) = 0,871. La «subida» gana.</div>
     </div>
   </div>
 </section>
@@ -165,16 +406,16 @@
         <path d="M60.0,135.0 L75.3,140.4 L90.7,146.0 L106.0,151.8 L121.3,157.7 L136.7,163.9 L152.0,170.3 L167.3,176.8 L182.7,183.6 L198.0,190.6 L213.3,197.9 L228.7,205.3 L244.0,212.9" fill="none" class="ln-time" stroke-width="2.5"/>
         <path d="M60.0,135.0 L75.3,135.0 L90.7,134.8 L106.0,134.6 L121.3,134.3 L136.7,133.9 L152.0,133.4 L167.3,132.8 L182.7,132.2" fill="none" class="ln" stroke-width="3"/>
         <path d="M182.7,132.2 L198.0,131.4 L213.3,130.6 L228.7,129.7 L244.0,128.7 L259.3,127.6 L274.7,126.4 L290.0,125.1 L305.3,123.7 L320.7,122.3 L336.0,120.8 L351.3,119.1 L366.7,117.4 L382.0,115.6 L397.3,113.7 L412.7,111.7 L428.0,109.7 L443.3,107.5 L458.7,105.3 L474.0,103.0 L489.3,100.5 L504.7,98.0 L520.0,95.4" fill="none" class="ln-dash" stroke-width="2"/>
-        <text x="400" y="52" class="t-accent" font-size="13">avance, disco horizontal</text>
+        <text x="410" y="30" class="t-accent" font-size="13">avance, disco horizontal</text>
         <text x="420" y="92" class="t-muted" font-size="13">Faessler, extrapolado</text>
-        <text x="380" y="200" class="t-tesis" font-size="13">avance, disco inclinado</text>
+        <text x="276" y="172" class="t-tesis" font-size="13">avance, disco inclinado</text>
         <text x="250" y="232" class="t-time" font-size="13">subida pura</text>
         <text x="300" y="286" text-anchor="middle" class="t-muted" font-size="13">velocidad respecto al aire</text>
       </svg>
-      <figcaption>Empuje de un rotor del x500 a \(\Omega\) fija (770 rad/s), relativo al de estacionario, con la BEM de la hoja anterior. «Disco inclinado»: la inclinación de equilibrio con arrastre \(d\) = 0,465 s⁻¹, \(\tan\alpha = dv/g\). Faessler et al.: \(c = c_{\text{cmd}} + k_h v_h^2\), \(k_h\) = 0,009 m⁻¹, identificado hasta unos 4 m/s. <code>figuras_b2.py</code>, sección 1.</figcaption>
+      <figcaption>Empuje de un rotor del x500 a \(\Omega\) fija (770 rad/s), relativo al de estacionario, con la BEM de las hojas 9–14. «Disco inclinado»: la inclinación de equilibrio con arrastre \(d\) = 0,465 s⁻¹, \(\tan\alpha = dv/g\). Faessler et al.: \(c = c_{\text{cmd}} + k_h v_h^2\), \(k_h\) = 0,009 m⁻¹, identificado hasta unos 4 m/s. <code>figuras_b2.py</code>, sección 1.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Subida:</strong> −5,6 % de empuje por cada m/s; a 2 m/s, −12 %. El aire que ya entra resta ángulo de ataque a la pala.</li>
         <li><strong>Avance con el disco horizontal:</strong> +7 % a 4 m/s, +31 % a 10 m/s.</li>
         <li><strong>Avance real</strong> (disco inclinado hacia delante): parte del viento relativo atraviesa el disco como en una subida. A 2–5 m/s, +0,7 a +1,8 %, a menos de un 1 % del ajuste de Faessler. A 10 m/s ya resta (−13 %).</li>
@@ -187,15 +428,36 @@
 <section class="slide">
   <p class="kicker">Rotor · potencia</p>
   <h2>La potencia del rotor: inducida más perfil</h2>
+  <div class="cols w60">
+    <div class="stack">
+      \[ C_P = \underbrace{\kappa\,\lambda_i C_T}_{\text{inducida}} + \underbrace{\lambda_c C_T}_{\text{subida}} + \underbrace{\frac{\sigma C_{d0}}{8}\big(1 + 4{,}65\,\mu^2\big)}_{\text{perfil}},\qquad P = C_P\,\rho A(\Omega R)^3 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:14%">Término</th><th>De dónde sale</th><th style="width:19%">Nuestra pala</th></tr>
+          <tr><td>Inducida</td><td>La potencia \(T\,v_i\) del disco actuador (A1, hoja 17), en unidades de \(\rho A(\Omega R)^3\). \(\kappa \approx 1{,}15\) corrige el flujo no uniforme y las pérdidas de punta <a class="cite" data-ref="leishman2006"></a></td><td class="n">6,42·10⁻⁴</td></tr>
+          <tr><td>Subida</td><td>\(T\,V_c\): subir el peso a \(V_c\)</td><td class="n">0 en estacionario</td></tr>
+          <tr><td>Perfil</td><td>El rozamiento de cada sección, \(\tfrac12\rho U_T^2c\,C_{d0}\,dr\), por su brazo \(r\) y por \(\Omega\), sumado en el disco: \(\int_0^1x^3dx = \tfrac14\) deja \(\sigma C_{d0}/8\). El 4,65 es la corrección habitual en avance <a class="cite" data-ref="leishman2006"></a></td><td class="n">2,51·10⁻⁴</td></tr>
+        </table>
+      </div>
+      <p>\(C_{d0}\) es el coeficiente de rozamiento del perfil de la pala; 0,02 es un valor supuesto.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 7 del script</span>\(C_P\) = 8,92·10⁻⁴ y \((\Omega R)^3\) = 9,34·10⁵ m³/s³: \(P\) = <strong>51,7 W por rotor y 207 W los cuatro</strong> de potencia aerodinámica.</div>
+      <p>La figura de mérito de A1 compara con la potencia ideal del disco actuador, \(T v_h\):</p>
+      \[ FM = \frac{C_T^{3/2}/\sqrt2}{C_P} = \frac{32{,}3\ \text{W}}{51{,}7\ \text{W}} = 0{,}63 \]
+      <p>Algo por encima de lo medido en banco en hélices de 5″ (0,48–0,61, A1, hoja 17); la nuestra es de 10″ y su perfil, idealizado.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Rotor · potencia y batería</p>
+  <h2>Rotor, motor y batería son un solo sistema</h2>
   <div class="cols">
     <div class="stack">
-      \[ C_P = \underbrace{\kappa\,\lambda_i C_T}_{\text{inducida}} + \underbrace{\lambda_c C_T}_{\text{subida}} + \underbrace{\frac{\sigma C_{d0}}{8}\big(1 + 4{,}65\,\mu^2\big)}_{\text{perfil}} \]
-      \[ FM = \frac{C_T^{3/2}/\sqrt2}{C_P}\quad\text{(figura de mérito en estacionario)} \]
-      <ul class="small">
-        <li>\(\kappa \approx 1{,}15\) corrige el flujo no uniforme y las pérdidas de punta; el factor 4,65 es la corrección habitual del perfil en avance <a class="cite" data-ref="leishman2006"></a>.</li>
-        <li>Con nuestra pala: \(C_P\) = 8,9·10⁻⁴ en estacionario, figura de mérito 0,63, <strong>52 W por rotor y 207 W en total</strong> de potencia aerodinámica.</li>
-        <li>El modelo eléctrico de la parte 2 pide 262 W a la batería en estacionario: un 79 % de rendimiento del motor y el ESC, con nuestros parámetros supuestos.</li>
-      </ul>
+      <p>El modelo eléctrico de la parte 2 pide <strong>262 W</strong> a la batería en estacionario: 13 W se pierden en los bobinados y 249 W llegan a los ejes.</p>
+      <p>No cuadra del todo con los 207 W de la BEM. El motor equivalente usa el par de la hélice de Gazebo, \(k_Q\Omega^2\) = 0,081 N m, y nuestra BEM da 51,7 W / 770 rad/s = 0,067 N m: un 20 % menos. Son dos modelos supuestos que se ajustaron por separado, los dos al empuje de estacionario y ninguno al par.</p>
+      <p>207/262 = 79 % sería el rendimiento del conjunto si los dos modelos describieran la misma hélice. En el nuestro, el ESC es ideal y los bobinados pierden un 5 %. Ejemplos 7, 8 y 12 del script.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Por qué te importa</span>La potencia fija la autonomía y la corriente, y la corriente fija la caída de tensión de la batería. Por eso el rotor, el motor y la batería son un solo sistema: separarlos en el simulador es una aproximación.</div>
@@ -210,20 +472,19 @@
   <h2>Efecto suelo, estelas ajenas y lo que no cabe en una fórmula</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Efecto suelo:</strong> la fórmula de Cheeseman y Bennett de A1 <a class="cite" data-ref="cheeseman1955"></a>, \(T_{\text{IGE}}/T_{\text{OGE}} = 1/(1 - (R/4z)^2)\), da +10 % a una altura de un diámetro de hélice y casi nada a dos. Para un cuadricóptero, con cuatro estelas y un cuerpo, solo es una primera aproximación.</li>
+      <ul>
+        <li><strong>Efecto suelo:</strong> la fórmula de Cheeseman y Bennett de A1 (hoja 24) <a class="cite" data-ref="cheeseman1955"></a>, \(T_{\text{IGE}}/T_{\text{OGE}} = 1/(1 - (R/4z)^2)\), da +6,7 % a una altura de un radio de hélice, +1,6 % a un diámetro y casi nada más arriba. Para un cuadricóptero, con cuatro estelas y un cuerpo, solo es una primera aproximación.</li>
         <li><strong>Efecto techo:</strong> cerca de un techo, el empuje <em>sube</em> y el dron tiende a pegarse: relevante en inspección bajo puentes o en interiores.</li>
         <li><strong>Estela de otro dron:</strong> volar bajo otro dron reduce el empuje y desestabiliza; en enjambres densos domina (A15b).</li>
       </ul>
       <div class="callout realidad"><span class="tag">Aprendido</span>Neural Lander aprende el efecto suelo con una red y lo compensa en el controlador para aterrizar con suavidad <a class="cite" data-ref="shi2019"></a>. Es el patrón general: física nominal + una corrección aprendida donde la física se queda corta.</div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Cuenta: el efecto suelo del x500</summary>
-        <p class="small">Con \(R\) = 0,127 m y la fórmula de Cheeseman y Bennett:</p>
+      <div class="callout realidad"><span class="tag">Cuenta: el efecto suelo del x500</span>Con \(R\) = 0,127 m y la fórmula de Cheeseman y Bennett:
         \[ z = 2R = 0{,}25\ \text{m}:\quad \frac{1}{1-(1/8)^2} = 1{,}016 \]
         \[ z = R = 0{,}13\ \text{m}:\quad \frac{1}{1-(1/4)^2} = 1{,}067 \]
-        <p class="small">Con el tren de aterrizaje, los rotores del x500 están a una altura del orden de \(2R\) sobre el suelo al despegar: +2 % de empuje, que desaparece en los primeros decímetros. Pequeño para el control, pero suficiente para que un estimador de empuje o de masa se equivoque en el despegue.</p>
-      </details>
+      </div>
+      <p>Con el tren de aterrizaje, los rotores del x500 están a una altura del orden de \(2R\) sobre el suelo al despegar: +2 % de empuje, que desaparece en los primeros decímetros. Pequeño para el control, pero suficiente para que un estimador de empuje o de masa se equivoque en el despegue.</p>
       <p class="xsmall muted">La altura de los rotores del x500 sobre el suelo es una estimación, no una medida.</p>
     </div>
   </div>
@@ -237,28 +498,166 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Motor · modelo</p>
-  <h2>Motor sin escobillas: dos ecuaciones y una constante de tiempo</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra del motor, el ESC y la batería</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:27%">Ejemplo en nuestro x500</th></tr>
+      <tr><td>\(d\), \(V\)</td><td>Mando del ESC, \(d \in [0,1]\): fracción de la tensión de bus \(V\) que llega, en media, al motor</td><td>0,759 con 16,8 V</td></tr>
+      <tr><td>\(R\), \(L\), \(i\)</td><td>Resistencia e inductancia del bobinado, y corriente de un motor</td><td>0,12 Ω; 5,1 A</td></tr>
+      <tr><td>\(k_e\), \(k_t\), KV</td><td>Constantes de fuerza contraelectromotriz (V s/rad) y de par (N m/A), iguales en SI; KV = \(1/k_e\) en rpm/V</td><td>0,0158; 606 rpm/V</td></tr>
+      <tr><td>\(J_r\), \(k_Q\), \(k_m\)</td><td>Inercia de rotor y hélice; par aerodinámico \(k_Q\Omega^2\), con \(k_Q = k_m k_T\)</td><td>2,5·10⁻⁵ kg m²; 0,081 N m</td></tr>
+      <tr><td>\(\tau\), \(\Omega_0\), \(\delta\)</td><td>Constante de tiempo del motor, punto de trabajo y pequeña variación alrededor de él</td><td>11,0 ms en 770 rad/s</td></tr>
+      <tr><td>OCV, SoC, \(Q\)</td><td>Tensión en circuito abierto, estado de carga (1 lleno, 0 vacío) y capacidad</td><td>4,2 a 3,6 V por celda; 5 Ah</td></tr>
+      <tr><td>\(R_0\), \(R_1\), \(C_1\), \(V_1\), \(I\)</td><td>Resistencia serie de la batería, rama RC de polarización y su tensión, corriente de la batería</td><td>5 mΩ por celda; 15,9 A</td></tr>
+      <tr><td>\(f\), \(u\)</td><td><code>THR_MDL_FAC</code> de PX4 y mando normalizado de su curva de empuje</td><td>0,3–0,5 típicos</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Letras que cambian</span>En la parte 1, \(d\) era el arrastre, \(V\) la velocidad y \(R\) el radio. \(I\) (batería) e \(i\) (un motor) son corrientes distintas: la batería da \(I = 4\,d\,i\) a los cuatro motores (hoja 30).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Motor · el circuito</p>
+  <h2>El motor visto como un circuito: de dónde salen \(k_e\), \(k_t\) y KV</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con el ESC conmutando bien, un motor sin escobillas se modela como uno de continua. Con mando \(d \in [0,1]\), tensión de bus \(V\), resistencia \(R\), constante \(k_e = k_t\) e inercia de rotor y hélice \(J_r\):</p>
-      \[ L\frac{di}{dt} = dV - Ri - k_e\Omega,\qquad J_r\dot\Omega = k_t\,i - k_Q\Omega^2 . \]
-      <p class="small">La inductancia da una constante \(L/R\) de décimas de milisegundo: se desprecia. Queda</p>
-      \[ J_r\dot\Omega = \frac{k_t}{R}\big(dV - k_e\Omega\big) - k_Q\Omega^2 . \]
-      <details class="deriv"><summary>Derivación: constante de tiempo linealizada</summary>
-        <p class="small">Alrededor de \(\Omega_0\), con \(\Omega = \Omega_0 + \delta\Omega\):</p>
-        \[ J_r\,\delta\dot\Omega = \frac{k_t V}{R}\delta d - \Big(\frac{k_t k_e}{R} + 2k_Q\Omega_0\Big)\delta\Omega \]
-        \[ \Rightarrow\quad \tau = \frac{J_r}{k_t k_e/R + 2k_Q\Omega_0}. \]
-        <p class="small">Dos amortiguamientos en paralelo: el eléctrico (fuerza contraelectromotriz) y el aerodinámico (la hélice).</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 600 250" role="img" aria-label="Circuito equivalente del motor: una fuente d por V en serie con la resistencia R, la inductancia L y la fuerza contraelectromotriz k_e Omega; la corriente i da el par k_t i que acelera el rotor de inercia J_r contra el par de la hélice k_Q Omega al cuadrado">
+          <defs>
+            <marker id="b2m4a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+            <marker id="b2m4s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+          </defs>
+          <g class="ln" fill="none" stroke-width="1.8">
+            <path d="M70 108 V60 H110"/>
+            <polyline points="110,60 116,48 128,72 140,48 152,72 164,48 176,72 180,60"/>
+            <path d="M180 60 H200"/>
+            <path d="M200 60 a10 10 0 0 1 20 0 a10 10 0 0 1 20 0 a10 10 0 0 1 20 0 a10 10 0 0 1 20 0"/>
+            <path d="M280 60 H330 V108"/>
+            <path d="M330 152 V200 H70 V152"/>
+          </g>
+          <circle cx="70" cy="130" r="22" class="box"/>
+          <circle cx="330" cy="130" r="22" class="box-time"/>
+          <text x="70" y="135" text-anchor="middle" class="t-mono" font-size="14">dV</text>
+          <text x="330" y="134" text-anchor="middle" class="t-mono" font-size="12">k<tspan font-size="9" dy="3">e</tspan><tspan dy="-3">Ω</tspan></text>
+          <text x="80" y="104" class="t-mono" font-size="13">+</text>
+          <text x="340" y="104" class="t-mono" font-size="13">+</text>
+          <path class="ln-accent" d="M80 60 H104" stroke-width="2.2" marker-end="url(#b2m4a)"/>
+          <text x="88" y="48" class="t-mono t-accent" font-size="14">i</text>
+          <text x="146" y="36" text-anchor="middle" class="t-mono" font-size="14">R</text>
+          <text x="240" y="40" text-anchor="middle" class="t-mono" font-size="14">L</text>
+          <path class="ln-accent" d="M356 130 H414" stroke-width="2.2" marker-end="url(#b2m4a)"/>
+          <text x="384" y="118" text-anchor="middle" class="t-mono t-accent" font-size="13">k<tspan font-size="9" dy="3">t</tspan><tspan dy="-3"> i</tspan></text>
+          <rect x="420" y="102" width="90" height="56" rx="6" class="box-accent"/>
+          <text x="465" y="136" text-anchor="middle" class="t-mono" font-size="14">J<tspan font-size="10" dy="3">r</tspan><tspan dy="-3"> dΩ/dt</tspan></text>
+          <path class="ln-tesis" d="M586 130 H516" stroke-width="2.2" marker-end="url(#b2m4s)"/>
+          <text x="552" y="118" text-anchor="middle" class="t-mono t-tesis" font-size="13">k<tspan font-size="9" dy="3">Q</tspan><tspan dy="-3">Ω²</tspan></text>
+          <text x="200" y="228" text-anchor="middle" class="t-muted" font-size="13">eléctrico: el bobinado</text>
+          <text x="500" y="190" text-anchor="middle" class="t-muted" font-size="13">mecánico: el eje</text>
+        </svg>
+        <figcaption>Esquema propio. El ESC trocea la tensión de la batería \(V\); en media, el bobinado ve una fuente \(dV\). La fcem \(k_e\Omega\) crece con la velocidad y se opone a la corriente.</figcaption>
+      </figure>
+      <p>Con el ESC conmutando bien, un motor sin escobillas se modela como uno de continua.</p>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Motor equivalente del x500 (supuesto)</span>\(R\) = 0,12 Ω y \(J_r\) = 2,5·10⁻⁵ kg m², típicos de esta clase. \(k_e\) se elige para que, con 4S cargada (16,8 V) y mando 1, el motor llegue a los 1000 rad/s de Gazebo con el par de la hélice (\(k_Q = k_m k_T\)): \(k_e\) = 0,0158 V s/rad, unos 606 rpm/V.</div>
-      <ul class="small">
-        <li>Amortiguamiento eléctrico \(k_tk_e/R\) = 2,07·10⁻³ N m s; aerodinámico \(2k_Q\Omega_0\) = 0,21·10⁻³. <strong>Domina el eléctrico:</strong> la constante de tiempo depende sobre todo del motor, no de la hélice.</li>
-        <li>\(\tau\) = 11,0 ms en estacionario, cerca de los 12,5 ms del x500 de Gazebo.</li>
-        <li>Con \(\tau \approx J_rR/k_e^2\), un motor de KV alto (menos \(k_e\)) con la misma resistencia responde más despacio.</li>
+      <p><strong>Malla eléctrica:</strong> la tensión de la fuente se reparte entre la resistencia, la inductancia y la fuerza contraelectromotriz (fcem).</p>
+      \[ dV = R\,i + L\frac{di}{dt} + k_e\Omega \]
+      <p><strong>Eje:</strong> el par eléctrico acelera el rotor contra el par de la hélice.</p>
+      \[ J_r\dot\Omega = k_t\,i - k_Q\Omega^2 \]
+      <ul>
+        <li><strong>Por qué \(k_t = k_e\):</strong> la fcem absorbe \(k_e\Omega\,i\) de potencia eléctrica, y eso es lo que sale por el eje, \(k_t i\,\Omega\). En SI, V s/rad = N m/A.</li>
+        <li><strong>KV:</strong> sin carga, \(i \approx 0\) y \(k_e\Omega = V\). KV es la velocidad por voltio, \(1/k_e\), en rpm/V: \(\mathrm{KV} = 60/(2\pi k_e)\).</li>
+        <li><strong>\(L\):</strong> su constante \(L/R\) es de décimas de milisegundo y se desprecia, así que \(i = (dV - k_e\Omega)/R\) al instante.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Motor · con números</p>
+  <h2>El motor equivalente del x500, paso a paso</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:30%">Paso</th><th>Cuenta</th><th style="width:22%">Resultado</th></tr>
+        <tr><td><strong>1</strong></td><td>Condición de diseño: con \(d = 1\) y 16,8 V, llegar a los 1000 rad/s de Gazebo</td><td>\(k_Q\Omega^2 R = k_e(V - k_e\Omega)\), con \(k_t = k_e\)</td><td>\(1000\,k_e^2 - 16{,}8\,k_e + 0{,}0164 = 0\)</td></tr>
+        <tr><td><strong>2</strong></td><td>La raíz grande</td><td>\(k_e = (16{,}8 + \sqrt{216{,}6})/2000\)</td><td class="n">0,01576 V s/rad = 606 rpm/V</td></tr>
+        <tr><td><strong>3</strong></td><td>Par de la hélice en estacionario</td><td>\(k_Q\Omega_h^2 = 1{,}368\cdot10^{-7}\cdot 769{,}6^2\)</td><td class="n">0,081 N m</td></tr>
+        <tr><td><strong>4</strong></td><td>Corriente que lo da</td><td>\(i = k_Q\Omega_h^2/k_t\)</td><td class="n">5,14 A</td></tr>
+        <tr><td><strong>5</strong></td><td>Tensión que necesita</td><td>\(dV = k_e\Omega_h + R\,i = 12{,}13 + 0{,}62\)</td><td class="n">12,74 V: \(d\) = 0,759</td></tr>
+        <tr><td><strong>6</strong></td><td>Adónde va la potencia</td><td>\(k_e\Omega_h\,i\) al eje; \(R\,i^2\) en calor</td><td class="n">62,3 W y 3,2 W</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Motor equivalente del x500 (supuesto)</span>\(R\) = 0,12 Ω y \(J_r\) = 2,5·10⁻⁵ kg m², típicos de esta clase. \(k_e\) se elige para que, con 4S cargada (16,8 V) y mando 1, el motor llegue a los 1000 rad/s de Gazebo con el par de la hélice (\(k_Q = k_m k_T\)). Ejemplo 8 del script.</div>
+      <p>En estacionario, la fcem (12,13 V) se lleva casi toda la tensión y la resistencia solo 0,62 V: el motor trabaja cerca de su velocidad sin carga.</p>
+      <div class="aparte"><span class="rotulo">La otra raíz</span>
+        <p>\(k_e\) = 0,00104 V s/rad (KV de 9168 rpm/V) también cumple la condición, pero a 1000 rad/s pediría 131 A por motor, con casi toda la tensión cayendo en la resistencia. No es un motor que nadie montaría.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Motor · constante de tiempo</p>
+  <h2>De dónde salen los 11 ms</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(i = (dV - k_e\Omega)/R\) en la ecuación del eje queda una sola ecuación, la de A1 (hoja 26):</p>
+      \[ J_r\dot\Omega = \frac{k_t}{R}\big(dV - k_e\Omega\big) - k_Q\Omega^2 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\Omega = \Omega_0 + \delta\Omega\), \(\ d = d_0 + \delta d\)</td><td>Pequeña variación alrededor del estacionario</td></tr>
+          <tr><td><strong>2</strong></td><td>\(k_Q\Omega^2 \approx k_Q\Omega_0^2 + 2k_Q\Omega_0\,\delta\Omega\)</td><td>Taylor de primer orden</td></tr>
+          <tr><td><strong>3</strong></td><td>\(J_r\,\delta\dot\Omega = \tfrac{k_tV}{R}\delta d - \big(\tfrac{k_tk_e}{R} + 2k_Q\Omega_0\big)\delta\Omega\)</td><td>Restar el equilibrio</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\tau = J_r\big/\big(\tfrac{k_tk_e}{R} + 2k_Q\Omega_0\big)\)</td><td>Es un primer orden, \(\tau\,\delta\dot\Omega = K\delta d - \delta\Omega\)</td></tr>
+        </table>
+      </div>
+      <p>Dos amortiguamientos en paralelo: el eléctrico (la fcem) y el aerodinámico (la hélice).</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 9 del script</span>Eléctrico: \(k_tk_e/R\) = 0,01576²/0,12 = 2,07·10⁻³ N m s. Aerodinámico: \(2k_Q\Omega_0\) = 0,21·10⁻³. Suma 2,28·10⁻³, y \(\tau\) = 2,5·10⁻⁵/2,28·10⁻³ = <strong>11,0 ms</strong>, cerca de los 12,5 ms del x500 de Gazebo. Con 500 rad/s, 11,3 ms; con 1000, 10,7 ms.</div>
+      <ul>
+        <li><strong>Domina el eléctrico</strong>, 10 a 1: la constante de tiempo depende sobre todo del motor, no de la hélice. Sin la hélice, \(\tau \approx J_rR/k_e^2\) = 12,1 ms.</li>
+        <li>Con la misma inercia y resistencia, un motor de KV alto (menos \(k_e\)) responde más despacio.</li>
         <li><strong>Medidos:</strong> NeuroBEM modela el motor de su dron de carreras con 33 ms <a class="cite" data-ref="neurobem"></a>; en A2 usaste 39 ms para la clase Agilicious.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Motor · ESC · frenado activo</p>
+  <h2>Bajar el mando: el motor se convierte en generador</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 280" role="img" aria-label="Corriente del motor tras bajar el mando de 0,80 a 0,55: con frenado activo cae a menos 29 amperios y vuelve; sin frenado se queda en cero hasta los 86 milisegundos">
+        <line x1="60" y1="230" x2="530" y2="230" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="230" class="ln-rule"/>
+        <line x1="60" y1="62" x2="530" y2="62" class="ln-dash"/>
+        <line x1="101.8" y1="20" x2="101.8" y2="230" class="ln-dash"/>
+        <text x="54" y="66" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="54" y="118.5" text-anchor="end" class="t-mono t-faint" font-size="12">−10</text>
+        <text x="54" y="171" text-anchor="end" class="t-mono t-faint" font-size="12">−20</text>
+        <text x="54" y="223.5" text-anchor="end" class="t-mono t-faint" font-size="12">−30</text>
+        <text x="101.8" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="185.5" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+        <text x="310.9" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">50</text>
+        <text x="520" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">100 ms</text>
+        <path d="M60.0,32.1 L62.1,32.1 L64.2,32.1 L66.3,32.1 L68.4,32.1 L70.5,32.1 L72.5,32.1 L74.6,32.1 L76.7,32.1 L78.8,32.1 L80.9,32.1 L83.0,32.1 L85.1,32.1 L87.2,32.1 L89.3,32.1 L91.4,32.1 L93.5,32.1 L95.5,32.1 L97.6,32.1 L99.7,32.1 L101.8,62.0 L103.9,62.0 L106.0,62.0 L108.1,62.0 L110.2,62.0 L112.3,62.0 L114.4,62.0 L116.5,62.0 L118.5,62.0 L120.6,62.0 L122.7,62.0 L124.8,62.0 L126.9,62.0 L129.0,62.0 L131.1,62.0 L133.2,62.0 L135.3,62.0 L137.4,62.0 L139.5,62.0 L141.5,62.0 L143.6,62.0 L145.7,62.0 L147.8,62.0 L149.9,62.0 L152.0,62.0 L154.1,62.0 L156.2,62.0 L158.3,62.0 L160.4,62.0 L162.5,62.0 L164.5,62.0 L166.6,62.0 L168.7,62.0 L170.8,62.0 L172.9,62.0 L175.0,62.0 L177.1,62.0 L179.2,62.0 L181.3,62.0 L183.4,62.0 L185.5,62.0 L187.5,62.0 L189.6,62.0 L191.7,62.0 L193.8,62.0 L195.9,62.0 L198.0,62.0 L200.1,62.0 L202.2,62.0 L204.3,62.0 L206.4,62.0 L208.5,62.0 L210.5,62.0 L212.6,62.0 L214.7,62.0 L216.8,62.0 L218.9,62.0 L221.0,62.0 L223.1,62.0 L225.2,62.0 L227.3,62.0 L229.4,62.0 L231.5,62.0 L233.5,62.0 L235.6,62.0 L237.7,62.0 L239.8,62.0 L241.9,62.0 L244.0,62.0 L246.1,62.0 L248.2,62.0 L250.3,62.0 L252.4,62.0 L254.5,62.0 L256.5,62.0 L258.6,62.0 L260.7,62.0 L262.8,62.0 L264.9,62.0 L267.0,62.0 L269.1,62.0 L271.2,62.0 L273.3,62.0 L275.4,62.0 L277.5,62.0 L279.5,62.0 L281.6,62.0 L283.7,62.0 L285.8,62.0 L287.9,62.0 L290.0,62.0 L292.1,62.0 L294.2,62.0 L296.3,62.0 L298.4,62.0 L300.5,62.0 L302.5,62.0 L304.6,62.0 L306.7,62.0 L308.8,62.0 L310.9,62.0 L313.0,62.0 L315.1,62.0 L317.2,62.0 L319.3,62.0 L321.4,62.0 L323.5,62.0 L325.5,62.0 L327.6,62.0 L329.7,62.0 L331.8,62.0 L333.9,62.0 L336.0,62.0 L338.1,62.0 L340.2,62.0 L342.3,62.0 L344.4,62.0 L346.5,62.0 L348.5,62.0 L350.6,62.0 L352.7,62.0 L354.8,62.0 L356.9,62.0 L359.0,62.0 L361.1,62.0 L363.2,62.0 L365.3,62.0 L367.4,62.0 L369.5,62.0 L371.5,62.0 L373.6,62.0 L375.7,62.0 L377.8,62.0 L379.9,62.0 L382.0,62.0 L384.1,62.0 L386.2,62.0 L388.3,62.0 L390.4,62.0 L392.5,62.0 L394.5,62.0 L396.6,62.0 L398.7,62.0 L400.8,62.0 L402.9,62.0 L405.0,62.0 L407.1,62.0 L409.2,62.0 L411.3,62.0 L413.4,62.0 L415.5,62.0 L417.5,62.0 L419.6,62.0 L421.7,62.0 L423.8,62.0 L425.9,62.0 L428.0,62.0 L430.1,62.0 L432.2,62.0 L434.3,62.0 L436.4,62.0 L438.5,62.0 L440.5,62.0 L442.6,62.0 L444.7,62.0 L446.8,62.0 L448.9,62.0 L451.0,62.0 L453.1,62.0 L455.2,62.0 L457.3,62.0 L459.4,62.0 L461.5,61.9 L463.5,61.3 L465.6,60.7 L467.7,60.1 L469.8,59.6 L471.9,59.0 L474.0,58.5 L476.1,58.0 L478.2,57.6 L480.3,57.1 L482.4,56.7 L484.5,56.3 L486.5,55.9 L488.6,55.6 L490.7,55.2 L492.8,54.9 L494.9,54.5 L497.0,54.2 L499.1,53.9 L501.2,53.7 L503.3,53.4 L505.4,53.1 L507.5,52.9 L509.5,52.6 L511.6,52.4 L513.7,52.2 L515.8,52.0 L517.9,51.8" fill="none" class="ln-tesis" stroke-width="2.5"/>
+        <path d="M60.0,32.1 L62.1,32.1 L64.2,32.1 L66.3,32.1 L68.4,32.1 L70.5,32.1 L72.5,32.1 L74.6,32.1 L76.7,32.1 L78.8,32.1 L80.9,32.1 L83.0,32.1 L85.1,32.1 L87.2,32.1 L89.3,32.1 L91.4,32.1 L93.5,32.1 L95.5,32.1 L97.6,32.1 L99.7,32.1 L101.8,215.9 L103.9,208.4 L106.0,201.3 L108.1,194.6 L110.2,188.1 L112.3,181.9 L114.4,176.0 L116.5,170.3 L118.5,164.9 L120.6,159.7 L122.7,154.8 L124.8,150.1 L126.9,145.6 L129.0,141.3 L131.1,137.2 L133.2,133.2 L135.3,129.5 L137.4,125.9 L139.5,122.4 L141.5,119.1 L143.6,116.0 L145.7,113.0 L147.8,110.1 L149.9,107.4 L152.0,104.8 L154.1,102.3 L156.2,99.9 L158.3,97.6 L160.4,95.4 L162.5,93.3 L164.5,91.3 L166.6,89.4 L168.7,87.5 L170.8,85.8 L172.9,84.1 L175.0,82.5 L177.1,81.0 L179.2,79.5 L181.3,78.1 L183.4,76.8 L185.5,75.5 L187.5,74.3 L189.6,73.1 L191.7,72.0 L193.8,70.9 L195.9,69.9 L198.0,68.9 L200.1,68.0 L202.2,67.1 L204.3,66.2 L206.4,65.4 L208.5,64.6 L210.5,63.9 L212.6,63.2 L214.7,62.5 L216.8,61.8 L218.9,61.2 L221.0,60.6 L223.1,60.0 L225.2,59.5 L227.3,58.9 L229.4,58.4 L231.5,58.0 L233.5,57.5 L235.6,57.1 L237.7,56.6 L239.8,56.2 L241.9,55.9 L244.0,55.5 L246.1,55.1 L248.2,54.8 L250.3,54.5 L252.4,54.2 L254.5,53.9 L256.5,53.6 L258.6,53.3 L260.7,53.1 L262.8,52.8 L264.9,52.6 L267.0,52.4 L269.1,52.2 L271.2,52.0 L273.3,51.8 L275.4,51.6 L277.5,51.4 L279.5,51.2 L281.6,51.1 L283.7,50.9 L285.8,50.7 L287.9,50.6 L290.0,50.5 L292.1,50.3 L294.2,50.2 L296.3,50.1 L298.4,50.0 L300.5,49.9 L302.5,49.8 L304.6,49.7 L306.7,49.6 L308.8,49.5 L310.9,49.4 L313.0,49.3 L315.1,49.2 L317.2,49.1 L319.3,49.1 L321.4,49.0 L323.5,48.9 L325.5,48.9 L327.6,48.8 L329.7,48.7 L331.8,48.7 L333.9,48.6 L336.0,48.6 L338.1,48.5 L340.2,48.5 L342.3,48.4 L344.4,48.4 L346.5,48.4 L348.5,48.3 L350.6,48.3 L352.7,48.2 L354.8,48.2 L356.9,48.2 L359.0,48.1 L361.1,48.1 L363.2,48.1 L365.3,48.1 L367.4,48.0 L369.5,48.0 L371.5,48.0 L373.6,48.0 L375.7,47.9 L377.8,47.9 L379.9,47.9 L382.0,47.9 L384.1,47.8 L386.2,47.8 L388.3,47.8 L390.4,47.8 L392.5,47.8 L394.5,47.8 L396.6,47.8 L398.7,47.7 L400.8,47.7 L402.9,47.7 L405.0,47.7 L407.1,47.7 L409.2,47.7 L411.3,47.7 L413.4,47.7 L415.5,47.7 L417.5,47.6 L419.6,47.6 L421.7,47.6 L423.8,47.6 L425.9,47.6 L428.0,47.6 L430.1,47.6 L432.2,47.6 L434.3,47.6 L436.4,47.6 L438.5,47.6 L440.5,47.6 L442.6,47.6 L444.7,47.6 L446.8,47.5 L448.9,47.5 L451.0,47.5 L453.1,47.5 L455.2,47.5 L457.3,47.5 L459.4,47.5 L461.5,47.5 L463.5,47.5 L465.6,47.5 L467.7,47.5 L469.8,47.5 L471.9,47.5 L474.0,47.5 L476.1,47.5 L478.2,47.5 L480.3,47.5 L482.4,47.5 L484.5,47.5 L486.5,47.5 L488.6,47.5 L490.7,47.5 L492.8,47.5 L494.9,47.5 L497.0,47.5 L499.1,47.5 L501.2,47.5 L503.3,47.5 L505.4,47.5 L507.5,47.5 L509.5,47.5 L511.6,47.5 L513.7,47.5 L515.8,47.5 L517.9,47.5" fill="none" class="ln-time" stroke-width="2.5"/>
+        <text x="120" y="210" class="t-time" font-size="13">con frenado: −29 A</text>
+        <text x="300" y="86" class="t-tesis" font-size="13">sin frenado: 0 A hasta los 86 ms</text>
+        <text x="20" y="125" class="t-muted" font-size="12" transform="rotate(-90 20 125)">i (A)</text>
+        <text x="300" y="272" text-anchor="middle" class="t-muted" font-size="13">tiempo desde el cambio de mando (0,80 → 0,55)</text>
+      </svg>
+      <figcaption>Corriente de un motor con el modelo de la hoja 21 y 16,8 V. Ejemplo 10 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Justo después de pasar el mando de 0,80 a 0,55, el rotor sigue a 810 rad/s. La fcem, \(k_e\Omega\) = 12,76 V, supera a \(dV\) = 9,24 V, y la malla pide \(i = (dV - k_e\Omega)/R\) = <strong>−29 A</strong>.</p>
+      <ul>
+        <li><strong>Con frenado activo</strong>, el ESC deja pasar esa corriente: par \(k_t i\) = −0,46 N m, cinco veces el de la hélice (0,090 N m). El motor frena como generador; en el modelo, \(dV\,i \lt 0\): la energía vuelve al bus.</li>
+        <li><strong>Sin frenado</strong>, la corriente no puede invertirse (\(i \ge 0\)): se queda en cero hasta que \(\Omega\) baja a \(dV/k_e\) = 586 rad/s, a los 86 ms. Mientras, solo frena la hélice.</li>
       </ul>
     </div>
   </div>
@@ -267,7 +666,7 @@
 <section class="slide">
   <p class="kicker">Motor · ESC</p>
   <h2>Por qué el motor baja más despacio de lo que sube</h2>
-  <div class="cols w60">
+  <div class="cols">
     <figure class="fig">
       <svg viewBox="0 0 560 300" role="img" aria-label="Respuesta del motor a escalones de subida y bajada con y sin frenado">
         <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
@@ -289,35 +688,90 @@
         <text x="20" y="140" class="t-muted" font-size="12" transform="rotate(-90 20 140)">Ω (rad/s)</text>
         <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="13">tiempo desde el cambio de mando (0,55 ↔ 0,80)</text>
       </svg>
-      <figcaption>Modelo de la hoja anterior con 16,8 V. Sin frenado, la corriente no puede invertirse (\(i \ge 0\)) y solo frena la hélice. <code>figuras_b2.py</code>, sección 2.</figcaption>
+      <figcaption>Modelo de las hojas 21–23 con 16,8 V. Sin frenado, la corriente no puede invertirse (\(i \ge 0\)) y solo frena la hélice. <code>figuras_b2.py</code>, sección 2.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Con frenado activo</strong>, el ESC puede invertir la corriente: el motor frena como generador y la bajada es tan rápida como la subida.</li>
-        <li><strong>Sin frenado</strong>, solo frena la hélice: \(J_r\dot\Omega = -k_Q\Omega^2\), que se integra en forma cerrada:</li>
-      </ul>
-      \[ t = \frac{J_r}{k_Q}\Big(\frac{1}{\Omega_2} - \frac{1}{\Omega_1}\Big) = 98\ \text{ms} \]
-      <p class="small">para bajar de 810 a 565 rad/s, casi nueve veces la constante de tiempo con frenado.</p>
+      <p>Sin frenado y con \(i = 0\), la ecuación del eje se integra a mano:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J_r\dot\Omega = -k_Q\Omega^2\)</td><td>Solo el par de la hélice</td></tr>
+          <tr><td><strong>2</strong></td><td>\(d\Omega/\Omega^2 = -(k_Q/J_r)\,dt\)</td><td>Separar variables</td></tr>
+          <tr><td><strong>3</strong></td><td>\(t = \tfrac{J_r}{k_Q}\big(\tfrac{1}{\Omega_2} - \tfrac{1}{\Omega_1}\big)\)</td><td>La primitiva de \(\Omega^{-2}\) es \(-\Omega^{-1}\)</td></tr>
+        </table>
+      </div>
+      <p>Con \(J_r/k_Q\) = 182,8 rad: al 63 % (de 810 a 655 rad/s), 53 ms, lo que da la simulación. Si solo frenara la hélice hasta 565 rad/s, 98 ms: casi nueve veces la constante con frenado.</p>
       <div class="callout clave"><span class="tag">Lo que resume Gazebo</span>Los 12,5 ms al subir y 25 ms al bajar del x500 son un resumen razonable de este comportamiento, a medio camino entre frenar y no frenar. Si tu ESC frena o no lo decide su firmware y su configuración: mídelo en tu banco o en un log.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">ESC · curva de empuje</p>
-  <h2>Del mando al empuje: ni lineal ni cuadrático</h2>
-  <div class="cols">
+  <p class="kicker">ESC · curva de empuje · 1</p>
+  <h2>Del mando a la velocidad: una ecuación de segundo grado</h2>
+  <div class="cols w60">
     <div class="stack">
-      <p class="small">Si la velocidad fuera proporcional al mando (\(\Omega \approx dV/k_e\), motor sin carga) y el empuje \(k_T\Omega^2\), el empuje sería cuadrático en el mando. La caída en la resistencia y el par de la hélice lo acercan a lineal en la parte alta. En la práctica queda en medio.</p>
-      <div class="callout realidad"><span class="tag">PX4, <code>THR_MDL_FAC</code></span>La relación entre el mando del motor y el empuje esperado es lineal por defecto; con <code>THR_MDL_FAC</code> = 1 es cuadrática, y los valores intermedios interpolan entre las dos. «Valores típicos entre 0,3 y 0,5». La guía avisa: la relación entre PWM y empuje estático «depende mucho de la tensión de la batería» <a class="cite" data-ref="px4tuning"></a>.</div>
-      \[ \frac{T}{T_{\max}} = (1-f)\,u + f\,u^2 \]
-      <p class="small">con \(f\) = <code>THR_MDL_FAC</code> y \(u\) el mando normalizado.</p>
+      <div class="table-wrap" style="padding-bottom:18px">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:58%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\tfrac{k_t}{R}(dV - k_e\Omega) = k_Q\Omega^2\)</td><td>Estacionario: \(\dot\Omega = 0\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(k_QR\,\Omega^2 + k_tk_e\,\Omega - k_t\,dV = 0\)</td><td>Multiplicar por \(R\) y ordenar</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\Omega(d) = \dfrac{-k_tk_e + \sqrt{(k_tk_e)^2 + 4k_QR\,k_t\,dV}}{2k_QR}\)</td><td>La raíz positiva</td></tr>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Mando \(d\)</th><th>\(\Omega\) (rad/s)</th><th>Sin carga, \(dV/k_e\)</th><th>\(T/T_{\max}\)</th></tr>
+          <tr><td class="n">0,25</td><td class="n">262</td><td class="n">267</td><td class="n">0,069</td></tr>
+          <tr><td class="n">0,50</td><td class="n">516</td><td class="n">533</td><td class="n">0,266</td></tr>
+          <tr><td class="n">0,759</td><td class="n">770</td><td class="n">809</td><td class="n">0,593</td></tr>
+          <tr><td class="n">1</td><td class="n">1000</td><td class="n">1066</td><td class="n">1</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">16,8 V. Ejemplo 11 del script.</p>
+      <div class="callout clave"><span class="tag">Casi cuadrática</span>En nuestro motor, la resistencia se lleva poco (0,6 V de 12,7 V) y \(\Omega\) es casi proporcional al mando. El ajuste de la curva de PX4 da <strong>f = 0,94</strong>.</div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Cuenta: la curva de nuestro motor equivalente</summary>
-        <p class="small">En estacionario, \(k_Q\Omega^2 = k_t(dV - k_e\Omega)/R\) da \(\Omega(d)\) resolviendo una cuadrática. Con 16,8 V, el estacionario del x500 (770 rad/s) pide \(d\) = 0,76 en nuestro modelo, que tiene una relación empuje-peso de 1,69, la del x500 de Gazebo con 1000 rad/s.</p>
-        <p class="small">El x500 de Gazebo no modela esta curva: PX4 le envía directamente una velocidad de rotor normalizada entre 150 y 1000 rad/s (B1).</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 340 290" role="img" aria-label="Empuje relativo frente al mando: el modelo del motor casi coincide con la curva cuadrática y queda lejos de la lineal">
+          <line x1="60" y1="250" x2="310" y2="250" class="ln-rule"/>
+          <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+          <text x="54" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="54" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="54" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="180" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="300" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+          <path d="M60.0,250.0 L300.0,30.0" fill="none" class="ln-dash" stroke-width="1.8"/>
+          <path d="M60.0,250.0 L66.0,246.6 L72.0,243.2 L78.0,239.6 L84.0,235.9 L90.0,232.1 L96.0,228.2 L102.0,224.2 L108.0,220.1 L114.0,215.8 L120.0,211.5 L126.0,207.0 L132.0,202.5 L138.0,197.8 L144.0,193.0 L150.0,188.1 L156.0,183.1 L162.0,178.0 L168.0,172.8 L174.0,167.4 L180.0,162.0 L186.0,156.4 L192.0,150.8 L198.0,145.0 L204.0,139.1 L210.0,133.1 L216.0,127.0 L222.0,120.8 L228.0,114.5 L234.0,108.0 L240.0,101.5 L246.0,94.8 L252.0,88.1 L258.0,81.2 L264.0,74.2 L270.0,67.1 L276.0,59.9 L282.0,52.6 L288.0,45.2 L294.0,37.6 L300.0,30.0" fill="none" class="ln-tesis" stroke-width="2"/>
+          <path d="M60.0,250.0 L66.0,249.9 L72.0,249.4 L78.0,248.8 L84.0,247.8 L90.0,246.6 L96.0,245.1 L102.0,243.3 L108.0,241.2 L114.0,238.9 L120.0,236.2 L126.0,233.4 L132.0,230.2 L138.0,226.8 L144.0,223.0 L150.0,219.1 L156.0,214.8 L162.0,210.3 L168.0,205.4 L174.0,200.4 L180.0,195.0 L186.0,189.4 L192.0,183.4 L198.0,177.3 L204.0,170.8 L210.0,164.1 L216.0,157.1 L222.0,149.8 L228.0,142.2 L234.0,134.4 L240.0,126.2 L246.0,117.9 L252.0,109.2 L258.0,100.3 L264.0,91.0 L270.0,81.6 L276.0,71.8 L282.0,61.8 L288.0,51.4 L294.0,40.9 L300.0,30.0" fill="none" class="ln" stroke-width="4"/>
+          <path d="M72.0,249.4 L74.4,249.1 L76.8,248.8 L79.2,248.4 L81.6,248.0 L84.0,247.5 L86.4,247.0 L88.8,246.5 L91.2,245.8 L93.6,245.2 L96.0,244.5 L98.4,243.7 L100.8,242.9 L103.2,242.1 L105.6,241.2 L108.0,240.3 L110.4,239.3 L112.8,238.3 L115.2,237.2 L117.6,236.1 L120.0,234.9 L122.4,233.7 L124.8,232.4 L127.2,231.1 L129.6,229.8 L132.0,228.4 L134.4,227.0 L136.8,225.5 L139.2,224.0 L141.6,222.4 L144.0,220.8 L146.4,219.1 L148.8,217.4 L151.2,215.7 L153.6,213.9 L156.0,212.1 L158.4,210.2 L160.8,208.3 L163.2,206.4 L165.6,204.4 L168.0,202.3 L170.4,200.3 L172.8,198.1 L175.2,196.0 L177.6,193.8 L180.0,191.5 L182.4,189.3 L184.8,186.9 L187.2,184.6 L189.6,182.2 L192.0,179.7 L194.4,177.2 L196.8,174.7 L199.2,172.1 L201.6,169.5 L204.0,166.9 L206.4,164.2 L208.8,161.5 L211.2,158.7 L213.6,155.9 L216.0,153.1 L218.4,150.2 L220.8,147.2 L223.2,144.3 L225.6,141.3 L228.0,138.3 L230.4,135.2 L232.8,132.1 L235.2,128.9 L237.6,125.7 L240.0,122.5 L242.4,119.2 L244.8,115.9 L247.2,112.6 L249.6,109.2 L252.0,105.8 L254.4,102.4 L256.8,98.9 L259.2,95.4 L261.6,91.8 L264.0,88.2 L266.4,84.6 L268.8,80.9 L271.2,77.2 L273.6,73.5 L276.0,69.7 L278.4,65.9 L280.8,62.0 L283.2,58.2 L285.6,54.2 L288.0,50.3 L290.4,46.3 L292.8,42.3 L295.2,38.2 L297.6,34.1 L300.0,30.0" fill="none" class="ln-accent" stroke-width="2"/>
+          <text x="90" y="88" class="t-muted" font-size="12">lineal, f = 0</text>
+          <text x="80" y="122" class="t-tesis" font-size="12">f = 0,4</text>
+          <text x="196" y="196" class="t-accent" font-size="12">nuestro motor</text>
+          <text x="196" y="212" class="t-muted" font-size="12">≈ cuadrática, f = 1</text>
+          <text x="20" y="140" class="t-muted" font-size="12" transform="rotate(-90 20 140)">T / T_max</text>
+          <text x="185" y="286" text-anchor="middle" class="t-muted" font-size="13">mando d</text>
+        </svg>
+        <figcaption>Curvas \((1-f)d + fd^2\) y la de nuestro modelo, calculadas en el ejemplo 11.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">ESC · curva de empuje · 2</p>
+  <h2>La curva de empuje en PX4: se mide, no se supone</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Si la velocidad fuera proporcional al mando (\(\Omega \approx dV/k_e\), motor sin carga) y el empuje \(k_T\Omega^2\), el empuje sería cuadrático en el mando. La caída en la resistencia y el par de la hélice lo acercan a lineal en la parte alta; en nuestro motor ideal, muy poco.</p>
+      \[ \frac{T}{T_{\max}} = (1-f)\,u + f\,u^2 \]
+      <p>con \(f\) = <code>THR_MDL_FAC</code> y \(u\) el mando normalizado.</p>
+      <div class="callout realidad"><span class="tag">PX4, <code>THR_MDL_FAC</code></span>La relación entre el mando del motor y el empuje esperado es lineal por defecto; con <code>THR_MDL_FAC</code> = 1 es cuadrática, y los valores intermedios interpolan entre las dos. «Valores típicos entre 0,3 y 0,5». La guía avisa: la relación entre PWM y empuje estático «depende mucho de la tensión de la batería» <a class="cite" data-ref="px4tuning"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Modelo frente a realidad</span>Nuestro motor de dos ecuaciones da \(f\) = 0,94; los valores típicos de PX4 son 0,3–0,5. El modelo ideal no basta para fijar este parámetro: hay que medir la curva en banco o identificarla en vuelo (parte 4).</div>
+      <p>El x500 de Gazebo no modela esta curva: PX4 le envía directamente una velocidad de rotor normalizada entre 150 y 1000 rad/s (B1).</p>
       <div class="callout tesis"><span class="tag">Para tu simulador</span>Si tu política manda empuje o velocidad angular (CTBR), la curva la absorbe el autopiloto. Si manda motores directamente, la curva es parte de la dinámica que la política debe aprender o tolerar: aleatorízala entre lineal y cuadrática.</div>
     </div>
   </div>
@@ -328,14 +782,130 @@
   <h2>La batería: una fuente que se cansa y se hunde con la corriente</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Modelo de circuito equivalente (Thévenin): tensión en circuito abierto que depende del estado de carga, una resistencia serie y una o varias ramas RC para la dinámica de polarización <a class="cite" data-ref="chen2006"></a>:</p>
-      \[ V = \mathrm{OCV}(\mathrm{SoC}) - R_0\,I - V_1 \]
-      \[ \dot V_1 = -\frac{V_1}{R_1C_1} + \frac{I}{C_1},\qquad \dot{\mathrm{SoC}} = -\frac{I}{Q} \]
-      <div class="callout realidad"><span class="tag">Lo que hace PX4</span>Estima la OCV y la resistencia interna con mínimos cuadrados recursivos (factor de olvido 0,95; 5 mΩ por celda al empezar). El estado de carga por tensión interpola linealmente la OCV por celda entre <code>BAT_V_EMPTY</code> (3,6 V) y <code>BAT_V_CHARGED</code> (4,2 V) <a class="cite" data-ref="px4battery"></a>.</div>
+      <figure class="fig">
+        <svg viewBox="0 0 560 240" role="img" aria-label="Circuito de Thévenin de la batería: fuente OCV, resistencia serie R0 y una rama RC formada por R1 y C1 en paralelo, con la corriente I y la tensión V en bornes">
+          <defs><marker id="b2m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+          <g class="ln" fill="none" stroke-width="1.8">
+            <path d="M60 96 V60 H120"/>
+            <polyline points="120,60 126,50 138,70 150,50 162,70 174,50 180,60"/>
+            <path d="M180 60 H230"/>
+            <path d="M230 36 V86"/>
+            <path d="M230 36 H255"/>
+            <polyline points="255,36 261,26 273,46 285,26 297,46 309,26 315,36"/>
+            <path d="M315 36 H340"/>
+            <path d="M230 86 H280"/>
+            <path d="M280 72 V100 M290 72 V100"/>
+            <path d="M290 86 H340"/>
+            <path d="M340 36 V86"/>
+            <path d="M340 60 H470"/>
+            <path d="M60 144 V200 H470"/>
+          </g>
+          <circle cx="60" cy="120" r="24" class="box-accent"/>
+          <text x="60" y="125" text-anchor="middle" class="t-mono" font-size="12">OCV</text>
+          <text x="70" y="92" class="t-mono" font-size="13">+</text>
+          <circle cx="470" cy="60" r="5" class="box"/>
+          <circle cx="470" cy="200" r="5" class="box"/>
+          <path class="ln-accent" d="M392 60 H424" stroke-width="2.2" marker-end="url(#b2m5)"/>
+          <text x="404" y="50" class="t-mono t-accent" font-size="14">I</text>
+          <text x="150" y="38" text-anchor="middle" class="t-mono" font-size="14">R<tspan font-size="10" dy="3">0</tspan></text>
+          <text x="285" y="18" text-anchor="middle" class="t-mono" font-size="14">R<tspan font-size="10" dy="3">1</tspan></text>
+          <text x="285" y="120" text-anchor="middle" class="t-mono" font-size="14">C<tspan font-size="10" dy="3">1</tspan></text>
+          <text x="285" y="150" text-anchor="middle" class="t-mono t-time" font-size="13">V<tspan font-size="10" dy="3">1</tspan><tspan dy="-3">: polarización</tspan></text>
+          <text x="492" y="135" class="t-mono" font-size="15">V</text>
+          <text x="484" y="76" class="t-mono" font-size="13">+</text>
+          <text x="484" y="192" class="t-mono" font-size="13">−</text>
+          <text x="96" y="125" class="t-muted" font-size="12">depende del SoC</text>
+          <text x="260" y="226" text-anchor="middle" class="t-muted" font-size="13">celda o pack; los motores se conectan a la derecha</text>
+        </svg>
+        <figcaption>Esquema propio del modelo de circuito equivalente (Thévenin) <a class="cite" data-ref="chen2006"></a>.</figcaption>
+      </figure>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Compensación en PX4</span>Con <code>MC_BAT_SCALE_EN</code> (desactivado por defecto), el control de <em>rate</em> multiplica empuje y par por <code>BAT_V_CHARGED</code>/tensión de celda, limitado a un 30 %: el dron «se comporta como si estuviera cargado, con menos aceleración máxima» <a class="cite" data-ref="px4battery,px4ratectrl"></a>.</div>
-      <div class="callout clave"><span class="tag">Dos efectos distintos</span>(1) <strong>Sesgo:</strong> el mismo mando da menos empuje con la batería baja; lo corrige el integrador o esa escala. (2) <strong>Saturación:</strong> el empuje máximo baja, y eso no lo arregla ninguna escala: el dron pierde autoridad para maniobrar y para rechazar ráfagas.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(V = \mathrm{OCV}(\mathrm{SoC}) - R_0\,I - V_1\)</td><td>Recorrer la malla: la fuente menos las dos caídas</td></tr>
+          <tr><td><strong>2</strong></td><td>\(I = V_1/R_1 + C_1\dot V_1\)</td><td>La corriente se reparte entre \(R_1\) y \(C_1\), en paralelo</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dot V_1 = -\dfrac{V_1}{R_1C_1} + \dfrac{I}{C_1}\)</td><td>Despejar: primer orden con constante \(R_1C_1\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\dot{\mathrm{SoC}} = -I/Q\)</td><td>La carga que sale por segundo es \(I\)</td></tr>
+        </table>
+      </div>
+      <p>\(R_0\) da la caída instantánea al pedir corriente; la rama RC, la que llega con retraso \(R_1C_1\) y se recupera al descansar. En nuestras cuentas, como en la estimación de PX4 (hoja 32), solo OCV y \(R_0\).</p>
+      <div class="callout realidad"><span class="tag">Ejemplo 12 del script</span>Batería llena: 4,2 V por celda y 15,9 A. \(R_0 I\) = 0,005 · 15,9 = 0,08 V por celda, y el bus queda en 4 · (4,2 − 0,08) = 16,48 V.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Batería · curva de descarga</p>
+  <h2>La curva de descarga y el punto fijo de la tensión</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Tensión en circuito abierto del pack y tensión de bus durante 17,5 minutos de estacionario">
+        <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <text x="54" y="221" text-anchor="end" class="t-mono t-faint" font-size="12">14</text>
+        <text x="54" y="155.4" text-anchor="end" class="t-mono t-faint" font-size="12">15</text>
+        <text x="54" y="89.7" text-anchor="end" class="t-mono t-faint" font-size="12">16</text>
+        <text x="54" y="24" text-anchor="end" class="t-mono t-faint" font-size="12">17 V</text>
+        <line x1="60" y1="217.1" x2="530" y2="217.1" class="ln-dash"/>
+        <line x1="60" y1="151.4" x2="530" y2="151.4" class="ln-dash"/>
+        <line x1="60" y1="85.7" x2="530" y2="85.7" class="ln-dash"/>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="188" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">5</text>
+        <text x="316" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="443" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">15 min</text>
+        <path d="M60.0,33.1 L66.4,35.2 L72.8,37.3 L79.2,39.4 L85.6,41.5 L91.9,43.6 L98.3,45.8 L104.7,47.9 L111.1,50.0 L117.5,52.1 L123.9,54.2 L130.3,56.4 L136.7,58.5 L143.1,60.7 L149.4,62.8 L155.8,65.0 L162.2,67.1 L168.6,69.3 L175.0,71.4 L181.4,73.6 L187.8,75.8 L194.2,78.0 L200.6,80.1 L206.9,82.3 L213.3,84.5 L219.7,86.7 L226.1,88.9 L232.5,91.1 L238.9,93.4 L245.3,95.6 L251.7,97.8 L258.1,100.0 L264.4,102.3 L270.8,104.5 L277.2,106.7 L283.6,109.0 L290.0,111.2 L296.4,113.5 L302.8,115.8 L309.2,118.0 L315.6,120.3 L321.9,122.6 L328.3,124.9 L334.7,127.1 L341.1,129.4 L347.5,131.7 L353.9,134.1 L360.3,136.4 L366.7,138.7 L373.1,141.0 L379.4,143.3 L385.8,145.7 L392.2,148.0 L398.6,150.4 L405.0,152.7 L411.4,155.1 L417.8,157.4 L424.2,159.8 L430.6,162.2 L436.9,164.6 L443.3,166.9 L449.7,169.3 L456.1,171.7 L462.5,174.1 L468.9,176.6 L475.3,179.0 L481.7,181.4 L488.1,183.8 L494.4,186.3 L500.8,188.7" fill="none" class="ln" stroke-width="2.5"/>
+        <path d="M60.0,54.0 L66.4,56.2 L72.8,58.3 L79.2,60.4 L85.6,62.6 L91.9,64.7 L98.3,66.9 L104.7,69.1 L111.1,71.2 L117.5,73.4 L123.9,75.6 L130.3,77.7 L136.7,79.9 L143.1,82.1 L149.4,84.3 L155.8,86.5 L162.2,88.7 L168.6,90.9 L175.0,93.1 L181.4,95.3 L187.8,97.6 L194.2,99.8 L200.6,102.0 L206.9,104.2 L213.3,106.5 L219.7,108.7 L226.1,111.0 L232.5,113.2 L238.9,115.5 L245.3,117.8 L251.7,120.0 L258.1,122.3 L264.4,124.6 L270.8,126.9 L277.2,129.2 L283.6,131.5 L290.0,133.8 L296.4,136.1 L302.8,138.4 L309.2,140.7 L315.6,143.1 L321.9,145.4 L328.3,147.7 L334.7,150.1 L341.1,152.4 L347.5,154.8 L353.9,157.1 L360.3,159.5 L366.7,161.9 L373.1,164.3 L379.4,166.7 L385.8,169.0 L392.2,171.4 L398.6,173.8 L405.0,176.3 L411.4,178.7 L417.8,181.1 L424.2,183.5 L430.6,186.0 L436.9,188.4 L443.3,190.9 L449.7,193.3 L456.1,195.8 L462.5,198.2 L468.9,200.7 L475.3,203.2 L481.7,205.7 L488.1,208.2 L494.4,210.7 L500.8,213.2" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <text x="250" y="80" class="t-bold" font-size="13">4 × OCV (circuito abierto)</text>
+        <text x="80" y="184" class="t-accent" font-size="13">tensión de bus en estacionario</text>
+        <text x="80" y="202" class="t-muted" font-size="12">diferencia R₀I: 0,32 V al principio, 0,37 V al final</text>
+        <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="13">tiempo en estacionario</text>
+      </svg>
+      <figcaption>4S de 5 Ah con OCV lineal de 3,6 a 4,2 V por celda y \(R_0\) = 5 mΩ por celda (supuestos, con los valores por defecto de PX4). Ejemplo 12 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>La tensión depende de la corriente, \(V = 4(\mathrm{OCV} - R_0 I)\), y la corriente de la tensión: con menos tensión hacen falta más mando y más corriente. Un punto fijo converge en dos vueltas:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(V\) de partida</th><th>\(d\)</th><th>\(I\)</th><th>\(V\) nueva</th></tr>
+          <tr><td class="n">16,800</td><td class="n">0,7586</td><td class="n">15,60 A</td><td class="n">16,488</td></tr>
+          <tr><td class="n">16,488</td><td class="n">0,7729</td><td class="n">15,89 A</td><td class="n">16,482</td></tr>
+          <tr><td class="n">16,482</td><td class="n">0,7732</td><td class="n">15,90 A</td><td class="n">16,482</td></tr>
+        </table>
+      </div>
+      <p>El SoC baja a ritmo \(I/Q\): 5 Ah a unos 17 A dan 17,4 min (la integración, 17,5).</p>
+      <div class="aparte"><span class="rotulo">La OCV real no es una recta</span>
+        <p>Chen y Rincón-Mora la ajustan con una función no lineal del estado de carga <a class="cite" data-ref="chen2006"></a>. PX4 interpola en línea recta entre <code>BAT_V_EMPTY</code> y <code>BAT_V_CHARGED</code>, y estas cuentas con él.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Batería · margen de empuje</p>
+  <h2>El margen de empuje, paso a paso, con la batería llena y vacía</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:27%">Qué</th><th>Fórmula</th><th style="width:13%">Llena</th><th style="width:13%">Vacía</th></tr>
+        <tr><td><strong>1</strong></td><td>OCV del pack</td><td>\(4\,\mathrm{OCV}(\mathrm{SoC})\)</td><td class="n">16,80 V</td><td class="n">14,40 V</td></tr>
+        <tr><td><strong>2</strong></td><td>Corriente de un motor</td><td>\(i = k_Q\Omega_h^2/k_t\)</td><td class="n">5,14 A</td><td class="n">5,14 A</td></tr>
+        <tr><td><strong>3</strong></td><td>Mando de estacionario</td><td>\(d = (k_e\Omega_h + R\,i)/V\)</td><td class="n">0,773</td><td class="n">0,909</td></tr>
+        <tr><td><strong>4</strong></td><td>Corriente de la batería</td><td>\(I = 4\,d\,i\)</td><td class="n">15,9 A</td><td class="n">18,7 A</td></tr>
+        <tr><td><strong>5</strong></td><td>Tensión de bus</td><td>\(V = 4(\mathrm{OCV} - R_0I)\)</td><td class="n">16,48 V</td><td class="n">14,03 V</td></tr>
+        <tr><td><strong>6</strong></td><td>Velocidad máxima</td><td>\(\Omega_{\max} = \Omega(d = 1)\), hoja 26</td><td class="n">982 rad/s</td><td class="n">843 rad/s</td></tr>
+        <tr><td><strong>7</strong></td><td>Margen</td><td>\(4k_T\Omega_{\max}^2/(mg)\)</td><td class="n">1,63</td><td class="n">1,20</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Paso 2:</strong> la corriente del motor no cambia; mismo empuje, misma \(\Omega_h\) y mismo par. Cambia el mando que hace falta para darla.</li>
+        <li><strong>Paso 4:</strong> en el modelo, el ESC es un convertidor ideal: lo que entra por motor, \(V I/4\), sale, \(dV\,i\). De ahí \(I = 4\,d\,i\).</li>
+        <li><strong>Pasos 3–5</strong> se repiten hasta que \(V\) no cambia (hoja anterior).</li>
+        <li><strong>Pasos 6–7:</strong> \(\Omega_{\max}\) cae un 14 % con la tensión, y el empuje, que va con \(\Omega^2\), un 26 %.</li>
+      </ul>
+      <p class="xsmall muted">\(mg\) = 20,25 N. Ejemplo 12 del script.</p>
     </div>
   </div>
 </section>
@@ -380,11 +950,26 @@
           </tbody>
         </table>
       </div>
-      <ul class="small">
+      <ul>
         <li>La corriente <em>sube</em> al bajar la tensión (misma potencia), y la caída en \(R_0\) se acelera.</li>
         <li>17,5 min de estacionario a 17 A de media.</li>
       </ul>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Una política entrenada siempre con batería llena nunca ha visto el 1,20. Mete la tensión en la observación o aleatoriza el margen de empuje.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Batería · en PX4</p>
+  <h2>Qué hace PX4 con la batería, y qué no puede arreglar</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Lo que hace PX4</span>Estima la OCV y la resistencia interna con mínimos cuadrados recursivos (factor de olvido 0,95; 5 mΩ por celda al empezar). El estado de carga por tensión interpola linealmente la OCV por celda entre <code>BAT_V_EMPTY</code> (3,6 V) y <code>BAT_V_CHARGED</code> (4,2 V) <a class="cite" data-ref="px4battery"></a>.</div>
+      <div class="callout realidad"><span class="tag">Compensación en PX4</span>Con <code>MC_BAT_SCALE_EN</code> (desactivado por defecto), el control de <em>rate</em> multiplica empuje y par por <code>BAT_V_CHARGED</code>/tensión de celda, limitado a un 30 %: el dron «se comporta como si estuviera cargado, con menos aceleración máxima» <a class="cite" data-ref="px4battery,px4ratectrl"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Dos efectos distintos</span>(1) <strong>Sesgo:</strong> el mismo mando da menos empuje con la batería baja; lo corrige el integrador o esa escala. (2) <strong>Saturación:</strong> el empuje máximo baja, y eso no lo arregla ninguna escala: el dron pierde autoridad para maniobrar y para rechazar ráfagas.</div>
+      <p>Con nuestros números, la escala de PX4 pasa de 1,02 a 1,20 en el vuelo (hoja 31): compensa el sesgo, pero el margen sigue cayendo de 1,63 a 1,20.</p>
     </div>
   </div>
 </section>
@@ -401,7 +986,7 @@
   <h2>Cómo modelan el viento los simuladores que ya conoces</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>SIH de PX4:</strong> viento constante, <code>SIH_WIND_N</code> y <code>SIH_WIND_E</code>, que entra en la velocidad aparente del arrastre lineal (B1).</li>
         <li><strong>Gazebo, sistema <code>WindEffects</code>:</strong> la velocidad media sigue a su consigna con un filtro de primer orden, más una modulación senoidal y ruido gaussiano opcionales. Sobre cada cuerpo aplica \(\mathbf F = m\,k\,(\mathbf v_{\text{viento}} - \mathbf v)\), con \(k\) un factor de escala configurable <a class="cite" data-ref="gzwind"></a>.</li>
         <li><strong>Motor de Gazebo:</strong> el arrastre de rotor usa la velocidad relativa al viento (B1) <a class="cite" data-ref="gzmotor"></a>.</li>
@@ -417,30 +1002,187 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Viento · modelo de Dryden</p>
-  <h2>Dryden a baja altura: espectros, escalas y filtros</h2>
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Qué es cada letra del viento y la turbulencia</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:27%">Ejemplo: 10 m, turbulencia ligera</th></tr>
+      <tr><td>\(u\), \(v\), \(w\)</td><td>Ráfaga respecto al viento medio: longitudinal, lateral y vertical (m/s)</td><td>\(\sigma_u\) = 1,46 m/s</td></tr>
+      <tr><td>\(V\), \(h\), \(W_{20}\)</td><td>Velocidad con que el dron cruza la turbulencia (en estacionario, el viento medio); altura (en pies en la norma); viento a 20 ft</td><td>5 m/s; 32,8 ft; 15 kt</td></tr>
+      <tr><td>\(\sigma_u\), \(L_u\), …</td><td>Intensidad (desviación típica) y escala de longitud (tamaño de una ráfaga) de cada componente</td><td>1,46 y 0,77 m/s; 67 y 10 m</td></tr>
+      <tr><td>\(T_u\), \(T_w\)</td><td>Escala de tiempo de la ráfaga, \(L/V\): cuánto dura su memoria</td><td>13,5 s y 2,0 s</td></tr>
+      <tr><td>\(\tau\), \(R(\tau)\)</td><td>Desfase y autocorrelación: cuánto se parece la ráfaga a sí misma \(\tau\) segundos después</td><td>\(R(0) = \sigma_u^2\)</td></tr>
+      <tr><td>\(f\), \(\omega\), \(G(f)\)</td><td>Frecuencia (Hz), frecuencia angular \(2\pi f\) y densidad espectral: varianza por hercio</td><td>\(G(0)\) = 115 (m/s)²/Hz</td></tr>
+      <tr><td>\(H(s)\), \(s\)</td><td>Filtro conformador (función de transferencia) y variable de Laplace</td><td>\(H_u\): primer orden</td></tr>
+      <tr><td>\(\xi\), \(\xi_k\), \(\Delta t\), \(a\), \(q\)</td><td>Ruido blanco (y su muestra \(k\)), paso, factor de memoria \(e^{-\Delta t/T}\) y ruido por paso</td><td>\(\Delta t\) = 0,01 s: \(a\) = 0,99926</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Letras que cambian</span>\(v\) ya no es la velocidad del dron, \(V\) vuelve a ser una velocidad y \(f\) es una frecuencia, no <code>THR_MDL_FAC</code>. \(\tau\) es un desfase, no la constante del motor, y \(T_u\) no es un empuje.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Viento · qué es una densidad espectral</p>
+  <h2>La varianza de la ráfaga, repartida por frecuencias</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con \(h\) en pies (\(h\) &lt; 1000 ft) y \(W_{20}\) el viento a 20 ft (15 kt turbulencia ligera, 30 moderada, 45 severa), según MIL-F-8785C <a class="cite" data-ref="dryden"></a>:</p>
-      \[ L_w = h,\qquad L_u = L_v = \frac{h}{(0{,}177 + 0{,}000823\,h)^{1{,}2}}, \]
-      \[ \sigma_w = 0{,}1\,W_{20},\qquad \frac{\sigma_u}{\sigma_w} = \frac{\sigma_v}{\sigma_w} = \frac{1}{(0{,}177 + 0{,}000823\,h)^{0{,}4}} . \]
-      <p class="small">Filtros que convierten ruido blanco en cada componente:</p>
-      \[ H_u(s) = \sigma_u\sqrt{\frac{2L_u}{\pi V}}\,\frac{1}{1 + \frac{L_u}{V}s} \]
-      \[ H_w(s) = \sigma_w\sqrt{\frac{L_w}{\pi V}}\,\frac{1 + \sqrt3\,\frac{L_w}{V}s}{\big(1 + \frac{L_w}{V}s\big)^2} \]
+      <p>Una ráfaga se describe con dos preguntas: ¿cuánto se parece a sí misma un rato después? ¿A qué frecuencias está su energía? Son la misma información vista de dos lados.</p>
+      <ul>
+        <li><strong>Autocorrelación</strong>, \(R(\tau) = E[u(t)\,u(t+\tau)]\). Para la ráfaga longitudinal de Dryden, \(R(\tau) = \sigma_u^2e^{-|\tau|/T_u}\): la memoria se pierde en unas pocas \(T_u\).</li>
+        <li><strong>Densidad espectral</strong> \(G(f)\): la varianza que cae entre \(f\) y \(f + df\) es \(G(f)\,df\), y el área total es \(\sigma_u^2\). Es la transformada de Fourier de \(R\) (teorema de Wiener-Khinchin):</li>
+      </ul>
+      \[ G(f) = \frac{4\,\sigma_u^2\,T_u}{1 + (2\pi f\,T_u)^2} \]
+      <p>Plana hasta el corte \(f_c = 1/(2\pi T_u)\); después cae como \(f^{-2}\), pendiente −2 en ejes logarítmicos. El ruido blanco es el caso sin memoria: \(G\) constante.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 280" role="img" aria-label="Izquierda: autocorrelación exponencial de la ráfaga longitudinal frente al desfase. Derecha: su densidad espectral en ejes logarítmicos, plana hasta 0,012 Hz y con pendiente menos dos después, frente al nivel de un ruido blanco de igual varianza">
+          <line x1="50" y1="230" x2="250" y2="230" class="ln-rule"/>
+          <line x1="50" y1="40" x2="50" y2="230" class="ln-rule"/>
+          <text x="44" y="234" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="44" y="155" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <text x="44" y="76" text-anchor="end" class="t-mono t-faint" font-size="12">2</text>
+          <text x="50" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="117" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+          <text x="183" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">40</text>
+          <text x="250" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">60 s</text>
+          <line x1="94.9" y1="168.1" x2="94.9" y2="230" class="ln-dash"/>
+          <line x1="50" y1="168.1" x2="94.9" y2="168.1" class="ln-dash"/>
+          <path d="M50.0,61.9 L53.3,73.9 L56.7,85.0 L60.0,95.4 L63.3,105.0 L66.7,114.0 L70.0,122.3 L73.3,130.0 L76.7,137.1 L80.0,143.8 L83.3,150.0 L86.7,155.7 L90.0,161.0 L93.3,165.9 L96.7,170.5 L100.0,174.8 L103.3,178.7 L106.7,182.4 L110.0,185.8 L113.3,189.0 L116.7,191.9 L120.0,194.6 L123.3,197.1 L126.7,199.5 L130.0,201.7 L133.3,203.7 L136.7,205.6 L140.0,207.3 L143.3,209.0 L146.7,210.5 L150.0,211.9 L153.3,213.2 L156.7,214.4 L160.0,215.5 L163.3,216.5 L166.7,217.5 L170.0,218.4 L173.3,219.2 L176.7,220.0 L180.0,220.7 L183.3,221.4 L186.7,222.0 L190.0,222.6 L193.3,223.1 L196.7,223.6 L200.0,224.0 L203.3,224.5 L206.7,224.9 L210.0,225.2 L213.3,225.6 L216.7,225.9 L220.0,226.2 L223.3,226.5 L226.7,226.7 L230.0,226.9 L233.3,227.2 L236.7,227.4 L240.0,227.6 L243.3,227.7 L246.7,227.9 L250.0,228.0" fill="none" class="ln-accent" stroke-width="2.5"/>
+          <text x="130" y="112" class="t-mono t-muted" font-size="12">T<tspan font-size="9" dy="3">u</tspan><tspan dy="-3"> = 13,5 s: R cae a σ²/e</tspan></text>
+          <text x="100" y="162" class="t-mono t-muted" font-size="12">σ²/e</text>
+          <text x="150" y="28" text-anchor="middle" class="t-muted" font-size="13">autocorrelación R(τ), (m/s)²</text>
+          <text x="150" y="268" text-anchor="middle" class="t-muted" font-size="13">desfase τ</text>
+          <line x1="320" y1="230" x2="520" y2="230" class="ln-rule"/>
+          <line x1="320" y1="40" x2="320" y2="230" class="ln-rule"/>
+          <text x="314" y="76" text-anchor="end" class="t-mono t-faint" font-size="12">10²</text>
+          <text x="314" y="139" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <text x="314" y="202" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻²</text>
+          <text x="370" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">0,01</text>
+          <text x="470" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+          <text x="520" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+          <line x1="373.6" y1="40" x2="373.6" y2="230" class="ln-dash"/>
+          <line x1="320" y1="178.4" x2="520" y2="178.4" class="ln-time" stroke-width="2"/>
+          <path d="M320.0,69.9 L325.0,70.0 L330.0,70.1 L335.0,70.2 L340.0,70.4 L345.0,70.8 L350.0,71.3 L355.0,72.1 L360.0,73.3 L365.0,74.9 L370.0,77.2 L375.0,80.2 L380.0,84.0 L385.0,88.4 L390.0,93.3 L395.0,98.7 L400.0,104.4 L405.0,110.3 L410.0,116.4 L415.0,122.5 L420.0,128.8 L425.0,135.0 L430.0,141.3 L435.0,147.6 L440.0,153.9 L445.0,160.2 L450.0,166.6 L455.0,172.9 L460.0,179.2 L465.0,185.6 L470.0,191.9 L475.0,198.2 L480.0,204.6 L485.0,210.9 L490.0,217.2 L495.0,223.6 L500.0,229.9 L505.0,236.2 L510.0,242.6 L515.0,248.9 L520.0,255.2" fill="none" class="ln-accent" stroke-width="2.5"/>
+          <text x="380" y="56" class="t-mono t-muted" font-size="12">f<tspan font-size="9" dy="3">c</tspan><tspan dy="-3"> = 0,012 Hz</tspan></text>
+          <text x="440" y="120" class="t-accent" font-size="12">pendiente −2</text>
+          <text x="326" y="172" class="t-time" font-size="12">blanco, misma σ²</text>
+          <text x="420" y="28" text-anchor="middle" class="t-muted" font-size="13">G(f), (m/s)²/Hz</text>
+          <text x="420" y="268" text-anchor="middle" class="t-muted" font-size="13">frecuencia (Hz)</text>
+        </svg>
+        <figcaption>Ráfaga longitudinal a 10 m con turbulencia ligera y 5 m/s de viento medio. «Blanco»: ruido de la misma varianza repartida por igual entre 0 y 50 Hz. Ejemplo 13 del script.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Ejemplo 13 del script</span>\(\sigma_u\) = 1,46 m/s y \(T_u\) = 13,5 s: \(G(0) = 4\sigma_u^2T_u\) = 115 (m/s)²/Hz y \(f_c\) = 0,012 Hz. Integrando \(G\) hasta 0,1 Hz, \((2/\pi)\arctan(2\pi\cdot0{,}1\cdot T_u)\): el <strong>92,5 %</strong> de la varianza está por debajo de 0,1 Hz.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Viento · modelo de Dryden · 1</p>
+  <h2>Dryden a baja altura: cuánta turbulencia y de qué tamaño</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>MIL-F-8785C da las escalas y las intensidades para \(h\) &lt; 1000 ft, con \(h\) en pies y \(W_{20}\) el viento a 20 ft: 15 kt para turbulencia ligera, 30 moderada y 45 severa <a class="cite" data-ref="dryden"></a>.</p>
+      \[ L_w = h,\qquad L_u = L_v = \frac{h}{(0{,}177 + 0{,}000823\,h)^{1{,}2}} \]
+      \[ \sigma_w = 0{,}1\,W_{20},\qquad \frac{\sigma_u}{\sigma_w} = \frac{\sigma_v}{\sigma_w} = \frac{1}{(0{,}177 + 0{,}000823\,h)^{0{,}4}} \]
+      <ul>
+        <li>\(L\) es el tamaño típico de una ráfaga. Cerca del suelo, la vertical está limitada por la altura (\(L_w = h\)); la horizontal es mucho mayor.</li>
+        <li>\(\sigma\) es su intensidad. A baja altura, la horizontal es mayor que la vertical; a 1000 ft, el denominador vale 1 y son iguales.</li>
+      </ul>
       <p class="xsmall muted">MIL-HDBK-1797 usa otra convención de escalas (\(2L_w = h\)) que da los mismos filtros <a class="cite" data-ref="dryden"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Cuenta: un dron a 10 m con turbulencia ligera</summary>
-        <p class="small">\(h\) = 32,8 ft: \(0{,}177 + 0{,}000823\cdot32{,}8 = 0{,}204\). Con \(W_{20}\) = 15 kt = 7,72 m/s:</p>
-        \[ \sigma_w = 0{,}77,\qquad \sigma_u = \frac{0{,}77}{0{,}204^{0{,}4}} = 1{,}46\ \text{m/s} \]
-        \[ L_w = 10\ \text{m},\qquad L_u = \frac{32{,}8}{0{,}204^{1{,}2}}\ \text{ft} = 67\ \text{m} \]
-        <p class="small">Con un viento medio de 5 m/s, las ráfagas horizontales tienen una escala de tiempo \(L_u/V\) = 13,5 s y las verticales, 2 s.</p>
-      </details>
-      <details class="deriv"><summary>Derivación: de \(H_u\) a una recursión exacta</summary>
-        <p class="small">\(H_u\) es un proceso de Ornstein-Uhlenbeck de varianza \(\sigma_u^2\) y tiempo de correlación \(\tau = L_u/V\). Discretizado exactamente con paso \(\Delta t\), \(a = e^{-\Delta t/\tau}\) y \(w_k \sim \mathcal N(0,1)\):</p>
-        \[ u_{k} = a\,u_{k-1} + \sigma_u\sqrt{1-a^2}\;w_k . \]
-        <p class="small">Su varianza estacionaria es exactamente \(\sigma_u^2\) para cualquier \(\Delta t\): sin el error de discretizar con Euler.</p>
-      </details>
+      <p><strong>Ejemplo 14 del script:</strong> un dron a 10 m con turbulencia ligera.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:40%">Dato</th><th>Cuenta</th></tr>
+          <tr><td>\(h\) = 10 m = 32,8 ft</td><td>\(0{,}177 + 0{,}000823\cdot32{,}8 = 0{,}204\)</td></tr>
+          <tr><td>\(W_{20}\) = 15 kt = 7,72 m/s</td><td>\(\sigma_w\) = 0,77 m/s</td></tr>
+          <tr><td>\(0{,}204^{0{,}4} = 0{,}530\)</td><td>\(\sigma_u = \sigma_v\) = 0,77/0,530 = <strong>1,46 m/s</strong></td></tr>
+          <tr><td>\(0{,}204^{1{,}2} = 0{,}148\)</td><td>\(L_u\) = 32,8/0,148 = 221 ft = <strong>67 m</strong></td></tr>
+          <tr><td>\(L_w = h\)</td><td>10 m</td></tr>
+          <tr><td>Viento medio \(V\) = 5 m/s</td><td>\(T_u = L_u/V\) = 13,5 s; \(T_w\) = 2,0 s</td></tr>
+        </table>
+      </div>
+      <p>Las ráfagas horizontales duran unos 13 s y las verticales unos 2: el dron no las ve como vibración, sino como un empuje lento que el lazo de posición tiene que rechazar.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Viento · modelo de Dryden · 2</p>
+  <h2>El filtro conformador: entra ruido blanco, sale Dryden</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 140" style="max-height:140px" role="img" aria-label="Diagrama: ruido blanco de espectro plano entra en el filtro H_u de primer orden y sale la ráfaga, con espectro plano hasta la frecuencia de corte y pendiente menos dos después">
+      <defs><marker id="b2m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <line x1="40" y1="100" x2="220" y2="100" class="ln-rule"/>
+      <line x1="40" y1="16" x2="40" y2="100" class="ln-rule"/>
+      <line x1="40" y1="50" x2="220" y2="50" class="ln-time" stroke-width="2.5"/>
+      <text x="130" y="126" text-anchor="middle" class="t-muted" font-size="14">ruido blanco ξ(t): G plana</text>
+      <g class="ln" stroke-width="1.8" marker-end="url(#b2m6)"><line x1="250" y1="58" x2="392" y2="58"/><line x1="758" y1="58" x2="900" y2="58"/></g>
+      <text x="320" y="48" text-anchor="middle" class="t-mono" font-size="15">ξ(t)</text>
+      <text x="830" y="48" text-anchor="middle" class="t-mono" font-size="15">u(t)</text>
+      <rect x="400" y="18" width="350" height="80" rx="8" class="box-accent"/>
+      <text x="575" y="52" text-anchor="middle" class="t-mono t-bold" font-size="17">H<tspan font-size="12" dy="4">u</tspan><tspan dy="-4">(s) = K / (1 + T</tspan><tspan font-size="12" dy="4">u</tspan><tspan dy="-4"> s)</tspan></text>
+      <text x="575" y="80" text-anchor="middle" class="t-muted" font-size="14">primer orden; K = σ<tspan font-size="10" dy="3">u</tspan><tspan dy="-3"> √(2L</tspan><tspan font-size="10" dy="3">u</tspan><tspan dy="-3">/πV)</tspan></text>
+      <line x1="920" y1="100" x2="1110" y2="100" class="ln-rule"/>
+      <line x1="920" y1="16" x2="920" y2="100" class="ln-rule"/>
+      <path d="M920 34 L990 34 L1110 94" fill="none" class="ln-accent" stroke-width="2.5"/>
+      <line x1="990" y1="16" x2="990" y2="100" class="ln-dash"/>
+      <text x="996" y="28" class="t-mono t-faint" font-size="12">f<tspan font-size="9" dy="3">c</tspan></text>
+      <text x="1015" y="126" text-anchor="middle" class="t-muted" font-size="14">ráfaga u(t): Dryden</text>
+    </svg>
+  </figure>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(G_{\text{sale}}(\omega) = |H(j\omega)|^2\,G_{\text{entra}}(\omega)\)</td><td>Un filtro lineal multiplica cada frecuencia por su ganancia; la potencia, por la ganancia al cuadrado</td></tr>
+        <tr><td><strong>2</strong></td><td>\(G_{\text{entra}} = 1\)</td><td>Ruido blanco de densidad unidad, la convención con que están escritos estos filtros (\(\omega\) en rad/s)</td></tr>
+        <tr><td><strong>3</strong></td><td>\(|H_u(j\omega)|^2 = \dfrac{\sigma_u^2\,2L_u/(\pi V)}{1 + T_u^2\omega^2}\)</td><td>\(|1 + jT_u\omega|^2 = 1 + T_u^2\omega^2\), con \(T_u = L_u/V\)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\int_0^\infty|H_u|^2\,d\omega = \sigma_u^2\)</td><td>\(\int_0^\infty\frac{d\omega}{1+T^2\omega^2} = \frac{\pi}{2T}\), y \(\frac{2L_u}{\pi V}\cdot\frac{\pi}{2T_u} = 1\)</td></tr>
+        <tr><td><strong>5</strong></td><td>\(T_u\,\dot u = -u + K\,\xi(t)\)</td><td>Lo mismo en el tiempo: \(1/(1 + T_us)\) es una ODE de primer orden</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo 15 del script</span>La integral numérica de \(|H_u|^2\) da 2,124 = \(\sigma_u^2\). En hercios, \(G(f) = 2\pi|H_u(j2\pi f)|^2\): \(G(0)\) = 115 (m/s)²/Hz, el de la hoja 36.</div>
+      <div class="aparte"><span class="rotulo">La componente vertical</span>
+        \[ H_w(s) = \sigma_w\sqrt{\frac{L_w}{\pi V}}\;\frac{1 + \sqrt3\,T_ws}{(1 + T_ws)^2} \]
+        <p>Su \(|H_w|^2\) va con \((1 + 3T_w^2\omega^2)/(1 + T_w^2\omega^2)^2\), el espectro vertical de Dryden, y su integral también da \(\sigma_w^2\) = 0,596 (m/s)².</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Viento · modelo de Dryden · 3</p>
+  <h2>Generar la ráfaga en el simulador: una recursión exacta</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El paso 5 es un proceso de Ornstein-Uhlenbeck: memoria exponencial más ruido. Entre dos muestras separadas \(\Delta t\) se integra exactamente; el ruido acumulado en un paso es la misma cuenta que la \(Q\) de A4a (hoja 25).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:45%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(u_k = a\,u_{k-1} + q\,\xi_k\), \(\ a = e^{-\Delta t/T_u}\)</td><td>Sin ruido, \(u\) decae como \(e^{-t/T_u}\); el ruido del paso es gaussiano e independiente del pasado</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathrm{Var}(u_k) = a^2\,\mathrm{Var}(u_{k-1}) + q^2\)</td><td>\(u_{k-1}\) y \(\xi_k \sim \mathcal N(0,1)\) son independientes</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\sigma_u^2 = a^2\sigma_u^2 + q^2\)</td><td>En régimen estacionario, la varianza no cambia de un paso al siguiente</td></tr>
+          <tr><td><strong>4</strong></td><td>\(q = \sigma_u\sqrt{1 - a^2}\)</td><td>Despejar</td></tr>
+        </table>
+      </div>
+      <p>Da la varianza exacta \(\sigma_u^2\) con cualquier \(\Delta t\): no hay error de discretización.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Ejemplo 16 del script.</strong> Euler (\(a \approx 1 - \Delta t/T\), \(q = \sigma\sqrt{2\Delta t/T}\)) frente a la recursión exacta:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Caso</th><th>\(a\)</th><th>\(q\) (m/s)</th><th>Euler: \(\sigma\) obtenida / \(\sigma\)</th></tr>
+          <tr><td>\(u\), \(\Delta t\) = 0,01 s</td><td class="n">0,99926</td><td class="n">0,056</td><td class="n">1,0002</td></tr>
+          <tr><td>\(w\), \(\Delta t\) = 0,01 s</td><td class="n">0,99501</td><td class="n">0,077</td><td class="n">1,0013</td></tr>
+          <tr><td>\(w\), \(\Delta t\) = 0,1 s</td><td class="n">0,95123</td><td class="n">0,238</td><td class="n">1,013</td></tr>
+          <tr><td>\(w\), \(\Delta t\) = 0,5 s</td><td class="n">0,77880</td><td class="n">0,484</td><td class="n">1,069</td></tr>
+        </table>
+      </div>
+      <p>A <span class="hz">100 Hz</span> da igual; con pasos de 0,5 s, Euler exagera la ráfaga vertical un 7 %. La exacta, con 200 000 pasos de 0,5 s, da 0,769 m/s frente a 0,772.</p>
+      <div class="callout clave"><span class="tag">Por qué importa</span>Un world model o un planificador que avanza a pasos gruesos puede generar su propio viento con la misma recursión y la misma estadística que el simulador fino.</div>
     </div>
   </div>
 </section>
@@ -474,7 +1216,7 @@
       <figcaption>Componente longitudinal a 10 m de altura, turbulencia ligera y viento medio de 5 m/s: periodograma promediado por bandas frente al espectro de Dryden. Desviación media de 0,06 décadas. <code>figuras_b2.py</code>, sección 3.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>La desviación típica de la serie simulada es 1,35 m/s frente a 1,46 m/s teóricos: con un tiempo de correlación de 13,5 s, 600 s son unas 45 muestras independientes, y un 8 % de diferencia es lo esperable.</li>
         <li>La energía está por debajo de 0,1 Hz: ráfagas lentas que el lazo de posición tiene que rechazar, no vibración.</li>
         <li>La componente vertical usa el filtro de segundo orden; aquí se genera y se reescala a \(\sigma_w\).</li>
@@ -506,9 +1248,12 @@
         </svg>
         <figcaption>La ráfaga respecto al viento medio, con la misma realización que el espectro.</figcaption>
       </figure>
+      <p>La ráfaga empuja como una aceleración \((D/m)\,u\): de desviación típica 0,175 m/s² con el arrastre de Gazebo y 0,706 con el de SIH, cuatro veces más, como la desviación de posición (ejemplo 17 del script).</p>
+      <p class="xsmall muted">El \(d\) de Faessler es de otro dron (610 g); escalarlo por la masa del x500 es una hipótesis para tener un orden de magnitud.</p>
     </div>
     <div class="stack">
-      <p class="small">x500 en estacionario con el PD de B1, la ráfaga longitudinal anterior y arrastre lineal \(D(\mathbf v_{\text{viento}} - \mathbf v)\); el viento medio lo compensa la integral, aquí se estudia solo la ráfaga:</p>
+      <p>x500 en estacionario con el PD de B1 (\(K_p\) = 4, \(K_d\) = 3,5); la ráfaga entra por el arrastre lineal \(D(\mathbf v_{\text{viento}} - \mathbf v)\) y el viento medio lo compensa la integral:</p>
+      \[ \ddot p = -K_p\,p - K_d\,\dot p + \frac{D}{m}\big(u - \dot p\big) \]
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Arrastre</th><th>\(D\) (N s/m)</th><th>Desv. típica</th><th>Máximo</th></tr></thead>
@@ -520,7 +1265,6 @@
         </table>
       </div>
       <div class="callout clave"><span class="tag">La consecuencia</span>Con el arrastre del x500 de Gazebo, el dron simulado sufre casi cuatro veces menos la ráfaga que con un arrastre medido en un dron real. Un controlador o una política que «rechaza bien el viento» en Gazebo puede no hacerlo en vuelo.</div>
-      <p class="xsmall muted">El \(d\) de Faessler es de otro dron (610 g); escalarlo por la masa del x500 es una hipótesis para tener un orden de magnitud.</p>
     </div>
   </div>
 </section>
@@ -530,7 +1274,7 @@
   <h2>Neural-Fly: 12 minutos de datos y adaptación en vuelo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Estructura:</strong> la fuerza aerodinámica no modelada se escribe \(\mathbf f \approx \Phi(\mathbf x)\,\mathbf a(\text{viento})\). La base \(\Phi\) se aprende fuera de línea con meta-aprendizaje (DAIML) para que no dependa del viento; los coeficientes \(\mathbf a\) se adaptan en vuelo con una ley de adaptación compuesta <a class="cite" data-ref="oconnell2022"></a>.</li>
         <li><strong>Datos:</strong> «solo 12 minutos de vuelo» con viento constante de hasta 6,1 m/s; ensayos en el túnel de viento de Caltech hasta 12,1 m/s, con un dron de 2,6 kg.</li>
         <li><strong>Resultado:</strong> error RMS de 9,4 cm con viento de 12,1 m/s, frente a 23,9 cm del controlador no lineal sin aprendizaje; de media, 66 % mejor que ese controlador, 42 % que un L1 adaptativo y 35 % que INDI.</li>
@@ -551,31 +1295,208 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Qué es cada letra de la identificación</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:28%">Ejemplo: el arrastre \(a = -d\,v\)</th></tr>
+      <tr><td>\(\mathbf y\), \(\Phi\), \(\boldsymbol\theta\), \(\boldsymbol\varepsilon\)</td><td>Medidas, regresores (una fila \(\boldsymbol\varphi_k^\top\) por muestra), parámetros y ruido: \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\)</td><td>aceleraciones, \(-\mathbf v\), \(d\)</td></tr>
+      <tr><td>\(N\), \(n_\theta\), \(S(\boldsymbol\theta)\)</td><td>Número de muestras y de parámetros; suma de residuos al cuadrado, lo que se minimiza</td><td>3000 y 1</td></tr>
+      <tr><td>\(\hat{\boldsymbol\theta}\), \(\mathrm{Cov}(\hat{\boldsymbol\theta})\)</td><td>Estimación de mínimos cuadrados y su covarianza</td><td>\(\hat d\) = 0,451 ± 0,013</td></tr>
+      <tr><td>\(\sigma^2\), \(\hat\sigma^2\), \(\hat\varepsilon_k\)</td><td>Varianza del ruido, su estimación y los residuos \(y_k - \boldsymbol\varphi_k^\top\hat{\boldsymbol\theta}\)</td><td>\(\sigma\) = 0,05 m/s²</td></tr>
+      <tr><td>\(d\), \(k_h\), \(b\), \(c\)</td><td>Arrastre por unidad de masa, sustentación de traslación, y el ajuste \(c = b + k_hv^2\) del empuje específico vertical</td><td>0,45 s⁻¹; 0,009 m⁻¹; \(b \approx g\)</td></tr>
+      <tr><td>\(v_{\max}\), \(\sigma_v\)</td><td>Velocidad máxima de los datos (uniformes en \(\pm v_{\max}\)) y ruido de la velocidad medida</td><td>0,25–8 m/s; 0,02 m/s</td></tr>
+      <tr><td>\(E[\cdot]\), \(\mathrm{Var}\)</td><td>Esperanza y varianza; \(\mathrm{Var}(v^2)\) es la de los \(v_k^2\) de los datos</td><td>\(E[v^2] = v_{\max}^2/3\)</td></tr>
+      <tr><td>\(f_{\text{física}}\), \(f_{\text{red}}\), \(\mathbf w\), \(\mathbf h\)</td><td>Modelo híbrido: física, residuo aprendido, pesos de la red e historia</td><td>Hojas 53–54</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Letras que cambian</span>\(N\) ya no es el número de palas. \(\Phi\) era en Neural-Fly una base de funciones; aquí es la matriz de regresores (la idea es la misma: Neural-Fly es lineal en sus coeficientes \(\mathbf a\)).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación · qué hacemos</p>
+  <h2>Identificar: de un experimento a un número con su barra de error</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 150" style="max-height:150px" role="img" aria-label="Cadena de la identificación: experimento, datos, modelo lineal en los parámetros, mínimos cuadrados y resultado con su desviación">
+      <defs><marker id="b2m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="10" y="20" width="200" height="76" rx="8" class="box-time"/>
+      <rect x="250" y="20" width="190" height="76" rx="8" class="box"/>
+      <rect x="480" y="20" width="210" height="76" rx="8" class="box-accent"/>
+      <rect x="730" y="20" width="190" height="76" rx="8" class="box"/>
+      <rect x="960" y="20" width="180" height="76" rx="8" class="box-tesis"/>
+      <g class="ln" stroke-width="1.8" marker-end="url(#b2m7)">
+        <line x1="210" y1="58" x2="246" y2="58"/><line x1="440" y1="58" x2="476" y2="58"/><line x1="690" y1="58" x2="726" y2="58"/><line x1="920" y1="58" x2="956" y2="58"/>
+      </g>
+      <g font-size="15" text-anchor="middle">
+        <text x="110" y="50" class="t-bold">Experimento</text><text x="110" y="76" class="t-muted" font-size="13">excitar lo que se busca</text>
+        <text x="345" y="50" class="t-bold">Datos</text><text x="345" y="76" class="t-mono" font-size="13">(v<tspan font-size="10" dy="3">k</tspan><tspan dy="-3">, a</tspan><tspan font-size="10" dy="3">k</tspan><tspan dy="-3">), k = 1…N</tspan></text>
+        <text x="585" y="50" class="t-bold">Modelo lineal en θ</text><text x="585" y="76" class="t-mono" font-size="13">y = Φθ + ε</text>
+        <text x="825" y="50" class="t-bold">Mínimos cuadrados</text><text x="825" y="76" class="t-mono" font-size="13">(ΦᵀΦ)⁻¹Φᵀy</text>
+        <text x="1050" y="50" class="t-bold">Resultado</text><text x="1050" y="76" class="t-mono" font-size="13">valor ± desviación</text>
+      </g>
+      <g font-size="13" text-anchor="middle" class="t-muted">
+        <text x="110" y="122">vuelos a varias velocidades</text>
+        <text x="345" y="122">velocidad y aceleración</text>
+        <text x="585" y="122">a = −d v: θ = d, Φ = −v</text>
+        <text x="825" y="122">hojas 47 y 48</text>
+        <text x="1050" y="122">d̂ = 0,451 ± 0,013</text>
+      </g>
+    </svg>
+    <figcaption>Esquema propio, con el ejemplo de cuatro muestras de las hojas siguientes debajo de cada caja.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Entra</strong> lo medido en un experimento elegido para que el efecto se note. <strong>Sale</strong> el valor del parámetro y, tan importante como él, su incertidumbre: sin ella no sabes si el número significa algo.</p>
+      <p>El caso de esta parte: el arrastre \(a = -d\,v\) del x500 y la sustentación de traslación \(c = b + k_hv^2\), con datos sintéticos para saber la verdad.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lineal en los parámetros</span>\(c = b + k_hv^2\) es cuadrática en \(v\) pero lineal en \((b, k_h)\): basta con poner \(v^2\) como columna de \(\Phi\). Por eso toda la tabla de la hoja siguiente cabe en una fórmula, \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Identificación · qué y cómo</p>
   <h2>Cada parámetro tiene su experimento</h2>
-  <div class="cols">
+    <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Parámetro</th><th>Experimento</th><th>Regresión</th></tr></thead>
+      <tbody>
+        <tr><td>\(m\), centro de masas</td><td>Báscula, péndulo</td><td>Directa</td></tr>
+        <tr><td>\(J\)</td><td>Péndulo bifilar o trifilar, CAD</td><td>Periodo de oscilación</td></tr>
+        <tr><td>\(k_T\), \(k_Q\), curva del mando</td><td>Banco de empuje</td><td>\(T\) frente a \(\Omega^2\) y al mando</td></tr>
+        <tr><td>\(\tau\) del motor</td><td>Escalones de mando en banco</td><td>Ajuste de exponencial</td></tr>
+        <tr><td>\(k_T/m\) en vuelo</td><td>Estacionario y subidas</td><td>\(a_z\) frente a \(\sum\Omega_i^2\) (A1)</td></tr>
+        <tr><td>\(d_x\), \(d_y\)</td><td>Vuelo recto a varias velocidades</td><td>\(a_{xy}^B = -d\,v_{xy}^B\)</td></tr>
+        <tr><td>\(k_h\) (traslación)</td><td>Vuelo rápido</td><td>\(c - c_{\text{cmd}} = k_h v_h^2\)</td></tr>
+        <tr><td>\(R_0\), OCV de la batería</td><td>Cualquier vuelo con \(V\) e \(I\)</td><td>Mínimos cuadrados recursivos (PX4)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Siempre la misma forma</span>Una medida \(\mathbf y\), unos regresores \(\Phi\) que salen de lo medido y unos parámetros \(\boldsymbol\theta\): \(\Phi = -v\) y \(\boldsymbol\theta = d\) para el arrastre, y \(\Phi = (1,\ v_h^2)\) para la sustentación de traslación. Las cuatro hojas siguientes lo resuelven una vez para todas.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación · mínimos cuadrados · 1</p>
+  <h2>De dónde salen las ecuaciones normales</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(S(\boldsymbol\theta) = \|\mathbf y - \Phi\boldsymbol\theta\|^2 = \sum_k\big(y_k - \boldsymbol\varphi_k^\top\boldsymbol\theta\big)^2\)</td><td>La suma de los residuos al cuadrado; \(\boldsymbol\varphi_k^\top\) es la fila \(k\) de \(\Phi\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\nabla S = -2\,\Phi^\top(\mathbf y - \Phi\boldsymbol\theta)\)</td><td>Derivar la forma cuadrática; \(S\) es convexa, así que el mínimo está donde el gradiente se anula</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\Phi^\top\Phi\,\hat{\boldsymbol\theta} = \Phi^\top\mathbf y\)</td><td>Ecuaciones normales: \(n_\theta\) ecuaciones con \(n_\theta\) incógnitas</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\hat{\boldsymbol\theta} = (\Phi^\top\Phi)^{-1}\Phi^\top\mathbf y\)</td><td>Si las columnas de \(\Phi\) son independientes, \(\Phi^\top\Phi\) es invertible</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\hat\theta = \sum_k\varphi_ky_k\big/\sum_k\varphi_k^2\)</td><td>Con un solo parámetro, \(\Phi^\top\Phi\) y \(\Phi^\top\mathbf y\) son números</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Por qué se llaman normales</span>
+        <p>El paso 3 dice \(\Phi^\top(\mathbf y - \Phi\hat{\boldsymbol\theta}) = 0\): el residuo es perpendicular (normal) a todas las columnas de \(\Phi\). \(\Phi\hat{\boldsymbol\theta}\) es la proyección de \(\mathbf y\) sobre lo que el modelo puede explicar.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 320 230" style="max-height:220px" role="img" aria-label="Cuatro muestras de aceleración frente a velocidad y la recta ajustada por mínimos cuadrados">
+          <line x1="40" y1="115" x2="300" y2="115" class="ln-rule"/>
+          <line x1="170" y1="20" x2="170" y2="210" class="ln-rule"/>
+          <path d="M45.2,29.3 L294.8,200.7" class="ln-accent" stroke-width="2"/>
+          <circle cx="66.0" cy="41.4" r="5" class="fill-time"/><circle cx="118.0" cy="83.3" r="5" class="fill-time"/><circle cx="222.0" cy="147.5" r="5" class="fill-time"/><circle cx="274.0" cy="187.8" r="5" class="fill-time"/>
+          <text x="66" y="132" text-anchor="middle" class="t-mono t-faint" font-size="12">−2</text>
+          <text x="274" y="108" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+          <text x="164" y="40" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <text x="164" y="198" text-anchor="end" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="300" y="134" text-anchor="end" class="t-muted" font-size="12">v (m/s)</text>
+          <text x="178" y="24" class="t-muted" font-size="12">a (m/s²)</text>
+          <text x="192" y="70" class="t-accent" font-size="13">a = −0,451 v</text>
+        </svg>
+        <figcaption>Ejemplo 18 del script.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Ejemplo 18: cuatro muestras</span>\(v\) = (−2, −1, 1, 2) m/s y \(a\) = (0,93, 0,40, −0,41, −0,92) m/s²: \(d\) = 0,45 más un ruido elegido a mano. Con \(\varphi_k = -v_k\): \(\sum\varphi_k^2\) = 10, \(\sum\varphi_ky_k\) = 4,51 y <strong>\(\hat d\) = 0,451</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación · mínimos cuadrados · 2</p>
+  <h2>Cuánto te puedes fiar de \(\hat{\boldsymbol\theta}\): su covarianza</h2>
+  <div class="cols w60">
     <div class="table-wrap">
       <table class="t">
-        <thead><tr><th>Parámetro</th><th>Experimento</th><th>Regresión</th></tr></thead>
-        <tbody>
-          <tr><td>\(m\), centro de masas</td><td>Báscula, péndulo</td><td>Directa</td></tr>
-          <tr><td>\(J\)</td><td>Péndulo bifilar o trifilar, CAD</td><td>Periodo de oscilación</td></tr>
-          <tr><td>\(k_T\), \(k_Q\), curva del mando</td><td>Banco de empuje</td><td>\(T\) frente a \(\Omega^2\) y al mando</td></tr>
-          <tr><td>\(\tau\) del motor</td><td>Escalones de mando en banco</td><td>Ajuste de exponencial</td></tr>
-          <tr><td>\(k_T/m\) en vuelo</td><td>Estacionario y subidas</td><td>\(a_z\) frente a \(\sum\Omega_i^2\) (A1)</td></tr>
-          <tr><td>\(d_x\), \(d_y\)</td><td>Vuelo recto a varias velocidades</td><td>\(a_{xy}^B = -d\,v_{xy}^B\)</td></tr>
-          <tr><td>\(k_h\) (traslación)</td><td>Vuelo rápido</td><td>\(c - c_{\text{cmd}} = k_h v_h^2\)</td></tr>
-          <tr><td>\(R_0\), OCV de la batería</td><td>Cualquier vuelo con \(V\) e \(I\)</td><td>Mínimos cuadrados recursivos (PX4)</td></tr>
-        </tbody>
+        <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(\hat{\boldsymbol\theta} = (\Phi^\top\Phi)^{-1}\Phi^\top(\Phi\boldsymbol\theta + \boldsymbol\varepsilon) = \boldsymbol\theta + (\Phi^\top\Phi)^{-1}\Phi^\top\boldsymbol\varepsilon\)</td><td>Sustituir \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(E[\hat{\boldsymbol\theta}] = \boldsymbol\theta\)</td><td>\(E[\boldsymbol\varepsilon] = 0\): sin sesgo, si \(\Phi\) no tiene ruido</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\mathrm{Cov}(\hat{\boldsymbol\theta}) = (\Phi^\top\Phi)^{-1}\Phi^\top\,E[\boldsymbol\varepsilon\boldsymbol\varepsilon^\top]\,\Phi(\Phi^\top\Phi)^{-1}\)</td><td>\(\mathrm{Cov}(A\boldsymbol\varepsilon) = A\,\mathrm{Cov}(\boldsymbol\varepsilon)A^\top\)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\mathrm{Cov}(\hat{\boldsymbol\theta}) = \sigma^2(\Phi^\top\Phi)^{-1}\)</td><td>\(E[\boldsymbol\varepsilon\boldsymbol\varepsilon^\top] = \sigma^2I\), y un \(\Phi^\top\Phi\) se cancela con su inversa</td></tr>
+        <tr><td><strong>5</strong></td><td>\(\hat\sigma^2 = \sum_k\hat\varepsilon_k^2/(N - n_\theta)\)</td><td>\(\sigma\) no se conoce: se estima con los residuos; \(n_\theta\) grados de libertad se gastan en ajustar</td></tr>
       </table>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: mínimos cuadrados y su varianza</summary>
-        <p class="small">Con \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\), \(\boldsymbol\varepsilon \sim \mathcal N(0, \sigma^2 I)\):</p>
-        \[ \hat{\boldsymbol\theta} = (\Phi^\top\Phi)^{-1}\Phi^\top\mathbf y,\qquad \mathrm{Cov}(\hat{\boldsymbol\theta}) = \sigma^2(\Phi^\top\Phi)^{-1}. \]
-        <p class="small">Para \(a = -d\,v\) con \(N\) muestras de \(v\) uniforme en \([-v_{\max}, v_{\max}]\): \(\mathrm{Var}(\hat d) = \sigma^2/(N v_{\max}^2/3)\). Para \(k_h\), el regresor es \(v^2\) y su varianza crece con \(v_{\max}^4\): <strong>identificar un efecto cuadrático exige velocidad</strong>.</p>
-        <p class="small">Si el regresor \(v\) también tiene ruido \(\sigma_v\), el estimador se sesga hacia cero en un factor \(1/(1 + \sigma_v^2/\mathrm{Var}(v))\) (errores en las variables).</p>
-      </details>
+      <div class="callout realidad"><span class="tag">Ejemplo 18, continuación</span>Residuos: (0,028, −0,051, 0,041, −0,018). \(\hat\sigma^2\) = 0,0054/3 = 0,0018, y \(\mathrm{desv}(\hat d) = \sqrt{0{,}0018/10}\) = 0,013:<br><strong>\(\hat d\) = 0,451 ± 0,013</strong>, con la verdad (0,45) dentro.</div>
+      <div class="callout clave"><span class="tag">La lectura</span>\(\Phi^\top\Phi\) es la información que traen los datos: crece con el número de muestras y con lo grandes que sean los regresores. Cuanto más grande, menos varianza. Dividida por \(\sigma^2\), es la matriz de información de Fisher del modelo gaussiano.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación · identificabilidad · 1</p>
+  <h2>Dos parámetros: si una columna casi no varía, su parámetro no se ve</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(c = b + k_hv^2\), cada fila de \(\Phi\) es \((1,\ v_k^2)\) y</p>
+      \[ \Phi^\top\Phi = \begin{bmatrix} N & \sum v_k^2\\ \sum v_k^2 & \sum v_k^4\end{bmatrix} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\det = N\sum v_k^4 - \big(\sum v_k^2\big)^2 = N^2\,\mathrm{Var}(v^2)\)</td><td>Definición de varianza: media de los cuadrados menos el cuadrado de la media</td></tr>
+          <tr><td><strong>2</strong></td><td>\([(\Phi^\top\Phi)^{-1}]_{22} = N/\det = 1/(N\,\mathrm{Var}(v^2))\)</td><td>Inversa de una 2×2: el elemento 22 es el 11 entre el determinante</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathrm{Var}(\hat k_h) = \sigma^2/(N\,\mathrm{Var}(v^2))\)</td><td>La covarianza de la hoja anterior</td></tr>
+        </table>
+      </div>
+      <p>Lo que identifica \(k_h\) no es lo grande que sea \(v^2\), sino <strong>cuánto varía</strong> en los datos: un \(v^2\) casi constante se confunde con la columna de unos, es decir, con \(b\).</p>
+    </div>
+    <div class="stack">
+      <p><strong>Ejemplo 19 del script</strong>, cuatro muestras y \(\sigma\) = 0,05 m/s²:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th></th><th>Lento</th><th>Rápido</th></tr>
+          <tr><td>\(v\) (m/s)</td><td class="n">0,25 0,5 0,75 1</td><td class="n">1 2 3 4</td></tr>
+          <tr><td>\(\mathrm{Var}(v^2)\)</td><td class="n">0,126</td><td class="n">32,3</td></tr>
+          <tr><td>\([(\Phi^\top\Phi)^{-1}]_{22}\)</td><td class="n">1,98</td><td class="n">0,0078</td></tr>
+          <tr><td>\(\mathrm{desv}(\hat k_h)\)</td><td class="n">0,070 (780 %)</td><td class="n">0,0044 (49 %)</td></tr>
+          <tr><td>\(\hat k_h\) con el ruido del ejemplo 18</td><td class="n">−0,0071</td><td class="n">0,0080</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">El mismo ruido, cuatro veces más rápido</span>\(v^2\) es 16 veces mayor y el error de \(\hat k_h\), exactamente 16 veces menor: −0,0161 frente a −0,0010 (la verdad es 0,009). Con datos lentos sale hasta con el signo cambiado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Identificación · identificabilidad · 2</p>
+  <h2>Por qué el arrastre se ve casi parado y \(k_h\) necesita velocidad</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(N\) muestras de \(v\) uniformes en \([-v_{\max}, v_{\max}]\): \(E[v^2] = v_{\max}^2/3\), \(E[v^4] = v_{\max}^4/5\) y \(\mathrm{Var}(v^2) = v_{\max}^4/5 - v_{\max}^4/9 = 4v_{\max}^4/45\). En las fórmulas de las dos hojas anteriores:</p>
+      \[ \mathrm{desv}(\hat d) \approx \frac{\sigma}{\sqrt{N v_{\max}^2/3}},\qquad \mathrm{desv}(\hat k_h) \approx \frac{\sigma}{v_{\max}^2}\sqrt{\frac{45}{4N}} \]
+      <p>\(\hat d\) mejora como \(1/v_{\max}\); \(\hat k_h\), como \(1/v_{\max}^2\). Doblar la velocidad divide la desviación de \(\hat k_h\) por 4; doblar las muestras, solo por \(\sqrt2\).</p>
+      <div class="aparte"><span class="rotulo">Errores en las variables</span>
+        <p>Si \(v\) se mide con ruido \(\sigma_v\), \(\sum v_ka_k\) no cambia en media pero \(\sum v_k^2\) crece en \(N\sigma_v^2\): \(\hat d \to d/(1 + \sigma_v^2/\mathrm{Var}(v))\). Con \(v_{\max}\) = 0,25 m/s, 0,0004/0,0208 da un factor 0,981: el sesgo del 2 % de la hoja siguiente.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Ejemplo 20 del script:</strong> desviación relativa, 3000 muestras y \(\sigma\) = 0,05 m/s².</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th rowspan="2">\(v_{\max}\)</th><th colspan="2">\(\hat d\)</th><th colspan="2">\(\hat k_h\)</th></tr>
+          <tr><th>50 ensayos</th><th>Fórmula</th><th>50 ensayos</th><th>Fórmula</th></tr>
+          <tr><td class="n">0,25</td><td class="n">1,27 %</td><td class="n">1,41 %</td><td class="n">455 %</td><td class="n">544 %</td></tr>
+          <tr><td class="n">1</td><td class="n">0,37 %</td><td class="n">0,35 %</td><td class="n">33 %</td><td class="n">34 %</td></tr>
+          <tr><td class="n">2</td><td class="n">0,18 %</td><td class="n">0,18 %</td><td class="n">7,5 %</td><td class="n">8,5 %</td></tr>
+          <tr><td class="n">4</td><td class="n">0,10 %</td><td class="n">0,09 %</td><td class="n">1,9 %</td><td class="n">2,1 %</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">«50 ensayos»: la desviación de las estimaciones en 50 conjuntos sintéticos (<code>figuras_b2.py</code>, sección 4). Una desviación estimada con 50 conjuntos tiene un error típico del 10 %, del orden de las diferencias con la fórmula.</p>
     </div>
   </div>
 </section>
@@ -616,7 +1537,7 @@
       <figcaption>Desviación típica relativa de \(\hat d\) y \(\hat k_h\) en 50 conjuntos sintéticos de 3000 muestras, con \(d\) = 0,45 s⁻¹, \(k_h\) = 0,009 m⁻¹, 0,05 m/s² de ruido de aceleración y 0,02 m/s de ruido de velocidad (supuestos). <code>figuras_b2.py</code>, sección 4.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>\(\hat d\): 1,3 % de desviación con datos hasta 0,25 m/s y 0,1 % hasta 4 m/s. El sesgo por ruido en \(v\) es del 2 % con los datos más lentos (factor 0,981) y despreciable después.</li>
         <li>\(\hat k_h\): sin información por debajo de 0,5 m/s (455 % y 116 %), 33 % hasta 1 m/s, 7,5 % hasta 2 m/s y 1,9 % hasta 4 m/s.</li>
       </ul>
@@ -650,12 +1571,47 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Modelos · cuánta física</p>
+  <h2>Caja blanca, gris, negra o híbrida</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1150 200" style="max-height:170px" role="img" aria-label="Cuatro tipos de modelo de más física a más datos: caja blanca, caja gris, caja negra e híbrido">
+      <defs><marker id="b2m8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="10" y="10" width="260" height="128" rx="8" class="box"/>
+      <rect x="300" y="10" width="260" height="128" rx="8" class="box-accent"/>
+      <rect x="590" y="10" width="260" height="128" rx="8" class="box-time"/>
+      <rect x="880" y="10" width="260" height="128" rx="8" class="box-tesis"/>
+      <g font-size="15" text-anchor="middle">
+        <text x="140" y="40" class="t-bold" font-size="17">Caja blanca</text><text x="140" y="68">física y parámetros</text><text x="140" y="88">conocidos de antemano</text><text x="140" y="120" class="t-mono t-muted" font-size="13">J por CAD, m en báscula</text>
+        <text x="430" y="40" class="t-bold" font-size="17">Caja gris</text><text x="430" y="68">estructura física,</text><text x="430" y="88">parámetros identificados</text><text x="430" y="120" class="t-mono t-muted" font-size="13">−d v − c v|v|: 2 parámetros</text>
+        <text x="720" y="40" class="t-bold" font-size="17">Caja negra</text><text x="720" y="68">función genérica</text><text x="720" y="88">ajustada a los datos</text><text x="720" y="120" class="t-mono t-muted" font-size="13">polinomio de grado 7: 8</text>
+        <text x="1010" y="40" class="t-bold" font-size="17">Híbrida</text><text x="1010" y="68">caja gris más un</text><text x="1010" y="88">residuo negro aprendido</text><text x="1010" y="120" class="t-mono t-muted" font-size="13">f_física + f_red</text>
+      </g>
+      <line x1="40" y1="162" x2="1110" y2="162" class="ln" stroke-width="1.6" marker-start="url(#b2m8)" marker-end="url(#b2m8)"/>
+      <text x="40" y="190" class="t-muted" font-size="14">más física: pocos datos, extrapola si la estructura es correcta</text>
+      <text x="1110" y="190" text-anchor="end" class="t-muted" font-size="14">más datos: flexible, sin garantías fuera</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Cómo se entrena el residuo de un híbrido.</strong> Primero se calcula, muestra a muestra, lo que la física no explica; luego se ajusta la red a eso (o las dos partes a la vez):</p>
+      \[ \Delta\dot{\mathbf x}_k = \dot{\mathbf x}_k - f_{\text{física}}(\mathbf x_k, \mathbf u_k;\ \hat{\boldsymbol\theta}) \]
+      \[ \min_{\mathbf w}\ \sum_k\big\|\Delta\dot{\mathbf x}_k - f_{\text{red}}(\mathbf x_k, \mathbf u_k, \mathbf h_k;\ \mathbf w)\big\|^2 \]
+      <p>Ejemplo 21: a 8 m/s, la caja gris lineal predice −3,700 m/s² y la verdad sintética es −3,856. El residuo que la red tendría que aprender ahí es −0,156 m/s².</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué decide la elección</span>¿Tienes datos en todo el rango donde vas a usar el modelo? Si no, la estructura física es lo único que extrapola: a 12 m/s, el polinomio ajustado hasta 4 m/s da 255 m/s², y las cajas grises, 5,55 y 6,07 frente a 5,98 (hoja 56).</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Medir el modelo solo por su error de ajuste. El polinomio de grado 7 ajusta tan bien como la caja gris entre −4 y 4 m/s; la diferencia solo aparece fuera.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Modelos híbridos · estructura</p>
   <h2>Física nominal + residuo aprendido</h2>
   <div class="cols">
     <div class="stack">
       \[ \dot{\mathbf x} = f_{\text{física}}(\mathbf x, \mathbf u;\ \boldsymbol\theta) + f_{\text{red}}(\mathbf x, \mathbf u, \mathbf h;\ \mathbf w) \]
-      <ul class="small">
+      <ul>
         <li><strong>La física</strong> da la estructura (cuerpo rígido, rotores) y extrapola razonablemente.</li>
         <li><strong>El residuo</strong> aprende lo que falta: interacción entre rotores, cuerpo, efecto suelo. Puede usar historia \(\mathbf h\) para efectos con memoria (estela, retardos).</li>
         <li><strong>Variantes:</strong> proceso gaussiano sobre la aceleración (Torrente et al.), red sobre BEM (NeuroBEM), neural ODE con conocimiento físico (KNODE), red temporal entrenada con restricciones físicas (Saviolo et al.), base aprendida y coeficientes adaptados en línea (Neural-Fly) <a class="cite" data-ref="torrente2021,neurobem,chee2022,saviolo2022,oconnell2022"></a>.</li>
@@ -779,7 +1735,7 @@
   <h2>La física es un prior para tu world model</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Estado oculto físico:</strong> viento, tensión de batería, masa de la carga, estado del motor. Todos afectan a la dinámica, ninguno se ve directamente. Son lo primero que un belief debe estimar.</li>
         <li><strong>Prior estructural:</strong> un world model con un modelo físico nominal y un residuo aprendido extrapola mejor y necesita menos datos que uno puramente aprendido.</li>
         <li><strong>Aleatorización informada:</strong> lo que no identificas bien (como \(k_h\) con datos lentos), lo aleatorizas en el rango de su incertidumbre (B7).</li>
@@ -918,8 +1874,8 @@
   <h2>Motor, arrastre y viento; identificación con datos de vuelo reales</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Capas de realismo</strong> en tu simulador JAX: motor eléctrico (o primer orden asimétrico), curva de empuje, batería y arrastre de rotor, cada una con interruptor.</li>
         <li><strong>Rotor BEM</strong> vectorizado: empuje frente a subida y avance; comparación con \(k_T\Omega^2\) y con el ajuste de Faessler.</li>
         <li><strong>Dryden:</strong> generador validado por su espectro y efecto sobre el estacionario.</li>
@@ -930,7 +1886,7 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>\(\tau\) ≈ 11 ms y bajada libre de 98 ms; −12 % de empuje a 2 m/s de subida; autonomía de 17,5 min y margen de 1,63 a 1,20; \(\sigma_u\) = 1,46 m/s y \(L_u\) = 67 m; identificabilidad de \(k_h\) frente a la velocidad.</div>
       <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. Los datos reales son de NeuroBEM, que ya descargaste en A1.</div>
-      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b2.py</code>.</p>
+      <p class="xsmall muted">Los scripts de las figuras y de los ejemplos numéricos de esta presentación están en <code>figuras/figuras_b2.py</code> y <code>figuras/ejemplos_b2.py</code>.</p>
     </div>
   </div>
 </section>
@@ -981,178 +1937,211 @@
 <h3>Notación general</h3>
 <p>Negrita: vector. Sombrero \(\hat{\ }\): valor estimado. \(\delta\): pequeña variación alrededor de un punto de operación. Subíndice 0: valor en estacionario o de referencia. Como en la literatura de cada especialidad, algunas letras se repiten entre partes (se avisa en cada entrada).</p>
 <dl>
-<dt>\(\hat{\boldsymbol\theta}\), \(\hat d\), \(\hat k_h\)</dt><dd data-hojas="24">Estimaciones por mínimos cuadrados de los parámetros \(\boldsymbol\theta\), \(d\) y \(k_h\).</dd>
-<dt>\(\dot{\mathbf x}\), \(\dot\Omega\)</dt><dd data-hojas="12">Derivadas temporales del estado y de la velocidad del rotor.</dd>
-<dt>\(\delta\Omega\), \(\delta d\)</dt><dd data-hojas="12">Pequeñas variaciones de la velocidad del rotor y del mando alrededor del punto \(\Omega_0\), usadas para linealizar.</dd>
+<dt>\(\hat{\boldsymbol\theta}\), \(\hat d\), \(\hat k_h\)</dt><dd data-hojas="47,49">Estimaciones por mínimos cuadrados de los parámetros \(\boldsymbol\theta\), \(d\) y \(k_h\).</dd>
+<dt>\(\dot{\mathbf x}\), \(\dot\Omega\)</dt><dd data-hojas="21,53">Derivadas temporales del estado y de la velocidad del rotor.</dd>
+<dt>\(\delta\Omega\), \(\delta d\)</dt><dd data-hojas="23">Pequeñas variaciones de la velocidad del rotor y del mando alrededor del punto \(\Omega_0\), usadas para linealizar.</dd>
 <dt>\(\approx\)</dt><dd data-hojas="7">«Aproximadamente igual».</dd>
-<dt>\(\sim\)</dt><dd data-hojas="19">«Se distribuye según», p. ej. \(w_k \sim \mathcal N(0,1)\).</dd>
-<dt>\(\mathcal N(\mu,\sigma^2)\)</dt><dd data-hojas="19">Distribución gaussiana; \(\mathcal N(0,1)\) es la normal estándar.</dd>
-<dt>\(\mathrm{Cov}\), \(\mathrm{Var}\)</dt><dd data-hojas="24">Covarianza y varianza de un estimador o de una variable.</dd>
-<dt>\(^\top\), \(^{-1}\)</dt><dd data-hojas="24">Traspuesta e inversa de una matriz.</dd>
-<dt>\(I\)</dt><dd data-hojas="24">Matriz identidad.</dd>
-<dt>\(\Rightarrow\)</dt><dd data-hojas="12">«Por tanto» en las derivaciones.</dd>
-<dt>\(\int\)</dt><dd data-hojas="7">Integral; aquí, sobre el radio de la pala.</dd>
-<dt>\(\sum\)</dt><dd data-hojas="24">Suma sobre rotores, p. ej. \(\sum\Omega_i^2\).</dd>
+<dt>\(\sim\)</dt><dd data-hojas="39">«Se distribuye según», p. ej. \(\xi_k \sim \mathcal N(0,1)\).</dd>
+<dt>\(\mathcal N(\mu,\sigma^2)\)</dt><dd data-hojas="39">Distribución gaussiana; \(\mathcal N(0,1)\) es la normal estándar.</dd>
+<dt>\(\mathrm{Cov}\), \(\mathrm{Var}\)</dt><dd data-hojas="48,49">Covarianza y varianza de un estimador o de una variable.</dd>
+<dt>\(^\top\), \(^{-1}\)</dt><dd data-hojas="47">Traspuesta e inversa de una matriz.</dd>
+<dt>\(I\)</dt><dd data-hojas="48">Matriz identidad.</dd>
+<dt>\(\int\)</dt><dd data-hojas="10">Integral; aquí, sobre el radio de la pala.</dd>
+<dt>\(\sum\)</dt><dd data-hojas="46,47">Suma sobre rotores (p. ej. \(\sum\Omega_i^2\)) o sobre muestras (\(\sum_k\)).</dd>
+<dt>\(\langle\cdot\rangle\)</dt><dd data-hojas="13">Promedio en una vuelta de la pala (sobre el acimut \(\psi\)).</dd>
+<dt>\(E[\cdot]\)</dt><dd data-hojas="36,48">Esperanza (valor medio) de una variable aleatoria.</dd>
+<dt>\(\nabla\)</dt><dd data-hojas="47">Gradiente respecto a los parámetros.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="47">Norma euclídea de un vector.</dd>
+<dt>\(\det\)</dt><dd data-hojas="49">Determinante de una matriz.</dd>
+<dt>\(j\)</dt><dd data-hojas="38">Unidad imaginaria, en \(H(j\omega)\).</dd>
 </dl>
 <h3>Parte 1 · El rotor</h3>
 <dl>
-<dt>\(T\)</dt><dd data-hojas="1">Empuje del rotor (N). En el modelo simple, \(T = k_T\Omega^2\).</dd>
+<dt>\(T\)</dt><dd data-hojas="1,7">Empuje del rotor (N). En el modelo simple, \(T = k_T\Omega^2\).</dd>
 <dt>\(k_T\)</dt><dd data-hojas="1">Coeficiente de empuje del rotor: empuje por (rad/s)².</dd>
-<dt>\(\Omega\)</dt><dd data-hojas="1">Velocidad de giro del rotor (rad/s).</dd>
-<dt>\(\Omega_0\)</dt><dd data-hojas="12">Punto de operación de la velocidad del rotor alrededor del que se linealiza.</dd>
-<dt>\(\Omega_{1}\), \(\Omega_2\)</dt><dd data-hojas="13">Velocidades inicial (810 rad/s) y final (565 rad/s) de la bajada libre.</dd>
+<dt>\(\Omega\)</dt><dd data-hojas="1,7">Velocidad de giro del rotor (rad/s).</dd>
+<dt>\(\Omega_0\)</dt><dd data-hojas="23">Punto de operación de la velocidad del rotor alrededor del que se linealiza.</dd>
+<dt>\(\Omega_1\), \(\Omega_2\)</dt><dd data-hojas="25">Velocidades inicial (810 rad/s) y final (565 rad/s) de la bajada libre.</dd>
 <dt>\(c_d\)</dt><dd data-hojas="6">Coeficiente de arrastre de rotor de Gazebo, en \(-|\Omega|c_d\mathbf v_\perp\).</dd>
 <dt>\(\mathbf v_\perp\)</dt><dd data-hojas="6">Componente de la velocidad perpendicular al eje del rotor.</dd>
-<dt>\(r\)</dt><dd data-hojas="7">Radio de una sección de pala medido desde el eje (m).</dd>
-<dt>\(R\) (rotor)</dt><dd data-hojas="7">Radio del rotor (0,127 m en el x500). En la parte del motor, \(R\) es la resistencia eléctrica (hoja 12).</dd>
-<dt>\(x\)</dt><dd data-hojas="7">Radio adimensional \(x = r/R\) en la integración.</dd>
-<dt>\(U_T\)</dt><dd data-hojas="7">Velocidad del aire en el plano del disco que ve una sección de pala: \(\Omega r\) (más la componente de avance).</dd>
-<dt>\(U_P\)</dt><dd data-hojas="7">Velocidad del aire perpendicular al disco: subida más flujo inducido.</dd>
-<dt>\(dL\), \(dT\)</dt><dd data-hojas="7">Sustentación y empuje de un elemento de pala de longitud \(dr\).</dd>
+<dt>\(r\)</dt><dd data-hojas="7,9">Radio de una sección de pala medido desde el eje (m). En la parte 4, los residuos se escriben \(\hat\varepsilon_k\).</dd>
+<dt>\(R\) (rotor)</dt><dd data-hojas="7">Radio del rotor (0,127 m en el x500). En la parte del motor, \(R\) es la resistencia eléctrica (hoja 20).</dd>
+<dt>\(x\)</dt><dd data-hojas="7,10">Radio adimensional \(x = r/R\) en la integración.</dd>
+<dt>\(U_T\)</dt><dd data-hojas="7,9">Velocidad del aire en el plano del disco que ve una sección de pala: \(\Omega r\) (más la componente de avance).</dd>
+<dt>\(U_P\)</dt><dd data-hojas="7,9">Velocidad del aire perpendicular al disco que ve una sección: el flujo total \(\lambda\Omega R\), inducido más el de la maniobra.</dd>
+<dt>\(dL\), \(dT\)</dt><dd data-hojas="9,10">Sustentación y empuje de un elemento de pala de longitud \(dr\).</dd>
 <dt>\(\rho\)</dt><dd data-hojas="7">Densidad del aire.</dd>
-<dt>\(c\) (cuerda)</dt><dd data-hojas="7">Cuerda de la pala (2 cm en el ejemplo). En la hoja 8, \(c\) es el empuje relativo del ajuste de Faessler (\(c_{\text{cmd}}\)).</dd>
-<dt>\(a\) (pendiente)</dt><dd data-hojas="7">Pendiente de la curva de sustentación de la pala (5,7). En las hojas 19 y 24, \(a\) es una aceleración.</dd>
-<dt>\(\theta(r)\), \(\theta_0\), \(\theta_{tw}\)</dt><dd data-hojas="7">Ángulo de paso de la pala: lineal en el radio, con paso en la raíz \(\theta_0\) y torsión \(\theta_{tw}\) (−11,5°).</dd>
-<dt>\(N\)</dt><dd data-hojas="7">Número de palas del rotor.</dd>
-<dt>\(\sigma\) (solidez)</dt><dd data-hojas="7">Solidez del rotor \(\sigma = Nc/(\pi R)\) (0,100). En las partes 3 y 4, \(\sigma\) es una desviación típica.</dd>
-<dt>\(\mu\) (avance)</dt><dd data-hojas="7">Relación de avance \(\mu = V\cos\alpha/(\Omega R)\). No confundir con el coeficiente de rozamiento de B1.</dd>
-<dt>\(V\) (rotor)</dt><dd data-hojas="7">Velocidad del dron respecto al aire (m/s). En la parte 2, \(V\) es la tensión de bus (hoja 12) y en Dryden, la velocidad media del viento.</dd>
-<dt>\(\alpha\)</dt><dd data-hojas="7">Inclinación del disco del rotor respecto a la velocidad relativa del aire; \(\tan\alpha = dv/g\) en la hoja 8.</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="7">Flujo total que atraviesa el disco, en unidades de \(\Omega R\).</dd>
-<dt>\(\lambda_c\)</dt><dd data-hojas="7">Parte del flujo debida a la velocidad de subida: \(V\sin\alpha/(\Omega R)\).</dd>
-<dt>\(\lambda_i\)</dt><dd data-hojas="9">Flujo inducido por el propio rotor, en el término de potencia inducida.</dd>
-<dt>\(C_T\)</dt><dd data-hojas="7">Coeficiente de empuje adimensional del rotor.</dd>
-<dt>\(C_P\)</dt><dd data-hojas="9">Coeficiente de potencia: inducida más subida más perfil.</dd>
-<dt>\(C_{d0}\)</dt><dd data-hojas="7">Coeficiente de arrastre de perfil de la pala (0,02).</dd>
-<dt>\(\kappa\)</dt><dd data-hojas="9">Factor (\(\approx 1{,}15\)) que corrige el flujo no uniforme y las pérdidas de punta en la potencia inducida.</dd>
-<dt>\(FM\)</dt><dd data-hojas="9">Figura de mérito del rotor en estacionario \(= (C_T^{3/2}/\sqrt2)/C_P\) (0,63 en el ejemplo).</dd>
-<dt>\(\psi\)</dt><dd data-hojas="7">Acimut de la pala en su giro, del que depende \(U_T\) en avance.</dd>
-<dt>\(\mathbf V_\infty\), \(\mathbf v_i\)</dt><dd data-hojas="7">Velocidad de la corriente libre y velocidad inducida en la teoría de cantidad de movimiento: \(T = 2\rho A v_i|\mathbf V_\infty+\mathbf v_i|\).</dd>
+<dt>\(c\) (cuerda)</dt><dd data-hojas="7,9">Cuerda de la pala (2 cm en el ejemplo). En la hoja 15, \(c\) es el empuje específico del ajuste de Faessler; en la parte 4, el empuje específico vertical (hoja 49) y el coeficiente cuadrático del arrastre (hoja 56).</dd>
+<dt>\(a\) (pendiente)</dt><dd data-hojas="7,9">Pendiente de la curva de sustentación de la pala (5,7 por radián). En la hoja 39, \(a\) es el factor de la recursión de Dryden; en la parte 4, una aceleración (hoja 46).</dd>
+<dt>\(\theta\), \(\theta_0\), \(\theta_{tw}\)</dt><dd data-hojas="7,10">Ángulo de paso de la pala: lineal en el radio, con paso en la raíz \(\theta_0\) y torsión \(\theta_{tw}\) (−11,5°).</dd>
+<dt>\(N\)</dt><dd data-hojas="7,10">Número de palas del rotor.</dd>
+<dt>\(\sigma\) (solidez)</dt><dd data-hojas="7,10">Solidez del rotor \(\sigma = Nc/(\pi R)\) (0,100). En las partes 3 y 4, \(\sigma\) es una desviación típica.</dd>
+<dt>\(\mu\) (avance)</dt><dd data-hojas="7,13">Relación de avance \(\mu = V\cos\alpha/(\Omega R)\). No confundir con el coeficiente de rozamiento de B1.</dd>
+<dt>\(V\) (rotor)</dt><dd data-hojas="7,14">Velocidad del dron respecto al aire (m/s). En la parte 2, \(V\) es la tensión de bus (hoja 20) y en la parte 3, la velocidad con que el dron atraviesa la turbulencia.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="7,14">Inclinación del disco del rotor respecto a la velocidad relativa del aire; en vuelo recto, \(\tan\alpha = dv/g\) (hoja 14). En A1, \(\alpha\) era el ángulo de ataque.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="7,11">Flujo total que atraviesa el disco, en unidades de \(\Omega R\).</dd>
+<dt>\(\lambda_c\)</dt><dd data-hojas="7,11">Parte del flujo que trae la maniobra: \(V\sin\alpha/(\Omega R)\); en subida pura, \(V_c/(\Omega R)\).</dd>
+<dt>\(\lambda_i\)</dt><dd data-hojas="7,11">Flujo inducido por el propio rotor, \(v_i/(\Omega R)\).</dd>
+<dt>\(C_T\)</dt><dd data-hojas="7,10">Coeficiente de empuje adimensional del rotor.</dd>
+<dt>\(C_P\)</dt><dd data-hojas="16">Coeficiente de potencia: inducida más subida más perfil.</dd>
+<dt>\(C_{d0}\)</dt><dd data-hojas="16">Coeficiente de arrastre de perfil de la pala (0,02).</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="16">Factor (\(\approx 1{,}15\)) que corrige el flujo no uniforme y las pérdidas de punta en la potencia inducida.</dd>
+<dt>\(FM\)</dt><dd data-hojas="16">Figura de mérito del rotor en estacionario \(= (C_T^{3/2}/\sqrt2)/C_P\) (0,63 en el ejemplo).</dd>
+<dt>\(\psi\)</dt><dd data-hojas="7,13">Acimut de la pala en su giro, del que depende \(U_T\) en avance.</dd>
+<dt>\(\mathbf V_\infty\), \(\mathbf v_i\)</dt><dd data-hojas="11">Velocidad de la corriente libre y velocidad inducida en la teoría de cantidad de movimiento: \(T = 2\rho A v_i|\mathbf V_\infty+\mathbf v_i|\).</dd>
 <dt>\(A\)</dt><dd data-hojas="7">Área del disco del rotor.</dd>
-<dt>\(v_h\), \(c_{\text{cmd}}\), \(k_h\)</dt><dd data-hojas="8">Ajuste de Faessler: \(c = c_{\text{cmd}} + k_h v_h^2\), con \(v_h\) la velocidad horizontal y \(k_h\) (0,009 m⁻¹) el coeficiente de sustentación de traslación.</dd>
-<dt>\(d\) (arrastre de rotor)</dt><dd data-hojas="8">Coeficiente de arrastre por unidad de masa, 0,465 s⁻¹ en el ejemplo; \(\tan\alpha = dv/g\). En la parte 2, \(d\) es el mando del motor.</dd>
-<dt>\(g\)</dt><dd data-hojas="8">Aceleración de la gravedad.</dd>
-<dt>\(v\)</dt><dd data-hojas="8">Velocidad de vuelo respecto al aire (m/s).</dd>
-<dt>\(T_{\text{IGE}}/T_{\text{OGE}}\)</dt><dd data-hojas="10">Cociente de empuje dentro y fuera del efecto suelo: \(1/(1-(R/4z)^2)\) (Cheeseman y Bennett).</dd>
-<dt>\(z\)</dt><dd data-hojas="10">Altura del rotor sobre el suelo (m) en la fórmula del efecto suelo (\(z=2R\), \(z=R\)).</dd>
+<dt>\(v_h\), \(c_{\text{cmd}}\), \(k_h\)</dt><dd data-hojas="15">Ajuste de Faessler: \(c = c_{\text{cmd}} + k_h v_h^2\), con \(v_h\) la velocidad <strong>horizontal</strong> (no la inducida en estacionario de la hoja 11) y \(k_h\) (0,009 m⁻¹) el coeficiente de sustentación de traslación.</dd>
+<dt>\(d\) (arrastre de rotor)</dt><dd data-hojas="14,15">Coeficiente de arrastre de rotor por unidad de masa (s⁻¹): 0,465 en el ejemplo, la media de \(d_x\) y \(d_y\) de Faessler et al.; \(\tan\alpha = dv/g\). En la parte 2, \(d\) es el mando.</dd>
+<dt>\(g\)</dt><dd data-hojas="14">Aceleración de la gravedad.</dd>
+<dt>\(v\)</dt><dd data-hojas="14">Velocidad de vuelo respecto al aire (m/s).</dd>
+<dt>\(T_{\text{IGE}}/T_{\text{OGE}}\)</dt><dd data-hojas="18">Cociente de empuje dentro y fuera del efecto suelo: \(1/(1-(R/4z)^2)\) (Cheeseman y Bennett).</dd>
+<dt>\(z\)</dt><dd data-hojas="18">Altura del rotor sobre el suelo (m) en la fórmula del efecto suelo (\(z=2R\), \(z=R\)).</dd>
+<dt>\(\phi\)</dt><dd data-hojas="7,9">Ángulo con que llega el aire a una sección de pala, \(\phi \approx U_P/U_T\); el ángulo de ataque es \(\theta - \phi\).</dd>
+<dt>\(C_l\)</dt><dd data-hojas="7,9">Coeficiente de sustentación de la sección, \(C_l = a(\theta - \phi)\).</dd>
+<dt>\(v_h\), \(\lambda_h\)</dt><dd data-hojas="7,11">Velocidad inducida en estacionario (6,39 m/s) y su versión adimensional \(\lambda_h = \sqrt{C_T/2}\) (0,0653). En el ajuste de Faessler, \(v_h\) es otra cosa: la velocidad horizontal (hoja 15).</dd>
+<dt>\(V_c\)</dt><dd data-hojas="8,11">Velocidad de subida del rotor respecto al aire (2 m/s en el ejemplo).</dd>
+<dt>\(T_h\)</dt><dd data-hojas="12">Empuje de un rotor en estacionario, \(mg/4\) = 5,06 N; \(T/T_h\) es el empuje relativo a \(\Omega\) fija.</dd>
+<dt>\(\lambda_{\text{nuevo}}\)</dt><dd data-hojas="12">Flujo que da la cantidad de movimiento en cada vuelta de la iteración de punto fijo.</dd>
+<dt>\(P\)</dt><dd data-hojas="16">Potencia aerodinámica del rotor, \(C_P\rho A(\Omega R)^3\) (51,7 W); la ideal del disco actuador es \(Tv_h\) (32,3 W).</dd>
 </dl>
 <h3>Parte 2 · Motor, ESC y batería</h3>
 <dl>
-<dt>\(d\) (mando)</dt><dd data-hojas="12">Mando del ESC, \(d \in [0,1]\): fracción de la tensión de bus que recibe el motor.</dd>
-<dt>\(V\) (bus)</dt><dd data-hojas="12">Tensión de bus de la batería (V), p. ej. 16,8 V con la 4S cargada.</dd>
-<dt>\(R\) (motor)</dt><dd data-hojas="12">Resistencia del bobinado (0,12 Ω).</dd>
-<dt>\(L\)</dt><dd data-hojas="12">Inductancia del motor; su constante \(L/R\) es de décimas de milisegundo y se desprecia. En Dryden, \(L_u\), \(L_w\) son escalas de longitud (hoja 19).</dd>
-<dt>\(i\)</dt><dd data-hojas="12">Corriente del motor (A).</dd>
-<dt>\(k_e\), \(k_t\)</dt><dd data-hojas="12">Constantes de fuerza contraelectromotriz y de par del motor, iguales (\(k_e = k_t\); 0,0158 V s/rad).</dd>
-<dt>\(J_r\)</dt><dd data-hojas="12">Inercia del rotor y la hélice (2,5·10⁻⁵ kg m²).</dd>
-<dt>\(k_Q\)</dt><dd data-hojas="12">Coeficiente de par aerodinámico de la hélice: par \(k_Q\Omega^2\). Se relaciona con el empuje: \(k_Q = k_m k_T\).</dd>
-<dt>\(k_m\)</dt><dd data-hojas="12">Relación entre el par y el empuje de la hélice, que da \(k_Q = k_m k_T\).</dd>
-<dt>\(\tau\) (motor)</dt><dd data-hojas="12">Constante de tiempo del motor linealizado: \(\tau = J_r/(k_tk_e/R + 2k_Q\Omega_0)\) (11,0 ms). En Dryden, \(\tau = L_u/V\) es el tiempo de correlación (hoja 19).</dd>
-<dt>\(k_tk_e/R\)</dt><dd data-hojas="12">Amortiguamiento eléctrico (fuerza contraelectromotriz), de 2,07·10⁻³ N m s.</dd>
-<dt>\(2k_Q\Omega_0\)</dt><dd data-hojas="12">Amortiguamiento aerodinámico de la hélice, de 0,21·10⁻³ N m s.</dd>
-<dt>\(t\)</dt><dd data-hojas="13">Tiempo de bajada libre del rotor: \(t = \frac{J_r}{k_Q}(1/\Omega_2 - 1/\Omega_1)\) (98 ms).</dd>
-<dt>\(f\)</dt><dd data-hojas="14">Valor de THR_MDL_FAC: interpola entre curva de empuje lineal (0) y cuadrática (1).</dd>
-<dt>\(u\)</dt><dd data-hojas="14">Mando normalizado del motor en el modelo de curva de empuje de PX4.</dd>
-<dt>\(T/T_{\max}\)</dt><dd data-hojas="14">Empuje relativo al máximo: \((1-f)u + fu^2\).</dd>
-<dt>\(\Omega(d)\)</dt><dd data-hojas="14">Velocidad de estacionario del rotor en función del mando, solución de una cuadrática.</dd>
-<dt>\(V\) (batería)</dt><dd data-hojas="15">Tensión en bornes: \(V = \mathrm{OCV}(\mathrm{SoC}) - R_0 I - V_1\).</dd>
-<dt>\(\mathrm{OCV}\)</dt><dd data-hojas="15">Tensión en circuito abierto, función del estado de carga.</dd>
-<dt>\(\mathrm{SoC}\)</dt><dd data-hojas="15">Estado de carga de la batería; \(\dot{\mathrm{SoC}} = -I/Q\).</dd>
-<dt>\(R_0\)</dt><dd data-hojas="15">Resistencia interna en serie de la batería (5 mΩ por celda al empezar en PX4).</dd>
-<dt>\(I\)</dt><dd data-hojas="15">Corriente que da la batería (A).</dd>
-<dt>\(V_1\)</dt><dd data-hojas="15">Tensión de polarización de la rama RC, con \(\dot V_1 = -V_1/(R_1C_1) + I/C_1\).</dd>
-<dt>\(R_1\), \(C_1\)</dt><dd data-hojas="15">Resistencia y capacidad de la rama RC que modela la dinámica de polarización.</dd>
-<dt>\(Q\)</dt><dd data-hojas="15">Capacidad de la batería (carga total) en el balance de estado de carga.</dd>
+<dt>\(d\) (mando)</dt><dd data-hojas="20">Mando del ESC, \(d \in [0,1]\): fracción de la tensión de bus que recibe el motor.</dd>
+<dt>\(V\) (bus)</dt><dd data-hojas="20">Tensión de bus de la batería (V), p. ej. 16,8 V con la 4S cargada.</dd>
+<dt>\(R\) (motor)</dt><dd data-hojas="20,21">Resistencia del bobinado (0,12 Ω).</dd>
+<dt>\(L\)</dt><dd data-hojas="20,21">Inductancia del motor; su constante \(L/R\) es de décimas de milisegundo y se desprecia. En la parte 3, \(L_u\), \(L_w\) son escalas de longitud (hoja 37).</dd>
+<dt>\(i\)</dt><dd data-hojas="20,21">Corriente del motor (A).</dd>
+<dt>\(k_e\), \(k_t\)</dt><dd data-hojas="20,21">Constantes de fuerza contraelectromotriz y de par del motor, iguales (\(k_e = k_t\); 0,0158 V s/rad).</dd>
+<dt>\(J_r\)</dt><dd data-hojas="20,21">Inercia del rotor y la hélice (2,5·10⁻⁵ kg m²).</dd>
+<dt>\(k_Q\)</dt><dd data-hojas="20,21">Coeficiente de par aerodinámico de la hélice: par \(k_Q\Omega^2\). Se relaciona con el empuje: \(k_Q = k_m k_T\).</dd>
+<dt>\(k_m\)</dt><dd data-hojas="20">Relación entre el par y el empuje de la hélice, que da \(k_Q = k_m k_T\).</dd>
+<dt>\(\tau\) (motor)</dt><dd data-hojas="20,23">Constante de tiempo del motor linealizado: \(\tau = J_r/(k_tk_e/R + 2k_Q\Omega_0)\) (11,0 ms). En la parte 3, \(\tau\) es un desfase de tiempo (hoja 36).</dd>
+<dt>\(k_tk_e/R\)</dt><dd data-hojas="23">Amortiguamiento eléctrico (fuerza contraelectromotriz), de 2,07·10⁻³ N m s.</dd>
+<dt>\(2k_Q\Omega_0\)</dt><dd data-hojas="23">Amortiguamiento aerodinámico de la hélice, de 0,21·10⁻³ N m s.</dd>
+<dt>\(t\)</dt><dd data-hojas="25">Tiempo de bajada libre del rotor: \(t = \frac{J_r}{k_Q}(1/\Omega_2 - 1/\Omega_1)\) (98 ms de 810 a 565 rad/s; 53 ms al 63 %).</dd>
+<dt>\(f\)</dt><dd data-hojas="26,27">Valor de <code>THR_MDL_FAC</code>: interpola entre curva de empuje lineal (0) y cuadrática (1); nuestro motor ajusta 0,94. En la parte 3, \(f\) es la frecuencia.</dd>
+<dt>\(u\)</dt><dd data-hojas="27">Mando normalizado del motor en el modelo de curva de empuje de PX4. En la parte 3, \(u\) es la ráfaga longitudinal.</dd>
+<dt>\(T/T_{\max}\)</dt><dd data-hojas="26,27">Empuje relativo al máximo: \((1-f)u + fu^2\).</dd>
+<dt>\(\Omega(d)\)</dt><dd data-hojas="26">Velocidad de estacionario del rotor en función del mando, raíz positiva de \(k_QR\Omega^2 + k_tk_e\Omega - k_t dV = 0\).</dd>
+<dt>\(V\) (batería)</dt><dd data-hojas="28">Tensión en bornes: \(V = \mathrm{OCV}(\mathrm{SoC}) - R_0 I - V_1\).</dd>
+<dt>\(\mathrm{OCV}\)</dt><dd data-hojas="28">Tensión en circuito abierto, función del estado de carga.</dd>
+<dt>\(\mathrm{SoC}\)</dt><dd data-hojas="28">Estado de carga de la batería; \(\dot{\mathrm{SoC}} = -I/Q\).</dd>
+<dt>\(R_0\)</dt><dd data-hojas="28,30">Resistencia interna en serie de la batería (5 mΩ por celda al empezar en PX4).</dd>
+<dt>\(I\)</dt><dd data-hojas="28,30">Corriente que da la batería (A): \(I = 4\,d\,i\) con cuatro motores.</dd>
+<dt>\(V_1\)</dt><dd data-hojas="28">Tensión de polarización de la rama RC, con \(\dot V_1 = -V_1/(R_1C_1) + I/C_1\).</dd>
+<dt>\(R_1\), \(C_1\)</dt><dd data-hojas="28">Resistencia y capacidad de la rama RC que modela la dinámica de polarización.</dd>
+<dt>\(Q\)</dt><dd data-hojas="28">Capacidad de la batería (carga total) en el balance de estado de carga.</dd>
+<dt>\(\Omega_h\), \(\Omega_{\max}\)</dt><dd data-hojas="22,30">Velocidad del rotor en estacionario (769,6 rad/s) y máxima con mando 1, que depende de la tensión (1000 rad/s con 16,8 V; 982 y 843 rad/s con la batería llena y vacía en carga).</dd>
+<dt>\(K\) (motor)</dt><dd data-hojas="23">Ganancia estática del motor linealizado, \(\tau\,\delta\dot\Omega = K\delta d - \delta\Omega\). En la hoja 38, \(K\) es la ganancia del filtro de Dryden.</dd>
 </dl>
 <h3>Parte 3 · Viento y turbulencia</h3>
 <dl>
-<dt>\(\mathbf F\)</dt><dd data-hojas="18">Fuerza del viento sobre cada cuerpo en Gazebo: \(\mathbf F = m\,k\,(\mathbf v_{\text{viento}} - \mathbf v)\).</dd>
-<dt>\(m\)</dt><dd data-hojas="18">Masa del cuerpo (kg).</dd>
-<dt>\(k\)</dt><dd data-hojas="18">Factor de escala configurable del viento en Gazebo.</dd>
-<dt>\(\mathbf v_{\text{viento}}\), \(\mathbf v\)</dt><dd data-hojas="18">Velocidad del viento y velocidad del cuerpo; su diferencia es la velocidad relativa al aire.</dd>
-<dt>\(V\) (Dryden)</dt><dd data-hojas="18">Velocidad con que el vehículo atraviesa la turbulencia congelada (hipótesis de Taylor); en estacionario, el viento medio.</dd>
-<dt>\(h\) (altura)</dt><dd data-hojas="19">Altura sobre el suelo, en pies, en las fórmulas de MIL-F-8785C (\(h \lt 1000\) ft). En la parte 1 de B1, \(h\) era el paso.</dd>
-<dt>\(W_{20}\)</dt><dd data-hojas="19">Viento a 20 ft (15 kt ligera, 30 moderada, 45 severa).</dd>
-<dt>\(L_u\), \(L_v\), \(L_w\)</dt><dd data-hojas="19">Escalas de longitud de la turbulencia longitudinal, lateral y vertical: \(L_w = h\), \(L_u = L_v = h/(0{,}177 + 0{,}000823h)^{1{,}2}\).</dd>
-<dt>\(\sigma_u\), \(\sigma_v\), \(\sigma_w\)</dt><dd data-hojas="19">Intensidades (desviación típica, m/s) de la turbulencia: \(\sigma_w = 0{,}1W_{20}\).</dd>
-<dt>\(H_u(s)\), \(H_w(s)\)</dt><dd data-hojas="19">Funciones de transferencia que convierten ruido blanco en turbulencia longitudinal (orden 1) y vertical (orden 2).</dd>
-<dt>\(s\)</dt><dd data-hojas="19">Variable de Laplace de los filtros de Dryden.</dd>
-<dt>\(\Delta t\)</dt><dd data-hojas="19">Paso de la discretización exacta del proceso de Dryden.</dd>
-<dt>\(a\) (discretización)</dt><dd data-hojas="19">Factor \(a = e^{-\Delta t/\tau}\) de la recursión exacta.</dd>
-<dt>\(w_k\)</dt><dd data-hojas="19">Ruido gaussiano estándar del paso \(k\) en la recursión de Dryden.</dd>
-<dt>\(u_k\)</dt><dd data-hojas="19">Ráfaga longitudinal en el paso \(k\): \(u_k = a u_{k-1} + \sigma_u\sqrt{1-a^2}\,w_k\).</dd>
-<dt>\(D\)</dt><dd data-hojas="21">Coeficiente de arrastre lineal (N s/m) con que la ráfaga empuja al dron: \(D(\mathbf v_{\text{viento}}-\mathbf v)\).</dd>
-<dt>\(\Phi(\mathbf x)\)</dt><dd data-hojas="22">Base de funciones aprendida fuera de línea en Neural-Fly, independiente del viento. En identificación, \(\Phi\) es la matriz de regresores (hoja 24).</dd>
-<dt>\(\mathbf a\) (viento)</dt><dd data-hojas="22">Coeficientes que se adaptan en vuelo: resumen del viento actual; \(\mathbf f \approx \Phi(\mathbf x)\mathbf a\).</dd>
-<dt>\(\mathbf f\)</dt><dd data-hojas="22">Fuerza aerodinámica no modelada que se quiere predecir.</dd>
+<dt>\(\mathbf F\)</dt><dd data-hojas="34">Fuerza del viento sobre cada cuerpo en Gazebo: \(\mathbf F = m\,k\,(\mathbf v_{\text{viento}} - \mathbf v)\).</dd>
+<dt>\(m\)</dt><dd data-hojas="34,41">Masa del cuerpo (kg).</dd>
+<dt>\(k\)</dt><dd data-hojas="34">Factor de escala configurable del viento en Gazebo.</dd>
+<dt>\(\mathbf v_{\text{viento}}\), \(\mathbf v\)</dt><dd data-hojas="34">Velocidad del viento y velocidad del cuerpo; su diferencia es la velocidad relativa al aire.</dd>
+<dt>\(V\) (Dryden)</dt><dd data-hojas="35,37">Velocidad con que el vehículo atraviesa la turbulencia congelada (hipótesis de Taylor); en estacionario, el viento medio.</dd>
+<dt>\(h\) (altura)</dt><dd data-hojas="37">Altura sobre el suelo, en pies, en las fórmulas de MIL-F-8785C (\(h \lt 1000\) ft). En la parte 1 de B1, \(h\) era el paso.</dd>
+<dt>\(W_{20}\)</dt><dd data-hojas="37">Viento a 20 ft (15 kt ligera, 30 moderada, 45 severa).</dd>
+<dt>\(L_u\), \(L_v\), \(L_w\)</dt><dd data-hojas="37,35">Escalas de longitud de la turbulencia longitudinal, lateral y vertical: \(L_w = h\), \(L_u = L_v = h/(0{,}177 + 0{,}000823h)^{1{,}2}\).</dd>
+<dt>\(\sigma_u\), \(\sigma_v\), \(\sigma_w\)</dt><dd data-hojas="37,35">Intensidades (desviación típica, m/s) de la turbulencia: \(\sigma_w = 0{,}1W_{20}\).</dd>
+<dt>\(H_u(s)\), \(H_w(s)\)</dt><dd data-hojas="38">Funciones de transferencia que convierten ruido blanco en turbulencia longitudinal (orden 1) y vertical (orden 2).</dd>
+<dt>\(s\)</dt><dd data-hojas="38">Variable de Laplace de los filtros de Dryden.</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="39">Paso de la discretización exacta del proceso de Dryden.</dd>
+<dt>\(a\) (discretización)</dt><dd data-hojas="39">Factor de memoria \(a = e^{-\Delta t/T_u}\) de la recursión exacta.</dd>
+<dt>\(\xi\), \(\xi_k\)</dt><dd data-hojas="38,39">Ruido blanco: el continuo que entra en el filtro conformador y su muestra gaussiana estándar del paso \(k\) en la recursión.</dd>
+<dt>\(u_k\)</dt><dd data-hojas="39">Ráfaga longitudinal en el paso \(k\): \(u_k = a\,u_{k-1} + q\,\xi_k\).</dd>
+<dt>\(D\)</dt><dd data-hojas="41">Coeficiente de arrastre lineal (N s/m) con que la ráfaga empuja al dron: \(D(\mathbf v_{\text{viento}}-\mathbf v)\).</dd>
+<dt>\(\Phi(\mathbf x)\)</dt><dd data-hojas="42">Base de funciones aprendida fuera de línea en Neural-Fly, independiente del viento. En identificación, \(\Phi\) es la matriz de regresores (hoja 44).</dd>
+<dt>\(\mathbf a\) (viento)</dt><dd data-hojas="42">Coeficientes que se adaptan en vuelo: resumen del viento actual; \(\mathbf f \approx \Phi(\mathbf x)\mathbf a\).</dd>
+<dt>\(\mathbf f\)</dt><dd data-hojas="42">Fuerza aerodinámica no modelada que se quiere predecir.</dd>
+<dt>\(u\), \(v\), \(w\)</dt><dd data-hojas="35">Componentes de la ráfaga respecto al viento medio: longitudinal, lateral y vertical (m/s).</dd>
+<dt>\(T_u\), \(T_w\)</dt><dd data-hojas="35,37">Escalas de tiempo de las ráfagas, \(L/V\): 13,5 s y 2,0 s a 10 m con 5 m/s de viento medio.</dd>
+<dt>\(\tau\), \(R(\tau)\)</dt><dd data-hojas="35,36">Desfase de tiempo y autocorrelación de la ráfaga, \(R(\tau) = \sigma_u^2e^{-|\tau|/T_u}\).</dd>
+<dt>\(f\), \(\omega\)</dt><dd data-hojas="35,36">Frecuencia (Hz) y frecuencia angular \(\omega = 2\pi f\) (rad/s).</dd>
+<dt>\(G(f)\)</dt><dd data-hojas="36,38">Densidad espectral unilateral: varianza por hercio, de área total \(\sigma^2\); \(G(0)\) = 115 (m/s)²/Hz para la ráfaga longitudinal del ejemplo.</dd>
+<dt>\(f_c\)</dt><dd data-hojas="36">Frecuencia de corte del espectro, \(1/(2\pi T_u)\) = 0,012 Hz.</dd>
+<dt>\(K\) (filtro)</dt><dd data-hojas="38">Ganancia del filtro conformador longitudinal, \(\sigma_u\sqrt{2L_u/(\pi V)}\).</dd>
+<dt>\(q\)</dt><dd data-hojas="39">Desviación típica del ruido por paso en la recursión exacta, \(\sigma_u\sqrt{1-a^2}\).</dd>
+<dt>\(K_p\), \(K_d\)</dt><dd data-hojas="41">Ganancias del PD de posición de B1 (4 y 3,5).</dd>
+<dt>\(p\)</dt><dd data-hojas="41">Posición horizontal del dron respecto a su consigna en estacionario.</dd>
 </dl>
 <h3>Parte 4 · Identificación y modelos híbridos</h3>
 <dl>
-<dt>\(m\), \(J\)</dt><dd data-hojas="24">Masa (con centro de masas) y matriz de inercia del dron, que se miden con báscula y péndulos.</dd>
-<dt>\(k_T/m\)</dt><dd data-hojas="24">Empuje por unidad de masa, identificable en vuelo con \(a_z\) frente a \(\sum\Omega_i^2\).</dd>
-<dt>\(d_x\), \(d_y\)</dt><dd data-hojas="24">Coeficientes de arrastre de rotor en los ejes del cuerpo.</dd>
-<dt>\(a^B_{xy}\), \(v^B_{xy}\)</dt><dd data-hojas="24">Aceleración y velocidad horizontales en ejes del cuerpo: \(a^B_{xy} = -d\,v^B_{xy}\).</dd>
-<dt>\(a_z\)</dt><dd data-hojas="24">Aceleración vertical medida.</dd>
-<dt>\(\mathbf y\)</dt><dd data-hojas="24">Vector de medidas del problema de mínimos cuadrados, \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\).</dd>
-<dt>\(\Phi\) (regresores)</dt><dd data-hojas="24">Matriz de regresores del modelo lineal en los parámetros.</dd>
-<dt>\(\boldsymbol\theta\)</dt><dd data-hojas="24">Vector de parámetros a identificar. En la hoja 7, \(\theta\) es el ángulo de paso de la pala.</dd>
-<dt>\(\boldsymbol\varepsilon\)</dt><dd data-hojas="24">Ruido de medida, \(\boldsymbol\varepsilon \sim \mathcal N(0,\sigma^2I)\).</dd>
-<dt>\(\sigma^2\)</dt><dd data-hojas="24">Varianza del ruido de medida.</dd>
-<dt>\((\Phi^\top\Phi)^{-1}\)</dt><dd data-hojas="24">Matriz cuya inversa da la covarianza del estimador: \(\mathrm{Cov}(\hat{\boldsymbol\theta}) = \sigma^2(\Phi^\top\Phi)^{-1}\).</dd>
-<dt>\(N\) (muestras)</dt><dd data-hojas="24">Número de muestras en la identificación. En la hoja 7, \(N\) es el número de palas.</dd>
-<dt>\(v_{\max}\)</dt><dd data-hojas="24">Velocidad máxima presente en los datos de identificación; la varianza de \(\hat d\) decrece con \(v_{\max}^2\) y la de \(\hat k_h\) con \(v_{\max}^4\).</dd>
-<dt>\(\sigma_v\)</dt><dd data-hojas="24">Ruido de la velocidad usada como regresor (errores en las variables), que sesga el estimador hacia cero.</dd>
-<dt>\(f_{\text{física}}\), \(f_{\text{red}}\)</dt><dd data-hojas="27">Parte física y parte de red (residuo) de un modelo híbrido: \(\dot{\mathbf x} = f_{\text{física}} + f_{\text{red}}\).</dd>
-<dt>\(\mathbf u\)</dt><dd data-hojas="27">Entrada de mando del modelo.</dd>
-<dt>\(\mathbf h\)</dt><dd data-hojas="27">Historia de estados y mandos que usa el residuo para efectos con memoria.</dd>
-<dt>\(\mathbf w\)</dt><dd data-hojas="27">Pesos de la red del residuo.</dd>
-<dt>\(a = -0{,}45\,v - 0{,}004\,v|v|\)</dt><dd data-hojas="29">Verdad sintética de la deceleración con la que se compara caja gris y polinomio.</dd>
-<dt>\(c\) (hoja 29)</dt><dd data-hojas="29">Coeficiente del término cuadrático \(-c\,v|v|\) del modelo de caja gris.</dd>
+<dt>\(m\), \(J\)</dt><dd data-hojas="46">Masa (con centro de masas) y matriz de inercia del dron, que se miden con báscula y péndulos.</dd>
+<dt>\(k_T/m\)</dt><dd data-hojas="46">Empuje por unidad de masa, identificable en vuelo con \(a_z\) frente a \(\sum\Omega_i^2\).</dd>
+<dt>\(d_x\), \(d_y\)</dt><dd data-hojas="46">Coeficientes de arrastre de rotor en los ejes del cuerpo.</dd>
+<dt>\(a_{xy}^B\), \(v_{xy}^B\)</dt><dd data-hojas="46">Aceleración y velocidad horizontales en ejes del cuerpo: \(a^B_{xy} = -d\,v^B_{xy}\).</dd>
+<dt>\(a_z\)</dt><dd data-hojas="46">Aceleración vertical medida.</dd>
+<dt>\(\mathbf y\)</dt><dd data-hojas="44,47">Vector de medidas del problema de mínimos cuadrados, \(\mathbf y = \Phi\boldsymbol\theta + \boldsymbol\varepsilon\).</dd>
+<dt>\(\Phi\) (regresores)</dt><dd data-hojas="44,47">Matriz de regresores del modelo lineal en los parámetros: una fila \(\boldsymbol\varphi_k^\top\) por muestra, una columna por parámetro.</dd>
+<dt>\(\boldsymbol\theta\)</dt><dd data-hojas="44,47">Vector de parámetros a identificar. En la hoja 7, \(\theta\) es el ángulo de paso de la pala.</dd>
+<dt>\(\boldsymbol\varepsilon\)</dt><dd data-hojas="44,48">Ruido de medida, \(\boldsymbol\varepsilon \sim \mathcal N(0,\sigma^2I)\).</dd>
+<dt>\(\sigma^2\)</dt><dd data-hojas="48">Varianza del ruido de medida.</dd>
+<dt>\((\Phi^\top\Phi)^{-1}\)</dt><dd data-hojas="48,49">Matriz cuya inversa da la covarianza del estimador: \(\mathrm{Cov}(\hat{\boldsymbol\theta}) = \sigma^2(\Phi^\top\Phi)^{-1}\).</dd>
+<dt>\(N\) (muestras)</dt><dd data-hojas="44">Número de muestras en la identificación. En la parte 1, \(N\) es el número de palas.</dd>
+<dt>\(v_{\max}\)</dt><dd data-hojas="44,50">Velocidad máxima presente en los datos de identificación; la varianza de \(\hat d\) decrece con \(v_{\max}^2\) y la de \(\hat k_h\) con \(v_{\max}^4\).</dd>
+<dt>\(\sigma_v\)</dt><dd data-hojas="44,50">Ruido de la velocidad usada como regresor (errores en las variables), que sesga el estimador hacia cero.</dd>
+<dt>\(f_{\text{física}}\), \(f_{\text{red}}\)</dt><dd data-hojas="53,54">Parte física y parte de red (residuo) de un modelo híbrido: \(\dot{\mathbf x} = f_{\text{física}} + f_{\text{red}}\).</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="54">Entrada de mando del modelo.</dd>
+<dt>\(\mathbf h\)</dt><dd data-hojas="53,54">Historia de estados y mandos que usa el residuo para efectos con memoria.</dd>
+<dt>\(\mathbf w\)</dt><dd data-hojas="53,54">Pesos de la red del residuo.</dd>
+<dt>\(a = -0{,}45\,v - 0{,}004\,v|v|\)</dt><dd data-hojas="56">Verdad sintética de la deceleración con la que se compara caja gris y polinomio.</dd>
+<dt>\(c\) (arrastre cuadrático)</dt><dd data-hojas="56">Coeficiente del término cuadrático \(-c\,v|v|\) del modelo de caja gris.</dd>
+<dt>\(\boldsymbol\varphi_k\)</dt><dd data-hojas="44,47">Fila \(k\) de \(\Phi\): los regresores de la muestra \(k\).</dd>
+<dt>\(n_\theta\)</dt><dd data-hojas="44,48">Número de parámetros que se identifican.</dd>
+<dt>\(S(\boldsymbol\theta)\)</dt><dd data-hojas="47">Suma de los residuos al cuadrado, \(\|\mathbf y - \Phi\boldsymbol\theta\|^2\).</dd>
+<dt>\(\hat\sigma^2\), \(\hat\varepsilon_k\)</dt><dd data-hojas="48">Estimación de la varianza del ruido, \(\sum_k\hat\varepsilon_k^2/(N - n_\theta)\), con los residuos \(\hat\varepsilon_k = y_k - \boldsymbol\varphi_k^\top\hat{\boldsymbol\theta}\).</dd>
+<dt>\(b\), \(c\)</dt><dd data-hojas="44,49">Ajuste \(c = b + k_hv^2\): \(c\) es el empuje específico vertical y \(b\) lo que no depende de \(v\) (\(\approx g\)).</dd>
+<dt>\(\mathrm{Var}(v^2)\)</dt><dd data-hojas="49,50">Varianza de los \(v_k^2\) de los datos: lo que identifica \(k_h\); \(4v_{\max}^4/45\) con \(v\) uniforme.</dd>
+<dt>\(\Delta\dot{\mathbf x}_k\)</dt><dd data-hojas="53">Residuo de la física en la muestra \(k\), \(\dot{\mathbf x}_k - f_{\text{física}}\), al que se ajusta la red.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>BEM</dt><dd data-hojas="4">Blade element method: teoría del elemento de pala.</dd>
-<dt>BEMT</dt><dd data-hojas="4">Blade element momentum theory: elemento de pala combinado con cantidad de movimiento.</dd>
-<dt>ODE</dt><dd data-hojas="4">Ordinary differential equation: ecuación diferencial ordinaria; el neural ODE con conocimiento físico es una de las variantes de modelo aprendido.</dd>
-<dt>IGE, OGE</dt><dd data-hojas="10">In ground effect y out of ground effect: con y sin efecto suelo.</dd>
+<dt>BEM</dt><dd data-hojas="4,8">Blade element method: teoría del elemento de pala.</dd>
+<dt>BEMT</dt><dd data-hojas="4,8">Blade element momentum theory: elemento de pala combinado con cantidad de movimiento.</dd>
+<dt>ODE</dt><dd data-hojas="4,38">Ordinary differential equation: ecuación diferencial ordinaria; el neural ODE con conocimiento físico es una de las variantes de modelo aprendido.</dd>
+<dt>IGE, OGE</dt><dd data-hojas="18">In ground effect y out of ground effect: con y sin efecto suelo.</dd>
 <dt>CFD</dt><dd data-hojas="6">Computational fluid dynamics: simulación numérica del flujo.</dd>
 <dt>ESC</dt><dd data-hojas="1">Electronic speed controller: variador que alimenta el motor sin escobillas.</dd>
-<dt>KV</dt><dd data-hojas="12">Constante de velocidad del motor (rpm/V); alto KV significa menor \(k_e\).</dd>
-<dt>OCV, SoC</dt><dd data-hojas="15">Open-circuit voltage y state of charge de la batería.</dd>
-<dt>4S</dt><dd data-hojas="12">Batería de 4 celdas en serie.</dd>
-<dt>PWM</dt><dd data-hojas="14">Pulse-width modulation: señal de mando al ESC.</dd>
-<dt>THR_MDL_FAC</dt><dd data-hojas="14">Parámetro de PX4 que fija la curva mando-empuje (0 lineal, 1 cuadrática).</dd>
-<dt>MC_BAT_SCALE_EN</dt><dd data-hojas="15">Parámetro de PX4 que activa la compensación de batería en el control de rate (desactivado por defecto).</dd>
-<dt>BAT_V_EMPTY, BAT_V_CHARGED</dt><dd data-hojas="15">Parámetros de PX4 con la tensión por celda de batería vacía (3,6 V) y cargada (4,2 V).</dd>
-<dt>RC</dt><dd data-hojas="15">Resistencia-condensador: ramas del modelo de circuito equivalente de la batería que dan la dinámica de polarización.</dd>
-<dt>SIH_WIND_N, SIH_WIND_E</dt><dd data-hojas="18">Parámetros del viento constante de SIH, en norte y este.</dd>
-<dt>PX4, SIH</dt><dd data-hojas="18">Autopiloto y su simulador interno (ver B1).</dd>
-<dt>MIL-F-8785C, MIL-HDBK-1797</dt><dd data-hojas="18">Normas militares de cualidades de vuelo que definen los espectros de Dryden y von Kármán.</dd>
-<dt>Dryden, von Kármán</dt><dd data-hojas="18">Los dos modelos de espectro de turbulencia normalizados; Dryden es racional.</dd>
-<dt>WindEffects</dt><dd data-hojas="18">Sistema de viento de Gazebo.</dd>
-<dt>kt</dt><dd data-hojas="19">Nudos (unidad de velocidad), en \(W_{20}\).</dd>
-<dt>Neural-Fly</dt><dd data-hojas="22">Método de adaptación al viento con base aprendida y coeficientes adaptados en línea.</dd>
-<dt>DAIML</dt><dd data-hojas="22">Domain adversarially invariant meta-learning: método con que Neural-Fly aprende una base independiente del viento.</dd>
-<dt>L1, INDI</dt><dd data-hojas="22">Controladores de referencia (L1 adaptativo e incremental nonlinear dynamic inversion) con los que se compara Neural-Fly.</dd>
+<dt>KV</dt><dd data-hojas="20,21">Constante de velocidad del motor (rpm/V); alto KV significa menor \(k_e\).</dd>
+<dt>OCV, SoC</dt><dd data-hojas="28">Open-circuit voltage y state of charge de la batería.</dd>
+<dt>4S</dt><dd data-hojas="22">Batería de 4 celdas en serie.</dd>
+<dt>PWM</dt><dd data-hojas="27">Pulse-width modulation: señal de mando al ESC.</dd>
+<dt>THR_MDL_FAC</dt><dd data-hojas="27">Parámetro de PX4 que fija la curva mando-empuje (0 lineal, 1 cuadrática).</dd>
+<dt>MC_BAT_SCALE_EN</dt><dd data-hojas="32">Parámetro de PX4 que activa la compensación de batería en el control de rate (desactivado por defecto).</dd>
+<dt>BAT_V_EMPTY, BAT_V_CHARGED</dt><dd data-hojas="29,32">Parámetros de PX4 con la tensión por celda de batería vacía (3,6 V) y cargada (4,2 V).</dd>
+<dt>RC</dt><dd data-hojas="28">Resistencia-condensador: ramas del modelo de circuito equivalente de la batería que dan la dinámica de polarización.</dd>
+<dt>SIH_WIND_N, SIH_WIND_E</dt><dd data-hojas="34">Parámetros del viento constante de SIH, en norte y este.</dd>
+<dt>PX4, SIH</dt><dd data-hojas="34">Autopiloto y su simulador interno (ver B1).</dd>
+<dt>MIL-F-8785C, MIL-HDBK-1797</dt><dd data-hojas="34,37">Normas militares de cualidades de vuelo que definen los espectros de Dryden y von Kármán.</dd>
+<dt>Dryden, von Kármán</dt><dd data-hojas="34">Los dos modelos de espectro de turbulencia normalizados; Dryden es racional.</dd>
+<dt>WindEffects</dt><dd data-hojas="34">Sistema de viento de Gazebo.</dd>
+<dt>kt</dt><dd data-hojas="37">Nudos (unidad de velocidad), en \(W_{20}\).</dd>
+<dt>Neural-Fly</dt><dd data-hojas="42">Método de adaptación al viento con base aprendida y coeficientes adaptados en línea.</dd>
+<dt>DAIML</dt><dd data-hojas="42">Domain adversarially invariant meta-learning: método con que Neural-Fly aprende una base independiente del viento.</dd>
+<dt>L1, INDI</dt><dd data-hojas="42">Controladores de referencia (L1 adaptativo e incremental nonlinear dynamic inversion) con los que se compara Neural-Fly.</dd>
 <dt>MPC</dt><dd data-hojas="4">Model predictive control: control predictivo basado en modelo.</dd>
-<dt>CAD</dt><dd data-hojas="24">Computer-aided design: diseño asistido por ordenador, una de las fuentes para obtener la inercia \(J\).</dd>
-<dt>CPU</dt><dd data-hojas="27">Central processing unit: la BEM cuesta unos 100 µs en CPU.</dd>
-<dt>GPU</dt><dd data-hojas="27">Graphics processing unit: la red de NeuroBEM cuesta unos 100 µs en GPU; los simuladores masivos corren en ella.</dd>
-<dt>GP</dt><dd data-hojas="28">Gaussian process: proceso gaussiano.</dd>
+<dt>CAD</dt><dd data-hojas="46,53">Computer-aided design: diseño asistido por ordenador, una de las fuentes para obtener la inercia \(J\).</dd>
+<dt>CPU</dt><dd data-hojas="54">Central processing unit: la BEM cuesta unos 100 µs en CPU.</dd>
+<dt>GPU</dt><dd data-hojas="54">Graphics processing unit: la red de NeuroBEM cuesta unos 100 µs en GPU; los simuladores masivos corren en ella.</dd>
+<dt>GP</dt><dd data-hojas="55">Gaussian process: proceso gaussiano.</dd>
 <dt>NeuroBEM</dt><dd data-hojas="4">Modelo híbrido de BEM por rotor más red que aprende el residuo, y su dataset de vuelos.</dd>
-<dt>KNODE</dt><dd data-hojas="27">Knowledge-based neural ODE: neural ODE con conocimiento físico.</dd>
-<dt>Neural Lander</dt><dd data-hojas="10">Red que aprende el efecto suelo y lo compensa en el aterrizaje.</dd>
-<dt>RotorS</dt><dd data-hojas="28">Simulador de multirrotores sobre Gazebo, que solo simula el arrastre de rotor.</dd>
-<dt>Blackbird, AI-IO</dt><dd data-hojas="26">Datasets públicos de vuelo real (Blackbird con tacómetros; AI-IO con IMU y velocidad de rotores).</dd>
-<dt>CTBR</dt><dd data-hojas="14">Collective thrust and body rates: mando de empuje y velocidades angulares.</dd>
-<dt>RMSE, RMS</dt><dd data-hojas="27">Raíz del error cuadrático medio y valor eficaz del error.</dd>
-<dt>PD</dt><dd data-hojas="21">Proporcional-derivativo: controlador de posición de B1.</dd>
-<dt>IMU</dt><dd data-hojas="26">Inertial measurement unit: giróscopo y acelerómetro.</dd>
-<dt>POMDP</dt><dd data-hojas="26">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
+<dt>KNODE</dt><dd data-hojas="54">Knowledge-based neural ODE: neural ODE con conocimiento físico.</dd>
+<dt>Neural Lander</dt><dd data-hojas="18">Red que aprende el efecto suelo y lo compensa en el aterrizaje.</dd>
+<dt>RotorS</dt><dd data-hojas="55">Simulador de multirrotores sobre Gazebo, que solo simula el arrastre de rotor.</dd>
+<dt>Blackbird, AI-IO</dt><dd data-hojas="52">Datasets públicos de vuelo real (Blackbird con tacómetros; AI-IO con IMU y velocidad de rotores).</dd>
+<dt>CTBR</dt><dd data-hojas="27">Collective thrust and body rates: mando de empuje y velocidades angulares.</dd>
+<dt>RMSE, RMS</dt><dd data-hojas="54">Raíz del error cuadrático medio y valor eficaz del error.</dd>
+<dt>PD</dt><dd data-hojas="41">Proporcional-derivativo: controlador de posición de B1.</dd>
+<dt>IMU</dt><dd data-hojas="52">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>POMDP</dt><dd data-hojas="52">Partially observable Markov decision process: problema de decisión con estado parcialmente observable.</dd>
 <dt>H2</dt><dd data-hojas="1">Hito 2 del curso, en que tu simulador gana las capas de realismo de este tema.</dd>
-<dt>Sym2Real</dt><dd data-hojas="31">Método de dinámica simbólica con residuo aprendido (preprint).</dd>
-<dt>Agilicious</dt><dd data-hojas="12">Clase de dron de carreras cuyo motor se usó en A2 con 39 ms.</dd>
-<dt>JAX</dt><dd data-hojas="38">Biblioteca de cálculo numérico con diferenciación automática; el simulador del laboratorio con capas de realismo está en JAX.</dd>
+<dt>Sym2Real</dt><dd data-hojas="58">Método de dinámica simbólica con residuo aprendido (preprint).</dd>
+<dt>Agilicious</dt><dd data-hojas="23">Clase de dron de carreras cuyo motor se usó en A2 con 39 ms.</dd>
+<dt>JAX</dt><dd data-hojas="65">Biblioteca de cálculo numérico con diferenciación automática; el simulador del laboratorio con capas de realismo está en JAX.</dd>
+<dt>fcem</dt><dd data-hojas="21">Fuerza contraelectromotriz: la tensión \(k_e\Omega\) que genera el motor al girar.</dd>
+<dt>SI</dt><dd data-hojas="21">Sistema Internacional de unidades.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>
