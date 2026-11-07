@@ -1,0 +1,146 @@
+==============================================================================
+EJEMPLO 1. Qué se predice: una observación con una parte predecible y otra impredecible
+  generativo (predice o entera; para n, lo mejor es la media 0): pérdida media 0.7478  (teórica 3 x 0,5² = 0.7500); la predicción de n es 'borrosa': 0 en vez de la hoja
+  predictivo con E(o) = u: pérdida 0.0000; correlación de la representación con u: 1.000
+  predictivo colapsado, E(o) = c = 0,7: pérdida 0 y correlación con u: indefinida (varianza 0)
+==============================================================================
+EJEMPLO 2. Colapso en un modelo escalar: representación w·x, predictor q, dos vistas x1, x2 del mismo s
+  x1 = s + n1, x2 = s + n2, Var(s) = 1.0, Var(n) = 0.25: A = E[x1²] = 1.25, B = E[x1·x2] = 1.0
+  pérdida L = E[(q·w·x1 − w'·x2)²] = q²w²A − 2·q·w·w'·B + w'²A, con w' el peso del objetivo
+  sin gradiente detenido (w' = w, se deriva por los dos lados): L = w²(q²A − 2qB + A)
+    con q óptimo q* = B/A = 0.80: L = w²(A − B²/A) = w² · 0.45  -> mínimo en w = 0: colapso
+    primer paso a mano con w = 1, q = 0,8, eta = 0,1: dL/dw = 2w(q²A − 2qB + A) = 0.900; w pasa a 0.910
+  con gradiente detenido (w' = sg(w)): dL/dw = 2q(q·w·A − w'·B); con q = q* y w' = w vale 0: w no se mueve
+  sin sg   : paso 0: w = 1.000, q = 0.200; paso 10: w = 0.499, q = 0.506; paso 100: w = 0.004, q = 0.583; paso 500: w = 0.000, q = 0.583; paso 1000: w = 0.000, q = 0.583; paso 3000: w = 0.000, q = 0.583
+  sg       : paso 0: w = 1.000, q = 0.200; paso 10: w = 1.182, q = 0.678; paso 100: w = 1.256, q = 0.800; paso 500: w = 1.256, q = 0.800; paso 1000: w = 1.256, q = 0.800; paso 3000: w = 1.256, q = 0.800
+  sg + EMA : paso 0: w = 1.000, q = 0.200; paso 10: w = 1.152, q = 0.620; paso 100: w = 1.218, q = 0.737; paso 500: w = 1.255, q = 0.796; paso 1000: w = 1.257, q = 0.800; paso 3000: w = 1.257, q = 0.800
+  Lectura: sin gradiente detenido, w -> 0 (la representación se apaga). Con él, w se queda en un valor finito
+  y q -> B/A: el predictor aprende a predecir y la representación sobrevive. La EMA solo hace el objetivo más lento.
+path w sin sg: M60.0,87.1 L64.6,110.3 L69.2,126.6 L73.8,139.3 L78.4,149.8 L83.0,158.7 L87.6,166.4 L92.2,173.1 L96.8,179.0 L101.4,184.3 L106.0,189.0 L110.6,193.1 L115.2,196.9 L119.8,200.2 L124.4,203.2 L129.0,205.9 L133.6,208.3 L138.2,210.5 L142.8,212.4 L147.4,214.2 L152.0,215.7 L156.6,217.2 L161.2,218.4 L165.8,219.6 L170.4,220.6 L175.0,221.5 L179.6,222.4 L184.2,223.1 L188.8,223.8 L193.4,224.4 L198.0,225.0 L202.6,225.5 L207.2,225.9 L211.8,226.3 L216.4,226.7 L221.0,227.0 L225.6,227.3 L230.2,227.6 L234.8,227.8 L239.4,228.0 L244.0,228.2 L248.6,228.4 L253.2,228.6 L257.8,228.7 L262.4,228.8 L267.0,229.0 L271.6,229.1 L276.2,229.2 L280.8,229.2 L285.4,229.3 L290.0,229.4 L294.6,229.4 L299.2,229.5 L303.8,229.5 L308.4,229.6 L313.0,229.6 L317.6,229.7 L322.2,229.7 L326.8,229.7 L331.4,229.8 L336.0,229.8 L340.6,229.8 L345.2,229.8 L349.8,229.8 L354.4,229.9 L359.0,229.9 L363.6,229.9 L368.2,229.9 L372.8,229.9 L377.4,229.9 L382.0,229.9 L386.6,229.9 L391.2,229.9 L395.8,229.9 L400.4,229.9 L405.0,230.0 L409.6,230.0 L414.2,230.0 L418.8,230.0 L423.4,230.0 L428.0,230.0 L432.6,230.0 L437.2,230.0 L441.8,230.0 L446.4,230.0 L451.0,230.0 L455.6,230.0 L460.2,230.0 L464.8,230.0 L469.4,230.0 L474.0,230.0 L478.6,230.0 L483.2,230.0 L487.8,230.0 L492.4,230.0 L497.0,230.0 L501.6,230.0 L506.2,230.0 L510.8,230.0 L515.4,230.0 L520.0,230.0
+  sin sg: w a 20 / 50 / 200 pasos = 0.287 / 0.059 / 0.000
+path w sg: M60.0,87.1 L64.6,82.4 L69.2,76.5 L73.8,70.6 L78.4,65.3 L83.0,61.1 L87.6,57.8 L92.2,55.5 L96.8,53.9 L101.4,52.7 L106.0,52.0 L110.6,51.5 L115.2,51.2 L119.8,51.0 L124.4,50.8 L129.0,50.8 L133.6,50.7 L138.2,50.7 L142.8,50.6 L147.4,50.6 L152.0,50.6 L156.6,50.6 L161.2,50.6 L165.8,50.6 L170.4,50.6 L175.0,50.6 L179.6,50.6 L184.2,50.6 L188.8,50.6 L193.4,50.6 L198.0,50.6 L202.6,50.6 L207.2,50.6 L211.8,50.6 L216.4,50.6 L221.0,50.6 L225.6,50.6 L230.2,50.6 L234.8,50.6 L239.4,50.6 L244.0,50.6 L248.6,50.6 L253.2,50.6 L257.8,50.6 L262.4,50.6 L267.0,50.6 L271.6,50.6 L276.2,50.6 L280.8,50.6 L285.4,50.6 L290.0,50.6 L294.6,50.6 L299.2,50.6 L303.8,50.6 L308.4,50.6 L313.0,50.6 L317.6,50.6 L322.2,50.6 L326.8,50.6 L331.4,50.6 L336.0,50.6 L340.6,50.6 L345.2,50.6 L349.8,50.6 L354.4,50.6 L359.0,50.6 L363.6,50.6 L368.2,50.6 L372.8,50.6 L377.4,50.6 L382.0,50.6 L386.6,50.6 L391.2,50.6 L395.8,50.6 L400.4,50.6 L405.0,50.6 L409.6,50.6 L414.2,50.6 L418.8,50.6 L423.4,50.6 L428.0,50.6 L432.6,50.6 L437.2,50.6 L441.8,50.6 L446.4,50.6 L451.0,50.6 L455.6,50.6 L460.2,50.6 L464.8,50.6 L469.4,50.6 L474.0,50.6 L478.6,50.6 L483.2,50.6 L487.8,50.6 L492.4,50.6 L497.0,50.6 L501.6,50.6 L506.2,50.6 L510.8,50.6 L515.4,50.6 L520.0,50.6
+  sg: w a 20 / 50 / 200 pasos = 1.246 / 1.256 / 1.256
+path w sg + EMA: M60.0,87.1 L64.6,82.4 L69.2,77.0 L73.8,72.1 L78.4,68.2 L83.0,65.5 L87.6,63.6 L92.2,62.4 L96.8,61.6 L101.4,61.0 L106.0,60.7 L110.6,60.4 L115.2,60.2 L119.8,60.0 L124.4,59.8 L129.0,59.7 L133.6,59.5 L138.2,59.4 L142.8,59.3 L147.4,59.1 L152.0,59.0 L156.6,58.9 L161.2,58.8 L165.8,58.7 L170.4,58.5 L175.0,58.4 L179.6,58.3 L184.2,58.2 L188.8,58.1 L193.4,58.0 L198.0,57.9 L202.6,57.8 L207.2,57.7 L211.8,57.6 L216.4,57.5 L221.0,57.4 L225.6,57.3 L230.2,57.2 L234.8,57.1 L239.4,57.0 L244.0,56.9 L248.6,56.8 L253.2,56.7 L257.8,56.6 L262.4,56.5 L267.0,56.4 L271.6,56.3 L276.2,56.3 L280.8,56.2 L285.4,56.1 L290.0,56.0 L294.6,55.9 L299.2,55.9 L303.8,55.8 L308.4,55.7 L313.0,55.6 L317.6,55.6 L322.2,55.5 L326.8,55.4 L331.4,55.3 L336.0,55.3 L340.6,55.2 L345.2,55.1 L349.8,55.1 L354.4,55.0 L359.0,54.9 L363.6,54.9 L368.2,54.8 L372.8,54.7 L377.4,54.7 L382.0,54.6 L386.6,54.6 L391.2,54.5 L395.8,54.4 L400.4,54.4 L405.0,54.3 L409.6,54.3 L414.2,54.2 L418.8,54.2 L423.4,54.1 L428.0,54.1 L432.6,54.0 L437.2,54.0 L441.8,53.9 L446.4,53.9 L451.0,53.8 L455.6,53.8 L460.2,53.7 L464.8,53.7 L469.4,53.6 L474.0,53.6 L478.6,53.5 L483.2,53.5 L487.8,53.4 L492.4,53.4 L497.0,53.4 L501.6,53.3 L506.2,53.3 L510.8,53.2 L515.4,53.2 L520.0,53.2
+  sg + EMA: w a 20 / 50 / 200 pasos = 1.185 / 1.201 / 1.238
+==============================================================================
+EJEMPLO 3. La media móvil exponencial (EMA) de los pesos: cuánto recuerda
+  tau = 0.99: memoria efectiva 1/(1 − tau) = 100 pasos; semivida ln2/(1 − tau) = 69 pasos
+  tau = 0.99925: memoria efectiva 1/(1 − tau) = 1333 pasos; semivida ln2/(1 − tau) = 924 pasos
+  a mano con tau = 0,9: theta pasa de 1 a 2 y se queda; paso 1: theta_barra = 1.100
+  a mano con tau = 0,9: theta pasa de 1 a 2 y se queda; paso 2: theta_barra = 1.190
+  a mano con tau = 0,9: theta pasa de 1 a 2 y se queda; paso 3: theta_barra = 1.271
+==============================================================================
+EJEMPLO 4. V-JEPA 2-AC frente a Cosmos: coste por muestra evaluada (tabla 3 de Assran et al.)
+  Cosmos: 4 min = 240 s por acción / (80 muestras x 10 iteraciones) = 0.300 s por muestra
+  V-JEPA 2-AC: 16 s / (800 x 10) = 2.0 ms por muestra; cociente 150
+  16 s frente a 20 ms (50 Hz): factor 800, log10 = 2.90 órdenes de magnitud
+==============================================================================
+EJEMPLO 5. CEM en el espacio de representaciones, a mano (juguete: representación 2-D, acción 1-D)
+  a = -1.0: P = (-1.00, -0.40); |-1.00 − 1| + |-0.40 − 0,5| = 2.900
+  a = -0.3: P = (-0.30, -0.12); |-0.30 − 1| + |-0.12 − 0,5| = 1.920
+  a = +0.2: P = (+0.20, +0.08); |0.20 − 1| + |0.08 − 0,5| = 1.220
+  a = +0.8: P = (+0.80, +0.32); |0.80 − 1| + |0.32 − 0,5| = 0.380
+  a = +1.3: P = (+1.30, +0.52); |1.30 − 1| + |0.52 − 0,5| = 0.320
+  a = +2.0: P = (+2.00, +0.80); |2.00 − 1| + |0.80 − 0,5| = 1.300
+  dos mejores (élites): [1.3 0.8]; nueva media 1.050, nueva desviación 0.250
+  mínimo exacto de la energía: a = 1.000 (energía 0.100)
+  figura: a = -1.0 -> punto (67.1, 221.2)
+  figura: a = -0.3 -> punto (161.8, 181.0)
+  figura: a = +0.2 -> punto (229.4, 152.2)
+  figura: a = +0.8 -> punto (310.6, 117.8)
+  figura: a = +1.3 -> punto (378.2, 89.0)
+  figura: a = +2.0 -> punto (472.9, 48.8)
+  figura: z_k (202.4, 163.8); z_g (337.6, 91.9); recta P(a) de (40.0, 232.8) a (500.0, 37.3)
+==============================================================================
+EJEMPLO 6. Acciones latentes de Genie: un cuello de botella de 8 códigos (juguete con un sprite 1-D)
+  |A| = 8 códigos: log2 8 = 3 bits por transición
+  un fotograma de 160 x 90 en RGB de 8 bits (supuesto): 345600 bits; el código lleva 8.7e-06 de eso
+  centros aprendidos (px): [-1.9956 -0.0051  2.0226]; el código coincide con la acción real en 100.0 % de las transiciones
+==============================================================================
+EJEMPLO 7. DIAMOND: el denoiser de EDM y por qué c_skip es el denoiser óptimo de unos datos gaussianos
+  sigma_data = 0.5
+  sigma =   0.1: c_skip = 0.962, c_out = 0.098, c_in = 1.961
+  sigma =   0.5: c_skip = 0.500, c_out = 0.354, c_in = 1.414
+  sigma =   1.0: c_skip = 0.200, c_out = 0.447, c_in = 0.894
+  sigma =   2.0: c_skip = 0.059, c_out = 0.485, c_in = 0.485
+  sigma =  10.0: c_skip = 0.002, c_out = 0.499, c_in = 0.100
+  a mano: x0 = 0.6, eps = 0.8, sigma = 1.0: x = x0 + sigma·eps = 1.40; E[x0 | x] = c_skip·x = 0.20 x 1.40 = 0.280
+  comprobación por Monte Carlo: regresión de x0 sobre x, pendiente 0.200 (teórica 0.200)
+==============================================================================
+EJEMPLO 8. Ordenar políticas sin acertar su éxito: Pearson, orden y error absoluto
+  éxito real [0.7 0.5 0.3], predicho [0.4 0.3 0.1]: Pearson 0.982; mismo orden: True; error absoluto medio 0.233
+  predicho [0.55 0.62 0.3 ]: Pearson 0.743; mismo orden: False; error absoluto medio 0.090
+  a mano (primer caso): medias 0.50 y 0.2667; desviaciones [ 0.2  0.  -0.2] y [ 0.1333  0.0333 -0.1667]
+    numerador 0.0600; denominador sqrt(0.0800 x 0.0467) = 0.0611
+==============================================================================
+EJEMPLO 9. El término de velocidad del coste: (1/λ²)‖v + λe‖² = ‖e + v/λ‖²
+  lambda = 1.5 1/s: 1/lambda = 0.667 s
+  e = p − p* = +0,50 m, v = +0.00 m/s: e + v/lambda = +0.500 m, término = 0.2500 m²; ‖v + lambda·e‖²/lambda² = 0.2500
+  e = p − p* = +0,50 m, v = -0.75 m/s: e + v/lambda = +0.000 m, término = 0.0000 m²; ‖v + lambda·e‖²/lambda² = 0.0000
+  e = p − p* = +0,50 m, v = -1.50 m/s: e + v/lambda = -0.500 m, término = 0.2500 m²; ‖v + lambda·e‖²/lambda² = 0.2500
+  velocidad desde posiciones predichas: v_k = (p_{k+1} − p_k)/0,02 s; p = 1,000 y 1,010 m -> v = 0,50 m/s
+==============================================================================
+EJEMPLO 10. Por qué la posición sola puede no bastar con 0,5 s: una inclinación sostenida, a mano
+  t = 0.1 s: theta = 0.10 rad, a = g·theta = 0.98 m/s², v = g·om·t²/2 = 0.049 m/s, p = g·om·t³/6 = 0.0016 m
+  t = 0.2 s: theta = 0.20 rad, a = g·theta = 1.96 m/s², v = g·om·t²/2 = 0.196 m/s, p = g·om·t³/6 = 0.0131 m
+  t = 0.3 s: theta = 0.30 rad, a = g·theta = 2.94 m/s², v = g·om·t²/2 = 0.441 m/s, p = g·om·t³/6 = 0.0441 m
+  t = 0.4 s: theta = 0.40 rad, a = g·theta = 3.92 m/s², v = g·om·t²/2 = 0.785 m/s, p = g·om·t³/6 = 0.1046 m
+  t = 0.5 s: theta = 0.50 rad, a = g·theta = 4.91 m/s², v = g·om·t²/2 = 1.226 m/s, p = g·om·t³/6 = 0.2044 m
+  sin(0,5) = 0.479 frente a 0,5: el ángulo pequeño se equivoca un 4 % al final
+  objetivo 1 m delante, 25 pasos: término de posición: flotar 25.00, inclinarse 22.41 (mejora 2.59, 10.4 %)
+    término de velocidad: flotar 25.00, inclinarse 13.20 (mejora 11.80, 47.2 %)
+==============================================================================
+EJEMPLO 11. MPPI con élites como en figuras_a8b.py: pesos y ruido correlado
+  costes de las élites [3.  3.4 4.  5.2 7. ]: desviación 1.446; temperatura efectiva eta = desviación/2 = 0.723
+  exponentes −2(c − c_min)/desv = [-0.     -0.5534 -1.3836 -3.0438 -5.5342]; pesos [0.5327 0.3063 0.1335 0.0254 0.0021] (suman 1.000)
+  ruido AR(1) con rho = 0.9: e_k = rho·e_(k−1) + sqrt(1 − rho²)·n_k, sqrt(1 − rho²) = 0.4359
+    varianza estacionaria: rho² + (1 − rho²) = 1; correlación a j pasos rho^j: j = 5 (0,1 s) 0.590, j = 25 (0,5 s) 0.072
+    desviación de la media de los 25 valores: independiente 0.200, correlado 0.702 (x 3.51)
+    con sigma = 0,3 (primera iteración): media de la acción en el horizonte ±0.060 frente a ±0.211; velocidad angular x4 rad/s: ±0.24 frente a ±0.84 rad/s
+    evaluaciones del modelo por paso de control: 256 x 25 x 3 = 19200
+==============================================================================
+EJEMPLO 12. Por qué el controlador de los datos se queda bajo con un dron pesado (PD sin integral)
+  m/M0 = 0.90: error vertical de equilibrio e_z = (g/2)(1 − m/M0) = +49.0 cm
+  m/M0 = 1.00: error vertical de equilibrio e_z = (g/2)(1 − m/M0) = +0.0 cm
+  m/M0 = 1.10: error vertical de equilibrio e_z = (g/2)(1 − m/M0) = -49.1 cm
+  m/M0 = 1.11: error vertical de equilibrio e_z = (g/2)(1 − m/M0) = -54.0 cm
+  masas uniformes en (1,07; 1,15): media 1,11 -> -54.0 cm; en (0,85; 0,93): media 0,89 -> +54.0 cm
+  simulación vertical 1-D (4000 episodios, último segundo): pesado -48.8 cm, ligero +48.7 cm
+  figuras_a8b.py (3-D, 64 episodios): -46.9 y +52.3 cm
+==============================================================================
+EJEMPLO 13. El planificador elige los errores a su favor: la maldición del optimizador (juguete)
+    1 candidatas, todas con el mismo coste real y error del modelo N(0, 1): error de la elegida, media +0.002
+   32 candidatas, todas con el mismo coste real y error del modelo N(0, 1): error de la elegida, media -2.068
+  256 candidatas, todas con el mismo coste real y error del modelo N(0, 1): error de la elegida, media -2.828
+  256 candidatas, 128 cerca de los datos (desv. 0.2) y 128 lejos (desv. 1.0): la elegida está lejos en 100.0 % de los casos; su error medio -2.595
+  si solo se proponen candidatas cerca de los datos (residuo acotado): error medio de la elegida -0.519
+  figura (16 candidatas, coste real 3): costes predichos [3.05 3.19 2.85 3.04 3.01 3.28 3.02 3.03 1.85 2.99 2.45 2.91 1.22 2.52
+ 1.82 1.85]; elegida 12 (lejos: True), predicho 1.22, error -1.78
+  figura: alturas y = [108.1, 102.4, 116.0, 108.3, 109.5, 98.7, 109.0, 109.0, 155.8, 110.2, 132.1, 113.6, 181.0, 129.2, 157.2, 156.1] ; y(3) = 110.0
+==============================================================================
+EJEMPLO 14. Error en bucle abierto con cada fuente de acciones (de salida_gpu.txt, sección 4) y su figura
+  RSSM                        : datos [8.0, 26.2, 60.0], MPPI puro [22.1, 193.4, 652.1], MPPI + política [6.9, 29.8, 79.2]; a 0,5 s, MPPI puro / datos = 7.4
+  latente sin reconstrucción  : datos [16.0, 45.2, 92.4], MPPI puro [37.8, 216.8, 611.3], MPPI + política [17.1, 69.5, 158.0]; a 0,5 s, MPPI puro / datos = 4.8
+  MLP de un paso              : datos [8.5, 45.3, 88.0], MPPI puro [37.9, 271.3, 847.2], MPPI + política [12.6, 89.9, 210.4]; a 0,5 s, MPPI puro / datos = 6.0
+path RSSM datos: M115.0,212.3 L295.0,167.5 L520.0,136.2 | puntos [(115.0, 212.3), (295.0, 167.5), (520.0, 136.2)]
+path RSSM MPPI puro: M115.0,173.9 L295.0,92.0 L520.0,46.1 | puntos [(115.0, 173.9), (295.0, 92.0), (520.0, 46.1)]
+path RSSM MPPI + política: M115.0,217.8 L295.0,162.6 L520.0,125.7 | puntos [(115.0, 217.8), (295.0, 162.6), (520.0, 125.7)]
+  marca eje y 5 cm -> y = 230.0
+  marca eje y 10 cm -> y = 203.8
+  marca eje y 30 cm -> y = 162.4
+  marca eje y 100 cm -> y = 116.9
+  marca eje y 300 cm -> y = 75.4
+  marca eje y 1000 cm -> y = 30.0
+==============================================================================
+EJEMPLO 15. Latencia por evaluación del modelo y R² de la política imitada (de las salidas de figuras_a8b.py)
+  MPPI con el RSSM: GPU 3.5 ms / 19200 = 0.182 µs por paso del modelo; CPU 67.1 ms / 19200 = 3.49 µs
+  presupuesto de 20 ms a 50 Hz: GPU usa 18 %; CPU 3.4 veces el presupuesto
+  R² = 1 − ECM/varianza = 1 − 0.013/0.2892 = 0.955
+==============================================================================
+EJEMPLO 16. Lectura de las curvas de error frente al tiempo (paths de salida_gpu.txt, sección 3)
+  controlador de los datos    : t = 0.0 s: 93 cm; t = 0.4 s: 83 cm; t = 0.6 s: 71 cm; t = 0.8 s: 58 cm; t = 1.0 s: 49 cm; t = 1.5 s: 37 cm; t = 2.0 s: 34 cm; t = 3.0 s: 36 cm
+  física nominal · MPPI       : t = 0.0 s: 93 cm; t = 0.4 s: 61 cm; t = 0.6 s: 40 cm; t = 0.8 s: 27 cm; t = 1.0 s: 19 cm; t = 1.5 s: 10 cm; t = 2.0 s: 8 cm; t = 3.0 s: 8 cm
+  RSSM · mppi                 : t = 0.0 s: 93 cm; t = 0.4 s: 72 cm; t = 0.6 s: 78 cm; t = 0.8 s: 100 cm; t = 1.0 s: 100 cm; t = 1.5 s: 100 cm; t = 2.0 s: 100 cm; t = 3.0 s: 100 cm
+    primer instante en que la mediana llega a 1 m: 0.80 s
+  RSSM · politica             : t = 0.0 s: 93 cm; t = 0.4 s: 83 cm; t = 0.6 s: 69 cm; t = 0.8 s: 58 cm; t = 1.0 s: 53 cm; t = 1.5 s: 43 cm; t = 2.0 s: 44 cm; t = 3.0 s: 47 cm
+  RSSM · mppi+politica        : t = 0.0 s: 93 cm; t = 0.4 s: 71 cm; t = 0.6 s: 54 cm; t = 0.8 s: 42 cm; t = 1.0 s: 34 cm; t = 1.5 s: 33 cm; t = 2.0 s: 42 cm; t = 3.0 s: 40 cm
