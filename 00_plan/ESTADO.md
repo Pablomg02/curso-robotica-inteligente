@@ -4,6 +4,17 @@ Registro de lo que está hecho, lo que falta y dónde parar para revisión. **Se
 
 Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para revisión de Pablo (tras terminar ese tema)
 
+## Dónde seguir (parada tras la fase 4, 2026-11-07)
+
+**Pablo pidió parar aquí** («Antes de empezar con la Fase 5 (C1), podemos parar, dejas anotado lo que falta por seguir, y dejas todo listo hasta ese punto»). La fase 4 está terminada y espera su revisión. No se empieza C1 hasta que Pablo diga cómo ve las fases 3 y 4.
+
+- **Hecho:** fases 0 a 4 completas (M0 a A14 y los hitos H1 y H3), cada tema con laboratorio, glosario y comprobación en el navegador.
+- **Falta, en este orden** (temario en `TEMARIO.md`):
+  - **Fase 5 · Desplegar:** C1 cómputo embarcado, C2 arquitectura del sistema, C3 comunicaciones, C8 ROS 2 a fondo, C4 tiempo real, C5 inferencia en el borde, C6 sensores, actuadores y calibración, y C7 operación y experimentación real con el hito 4 (🛑 al terminar).
+  - **Fase 6 · Cerrar el círculo:** B5 SIL, HIL y realidad mixta, B7a y B7b sim-to-real, B8 diseñar tu propio simulador, D1 datasets, benchmarks y evaluación, D2 investigar en robótica hoy y el examen final (🛑).
+- **Cómo seguir:** con el prompt de `00_plan/PROMPT_CONTINUAR.md`, leyendo `CONTINUAR.md` y este fichero; cada tema con el formato de la segunda petición (tabla del 2026-11-07 en el registro de revisiones): cada símbolo definido en su hoja, esquema antes de cada fórmula, derivaciones fundamentales en tablas «paso / por qué» con ejemplos numéricos de un script, nada plegado salvo las respuestas, apartes en `div.aparte` y sin letra pequeña para contenido. Glosario con `00_plan/verificar_glosario.py`. Experimentos con `ulimit -v` (16 GB para clientes de ollama, 40 GB para torch en GPU, 8 GB para numpy).
+- **Lo que Pablo pida en la revisión** de las fases 3 y 4 se anota en el registro de abajo y se aplica a la fase 5 en adelante.
+
 ## Fase 0 · Arranque
 
 | ID | Tema | Estado | Fecha | Notas |
@@ -56,7 +67,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| A11 | LLMs y VLMs para razonar y planificar | ⬜ | | |
+| A11 | LLMs y VLMs para razonar y planificar | ✅ | 2026-11-07 | 45 hojas con el formato de la segunda petición y glosario: atención y por qué se divide por √d, por qué decodificar es lento (r ≤ B/M: 41,3 tokens/s de cota en una RTX 4060 Ti, 33,9 medidos), escala, instrucciones, cadena de razonamiento y RL, VLMs, PlanBench, LLM-Modulo, SayCan paso a paso, Code as Policies, KnowNo y la predicción conforme paso a paso, RoboPAIR, LLMs en drones y su latencia; experimento con Gemma 4 de 12B en local planificando 30 misiones de búsqueda con un verificador: sin verificador acierta solo donde basta ir en línea recta (8 de 8 y 0 de 17 rodeos), con o sin ejemplos y con el mapa en imagen; un verificador que exige un plan llega al 64 % y detecta las 5 imposibles, pero si recuerda que puede responder «imposible», el modelo se rinde en 13 posibles; a temperatura 0 el razonamiento entra en bucle y no termina; con el muestreo del modelo, 7 de 10 y 331 s por plan |
 | A12a | VLAs: fundamentos | ✅ | 2026-11-07 | 36 hojas, con el formato de la segunda petición (derivaciones en tablas paso / por qué, apartes, sin letra pequeña) y glosario: RT-1, RT-2, OpenVLA, Octo, OpenVLA-OFT, SmolVLA, FAST, datos (OXE, DROID, Bridge, LIBERO), robustez (LIBERO-PRO, VLATest) y RTC; acciones CTBR tokenizadas por casillas, con BPE y con DCT (800 frente a 31 tokens por segundo a 200 Hz; el ruido rompe la DCT a escala alta, con la derivación), latencia del modelo de 12B de A11 generando tokens de acción (30 tokens por segundo como máximo) y SmolVLA medido (109 ms por trozo en la GPU, 920 ms en CPU) |
 | A12b | VLAs en 2025–2026 y VLAs para drones | ✅ | 2026-11-07 | 37 hojas con el formato de la segunda petición y glosario: VLA de dos sistemas (Gemini Robotics, GR00T N1, Helix, π0.5), datos mezclados y RL sobre el VLA (RDT-1B, π*0.6), cross-embodiment (relleno con máscara, huecos con significado, CrossFormer con un Tello, HPT), VLAs para drones (RaceVLA, CognitiveDrone, UAV-VLA) y cuánto se mueve el dron mientras el VLA piensa, LoRA paso a paso y QLoRA, cuántas demostraciones según quién lo diga, VLAs con world model (WorldVLA, DreamVLA, UniVLA) y ASIMOV; experimento en GPU: SmolVLA con el VLM congelado frente a una política pequeña desde cero para ir al objeto que dice la orden (con 1000 demostraciones, 63 % frente a 95 %; con un color que nunca fue objetivo, 6 % y 0 %: SmolVLA va a otro objeto en el 53 % de los vuelos), 17 min y 4,4 GiB de ajuste, 105 ms por trozo |
 | A13 | Arquitecturas jerárquicas y fusión de modelos | ✅ | 2026-11-07 | 37 hojas con el formato de la segunda petición y glosario: escalas de tiempo de un dron (PX4 a 800 Hz, Loquercio, Agilicious), el retardo paso a paso (fase −ωτ, Padé, cruce < 1,2/τ), opciones, FeUdal, HIRO, HiRT, RoboDual, Hi Robot, LCB, ensamblado temporal de ACT, BID, fusión (residual, red + MPC, TD-MPC2, AC-MPC); experimento en CPU: seguir a una persona entre árboles con MPPI de 50 a 800 ms de latencia y cinco arquitecturas (a 400 ms, el planificador que manda directo choca en el 82 % de los vuelos y la jerarquía en ninguno; compensar la latencia ayuda poco y a 800 ms empeora) |
@@ -138,10 +149,22 @@ Sustituye a la parada 🛑 de H3, según lo acordado el 2026-11-07.
 
 ## Pendiente (2026-11-07)
 
-- **A11**: su carpeta existe pero no tiene commit y la fila sigue en ⬜. Comprobar con la sesión que lo hacía si está terminado antes de subirlo.
-- **Fase 4 (A11–A14)**: hecha por otra sesión antes de este repaso. Falta que Pablo la revise (parada 🛑 de A14) y aplicarle el mismo despliegue que a las fases 0–3 (`CONTINUAR.md` §4, «Segunda petición»), y subir `curso.css` a `?v=11` en sus páginas (siguen en 10).
+- **Fase 4 (A11–A14)**: terminada el 2026-11-07 (A11 subido al final). Sus cinco temas se escribieron ya con el formato de la segunda petición (no hace falta desplegarlos) y llevan `curso.css?v=11`. Falta que Pablo la revise (🛑 de A14; ver «Dónde seguir» arriba).
 - **A15b**: la descripción de CBBA (dos fases, regla de soltar las tareas posteriores) no se pudo contrastar con el PDF de Choi et al.; verificarla cuando haya acceso.
 - **Fases 5 y 6**: todos sus temas, en el orden de las tablas de arriba, con el prompt de `00_plan/PROMPT_CONTINUAR.md`.
+
+## Revisión propia de fin de fase 4 (2026-11-07)
+
+Fase 4 completa: A11, A12a, A12b, A13 y A14, todos con el formato de la segunda petición, glosario y laboratorio.
+
+- **Comprobaciones automáticas** repetidas hoy en los cinco temas: `curso.checkOverflow()` vacío a 1440×900 en tema claro y oscuro, sin desborde horizontal a 375 px, sin errores de MathJax ni citas rotas; `verificar_glosario.py` sin errores en los cinco.
+- **Referencias:** los DOI citados resuelven en doi.org y los identificadores de arXiv existen con el título citado (`check_refs.py`: 36 DOI y 87 arXiv en los cinco temas; su único aviso, en «Attention is all you need», es un falso positivo del comprobador, que necesita dos palabras largas en el título). Lo que solo publica una empresa (Helix, Gemini Robotics On-Device, la guía de SmolVLA de LeRobot) va marcado como afirmación suya; los informes técnicos sin revisión, como preprints; las sedes que solo da el comentario de arXiv (UAV-VLA en HRI 2025, UniVLA en RSS 2025) se dicen así.
+- **Coherencia entre temas:** el modelo de 12B genera 35,5 tokens/s con un prompt corto (A12a) y 33,9 con uno de 1218 tokens (A11), los dos por debajo de la cota de 41,3 del ancho de banda (A11); SmolVLA tarda 109 ms por trozo tal como se distribuye (A12a) y 105 ms ajustado (A12b); el 84,3 % de ASIMOV es el mismo en A12b y A14; RoboPAIR en A11 y A14.
+- **Experimentos:** todos con `ulimit -v`. A11 se puede rehacer sin el modelo a partir de las respuestas guardadas (`A11_SIN_MODELO=1`, salen las mismas cifras: `salida_reproduccion.txt`).
+- **Resultados negativos o incómodos que se presentan como tales:** A11 (sin verificador, el modelo acierta solo donde basta ir en línea recta, 8 de 8, y ninguna de las 17 misiones que exigen rodear; si el verificador recuerda que puede responder «imposible», se rinde en 13 posibles; a temperatura 0 el razonamiento no termina); A12b (la política pequeña desde cero supera a SmolVLA ajustado, 95 % frente a 63 %, y ninguna va al color nuevo); A13 (compensar la latencia ayuda poco y a 800 ms empeora); A14 (un filtro CBF correcto «choca» por discretización hasta que se le da un margen de un paso).
+- **Corregido durante la fase:** A11, el razonamiento a temperatura 0 entra en bucle; se añadió la condición con el muestreo que trae el modelo y un diagnóstico (`diagnostico_razonamiento.py`). A12b, la confusión causal por la velocidad en la entrada obligó a rediseñar el experimento (solo posición, con la velocidad como ablación); una cita de frecuencias de los VLA de dos sistemas sin Helix; «20 000 pasos que recomienda LeRobot» era solo un ejemplo de su guía. A14, el borrador sin margen de un paso chocaba en el 21 % de los vuelos con α = 2.
+- **Queda como está, a sabiendas:** la sede ICLR de LoRA no se confirmó (se cita por arXiv); el límite «de unas 5 dimensiones» de la alcanzabilidad de Hamilton-Jacobi no se cita porque no aparece en Bansal et al.; la fecha del documento de la EASA es la de su página; la condición de razonamiento con muestreo de A11 usa 12 misiones, no 30, por tiempo (unos 5 min por misión).
+- **Para los temas siguientes:** con modelos que razonan, no usar temperatura 0 sin mirar el final del razonamiento; medir la latencia como parte del resultado; mirar a dónde van las políticas cuando fallan, no solo el éxito.
 
 ## Correcciones transversales
 

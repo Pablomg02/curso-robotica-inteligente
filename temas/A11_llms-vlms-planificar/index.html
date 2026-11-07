@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A11 · LLMs y VLMs para planificar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=11">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A11" data-deck-title="LLMs y VLMs para razonar y planificar · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 4 · Jornada 29 · Curso de robótica inteligente</p>
+  <h1>LLMs y VLMs para razonar y planificar</h1>
+  <p class="subtitle">Cómo funcionan los modelos de lenguaje y de visión y lenguaje, cuánto tardan, qué dicen las pruebas sobre si saben planificar, y cómo se usan en robots: con verificadores externos, con afordancias y escribiendo código. Con un modelo de 12B en tu GPU haciendo de planificador de misión para un dron.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A5, A7a, A10</span>
+    <span><b>Prepara</b> A12a, A13</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A11</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar la atención, el prellenado y la decodificación, y estimar los tokens por segundo de un modelo en una GPU.</li>
+    <li>Distinguir lo que añade cada etapa: preentrenamiento, instrucciones, cadena de razonamiento y modelos que razonan.</li>
+    <li>Resumir qué dicen PlanBench y sus sucesores sobre la planificación con LLMs, y por qué importa el verificador.</li>
+    <li>Diseñar un planificador de misión con un LLM dentro de un bucle de generar, comprobar y criticar.</li>
+    <li>Situar un LLM en la pila de un dron: qué decide, a qué frecuencia y con qué salvaguardas.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Los modelos de lenguaje traen sentido común; no traen garantías</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>SayCan combinó un modelo de lenguaje de 540B con funciones de valor del robot: 84 % de planes correctos y 74 % de ejecuciones con éxito en 101 órdenes en una cocina <a class="cite" data-ref="ahn2022"></a>.</li>
+        <li>GPT-4 acierta el 34,6 % de los planes de Blocksworld y el 0,16 % cuando se cambian los nombres de las acciones; con un verificador que le devuelve los errores, el 82 % de los que había fallado <a class="cite" data-ref="valmeekam2023"></a>.</li>
+        <li>Un modelo que razona, o1-preview, llega al 97,8 % en Blocksworld, pero tarda 40,4 s por problema; un planificador clásico, 0,27 s <a class="cite" data-ref="valmeekam2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Una orden como «busca a la persona en el edificio norte y no entres en la zona de obras» tiene que convertirse en objetivos para tu planificador con belief. Un LLM puede traducirla; algo más tiene que comprobar que el resultado es válido.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Gemma 4 de 12B en una RTX 4060 Ti planifica 30 misiones de búsqueda: sin ejemplos, con ejemplos, con un verificador que devuelve los errores, leyendo el mapa de una imagen y razonando antes de responder. <code>figuras_a11.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De la atención a los modelos que razonan y miran</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2017–2021</span>El Transformer <a class="cite" data-ref="vaswani2017"></a>. Leyes de escala <a class="cite" data-ref="kaplan2020"></a>. CLIP une imagen y texto con 400 millones de pares <a class="cite" data-ref="radford2021"></a>.</div>
+    <div class="ev"><span class="yr">2022</span>Modelos que siguen instrucciones con realimentación humana <a class="cite" data-ref="ouyang2022"></a>; cadena de razonamiento <a class="cite" data-ref="wei2022"></a>; tamaño y datos óptimos <a class="cite" data-ref="hoffmann2022"></a>. En robots: planes desde el lenguaje <a class="cite" data-ref="huang2022"></a>, SayCan <a class="cite" data-ref="ahn2022"></a>, Inner Monologue <a class="cite" data-ref="huang2022b"></a>.</div>
+    <div class="ev"><span class="yr">2023</span>Code as Policies <a class="cite" data-ref="liang2023"></a>, ProgPrompt <a class="cite" data-ref="singh2023"></a>, PaLM-E <a class="cite" data-ref="driess2023"></a>, VoxPoser <a class="cite" data-ref="huang2023"></a>, LLaVA <a class="cite" data-ref="liu2023"></a>. PlanBench <a class="cite" data-ref="valmeekam2023b"></a> y la crítica de la planificación con LLMs <a class="cite" data-ref="valmeekam2023"></a>. Drones: TypeFly <a class="cite" data-ref="chen2023"></a>, AerialVLN <a class="cite" data-ref="liu2023b"></a>.</div>
+    <div class="ev"><span class="yr">2024–2026</span>LLM-Modulo <a class="cite" data-ref="kambhampati2024"></a>. Modelos que razonan: o1 en PlanBench <a class="cite" data-ref="valmeekam2024"></a>, DeepSeek-R1 <a class="cite" data-ref="deepseek2025"></a>. Modelos abiertos multimodales: Gemma 3 <a class="cite" data-ref="gemma2025"></a> y Gemma 4 <a class="cite" data-ref="gemma2026"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Modelos">
+  <p class="num">Parte 1</p>
+  <h2>Qué hay dentro de un LLM y de un VLM</h2>
+  <p>Atención, escala, instrucciones, razonamiento, visión y latencia.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · la atención en dibujo</p>
+  <h2>Cada token mira a los anteriores y mezcla lo que encuentra</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 270" role="img" aria-label="El token patio compara su consulta con las claves de los tokens anteriores, convierte las comparaciones en pesos y suma los valores con esos pesos">
+        <defs><marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="14">
+          <rect class="box" x="20" y="210" width="96" height="36" rx="5"/><text x="68" y="233" text-anchor="middle">busca</text>
+          <rect class="box" x="136" y="210" width="96" height="36" rx="5"/><text x="184" y="233" text-anchor="middle">en</text>
+          <rect class="box" x="252" y="210" width="96" height="36" rx="5"/><text x="300" y="233" text-anchor="middle">el</text>
+          <rect class="box-accent" x="368" y="210" width="96" height="36" rx="5"/><text x="416" y="233" text-anchor="middle">patio</text>
+        </g>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="68" y="200" text-anchor="middle">k₁, v₁</text><text x="184" y="200" text-anchor="middle">k₂, v₂</text>
+          <text x="300" y="200" text-anchor="middle">k₃, v₃</text><text x="416" y="200" text-anchor="middle">q₄, k₄, v₄</text>
+        </g>
+        <g class="fill-tesis">
+          <rect x="53" y="150" width="30" height="30"/><rect x="169" y="168" width="30" height="12"/>
+          <rect x="285" y="159" width="30" height="21"/><rect x="401" y="105" width="30" height="75"/>
+        </g>
+        <text x="20" y="96" class="t-muted" font-size="13">pesos: softmax de q₄·kⱼ (ejemplo ilustrativo)</text>
+        <rect class="box-time" x="150" y="20" width="200" height="40" rx="5"/>
+        <text x="250" y="45" text-anchor="middle" font-size="14">salida = Σ pesoⱼ · vⱼ</text>
+        <g class="ln" marker-end="url(#fa)"><path d="M416,100 C 380,70 330,62 300,62"/></g>
+      </svg>
+      <figcaption>El último token («patio») compara su consulta \(q_4\) con las claves \(k_j\) de los tokens que puede ver, convierte esas comparaciones en pesos que suman 1 y devuelve la suma de los valores \(v_j\) con esos pesos.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Cada token se proyecta en tres vectores: una <strong>consulta</strong> \(q\) (qué busca), una <strong>clave</strong> \(k\) (qué ofrece) y un <strong>valor</strong> \(v\) (qué aporta).</li>
+        <li>La comparación es el producto escalar \(q \cdot k\): grande si apuntan en direcciones parecidas.</li>
+        <li>En un modelo de lenguaje cada token solo ve los anteriores (máscara causal), así que puede generar texto de izquierda a derecha.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La idea</span>El Transformer se basa «solo en mecanismos de atención, prescindiendo por completo de la recurrencia y las convoluciones» <a class="cite" data-ref="vaswani2017"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · la fórmula</p>
+  <h2>La atención, para todos los tokens a la vez</h2>
+  \[ \mathrm{Atención}(Q, K, V) = \mathrm{softmax}\!\Big(\frac{QK^\top}{\sqrt{d}}\Big)V \]
+  <p><strong>Notación:</strong> \(n\), número de tokens; \(d\), dimensión de consultas y claves; \(Q, K, V\), matrices \(n \times d\) con una consulta, clave o valor por fila; \(QK^\top\), matriz \(n \times n\) con todos los productos \(q_i \cdot k_j\); \(\mathrm{softmax}\), aplicado a cada fila, convierte números en pesos positivos que suman 1. La máscara causal pone \(-\infty\) donde \(j &gt; i\) antes del softmax.</p>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Prellenado</span>El contexto entero (orden, mapa, ejemplos) se procesa en paralelo: muchas operaciones por cada peso leído, y la GPU va a pleno rendimiento. El coste crece con el cuadrado de la longitud.</div>
+    <div class="callout realidad"><span class="tag">Decodificación</span>Un token por paso, reutilizando las claves y valores ya calculados (caché KV). Cada paso lee todos los pesos para hacer muy pocas operaciones: lo limita la memoria.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · por qué \(\sqrt d\)</p>
+  <h2>Sin dividir por \(\sqrt d\), el softmax elige casi siempre un solo token</h2>
+  <p><strong>Notación:</strong> \(q_i, k_i\), componentes \(i\) de una consulta y una clave, con \(i = 1, \dots, d\).</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(q \cdot k = \sum_{i=1}^{d} q_i k_i\)</td><td>Definición del producto escalar</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathrm{E}[q_i k_i] = 0,\quad \mathrm{Var}(q_i k_i) = \mathrm{E}[q_i^2]\,\mathrm{E}[k_i^2] = 1\)</td><td>Supuesto: componentes independientes, de media 0 y varianza 1 (así se inicializan las redes)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathrm{Var}(q \cdot k) = d\)</td><td>La varianza de una suma de términos independientes es la suma de varianzas</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathrm{Var}\big(q \cdot k / \sqrt d\big) = 1\)</td><td>Dividir por \(\sqrt d\) divide la varianza por \(d\)</td></tr>
+      <tr><td><strong>5</strong></td><td>con varianza \(d\) grande, una entrada del softmax domina y el resto da pesos casi nulos</td><td>El softmax amplifica diferencias exponencialmente; sus gradientes se anulan y el entrenamiento se atasca</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo del script</span><p>Con \(d = 256\), la desviación de \(q \cdot k\) sale 16,02 (\(\sqrt{256} = 16\)). Con 16 claves, el peso mayor del softmax es de media 0,92 sin escalar y 0,25 dividiendo por \(\sqrt d\) (<code>derivaciones_a11.py</code>).</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · por qué decodificar es lento</p>
+  <h2>Cada token nuevo exige leer todos los pesos de la memoria</h2>
+  <p><strong>Notación:</strong> \(M\), bytes que ocupan los pesos; \(B\), ancho de banda de la memoria de la GPU (bytes por segundo); \(r\), tokens por segundo al decodificar.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>cada token nuevo pasa por todas las capas</td><td>El modelo es una cadena de capas; ninguna se puede saltar</td></tr>
+      <tr><td><strong>2</strong></td><td>hay que traer a la GPU los \(M\) bytes de pesos por token</td><td>Con un solo usuario, cada peso se usa para unas pocas operaciones y no se reutiliza dentro del paso</td></tr>
+      <tr><td><strong>3</strong></td><td>tiempo por token \(\ge M/B\)</td><td>No se puede leer más deprisa que el ancho de banda</td></tr>
+      <tr><td><strong>4</strong></td><td>\(r \le B/M\)</td><td>Invertir el paso 3</td></tr>
+    </table>
+  </div>
+  <div class="cols" style="margin-top:6px">
+    <div class="aparte"><span class="rotulo">En tu GPU</span><p>La RTX 4060 Ti tiene un bus de 128 bits según NVIDIA y su memoria va a 18 Gbps (reloj de 9001 MHz en GDDR6): \(B = 128/8 \times 18 = 288\) GB/s. Gemma 4 de 12B en 4 bits ocupa \(M = 6{,}98\) GB, así que \(r \le 41,3\) tokens/s. Medimos 33,9 tokens/s.</p></div>
+    <div class="callout clave"><span class="tag">El prellenado no tiene ese límite</span>Procesa muchos tokens por cada lectura de los pesos: medimos 1871 tokens/s, unas 55 veces más rápido que la decodificación.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · escala</p>
+  <h2>Más parámetros, más datos y más cálculo, con reglas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Leyes de escala</strong> <a class="cite" data-ref="kaplan2020"></a>: la pérdida sigue una ley de potencias con el tamaño del modelo, los datos y el cálculo, con tendencias de más de siete órdenes de magnitud.</li>
+        <li><strong>Chinchilla</strong> <a class="cite" data-ref="hoffmann2022"></a>: por cada duplicación del tamaño hay que duplicar los tokens de entrenamiento. Su modelo de 70B se entrenó con 1,4 billones de tokens y su tabla de tamaños óptimos da unos 20 tokens por parámetro (1B con 20,2 mil millones; 10B con 205,1 mil millones).</li>
+        <li><strong>Instrucciones y preferencias</strong> <a class="cite" data-ref="ouyang2022"></a>: tras ajustarlo con demostraciones y realimentación humana, las respuestas de un modelo de 1,3B se prefieren a las de GPT-3 de 175B, con 100 veces menos parámetros.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Lo que importa en un robot</span>El cálculo de inferencia lo paga el robot en cada decisión, el de entrenamiento se paga una vez. Para cómputo limitado interesan modelos pequeños entrenados con muchos datos, cuantizados y, si hace falta, destilados.</div>
+      <div class="callout clave"><span class="tag">Una advertencia</span>La pérdida baja de forma predecible; las capacidades concretas (planificar, contar, razonar sobre el espacio) no siempre. Hay que medirlas en la tarea, como haremos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · razonar</p>
+  <h2>Pensar antes de responder: de los ejemplos con pasos al RL</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Cadena de razonamiento</strong> <a class="cite" data-ref="wei2022"></a>: con solo ocho ejemplos que muestran los pasos, PaLM de 540B pasa del 17,9 % al 56,9 % en GSM8K (problemas de matemáticas escolares).</li>
+        <li><strong>Modelos que razonan</strong> <a class="cite" data-ref="deepseek2025"></a>: la capacidad de razonar se puede incentivar con RL puro, sin trayectorias de razonamiento anotadas. DeepSeek-R1-Zero pasa del 15,6 % al 77,9 % en AIME 2024 durante el entrenamiento.</li>
+        <li>El razonamiento cuesta tokens: miles antes de la respuesta, y cada uno se paga con la decodificación.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Por qué ayuda</span>Generar los pasos intermedios da al modelo más cálculo por respuesta y un lugar donde escribir resultados parciales. Con RL sobre tareas verificables, aprende cuándo comprobar y corregir.</div>
+      <div class="callout realidad"><span class="tag">Latencia</span>En PlanBench, o1-preview tarda 40,4 s por problema de Blocksworld y o1-mini 10,8 s; el planificador clásico Fast Downward, 0,27 s <a class="cite" data-ref="valmeekam2024"></a>. En nuestro dron, el modo de razonamiento pasa de 4,5 a 331,1 s por plan.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · visión y lenguaje</p>
+  <h2>Una imagen entra como una secuencia de tokens más</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 230" role="img" aria-label="Esquema de un VLM: la imagen pasa por un codificador visual, un proyector la convierte en vectores del tamaño de los tokens de texto y el modelo de lenguaje recibe ambos">
+        <defs><marker id="fv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box" x="10" y="30" width="90" height="60" rx="5"/><text x="55" y="65" text-anchor="middle">imagen</text>
+          <rect class="box-accent" x="130" y="30" width="110" height="60" rx="5"/><text x="185" y="56" text-anchor="middle">codificador</text><text x="185" y="74" text-anchor="middle">visual (CLIP)</text>
+          <rect class="box-tesis" x="270" y="30" width="90" height="60" rx="5"/><text x="315" y="56" text-anchor="middle">proyector</text><text x="315" y="74" text-anchor="middle">lineal</text>
+          <rect class="box" x="10" y="140" width="230" height="44" rx="5"/><text x="125" y="167" text-anchor="middle">texto: «¿dónde está la base?»</text>
+          <rect class="box-time" x="390" y="80" width="120" height="70" rx="5"/><text x="450" y="110" text-anchor="middle">modelo de</text><text x="450" y="128" text-anchor="middle">lenguaje</text>
+        </g>
+        <g class="ln" marker-end="url(#fv)">
+          <path d="M100,60 L128,60"/><path d="M240,60 L268,60"/><path d="M360,60 C 380,60 380,95 388,100"/><path d="M240,162 C 330,162 370,140 388,130"/>
+        </g>
+        <text x="300" y="215" class="t-muted" font-size="12" text-anchor="middle">tokens de imagen y de texto, en la misma secuencia</text>
+      </svg>
+      <figcaption>Esquema de LLaVA <a class="cite" data-ref="liu2023"></a>. Gemma 4 de 12B no tiene codificador aparte: recibe los parches de la imagen directamente.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>CLIP</strong> <a class="cite" data-ref="radford2021"></a>: aprender qué texto va con qué imagen en 400 millones de pares da un codificador que iguala sin ajuste a una ResNet-50 en ImageNet.</li>
+        <li><strong>LLaVA</strong> <a class="cite" data-ref="liu2023"></a>: un codificador CLIP y una sola capa lineal que lleva sus vectores al espacio de los tokens; después, ajuste con instrucciones visuales.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">La idea común</span>Lo que el modelo «ve» depende de la resolución y del número de tokens de imagen: pocos tokens para una imagen entera dan poca precisión para leer coordenadas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · Gemma 3 y Gemma 4</p>
+  <h2>Modelos abiertos que caben en una GPU de consumo</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Gemma 3</strong> <a class="cite" data-ref="gemma2025"></a> (preprint): un codificador SigLIP de 400 M, congelado y compartido por los modelos de 4B, 12B y 27B, convierte imágenes de 896 × 896 en 256 tokens; contexto de 128K tokens.</li>
+        <li><strong>Gemma 4</strong> <a class="cite" data-ref="gemma2026"></a> (preprint): de 2,3B a 31B, con un modo de razonamiento; el de 12B tiene una arquitectura unificada sin codificador que recibe directamente parches de imagen y de audio. Es el que usamos.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Para tu dron</span>Un VLM puede describir lo que ve la cámara o leer un mapa. En la parte 5 medimos cuánto pierde nuestro modelo cuando las coordenadas tiene que leerlas de una imagen en vez de un texto.</div>
+      <div class="callout realidad"><span class="tag">Cómputo</span>El de 12B, cuantizado a 4 bits, ocupa unos 7 GB: cabe en la GPU de 16 GB del curso con margen para el contexto.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Planificar">
+  <p class="num">Parte 2</p>
+  <h2>¿Saben planificar?</h2>
+  <p>PlanBench, Mystery Blocksworld, modelos que razonan y LLM-Modulo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Planificar · las pruebas</p>
+  <h2>PlanBench: bien cuando se parece a lo visto, mal cuando cambian los nombres</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Planes correctos (600 problemas)</th><th>GPT-4</th><th>o1-preview</th></tr></thead>
+          <tbody>
+            <tr><td>Blocksworld, sin ejemplos</td><td class="n">34,6 %</td><td class="n">97,8 %</td></tr>
+            <tr><td>Mystery Blocksworld, sin ejemplos</td><td class="n">0,16 %</td><td class="n">52,8 %</td></tr>
+            <tr><td>Blocksworld de 20 a 40 pasos (110)</td><td class="n">—</td><td class="n">23,6 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Tabla 1 de Valmeekam et al. 2023 <a class="cite" data-ref="valmeekam2023"></a> y tabla 2 y texto de Valmeekam et al. 2024 (preprint) <a class="cite" data-ref="valmeekam2024"></a>. Mystery Blocksworld es el mismo problema con las acciones y objetos renombrados.</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>PlanBench <a class="cite" data-ref="valmeekam2023b"></a>: en capacidades críticas, incluida la generación de planes, los LLM se quedan muy cortos.</li>
+        <li>El mejor modelo de 2023, GPT-4, acierta de media un 12 % en todos los dominios; la cadena de razonamiento apenas cambia nada <a class="cite" data-ref="valmeekam2023"></a>.</li>
+        <li>Los modelos que razonan mejoran mucho, pero se hunden con planes largos, y cuestan tiempo y dinero.</li>
+        <li>Más fácil sí: ejecutabilidad de planes en VirtualHome del 18 % al 79 % traduciendo cada paso a una acción admisible <a class="cite" data-ref="huang2022"></a>, a costa de corrección.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Lectura</span>Renombrar las acciones no cambia el problema, pero hunde el resultado: lo que parecía planificación era en parte reconocer patrones del entrenamiento.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Planificar · LLM-Modulo</p>
+  <h2>Generar, comprobar y criticar: el LLM propone, el verificador garantiza</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" role="img" aria-label="Bucle de LLM-Modulo: el LLM propone planes, críticos externos los comprueban y devuelven sus objeciones">
+          <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <g font-size="13">
+            <rect class="box" x="10" y="85" width="120" height="56" rx="6"/><text x="70" y="108" text-anchor="middle">Orden en</text><text x="70" y="126" text-anchor="middle">lenguaje natural</text>
+            <rect class="box-accent" x="185" y="85" width="140" height="56" rx="6"/><text x="255" y="108" text-anchor="middle">LLM: genera</text><text x="255" y="126" text-anchor="middle">un plan candidato</text>
+            <rect class="box-tesis" x="380" y="20" width="130" height="56" rx="6"/><text x="445" y="43" text-anchor="middle">Críticos: reglas,</text><text x="445" y="61" text-anchor="middle">simulador, energía</text>
+            <rect class="box-time" x="380" y="150" width="130" height="56" rx="6"/><text x="445" y="173" text-anchor="middle">Plan válido:</text><text x="445" y="191" text-anchor="middle">al ejecutor</text>
+          </g>
+          <g class="ln" marker-end="url(#fl)">
+            <path d="M130,113 L183,113"/><path d="M325,100 L378,55"/><path d="M445,76 L445,148"/>
+            <path d="M380,40 C 300,10 230,30 240,83"/>
+          </g>
+          <text x="282" y="22" class="t-muted" font-size="12">errores, en texto</text>
+        </svg>
+        <figcaption>El esquema de Kambhampati et al. <a class="cite" data-ref="kambhampati2024"></a>, con los críticos de nuestro experimento.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>«Los LLM autorregresivos no pueden, por sí solos, planificar ni verificarse» <a class="cite" data-ref="kambhampati2024"></a>. Su propuesta: un bucle de generar, comprobar y criticar, con el LLM generando candidatos y un banco de críticos juzgándolos; las garantías vienen de los verificadores externos.</li>
+        <li>La prueba: con el validador VAL devolviendo los errores (hasta 15 rondas), GPT-4 resuelve el 82 % de los problemas de Blocksworld que había fallado (3,7 rondas de media) y el 70 % en Logistics, pero solo el 10 % en Mystery Blocksworld <a class="cite" data-ref="valmeekam2023"></a>.</li>
+        <li>Los LLM no verifican planes mejor de lo que los generan: el verificador tiene que ser externo.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Robots">
+  <p class="num">Parte 3</p>
+  <h2>LLMs en robots</h2>
+  <p>Afordancias, monólogo interior, código, modelos encarnados y cómo pedir ayuda.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · SayCan en dibujo</p>
+  <h2>Lo que el lenguaje sugiere y lo que el robot puede hacer</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 250" role="img" aria-label="SayCan: el modelo de lenguaje puntúa cada habilidad del repertorio según la orden, la función de valor del robot puntúa si saldría bien desde el estado actual, y se elige la de mayor producto">
+        <defs><marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box" x="10" y="20" width="150" height="46" rx="5"/><text x="85" y="40" text-anchor="middle">orden i: «límpiame</text><text x="85" y="57" text-anchor="middle">lo que he derramado»</text>
+          <rect class="box" x="10" y="170" width="150" height="46" rx="5"/><text x="85" y="198" text-anchor="middle">estado s (cámara)</text>
+          <rect class="box-accent" x="200" y="20" width="140" height="46" rx="5"/><text x="270" y="40" text-anchor="middle">LLM: ¿es útil</text><text x="270" y="57" text-anchor="middle">cada habilidad?</text>
+          <rect class="box-tesis" x="200" y="170" width="140" height="46" rx="5"/><text x="270" y="190" text-anchor="middle">valor: ¿saldría</text><text x="270" y="207" text-anchor="middle">bien desde aquí?</text>
+          <rect class="box-time" x="380" y="95" width="110" height="46" rx="5"/><text x="435" y="115" text-anchor="middle">producto y</text><text x="435" y="132" text-anchor="middle">el máximo</text>
+        </g>
+        <g class="ln" marker-end="url(#fs)"><path d="M160,43 L198,43"/><path d="M160,193 L198,193"/><path d="M340,43 C 370,43 370,100 378,108"/><path d="M340,193 C 370,193 370,138 378,130"/></g>
+        <text x="270" y="110" text-anchor="middle" class="t-muted" font-size="12">repertorio cerrado de habilidades</text>
+        <text x="270" y="128" text-anchor="middle" class="t-muted" font-size="12">(coger, ir a, soltar…)</text>
+      </svg>
+      <figcaption>Esquema de SayCan <a class="cite" data-ref="ahn2022"></a>. El LLM no escribe texto libre: puntúa cada habilidad que el robot sabe ejecutar.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>El LLM aporta sentido común (qué ayuda a cumplir la orden); la función de valor, aprendida por el robot, aporta lo que se puede hacer desde la situación actual.</li>
+        <li>PaLM-SayCan, en 101 órdenes en una cocina de pruebas: 84 % de planes correctos y 74 % de ejecuciones con éxito.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Para tu dron</span>El repertorio es tu interfaz: despegar, ir a, buscar en una zona, volver. Restringir el LLM a elegir entre acciones que el sistema sabe ejecutar es la primera salvaguarda.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · SayCan paso a paso</p>
+  <h2>Por qué se multiplican las dos puntuaciones</h2>
+  \[ \pi^\star = \arg\max_{\pi\in\Pi}\ p(c_\pi\mid s, \ell_\pi)\; p(\ell_\pi\mid i) \]
+  <p><strong>Notación:</strong> \(\Pi\), repertorio de habilidades; \(\pi\), una habilidad; \(\ell_\pi\), su descripción en lenguaje; \(i\), la orden; \(s\), el estado; \(c_\pi\), el suceso «la habilidad sale bien»; \(\pi^\star\), la elegida.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>queremos la habilidad que sea a la vez útil para \(i\) y factible desde \(s\)</td><td>Útil sin factible no avanza; factible sin útil no ayuda</td></tr>
+      <tr><td><strong>2</strong></td><td>\(p(\ell_\pi \mid i)\): probabilidad que da el LLM a la descripción de \(\pi\) como siguiente paso</td><td>Se calcula puntuando el texto de cada habilidad, sin generar</td></tr>
+      <tr><td><strong>3</strong></td><td>\(p(c_\pi \mid s, \ell_\pi)\): probabilidad de éxito desde \(s\), la «afordancia»</td><td>La da una función de valor aprendida con RL o por imitación</td></tr>
+      <tr><td><strong>4</strong></td><td>útil y factible a la vez: producto de las dos</td><td>Supuesto: dado el estado, ser útil y salir bien son independientes</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Ejemplo ilustrativo (inventado, calculado en derivaciones_a11.py)</span><p>Sin esponja a la vista: el LLM da 0,60 a «coger la esponja», 0,30 a «ir a la encimera» y 0,10 a «coger la lata»; las afordancias son 0,05, 0,90 y 0,80. Los productos, 0,030, 0,270 y 0,080: el LLM solo elegiría la esponja; SayCan elige ir a la encimera.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · cuatro familias</p>
+  <h2>Realimentación, código, modelos encarnados y mapas de valor</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">REALIMENTACIÓN</span><h3>Inner Monologue</h3><p>Devolver al LLM en lenguaje lo que pasa (detección de éxito, descripción de la escena, respuestas de una persona) mejora mucho la consecución de órdenes en tres dominios <a class="cite" data-ref="huang2022b"></a>.</p></div>
+    <div class="card"><span class="meta">CÓDIGO</span><h3>Code as Policies y ProgPrompt</h3><p>El LLM escribe programas que llaman a la API del robot <a class="cite" data-ref="liang2023"></a>; ProgPrompt le da las acciones y objetos disponibles como especificaciones de programa, con ejemplos <a class="cite" data-ref="singh2023"></a>.</p></div>
+    <div class="card"><span class="meta">ENCARNADO</span><h3>PaLM-E y VoxPoser</h3><p>PaLM-E (562B) intercala imágenes, estados y texto en sus «frases» <a class="cite" data-ref="driess2023"></a>. VoxPoser compone mapas de valor en 3D que un planificador convierte en trayectorias <a class="cite" data-ref="huang2023"></a>.</p></div>
+  </div>
+  <div class="callout realidad"><span class="tag">Retos abiertos</span>Según Firoozi et al.: escasez de datos de robots, garantías de seguridad, cuantificar la incertidumbre y ejecutar en tiempo real <a class="cite" data-ref="firoozi2025"></a>. Los VLA, que generan acciones, son el tema A12.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · KnowNo en dibujo</p>
+  <h2>Pedir ayuda solo cuando hay más de una opción plausible</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 500 240" role="img" aria-label="KnowNo: con casos de calibración se fija un umbral; en un caso nuevo, las opciones que superan el umbral forman el conjunto; si tiene una sola, el robot actúa, y si tiene varias, pregunta">
+        <defs><marker id="fk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <g font-size="13">
+          <rect class="box" x="10" y="20" width="150" height="50" rx="5"/><text x="85" y="41" text-anchor="middle">n casos de</text><text x="85" y="58" text-anchor="middle">calibración</text>
+          <rect class="box-tesis" x="200" y="20" width="130" height="50" rx="5"/><text x="265" y="41" text-anchor="middle">umbral q̂</text><text x="265" y="58" text-anchor="middle">(un cuantil)</text>
+          <rect class="box" x="10" y="130" width="150" height="50" rx="5"/><text x="85" y="151" text-anchor="middle">caso nuevo:</text><text x="85" y="168" text-anchor="middle">LLM puntúa opciones</text>
+          <rect class="box-accent" x="200" y="130" width="130" height="50" rx="5"/><text x="265" y="151" text-anchor="middle">conjunto de</text><text x="265" y="168" text-anchor="middle">opciones plausibles</text>
+          <rect class="box-time" x="370" y="100" width="120" height="40" rx="5"/><text x="430" y="125" text-anchor="middle">1 opción: actúa</text>
+          <rect class="box-time" x="370" y="160" width="120" height="40" rx="5"/><text x="430" y="185" text-anchor="middle">varias: pregunta</text>
+        </g>
+        <g class="ln" marker-end="url(#fk)"><path d="M160,45 L198,45"/><path d="M160,155 L198,155"/><path d="M265,70 L265,128"/><path d="M330,148 L368,122"/><path d="M330,162 L368,178"/></g>
+      </svg>
+      <figcaption>Esquema de KnowNo <a class="cite" data-ref="ren2023"></a>: predicción conforme sobre las opciones que puntúa el LLM.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Los planificadores con LLM alucinan con mucha confianza. KnowNo convierte las puntuaciones del LLM en un conjunto de opciones que contiene la correcta con una probabilidad \(1 - \varepsilon\) fijada por el usuario.</li>
+        <li>En un brazo real, un 14 % menos de ayuda humana por paso y un 8 % por prueba que las alternativas, con la misma tasa de éxito.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · predicción conforme paso a paso</p>
+  <h2>Por qué el conjunto contiene la opción correcta con probabilidad \(1-\varepsilon\)</h2>
+  <p><strong>Notación:</strong> \(\hat p(y)\), probabilidad que da el LLM a la opción \(y\); \(n\), casos de calibración con su opción correcta \(y_j\); \(s_j = 1 - \hat p(y_j)\), puntuación de «sorpresa»; \(\varepsilon\), error tolerado; \(\hat q\), umbral; \(\mathcal C\), conjunto de opciones.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\hat q\) = cuantil \(\lceil (n+1)(1-\varepsilon)\rceil / n\) de \(s_1, \dots, s_n\)</td><td>Definición del umbral con los casos de calibración</td></tr>
+      <tr><td><strong>2</strong></td><td>la sorpresa \(s_{\text{nuevo}}\) del caso nuevo tiene el mismo rango que cualquiera de los \(n+1\)</td><td>Supuesto: casos intercambiables (vienen de la misma distribución, sin orden especial)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(P(s_{\text{nuevo}} \le \hat q) \ge \lceil (n+1)(1-\varepsilon)\rceil / (n+1) \ge 1 - \varepsilon\)</td><td>Por el paso 2, cae por debajo del umbral en al menos esa fracción de posiciones</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathcal C = \{y : 1 - \hat p(y) \le \hat q\}\) contiene la correcta si y solo si \(s_{\text{nuevo}} \le \hat q\)</td><td>Es la misma desigualdad con la opción correcta</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Simulación de juguete (derivaciones_a11.py)</span><p>Un «LLM» con 4 opciones que elegiría bien el 62 % de las veces; \(\varepsilon = 0{,}15\) y 400 casos de calibración. En 20 000 casos nuevos, la cobertura es 0,888 (garantía: al menos 0,85); el conjunto tiene 2,03 opciones de media y solo en el 27 % es una sola, así que el robot preguntaría en el resto. La garantía se paga en preguntas.</p></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Robots · seguridad</p>
+  <h2>No obedecer a cualquiera</h2>
+  <div class="cols">
+    <div class="callout error"><span class="tag">Jailbreak de robots</span>RoboPAIR <a class="cite" data-ref="robey2025"></a> consigue que robots controlados por LLM (un perro Unitree Go2 con GPT-3.5, un Jackal con GPT-4o, un modelo de conducción) ejecuten acciones dañinas, a menudo con un 100 % de éxito. Las salvaguardas del modelo de lenguaje no bastan.</div>
+    <div class="callout clave"><span class="tag">Salvaguardas</span>Repertorio cerrado de acciones; verificador externo de reglas y energía; pedir confirmación cuando hay duda; y nada de lo que el LLM produzca llega a los lazos de control sin pasar por capas que sí tienen garantías (A14).</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Drones">
+  <p class="num">Parte 4</p>
+  <h2>LLMs y VLMs en drones</h2>
+  <p>Planes de vuelo, navegación con visión y lenguaje y la latencia.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · planes y navegación</p>
+  <h2>Planes de vuelo en un lenguaje corto; navegación con visión y lenguaje, todavía lejos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>TypeFly</strong> <a class="cite" data-ref="chen2023"></a>: la generación secuencial de tokens añade una latencia considerable al plan. En lugar de Python, el LLM escribe en MiniSpec, un lenguaje pequeño pensado para gastar pocos tokens y ejecutarse mientras llega: hasta un 62 % menos de tiempo de respuesta y menos de 1,5 s en las 11 tareas de su banco de pruebas.</li>
+        <li><strong>ChatGPT para robótica</strong> <a class="cite" data-ref="vemprala2024"></a>: con solo la API básica en el prompt, escribió código de inspección para un dron en AirSim (vuelos circulares y en zigzag).</li>
+        <li><strong>Revisiones</strong> de LLMs y drones <a class="cite" data-ref="javaid2024,tian2025"></a>: hoy los drones dependen sobre todo del control humano, con autonomía limitada a escenarios sencillos.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Navegación aérea con visión y lenguaje</th><th>Mejor agente</th><th>Personas</th></tr></thead>
+          <tbody>
+            <tr><td>AerialVLN, escenas no vistas <a class="cite" data-ref="liu2023b"></a></td><td class="n">1,6 %</td><td class="n">80,8 %</td></tr>
+            <tr><td>CityNav, escenas no vistas <a class="cite" data-ref="lee2024"></a></td><td class="n">6,72 %</td><td class="n">87,86 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Tasa de éxito: llegar al destino descrito en lenguaje (en CityNav, a menos de 20 m). AerialVLN: 8446 trayectorias de pilotos en 25 escenas urbanas.</p>
+      <div class="callout realidad"><span class="tag">La distancia</span>Seguir instrucciones en una ciudad desde el aire está muy lejos del nivel humano en estos bancos de pruebas. Por eso, en un dron, el LLM se queda en el nivel de la misión y deja la navegación a capas que sabemos verificar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · dónde va el LLM</p>
+  <h2>Segundos para el plan, milisegundos para el control</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Nivel</th><th>Frecuencia</th><th>Quién</th></tr></thead>
+          <tbody>
+            <tr><td>Misión: interpretar la orden, ordenar zonas</td><td class="n">una vez, o al cambiar algo</td><td>LLM / VLM + verificador</td></tr>
+            <tr><td>Búsqueda: hacia dónde mirar</td><td class="n">1–10 Hz</td><td>planificador con belief (A7a, A13)</td></tr>
+            <tr><td>Trayectoria</td><td class="n">10–50 Hz</td><td>MPC o política (A3, A6)</td></tr>
+            <tr><td>Actitud y velocidad angular</td><td class="n">200–800 Hz</td><td>controladora (A2)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Nuestro modelo genera unos 34 tokens/s en la GPU: un plan de unos 132 tokens tarda unos 4,5 s; razonando, 331,1 s.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">La regla</span>Un LLM no cierra ningún lazo que necesite reaccionar en menos de un segundo. Propone objetivos y restricciones; un planificador y un verificador los convierten en algo ejecutable y seguro. Es la arquitectura jerárquica de A13.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La orden de búsqueda define el mapa previo y las zonas prohibidas del belief; el LLM puede escribirlas, el filtro de Bayes las mantiene y el planificador decide cada segundo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Experimento">
+  <p class="num">Parte 5</p>
+  <h2>Un modelo de 12B planifica misiones de búsqueda</h2>
+  <p>Treinta misiones, seis formas de preguntar y un verificador que no se deja engañar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>Una orden, un mapa, un plan en JSON y alguien que lo comprueba</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Misión:</strong> mapa de 100 × 100 m con seis zonas, una o dos prohibidas; base en (0, 0); autonomía en metros; orden en lenguaje natural («busca en el patio y en el almacén; no sobrevueles la pista; vuelve con al menos un 20 % de batería»). Dos de cada tres exigen rodear una zona prohibida; una de cada seis es imposible.</li>
+        <li><strong>Plan:</strong> JSON con cinco acciones (despegar, ir_a, buscar, volver_base, aterrizar) o «no es posible».</li>
+        <li><strong>Verificador:</strong> formato, estructura, zonas pedidas y prohibidas, tramos rectos que pasan a menos de 2 m de una zona prohibida y energía (tramos más barrido, área / 5 m).</li>
+        <li><strong>Referencia:</strong> un planificador exacto (todas las órdenes de las zonas y rutas por un grafo de visibilidad), 0,5 ms por misión en CPU.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Condición</th><th>Qué recibe el modelo</th></tr></thead>
+          <tbody>
+            <tr><td>Sin ejemplos</td><td>reglas, API, mapa en coordenadas y orden</td></tr>
+            <tr><td>Con dos ejemplos</td><td>lo anterior y dos misiones resueltas por el planificador exacto</td></tr>
+            <tr><td>Con verificador</td><td>lo anterior y, si falla, los errores del verificador, hasta 3 veces más; en una versión el mensaje recuerda que puede responder «imposible», en otra solo pide corregir</td></tr>
+            <tr><td>Mapa como imagen</td><td>con ejemplos, pero las zonas solo en una imagen de 600 × 600</td></tr>
+            <tr><td>Con razonamiento</td><td>con ejemplos y el modo de razonamiento: a temperatura 0 con un tope de 6000 tokens, y con el muestreo que trae el modelo y un tope de 15 000 en 12 misiones</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Gemma 4 de 12B, cuantizado a 4 bits (QAT), en ollama sobre una RTX 4060 Ti; temperatura 0 salvo en el razonamiento con muestreo. <code>figuras_a11.py</code>; las respuestas completas, en <code>figuras/respuestas_a11.json</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · resultados</p>
+  <h2>Sin verificador, el modelo acierta solo donde basta ir en línea recta; con un verificador que exige un plan, el 64 %</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>30 misiones</th><th>Posibles bien planificadas</th><th>Imposibles rechazadas</th><th>Posibles dadas por imposibles</th><th>Energía / óptima</th><th>Tiempo por misión</th><th>Tokens</th><th>Fallos por cruce</th></tr></thead>
+      <tbody>
+        <tr><td>Sin ejemplos</td><td class="n">8/25 (32 %)</td><td class="n">0/5</td><td class="n">0</td><td class="n">1,02</td><td class="n">4,1 s</td><td class="n">127</td><td class="n">17</td></tr>
+        <tr><td>Con dos ejemplos</td><td class="n">8/25 (32 %)</td><td class="n">0/5</td><td class="n">0</td><td class="n">1,00</td><td class="n">4,5 s</td><td class="n">132</td><td class="n">17</td></tr>
+        <tr><td>Verificador que admite «imposible»</td><td class="n">10/25 (40 %)</td><td class="n">5/5</td><td class="n">13</td><td class="n">1,01</td><td class="n">8,7 s</td><td class="n">261</td><td class="n">2</td></tr>
+        <tr><td>Verificador que exige un plan</td><td class="n">16/25 (64 %)</td><td class="n">5/5</td><td class="n">0</td><td class="n">1,03</td><td class="n">12,1 s</td><td class="n">369</td><td class="n">9</td></tr>
+        <tr><td>Mapa como imagen</td><td class="n">8/25 (32 %)</td><td class="n">0/5</td><td class="n">0</td><td class="n">1,03</td><td class="n">5,0 s</td><td class="n">134</td><td class="n">17</td></tr>
+        <tr><td>Razonamiento, temperatura 0</td><td class="n">0/25 (0 %)</td><td class="n">0/5</td><td class="n">0</td><td class="n">—</td><td class="n">184,4 s</td><td class="n">6000</td><td class="n">0</td></tr>
+        <tr><td>Razonamiento con muestreo (12 misiones)</td><td class="n">7/10 (70 %)</td><td class="n">1/2</td><td class="n">0</td><td class="n">1,03</td><td class="n">331,1 s</td><td class="n">10726</td><td class="n">3</td></tr>
+        <tr><td><em>Planificador exacto</em></td><td class="n">25/25</td><td class="n">5/5</td><td class="n">0</td><td class="n">1,00</td><td class="n">0,0005 s</td><td class="n">—</td><td class="n">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="xsmall muted">Posibles: 25 misiones (10 en el razonamiento con muestreo); imposibles: 5 (2). Fallos por cruce: misiones posibles con algún tramo que pasa por una zona prohibida.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · qué arregla el verificador</p>
+  <h2>Ni los ejemplos ni la imagen enseñan a rodear; los errores del verificador, a veces</h2>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Lo que sale</span>Sin verificador acierta las 8 misiones en que basta la ruta recta y 0 de las 17 que exigen rodear una zona prohibida, con o sin ejemplos y con el mapa en texto o en imagen. Tampoco rechaza ninguna misión imposible (0/5): no hace la cuenta de la energía. Con los errores del verificador y un mensaje que pide corregir, rodea en 8 de las 17 y detecta las 5 imposibles.</div><div class="callout error"><span class="tag">Una frase del bucle</span>Si el mensaje del verificador recuerda que puede responder «imposible», el modelo se rinde en 13 de las 25 misiones posibles y solo acierta 10. La misma información con otra frase cambia más que los ejemplos.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · el razonamiento</p>
+  <h2>A temperatura 0, el razonamiento no termina; con el muestreo del modelo, rodea zonas, pero tarda minutos</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Misión 0, tope de 15 000 tokens</th><th>Temperatura 0</th><th>Muestreo del modelo</th></tr></thead>
+          <tbody>
+            <tr><td>Tiempo</td><td class="n">464 s</td><td class="n">243 s</td></tr>
+            <tr><td>Tokens generados</td><td class="n">15 000</td><td class="n">7 897</td></tr>
+            <tr><td>Termina y responde</td><td class="n">no</td><td class="n">sí (plan válido)</td></tr>
+            <tr><td>«Wait, let me / let's re-…» en la segunda mitad</td><td class="n">45</td><td class="n">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Final del razonamiento a temperatura 0</span><p>«…to (0,0). Then `aterrizar`. Wait, let me re-calculate the distance from (68, 54.5) to (0,0) one more time. 68^2 = 4624 54.5^2 = 2970.25 4624 + 2970.25 = 7594.25 sqrt(7594.25) = 87.145 Wait»</p></div>
+    </div>
+    <div class="stack">
+      <ul><li><strong>Temperatura 0:</strong> las 30 misiones agotan los 6000 tokens sin responder (184,4 s cada una); la misión 0, ni con 15 000. Eligiendo siempre el token más probable, el razonamiento vuelve una y otra vez a lo ya comprobado.</li><li><strong>Con el muestreo del modelo</strong> (12 misiones): 7 de 10 posibles bien; rodea en 3 de las 6 que lo exigen, cuando sin razonar no rodea ninguna, y rechaza 1 de las 2 imposibles. Pero tarda 331,1 s y 10 726 tokens por misión, unas 74 veces más que sin razonar.</li></ul><div class="callout clave"><span class="tag">Razonar no sustituye al verificador</span>Con el verificador que exige un plan se llega al 64 % en 12,1 s por misión y se detectan todas las imposibles; razonando, un acierto parecido con minutos por plan y sin garantía de detectar lo imposible.</div>
+    </div>
+  </div>
+  <p class="xsmall muted"><code>diagnostico_razonamiento.py</code>. Muestreo del modelo: temperatura 1, top_k 64 y top_p 0,95, los valores que trae en ollama, con semilla fija.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · un caso</p>
+  <h2>El plan cruza el huerto; con el error del verificador, lo rodea</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 300 270" style="max-height:300px" role="img" aria-label="Mapa de una misión con el plan del modelo, el plan corregido con el verificador y el óptimo">
+        <rect x="20" y="10" width="240" height="240" class="box-soft"/>
+        <rect x="39.2" y="70.0" width="48.0" height="43.2" class="fill-accent" fill-opacity="0.25"/><text x="63.2" y="95.6" text-anchor="middle" font-size="10" class="t-mono">Z1</text><rect x="197.6" y="31.6" width="43.2" height="28.8" class="fill-time" fill-opacity="0.45"/><text x="219.2" y="50.0" text-anchor="middle" font-size="10" class="t-mono">Z2</text><rect x="207.2" y="125.2" width="36.0" height="45.6" class="fill-ink3" fill-opacity="0.15"/><text x="225.2" y="152.0" text-anchor="middle" font-size="10" class="t-mono">Z3</text><rect x="108.8" y="154.0" width="45.6" height="24.0" class="fill-accent" fill-opacity="0.25"/><text x="131.6" y="170.0" text-anchor="middle" font-size="10" class="t-mono">Z4</text><rect x="48.8" y="175.6" width="43.2" height="33.6" class="fill-time" fill-opacity="0.45"/><text x="70.4" y="196.4" text-anchor="middle" font-size="10" class="t-mono">Z5</text><rect x="176.0" y="204.4" width="26.4" height="24.0" class="fill-ink3" fill-opacity="0.15"/><text x="189.2" y="220.4" text-anchor="middle" font-size="10" class="t-mono">Z6</text><path d="M20.0,250.0 L98.0,215.2 L131.6,166.0 L63.2,91.6 L20.0,250.0" fill="none" class="ln-tesis" stroke-width="2.4"/><path d="M20.0,250.0 L131.6,214.0 L131.6,166.0 L131.6,166.0 L63.2,91.6 L63.2,91.6 L20.0,250.0" fill="none" class="ln-accent" stroke-width="2"/><path d="M20.0,250.0 L131.6,166.0 L131.6,166.0 L63.2,91.6 L63.2,91.6 L20.0,250.0" fill="none" class="ln" stroke-width="2" stroke-dasharray="5 3"/>
+        <text x="20" y="266" class="t-mono t-faint" font-size="11">(0, 0)</text>
+        <text x="260" y="266" text-anchor="end" class="t-mono t-faint" font-size="11">100 m</text>
+      </svg>
+      <figcaption>Naranja: prohibidas; azul claro: pedidas; gris: otras. Discontinuo: con dos ejemplos; azul: tras el verificador; morado: óptimo. Base en (0, 0).</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Misión 1, con dos ejemplos: el orden de las zonas es el óptimo, pero el tramo 2 va en línea recta por encima de Z5, una zona prohibida.</p><div class="aparte"><span class="rotulo">Lo que le devuelve el verificador</span><p>«el tramo 2, de (0, 0) a (46, 35), pasa por la zona prohibida Z5 (huerto) o a menos de 2 m».</p></div><p>En el segundo intento añade un punto de paso que rodea Z5; el plan pasa todas las comprobaciones y gasta 1,03 veces la energía del óptimo.</p><div class="callout clave"><span class="tag">Por qué funciona</span>El verificador le da lo que no sabe calcular, la geometría, en el idioma que sí maneja: un mensaje que nombra el tramo y la zona.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura</p>
+  <h2>El modelo entiende la orden; la geometría y la energía las pone el verificador</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul><li><strong>Orden y API:</strong> cuando responde, ningún fallo de formato, de estructura ni de zonas en ninguna condición: interpreta bien qué hay que hacer.</li><li><strong>Geometría:</strong> no ve que un tramo recto atraviesa una zona prohibida; ni los ejemplos ni la imagen lo cambian (0 y 0 de 17 rodeos).</li><li><strong>Energía:</strong> sin verificador, ninguna de las 5 misiones imposibles se rechaza.</li><li><strong>Razonamiento:</strong> con el muestreo del modelo rodea 3 de 6 zonas, pero tarda 331,1 s por plan; a temperatura 0 no termina.</li><li><strong>Tiempo:</strong> 4,5 s por plan, 12,1 s con el verificador; el planificador exacto, 0,5 ms.</li></ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Límites de este experimento</span>Un modelo, una familia de mapas sencillos, 30 misiones (12 en el razonamiento con muestreo) y temperatura 0 en el resto: las proporciones tienen mucha incertidumbre (con 25 misiones posibles, cada misión es un 4 %). Otro modelo, otro prompt u otra semilla pueden dar otras cifras; lo robusto es el tipo de fallo y lo que el verificador arregla.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Si un LLM interpreta las órdenes de tu dron, el verificador y el planificador clásico son obligatorios, y las misiones imposibles hay que detectarlas fuera del LLM.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Modelos que razonan más, verificadores que no se pueden saltar</h2>
+  <div class="cols c3 body">
+    <div class="card"><span class="meta">HECHO</span><h3>Sentido común útil</h3><p>Los LLM traducen órdenes en planes plausibles y escriben código para robots <a class="cite" data-ref="ahn2022,liang2023"></a>; con un verificador externo, muchos de sus errores se corrigen solos <a class="cite" data-ref="valmeekam2023"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Razonar y mirar</h3><p>Modelos que razonan con RL <a class="cite" data-ref="deepseek2025"></a> y modelos abiertos multimodales con modo de razonamiento que caben en una GPU de consumo <a class="cite" data-ref="gemma2026"></a>.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Garantías y latencia</h3><p>Seguridad e incertidumbre <a class="cite" data-ref="ren2023,robey2025"></a>, planes largos <a class="cite" data-ref="valmeekam2024"></a> y ejecución en tiempo real <a class="cite" data-ref="firoozi2025"></a>.</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">La lectura del tema</span>Un LLM es un buen generador de candidatos y un mal juez de sí mismo. En un robot, va arriba en la jerarquía, dentro de un bucle con verificadores que comprueban lo que propone, y lejos de los lazos rápidos.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>De la orden en lenguaje al belief de la búsqueda</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Mapa previo:</strong> «la persona salió del edificio norte hace una hora» se puede convertir, con un LLM, en un mapa previo para el filtro de Bayes de A7a, y comprobarlo antes de usarlo.</li>
+        <li><strong>Restricciones:</strong> zonas prohibidas, autonomía y prioridades salen de la orden; el verificador las vuelve comprobables.</li>
+        <li><strong>Percepción:</strong> un VLM puede describir lo que ve la cámara («hay una persona tumbada junto al coche») como una observación más, con su modelo de error.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cómo se convierte la salida de un VLM (una descripción, una detección, una orden interpretada) en una verosimilitud calibrada para el belief del dron, y cuánto mejora la búsqueda frente a un detector clásico?</div>
+      <div class="callout realidad"><span class="tag">Hilos</span><strong>Latencia:</strong> unos 4,5 s por plan, 331,1 s razonando. <strong>Observabilidad parcial:</strong> el LLM no sabe qué ignora. <strong>Sim-to-real:</strong> las órdenes reales son ambiguas. <strong>Cómputo:</strong> 7 GB de pesos y unos 34 tokens/s en una GPU de consumo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A11</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Decodificar está limitado por el ancho de banda: tokens/s ≲ ancho de banda / bytes de los pesos.</li>
+    <li>Escala, instrucciones, cadena de razonamiento y RL añaden capacidades distintas; las de planificar hay que medirlas en la tarea.</li>
+    <li>Sin ayuda, los LLM planifican mal y se hunden si cambian los nombres; los que razonan, mejor, pero lentos y con planes cortos.</li>
+    <li>El esquema que funciona es generar, comprobar y criticar, con verificadores externos que dan las garantías.</li>
+    <li>En nuestro experimento, sin verificador el modelo no rodea ninguna zona prohibida (0 de 17); con un verificador que exige un plan acierta el 16/25 (64 %); razonando con muestreo rodea algunas, pero tarda 331,1 s por plan.</li>
+    <li>En robots, repertorio cerrado de acciones, afordancias o código, pedir ayuda cuando hay duda, y el LLM lejos de los lazos rápidos.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Modelos y latencia</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Un modelo de 8 GB de pesos en una GPU de 400 GB/s. ¿Cuántos tokens por segundo puedes esperar como máximo al decodificar, con un solo usuario?</p>
+      <ol class="opts">
+        <li><button type="button">Unos 3200</button></li>
+        <li><button type="button">Unos 50</button></li>
+        <li><button type="button">Unos 400</button></li>
+        <li><button type="button">Depende solo de los TFLOPS</button></li>
+      </ol>
+      <p class="explain">Cada token lee todos los pesos: 400 / 8 = 50 tokens/s como cota. Los TFLOPS importan en el prellenado, no en la decodificación de un solo usuario.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">2. ¿Por qué se divide por \(\sqrt d\) en la atención?</p>
+      <ol class="opts">
+        <li><button type="button">Para normalizar los valores</button></li>
+        <li><button type="button">Para ahorrar memoria</button></li>
+        <li><button type="button">Por convención</button></li>
+        <li><button type="button">Porque el producto escalar de vectores de varianza unidad tiene varianza \(d\), y sin escalar el softmax se satura</button></li>
+      </ol>
+      <p class="explain">Con el softmax saturado, los gradientes se anulan y el entrenamiento se atasca.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Planificar</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">3. GPT-4 resuelve el 34,6 % de Blocksworld y el 0,16 % del mismo problema con los nombres cambiados. ¿Qué sugiere?</p>
+      <ol class="opts">
+        <li><button type="button">Que Mystery Blocksworld es más difícil</button></li>
+        <li><button type="button">Que hacen falta más ejemplos</button></li>
+        <li><button type="button">Que buena parte del acierto venía de reconocer patrones del entrenamiento, no de razonar sobre las acciones</button></li>
+        <li><button type="button">Que el validador está mal</button></li>
+      </ol>
+      <p class="explain">El problema es idéntico salvo por los nombres; un planificador clásico los resuelve igual.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. En LLM-Modulo, ¿de dónde vienen las garantías del plan?</p>
+      <ol class="opts">
+        <li><button type="button">De los verificadores externos que comprueban cada candidato</button></li>
+        <li><button type="button">Del razonamiento del LLM</button></li>
+        <li><button type="button">De pedirle al LLM que revise su plan</button></li>
+        <li><button type="button">De la temperatura 0</button></li>
+      </ol>
+      <p class="explain">El LLM no verifica mejor de lo que genera; la solidez la da el crítico.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>En el dron</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. En nuestro experimento, ¿cuál es el fallo más frecuente del modelo sin verificador?</p>
+      <ol class="opts">
+        <li><button type="button">JSON mal formado</button></li>
+        <li><button type="button">Tramos rectos que cruzan una zona prohibida</button></li>
+        <li><button type="button">Olvidar una zona pedida</button></li>
+        <li><button type="button">Pasarse de energía</button></li>
+      </ol>
+      <p class="explain">Formato y zonas, siempre bien; pero acierta las 8 misiones en que basta ir en línea recta y 0 de las 17 que exigen rodear una zona prohibida.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña el bucle de planificación de misión de tu dron con un LLM local. ¿Qué genera el LLM, qué comprueba el verificador, qué haces si tras varios intentos no hay un plan válido y qué latencia aceptas?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p>El LLM traduce la orden a objetivos y restricciones (zonas pedidas, prohibidas, prioridades, reserva de batería) y propone un orden de zonas en un formato cerrado; el verificador comprueba formato, zonas, geometría (con el planificador de rutas, no con tramos rectos) y energía, y devuelve errores concretos. Tras 3–4 intentos sin plan válido, se usa el planificador clásico con los objetivos que sí se han validado, o se pide confirmación al operador, y nunca se vuela un plan sin verificar. La latencia aceptable es la de una decisión de misión: segundos, una vez al empezar o cuando cambia algo; nada del LLM entra en lazos de menos de un segundo. Mediría tasa de planes válidos, intentos, tiempo y la detección de misiones imposibles.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · NEURIPS</span>
+      <h3>Valmeekam et al. 2023 <a class="cite" data-ref="valmeekam2023"></a></h3>
+      <p><strong>Lee:</strong> Mystery Blocksworld y el bucle con VAL.</p>
+      <p><strong>Responde:</strong> ¿qué parte del éxito con verificador se debe al verificador?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · ICML</span>
+      <h3>LLM-Modulo <a class="cite" data-ref="kambhampati2024"></a></h3>
+      <p><strong>Lee:</strong> la arquitectura y el papel de los críticos.</p>
+      <p><strong>Responde:</strong> ¿qué críticos necesita tu misión?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · CORL</span>
+      <h3>SayCan <a class="cite" data-ref="ahn2022"></a></h3>
+      <p><strong>Lee:</strong> la combinación de LLM y afordancias.</p>
+      <p><strong>Responde:</strong> ¿cuál sería la «afordancia» de tu dron?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> KnowNo <a class="cite" data-ref="ren2023"></a>; TypeFly <a class="cite" data-ref="chen2023"></a>; Code as Policies <a class="cite" data-ref="liang2023"></a>; revisión de modelos fundacionales en robótica <a class="cite" data-ref="firoozi2025"></a>; o1 en PlanBench <a class="cite" data-ref="valmeekam2024"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Un VLM local como planificador de misión</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
+        <li><strong>Misiones y verificador:</strong> generador, planificador exacto y comprobaciones.</li>
+        <li><strong>El LLM sin ayuda</strong> y con ejemplos.</li>
+        <li><strong>Bucle con el verificador</strong> (LLM-Modulo).</li>
+        <li><strong>El mapa como imagen</strong> y el modo de razonamiento.</li>
+        <li><strong>Latencia:</strong> prellenado, decodificación y la cota del ancho de banda.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Qué falla el modelo, qué arregla el verificador, qué no detecta nunca y cuánto tarda cada opción.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Una GPU con 8 GB o más y ollama con un modelo abierto de 4 a 12B; en CPU funciona, mucho más despacio. Todo el script tardó 176 minutos con el modelo de 12B en una RTX 4060 Ti.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a11.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-ahn2022">Ahn, M., Brohan, A., Brown, N., Chebotar, Y., Cortes, O., David, B., Finn, C., Fu, C., et al. (2023). Do as I can, not as I say: Grounding language in robotic affordances. <span class="venue">CoRL 2022</span>, PMLR 205, 287–318. <a href="https://arxiv.org/abs/2204.01691">arXiv:2204.01691</a></li>
+    <li id="ref-valmeekam2023">Valmeekam, K., Marquez, M., Sreedharan, S., Kambhampati, S. (2023). On the planning abilities of large language models: A critical investigation. <span class="venue">NeurIPS 2023</span>. <a href="https://arxiv.org/abs/2305.15771">arXiv:2305.15771</a></li>
+    <li id="ref-valmeekam2024">Valmeekam, K., Stechly, K., Kambhampati, S. (2024). LLMs still can't plan; can LRMs? A preliminary evaluation of OpenAI's o1 on PlanBench. <a href="https://arxiv.org/abs/2409.13373">arXiv:2409.13373</a> (preprint)</li>
+    <li id="ref-vaswani2017">Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., Polosukhin, I. (2017). Attention is all you need. <span class="venue">NeurIPS 2017</span>. <a href="https://arxiv.org/abs/1706.03762">arXiv:1706.03762</a></li>
+    <li id="ref-kaplan2020">Kaplan, J., McCandlish, S., Henighan, T., Brown, T. B., Chess, B., Child, R., Gray, S., Radford, A., Wu, J., Amodei, D. (2020). Scaling laws for neural language models. <a href="https://arxiv.org/abs/2001.08361">arXiv:2001.08361</a> (preprint)</li>
+    <li id="ref-radford2021">Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., Krueger, G., Sutskever, I. (2021). Learning transferable visual models from natural language supervision. <span class="venue">ICML 2021</span>, PMLR 139, 8748–8763. <a href="https://arxiv.org/abs/2103.00020">arXiv:2103.00020</a></li>
+    <li id="ref-ouyang2022">Ouyang, L., Wu, J., Jiang, X., Almeida, D., Wainwright, C. L., Mishkin, P., Zhang, C., Agarwal, S., Slama, K., Ray, A., et al. (2022). Training language models to follow instructions with human feedback. <span class="venue">NeurIPS 2022</span>. <a href="https://arxiv.org/abs/2203.02155">arXiv:2203.02155</a></li>
+    <li id="ref-wei2022">Wei, J., Wang, X., Schuurmans, D., Bosma, M., Ichter, B., Xia, F., Chi, E., Le, Q., Zhou, D. (2022). Chain-of-thought prompting elicits reasoning in large language models. <span class="venue">NeurIPS 2022</span>. <a href="https://arxiv.org/abs/2201.11903">arXiv:2201.11903</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="9">
+    <li id="ref-hoffmann2022">Hoffmann, J., Borgeaud, S., Mensch, A., Buchatskaya, E., Cai, T., Rutherford, E., de Las Casas, D., Hendricks, L. A., et al. (2022). Training compute-optimal large language models. <a href="https://arxiv.org/abs/2203.15556">arXiv:2203.15556</a>. En <span class="venue">NeurIPS 2022</span> con el título «An empirical analysis of compute-optimal large language model training»</li>
+    <li id="ref-huang2022">Huang, W., Abbeel, P., Pathak, D., Mordatch, I. (2022). Language models as zero-shot planners: Extracting actionable knowledge for embodied agents. <span class="venue">ICML 2022</span>, PMLR 162, 9118–9147. <a href="https://arxiv.org/abs/2201.07207">arXiv:2201.07207</a></li>
+    <li id="ref-huang2022b">Huang, W., Xia, F., Xiao, T., Chan, H., Liang, J., Florence, P., Zeng, A., Tompson, J., et al. (2023). Inner monologue: Embodied reasoning through planning with language models. <span class="venue">CoRL 2022</span>, PMLR 205, 1769–1782. <a href="https://arxiv.org/abs/2207.05608">arXiv:2207.05608</a></li>
+    <li id="ref-liang2023">Liang, J., Huang, W., Xia, F., Xu, P., Hausman, K., Ichter, B., Florence, P., Zeng, A. (2023). Code as policies: Language model programs for embodied control. <span class="venue">ICRA 2023</span>, 9493–9500. <a href="https://doi.org/10.1109/ICRA48891.2023.10160591">doi:10.1109/ICRA48891.2023.10160591</a>. <a href="https://arxiv.org/abs/2209.07753">arXiv:2209.07753</a></li>
+    <li id="ref-singh2023">Singh, I., Blukis, V., Mousavian, A., Goyal, A., Xu, D., Tremblay, J., Fox, D., Thomason, J., Garg, A. (2023). ProgPrompt: Generating situated robot task plans using large language models. <span class="venue">ICRA 2023</span>, 11523–11530. <a href="https://doi.org/10.1109/ICRA48891.2023.10161317">doi:10.1109/ICRA48891.2023.10161317</a>. <a href="https://arxiv.org/abs/2209.11302">arXiv:2209.11302</a></li>
+    <li id="ref-driess2023">Driess, D., Xia, F., Sajjadi, M. S. M., Lynch, C., Chowdhery, A., Ichter, B., Wahid, A., Tompson, J., et al. (2023). PaLM-E: An embodied multimodal language model. <span class="venue">ICML 2023</span>, PMLR 202, 8469–8488. <a href="https://arxiv.org/abs/2303.03378">arXiv:2303.03378</a></li>
+    <li id="ref-huang2023">Huang, W., Wang, C., Zhang, R., Li, Y., Wu, J., Fei-Fei, L. (2023). VoxPoser: Composable 3D value maps for robotic manipulation with language models. <span class="venue">CoRL 2023</span>, PMLR 229, 540–562. <a href="https://arxiv.org/abs/2307.05973">arXiv:2307.05973</a></li>
+    <li id="ref-liu2023">Liu, H., Li, C., Wu, Q., Lee, Y. J. (2023). Visual instruction tuning. <span class="venue">NeurIPS 2023</span>. <a href="https://arxiv.org/abs/2304.08485">arXiv:2304.08485</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="17">
+    <li id="ref-valmeekam2023b">Valmeekam, K., Marquez, M., Olmo, A., Sreedharan, S., Kambhampati, S. (2023). PlanBench: An extensible benchmark for evaluating large language models on planning and reasoning about change. <span class="venue">NeurIPS 2023, Datasets and Benchmarks</span>. <a href="https://arxiv.org/abs/2206.10498">arXiv:2206.10498</a></li>
+    <li id="ref-chen2023">Chen, G., Yu, X., Ling, N., Zhong, L. (2023). TypeFly: Flying drones with large language model. <a href="https://arxiv.org/abs/2312.14950">arXiv:2312.14950</a>. Versión de revista: TypeFly: Low-latency drone planning with large language models, <span class="venue">IEEE Transactions on Mobile Computing</span>, 24, 9068–9079 (2025), <a href="https://doi.org/10.1109/TMC.2025.3561282">doi:10.1109/TMC.2025.3561282</a></li>
+    <li id="ref-liu2023b">Liu, S., Zhang, H., Qi, Y., Wang, P., Zhang, Y., Wu, Q. (2023). AerialVLN: Vision-and-language navigation for UAVs. <span class="venue">ICCV 2023</span>, 15338–15348. <a href="https://doi.org/10.1109/ICCV51070.2023.01411">doi:10.1109/ICCV51070.2023.01411</a>. <a href="https://arxiv.org/abs/2308.06735">arXiv:2308.06735</a></li>
+    <li id="ref-kambhampati2024">Kambhampati, S., Valmeekam, K., Guan, L., Verma, M., Stechly, K., Bhambri, S., Saldyt, L., Murthy, A. (2024). Position: LLMs can't plan, but can help planning in LLM-Modulo frameworks. <span class="venue">ICML 2024</span>, PMLR 235, 22895–22907. <a href="https://arxiv.org/abs/2402.01817">arXiv:2402.01817</a></li>
+    <li id="ref-deepseek2025">DeepSeek-AI (Guo, D., Yang, D., Zhang, H., et al.) (2025). DeepSeek-R1: Incentivizing reasoning capability in LLMs via reinforcement learning. <span class="venue">Nature</span>, 645, 633–638. <a href="https://doi.org/10.1038/s41586-025-09422-z">doi:10.1038/s41586-025-09422-z</a>. <a href="https://arxiv.org/abs/2501.12948">arXiv:2501.12948</a></li>
+    <li id="ref-gemma2025">Gemma Team (Kamath, A., Ferret, J., Pathak, S., et al.) (2025). Gemma 3 technical report. <a href="https://arxiv.org/abs/2503.19786">arXiv:2503.19786</a> (preprint)</li>
+    <li id="ref-gemma2026">Gemma Team (2026). Gemma 4 technical report. <a href="https://arxiv.org/abs/2607.02770">arXiv:2607.02770</a> (preprint). Ficha del modelo: <a href="https://ai.google.dev/gemma/docs/core/model_card_4">ai.google.dev</a></li>
+    <li id="ref-firoozi2025">Firoozi, R., Tucker, J., Tian, S., Majumdar, A., Sun, J., Liu, W., Zhu, Y., Song, S., et al. (2024). Foundation models in robotics: Applications, challenges, and the future. <span class="venue">The International Journal of Robotics Research</span>, 44, 701–739 (en línea en 2024). <a href="https://doi.org/10.1177/02783649241281508">doi:10.1177/02783649241281508</a>. <a href="https://arxiv.org/abs/2312.07843">arXiv:2312.07843</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 4 de 4</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="25">
+    <li id="ref-ren2023">Ren, A. Z., Dixit, A., Bodrova, A., Singh, S., Tu, S., Brown, N., Xu, P., Takayama, L., et al. (2023). Robots that ask for help: Uncertainty alignment for large language model planners. <span class="venue">CoRL 2023</span>, PMLR 229, 661–682. <a href="https://arxiv.org/abs/2307.01928">arXiv:2307.01928</a></li>
+    <li id="ref-robey2025">Robey, A., Ravichandran, Z., Kumar, V., Hassani, H., Pappas, G. J. (2025). Jailbreaking LLM-controlled robots. <span class="venue">ICRA 2025</span>, 11948–11956. <a href="https://doi.org/10.1109/ICRA55743.2025.11128119">doi:10.1109/ICRA55743.2025.11128119</a>. <a href="https://arxiv.org/abs/2410.13691">arXiv:2410.13691</a></li>
+    <li id="ref-vemprala2024">Vemprala, S., Bonatti, R., Bucker, A., Kapoor, A. (2024). ChatGPT for robotics: Design principles and model abilities. <span class="venue">IEEE Access</span>, 12, 55682–55696. <a href="https://doi.org/10.1109/ACCESS.2024.3387941">doi:10.1109/ACCESS.2024.3387941</a>. <a href="https://arxiv.org/abs/2306.17582">arXiv:2306.17582</a></li>
+    <li id="ref-javaid2024">Javaid, S., Fahim, H., He, B., Saeed, N. (2024). Large language models for UAVs: Current state and pathways to the future. <span class="venue">IEEE Open Journal of Vehicular Technology</span>, 5, 1166–1192. <a href="https://doi.org/10.1109/OJVT.2024.3446799">doi:10.1109/OJVT.2024.3446799</a>. <a href="https://arxiv.org/abs/2405.01745">arXiv:2405.01745</a></li>
+    <li id="ref-tian2025">Tian, Y., Lin, F., Li, Y., Zhang, T., Zhang, Q., Fu, X., Huang, J., Dai, X., et al. (2025). UAVs meet LLMs: Overviews and perspectives toward agentic low-altitude mobility. <span class="venue">Information Fusion</span>, 122, 103158 (según arXiv). <a href="https://doi.org/10.1016/j.inffus.2025.103158">doi:10.1016/j.inffus.2025.103158</a>. <a href="https://arxiv.org/abs/2501.02341">arXiv:2501.02341</a></li>
+    <li id="ref-lee2024">Lee, J., Miyanishi, T., Kurita, S., Sakamoto, K., Azuma, D., Matsuo, Y., Inoue, N. (2024). CityNav: A large-scale dataset for real-world aerial navigation. <a href="https://arxiv.org/abs/2406.14240">arXiv:2406.14240</a> (ICCV 2025 según arXiv)</li>
+  </ol>
+</section>
+
+</main>
+<aside id="glosario" hidden>
+<h3>Notación general</h3>
+<dl>
+<dt>\(\mathrm{E}[\cdot]\)</dt><dd data-hojas="8">Esperanza (media) de una variable aleatoria.</dd>
+<dt>\(\mathrm{Var}(\cdot)\)</dt><dd data-hojas="8">Varianza.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="7">Traspuesta de una matriz.</dd>
+<dt>\(\arg\max\)</dt><dd data-hojas="19">El argumento (aquí, la habilidad) que hace máxima la expresión.</dd>
+<dt>\(p(\cdot \mid \cdot)\)</dt><dd data-hojas="19">Probabilidad condicionada: de lo de la izquierda sabiendo lo de la derecha.</dd>
+</dl>
+<h3>El Transformer</h3>
+<p>Parte 1: atención, prellenado y decodificación.</p>
+<dl>
+<dt>\(q, k, v\)</dt><dd data-hojas="6">Consulta, clave y valor de un token: tres proyecciones lineales de su vector.</dd>
+<dt>\(q_4\)</dt><dd data-hojas="6">Consulta del cuarto token («patio») en el dibujo.</dd>
+<dt>\(k_j, v_j\)</dt><dd data-hojas="6">Clave y valor del token \(j\).</dd>
+<dt>\(n\)</dt><dd data-hojas="7">En la parte 1: número de tokens de la secuencia.</dd>
+<dt>\(d\)</dt><dd data-hojas="7">Dimensión de consultas y claves.</dd>
+<dt>\(Q, K, V\)</dt><dd data-hojas="7">Matrices \(n \times d\) con una consulta, clave o valor por fila.</dd>
+<dt>\(QK^\top\)</dt><dd data-hojas="7">Matriz \(n \times n\) con todos los productos escalares \(q_i \cdot k_j\).</dd>
+<dt>\(\mathrm{softmax}\)</dt><dd data-hojas="7">Convierte una fila de números en pesos positivos que suman 1: \(e^{z_j}/\sum_l e^{z_l}\).</dd>
+<dt>\(\sqrt{d}\)</dt><dd data-hojas="7">Factor de escala de la atención: deja la varianza de \(q \cdot k / \sqrt d\) en 1.</dd>
+<dt>\(q_i, k_i\)</dt><dd data-hojas="8">Componentes \(i\) de una consulta y una clave, \(i = 1, \dots, d\).</dd>
+<dt>\(M\)</dt><dd data-hojas="9">Bytes que ocupan los pesos del modelo (6,98 GB para Gemma 4 de 12B en 4 bits).</dd>
+<dt>\(B\)</dt><dd data-hojas="9">Ancho de banda de la memoria de la GPU, en bytes por segundo (unos 288 GB/s en la RTX 4060 Ti).</dd>
+<dt>\(r\)</dt><dd data-hojas="9">Tokens por segundo al decodificar; \(r \le B/M\).</dd>
+</dl>
+<h3>LLMs en robots</h3>
+<p>Parte 3: SayCan y KnowNo.</p>
+<dl>
+<dt>\(\Pi\)</dt><dd data-hojas="19">Repertorio de habilidades que el robot sabe ejecutar.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="19">Una habilidad del repertorio; \(\pi^\star\), la elegida.</dd>
+<dt>\(\ell_\pi\)</dt><dd data-hojas="19">Descripción en lenguaje de la habilidad \(\pi\).</dd>
+<dt>\(i\)</dt><dd data-hojas="19">La orden en lenguaje natural.</dd>
+<dt>\(s\)</dt><dd data-hojas="19">Estado del robot y de la escena.</dd>
+<dt>\(c_\pi\)</dt><dd data-hojas="19">Suceso «la habilidad \(\pi\) sale bien»; su probabilidad es la afordancia.</dd>
+<dt>\(\hat p(y)\)</dt><dd data-hojas="22">Probabilidad que da el LLM a la opción \(y\).</dd>
+<dt>\(n\)</dt><dd data-hojas="22">En KnowNo: número de casos de calibración.</dd>
+<dt>\(y_j\)</dt><dd data-hojas="22">Opción correcta del caso de calibración \(j\).</dd>
+<dt>\(s_j\)</dt><dd data-hojas="22">Puntuación de sorpresa del caso \(j\): \(1 - \hat p(y_j)\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="22">Error tolerado: el conjunto contiene la opción correcta con probabilidad al menos \(1 - \varepsilon\).</dd>
+<dt>\(\hat q\)</dt><dd data-hojas="22">Umbral: el cuantil \(\lceil (n+1)(1-\varepsilon)\rceil/n\) de las sorpresas de calibración.</dd>
+<dt>\(\mathcal C\)</dt><dd data-hojas="22">Conjunto de opciones plausibles; si tiene más de una, el robot pregunta.</dd>
+<dt>\(\lceil \cdot \rceil\)</dt><dd data-hojas="22">Redondeo hacia arriba.</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>LLM</dt><dd data-hojas="1">Large language model: modelo de lenguaje grande.</dd>
+<dt>VLM</dt><dd data-hojas="1">Vision-language model: modelo de visión y lenguaje.</dd>
+<dt>VLA</dt><dd data-hojas="20">Vision-language-action model: genera acciones directamente (tema A12).</dd>
+<dt>CLIP</dt><dd data-hojas="4">Modelo de OpenAI que aprende qué texto va con qué imagen.</dd>
+<dt>KV</dt><dd data-hojas="7">Caché de claves y valores de la atención.</dd>
+<dt>RL</dt><dd data-hojas="11">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>GSM8K</dt><dd data-hojas="11">Banco de problemas de matemáticas escolares.</dd>
+<dt>AIME</dt><dd data-hojas="11">American Invitational Mathematics Examination: problemas de olimpiada.</dd>
+<dt>VAL</dt><dd data-hojas="16">Validador automático de planes de PlanBench.</dd>
+<dt>JSON</dt><dd data-hojas="28">Formato de texto para datos estructurados; el plan del experimento va en JSON.</dd>
+<dt>API</dt><dd data-hojas="20">Interfaz de programación: aquí, las acciones que el dron sabe ejecutar.</dd>
+<dt>VLN</dt><dd data-hojas="4">Vision-and-language navigation: navegar siguiendo instrucciones en lenguaje.</dd>
+<dt>MPC</dt><dd data-hojas="26">Model predictive control (A3).</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=4"></script>
+</body>
+</html>
