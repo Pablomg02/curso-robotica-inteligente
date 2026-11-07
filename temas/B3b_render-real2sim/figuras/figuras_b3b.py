@@ -52,7 +52,7 @@ for n in (16, 32, 64, 128, 256):
     print(f"  {n:4d} muestras uniformes: color {c:.4f} (error {abs(c-C_ref):.4f}), profundidad {d:.3f} m")
 rng = np.random.default_rng(0)
 errs = [abs(render(64, rng=rng)[0] - C_ref) for _ in range(200)]
-print(f"  64 muestras estratificadas al azar: error medio {np.mean(errs):.4f}")
+print(f"  64 muestras al azar (uniformes, sin estratificar): error medio {np.mean(errs):.4f}")
 tt = np.linspace(0.5, 6.0, 1101)
 X1 = lin(0.5, 6.0, 60, 520)
 s = sigma(tt)

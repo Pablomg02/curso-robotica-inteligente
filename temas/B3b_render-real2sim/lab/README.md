@@ -14,7 +14,7 @@ Usar una escena real reconstruida con Gaussian Splatting como «mundo visual» d
 | Parámetros por gaussiana y memoria de un millón | 59 floats; 236 MB | 2 |
 | Ángulo a la vista de captura más cercana (captura a 1,5 m, dron a 5 m de altura y 5 m de radio) | 32,9° | 4 |
 
-El script de las figuras está en `../figuras/figuras_b3b.py`.
+El script de las figuras está en `../figuras/figuras_b3b.py`; las cuentas a mano de la presentación (el rayo de cristal y pared, la cuadratura, la proyección de una gaussiana, la composición de un píxel, la similitud de COLMAP y el ángulo a la captura), en `../figuras/ejemplos_b3b.py`, con su salida en `../figuras/salida_ejemplos.txt`.
 
 ## 1. Render volumétrico a mano (30 min)
 
