@@ -48,7 +48,7 @@
   <h2>El mundo no espera a que la red termine de pensar</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>En simulación, lo habitual es que la observación sea del instante actual y la acción se aplique en el acto. En un dron real, cada medida llega tarde, cada sensor a su ritmo, y la acción tarda en hacerse efectiva.</li>
         <li>Un controlador ajustado sin retardo puede ser inestable con él: en A2 viste que cada milisegundo cuesta fase en el cruce.</li>
         <li>Una política entrenada sin retardo aprende a confiar en información que en vuelo no tendrá. Eschmann et al. no obtienen ninguna política usable si no simulan el retardo de los rotores <a class="cite" data-ref="eschmann2024"></a>.</li>
@@ -84,19 +84,74 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra del reloj antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:33%">Ejemplo</th></tr>
+      <tr><td>\(t\)</td><td>Tiempo verdadero: el del simulador, en segundos. Es el único que existe dentro del código que simula</td><td>\(t\) = 12,345 s desde el despegue</td></tr>
+      <tr><td>\(\Delta t_\text{sim}\), \(\Delta t_\text{pared}\), \(\text{RTF}\)</td><td>Tiempo simulado y tiempo de pared (el del ordenador) transcurridos, y su cociente, el factor de tiempo real</td><td>10 s simulados en 1 s de pared: RTF = 10</td></tr>
+      <tr><td>\(t_\text{ap}\), \(\varepsilon\), \(b\)</td><td>Lo que marca el reloj de un aparato, su <strong>deriva</strong> (error relativo de frecuencia, adimensional) y su <strong>desfase</strong> (s)</td><td>\(\varepsilon\) = 20 ppm, \(b\) = 3 ms (valores de ejemplo)</td></tr>
+      <tr><td>\(\Delta t\), \(k\)</td><td>Paso base de la física y contador entero de pasos: el paso \(k\) es el instante \(t_k = k\,\Delta t\)</td><td>\(\Delta t\) = 1 ms; \(k\) = 250 es \(t\) = 0,25 s</td></tr>
+      <tr><td>\(f\), \(T = 1/f\)</td><td>Frecuencia y periodo de una tarea (un sensor, un lazo, el render)</td><td>Cámara: \(f\) = 30 Hz, \(T\) = 33,33 ms</td></tr>
+      <tr><td>\(t_\text{prox}\)</td><td>Siguiente instante programado de una tarea: cuándo le toca, en tiempo exacto</td><td>Tras la primera imagen, \(t_\text{prox}\) = 33,33 ms</td></tr>
+      <tr><td>\(j\), \(k_j\)</td><td>Número de disparo de una tarea (0, 1, 2…) y paso de física en que ocurre</td><td>Cámara, \(j = 1\): \(k_1\) = 34</td></tr>
+      <tr><td>\(\mathrm{round}(\cdot)\), \(\lceil\cdot\rceil\)</td><td>Redondeo al entero más próximo y techo (el menor entero mayor o igual)</td><td>\(\mathrm{round}(33{,}33) = 33\); \(\lceil 33{,}33\rceil = 34\)</td></tr>
+    </table>
+  </div>
+  <p class="small muted">En la parte 2, \(\Delta t\) pasa a ser el periodo del lazo discreto (10 ms en el eje del ejemplo); allí se avisa.</p>
+</section>
+
+<section class="slide">
   <p class="kicker">Reloj · tres tiempos</p>
   <h2>Tiempo simulado, tiempo de pared y el reloj de cada aparato</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Tiempo simulado:</strong> el que integra la física. Avanza un paso cuando el simulador quiere, no cuando pasa el tiempo.</li>
         <li><strong>Tiempo de pared:</strong> el del ordenador. El factor de tiempo real es \(\text{RTF} = \Delta t_\text{sim}/\Delta t_\text{pared}\): mayor que 1 al entrenar, igual a 1 con hardware en el lazo.</li>
-        <li><strong>El reloj de cada aparato:</strong> en un dron real, la controladora, el ordenador de a bordo y cada sensor tienen su reloj, con un desfase y una deriva entre ellos: \(t_\text{ap} = (1+\varepsilon)\,t + b\).</li>
+        <li><strong>El reloj de cada aparato:</strong> en un dron real, la controladora, el ordenador de a bordo y cada sensor tienen su reloj, con un desfase y una deriva entre ellos: \(t_\text{ap} = (1+\varepsilon)\,t + b\). \(b\) es lo que marcaba de más al arrancar; \(\varepsilon\), cuánto más rápido corre.</li>
       </ul>
-      <div class="callout realidad"><span class="tag">En ROS 2</span>Hay tiempo de sistema, tiempo monótono y tiempo ROS. Con <code>use_sim_time</code>, el tiempo ROS es el último publicado en <code>/clock</code>, y si salta hacia atrás se avisa con una llamada de retorno <a class="cite" data-ref="ros2time"></a>.</div>
     </div>
     <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 540 206" role="img" aria-label="Error de un reloj con desfase, con deriva y con los dos, durante diez minutos">
+          <line x1="70" y1="170" x2="500" y2="170" class="ln-rule"/>
+          <line x1="70" y1="30" x2="70" y2="170" class="ln-rule"/>
+          <line x1="70" y1="126.2" x2="500" y2="126.2" class="ln-rule"/>
+          <line x1="70" y1="82.5" x2="500" y2="82.5" class="ln-rule"/>
+          <line x1="70" y1="38.8" x2="500" y2="38.8" class="ln-rule"/>
+          <text x="62" y="174" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="62" y="130" text-anchor="end" class="t-mono t-faint" font-size="12">5</text>
+          <text x="62" y="86" text-anchor="end" class="t-mono t-faint" font-size="12">10</text>
+          <text x="62" y="43" text-anchor="end" class="t-mono t-faint" font-size="12">15 ms</text>
+          <text x="70" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="285" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">300</text>
+          <text x="500" y="188" text-anchor="middle" class="t-mono t-faint" font-size="12">600 s</text>
+          <text x="285" y="204" text-anchor="middle" class="t-muted" font-size="12">tiempo verdadero t</text>
+          <path d="M70.0,143.8 L500.0,143.8" class="ln-accent" stroke-width="2.2"/>
+          <path d="M70.0,170.0 L500.0,65.0" class="ln-time" stroke-width="2.2"/>
+          <path d="M70.0,143.8 L500.0,38.8" class="ln-tesis" stroke-width="2.6"/>
+          <text x="380" y="161" class="t-accent" font-size="12">solo desfase: b</text>
+          <text x="400" y="112" class="t-time" font-size="12">solo deriva: εt</text>
+          <text x="330" y="58" text-anchor="end" class="t-tesis" font-size="12">los dos: εt + b</text>
+        </svg>
+        <figcaption>Error \(t_\text{ap} - t\) de un reloj con \(\varepsilon\) = 20 ppm y \(b\) = 3 ms (valores de ejemplo). Ejemplo 1 de <code>figuras/ejemplos_b4.py</code>.</figcaption>
+      </figure>
+      <p>Restando \(t\): \(t_\text{ap} - t = \varepsilon t + b\). Con estos valores, 3 ms al arrancar, 4,2 ms al minuto y 15 ms a los diez minutos: más del doble de los 6 ms de desfase cámara-IMU que tolera VINS-Mono sin calibrarlo (hoja 36). El desfase es fijo; la deriva crece sin parar.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · en la práctica</p>
+  <h2>Los relojes en ROS 2 y en PX4, y la regla que se deduce</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En ROS 2</span>Hay tiempo de sistema, tiempo monótono y tiempo ROS. Con <code>use_sim_time</code>, el tiempo ROS es el último publicado en <code>/clock</code>, y si salta hacia atrás se avisa con una llamada de retorno <a class="cite" data-ref="ros2time"></a>.</div>
       <div class="callout realidad"><span class="tag">En PX4</span>El módulo de sincronización estima el desfase y la deriva entre el ordenador de a bordo y la controladora con paquetes de ida y vuelta, por MAVLink o DDS; descarta las muestras con un tiempo de ida y vuelta demasiado alto y filtra el resto <a class="cite" data-ref="px4timesync"></a>.</div>
+    </div>
+    <div class="stack">
       <div class="callout error"><span class="tag">Error frecuente</span>Usar el reloj del ordenador (<code>time.time()</code>) dentro del código que simula: el resultado cambia con la carga de la máquina y deja de ser reproducible. En el simulador solo existe el tiempo simulado.</div>
       <div class="callout clave"><span class="tag">Regla</span>Cada dato lleva la marca de tiempo del instante en que se midió, en el reloj del simulador. Todo lo demás (llegada, retardo, edad) se calcula a partir de ella.</div>
     </div>
@@ -345,11 +400,197 @@
     <figcaption>Primeros 100 ms con un paso de física de 1 ms. La cámara a 30 Hz no cabe en un número entero de pasos: se dispara cuando el reloj alcanza el siguiente instante programado. <code>figuras_b4.py</code>, sección 1.</figcaption>
   </figure>
   <div class="cols">
-    <ul class="small">
-      <li><strong>Sin deriva:</strong> guarda el siguiente instante programado y súmale el periodo exacto. La cámara sale a intervalos de 33 y 34 ms, con 33,345 ms de media: un jitter determinista de menos de un paso.</li>
-      <li><strong>Con deriva:</strong> disparar cada \(\mathrm{round}(T/\Delta t) = 33\) pasos da 30,30 Hz: en un minuto, 1818 imágenes en lugar de 1800.</li>
-    </ul>
+    <p><strong>Qué resuelve:</strong> entra un paso base \(\Delta t\) y una lista de tareas con su frecuencia; sale, en cada paso \(k\), qué tareas se ejecutan. Las de 500, 250, 200, 50 y 10 Hz caen siempre en un paso exacto; la de 30 Hz no, porque \(1000/30 = 33{,}33\) pasos. Las tres hojas siguientes la siguen a escala de 1 ms.</p>
     <div class="callout error"><span class="tag">Error frecuente</span>Un sensor a una frecuencia que no es la real. En B1 viste que la IMU del SITL con Gazebo sale a 250 Hz y el lazo de <em>rate</em> de PX4 corre a esa frecuencia, no a la de la placa.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · a escala de 1 ms</p>
+  <h2>La regla del siguiente instante, vista paso a paso</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 218" role="img" aria-label="Pasos de 1 ms, disparos de la actitud cada 4 ms y de la cámara en los pasos 0, 34 y 67">
+      <text x="185" y="49" text-anchor="end" font-size="13">física, paso de 1 ms</text>
+      <line x1="200" y1="45" x2="1145" y2="45" class="ln-rule"/>
+      <line x1="200.0" y1="34" x2="200.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="200.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+      <line x1="213.5" y1="40" x2="213.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="227.0" y1="40" x2="227.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="240.5" y1="40" x2="240.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="254.0" y1="40" x2="254.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="267.5" y1="40" x2="267.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="281.0" y1="40" x2="281.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="294.5" y1="40" x2="294.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="308.0" y1="40" x2="308.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="321.5" y1="40" x2="321.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="335.0" y1="34" x2="335.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="335.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+      <line x1="348.5" y1="40" x2="348.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="362.0" y1="40" x2="362.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="375.5" y1="40" x2="375.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="389.0" y1="40" x2="389.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="402.5" y1="40" x2="402.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="416.0" y1="40" x2="416.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="429.5" y1="40" x2="429.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="443.0" y1="40" x2="443.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="456.5" y1="40" x2="456.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="470.0" y1="34" x2="470.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="470.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+      <line x1="483.5" y1="40" x2="483.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="497.0" y1="40" x2="497.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="510.5" y1="40" x2="510.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="524.0" y1="40" x2="524.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="537.5" y1="40" x2="537.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="551.0" y1="40" x2="551.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="564.5" y1="40" x2="564.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="578.0" y1="40" x2="578.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="591.5" y1="40" x2="591.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="605.0" y1="34" x2="605.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="605.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">30</text>
+      <line x1="618.5" y1="40" x2="618.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="632.0" y1="40" x2="632.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="645.5" y1="40" x2="645.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="659.0" y1="40" x2="659.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="672.5" y1="40" x2="672.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="686.0" y1="40" x2="686.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="699.5" y1="40" x2="699.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="713.0" y1="40" x2="713.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="726.5" y1="40" x2="726.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="740.0" y1="34" x2="740.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="740.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">40</text>
+      <line x1="753.5" y1="40" x2="753.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="767.0" y1="40" x2="767.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="780.5" y1="40" x2="780.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="794.0" y1="40" x2="794.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="807.5" y1="40" x2="807.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="821.0" y1="40" x2="821.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="834.5" y1="40" x2="834.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="848.0" y1="40" x2="848.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="861.5" y1="40" x2="861.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="875.0" y1="34" x2="875.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="875.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">50</text>
+      <line x1="888.5" y1="40" x2="888.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="902.0" y1="40" x2="902.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="915.5" y1="40" x2="915.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="929.0" y1="40" x2="929.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="942.5" y1="40" x2="942.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="956.0" y1="40" x2="956.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="969.5" y1="40" x2="969.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="983.0" y1="40" x2="983.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="996.5" y1="40" x2="996.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1010.0" y1="34" x2="1010.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="1010.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">60</text>
+      <line x1="1023.5" y1="40" x2="1023.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1037.0" y1="40" x2="1037.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1050.5" y1="40" x2="1050.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1064.0" y1="40" x2="1064.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1077.5" y1="40" x2="1077.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1091.0" y1="40" x2="1091.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1104.5" y1="40" x2="1104.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1118.0" y1="40" x2="1118.0" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1131.5" y1="40" x2="1131.5" y2="50" class="ln" stroke-width="0.9"/>
+      <line x1="1145.0" y1="34" x2="1145.0" y2="56" class="ln" stroke-width="1.4"/>
+      <text x="1145.0" y="74" text-anchor="middle" class="t-mono t-faint" font-size="12">70 ms</text>
+      <text x="185" y="114" text-anchor="end" font-size="13">actitud, 250 Hz</text>
+      <line x1="200" y1="110" x2="1145" y2="110" class="ln-rule"/>
+      <line x1="200.0" y1="98" x2="200.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="254.0" y1="98" x2="254.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="308.0" y1="98" x2="308.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="362.0" y1="98" x2="362.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="416.0" y1="98" x2="416.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="470.0" y1="98" x2="470.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="524.0" y1="98" x2="524.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="578.0" y1="98" x2="578.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="632.0" y1="98" x2="632.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="686.0" y1="98" x2="686.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="740.0" y1="98" x2="740.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="794.0" y1="98" x2="794.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="848.0" y1="98" x2="848.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="902.0" y1="98" x2="902.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="956.0" y1="98" x2="956.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1010.0" y1="98" x2="1010.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1064.0" y1="98" x2="1064.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1118.0" y1="98" x2="1118.0" y2="122" class="ln-accent" stroke-width="2.5"/>
+      <text x="185" y="174" text-anchor="end" font-size="13">cámara, 30 Hz</text>
+      <line x1="200" y1="170" x2="1145" y2="170" class="ln-rule"/>
+      <line x1="200.0" y1="150" x2="200.0" y2="190" class="ln-accent" stroke-width="3.5"/>
+      <line x1="650.0" y1="140" x2="650.0" y2="196" class="ln-time" stroke-width="1.6" stroke-dasharray="4 3"/>
+      <line x1="659.0" y1="150" x2="659.0" y2="190" class="ln-accent" stroke-width="3.5"/>
+      <line x1="1100.0" y1="140" x2="1100.0" y2="196" class="ln-time" stroke-width="1.6" stroke-dasharray="4 3"/>
+      <line x1="1104.5" y1="150" x2="1104.5" y2="190" class="ln-accent" stroke-width="3.5"/>
+      <text x="644.0" y="146" text-anchor="end" class="t-time" font-size="12">programado: 33,33 ms</text>
+      <text x="665.0" y="210" class="t-accent" font-size="12">se dispara en el paso 34 (+0,67 ms)</text>
+      <text x="1094.0" y="146" text-anchor="end" class="t-time" font-size="12">programado: 66,67 ms</text>
+      <text x="1096.5" y="210" text-anchor="end" class="t-accent" font-size="12">paso 67 (+0,33 ms)</text>
+      <text x="206.0" y="210" class="t-accent" font-size="12">paso 0</text>
+    </svg>
+    <figcaption>Primeros 70 ms. Rayas discontinuas: el instante exacto en que le toca a la cámara; trazos gruesos: el paso de física en que se ejecuta. La actitud cae siempre en un paso (4 ms exactos). Ejemplo 2 de <code>figuras/ejemplos_b4.py</code>.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Qué entra:</strong> el paso \(\Delta t\) y, por tarea, su periodo \(T\) y su \(t_\text{prox}\). <strong>Qué sale:</strong> en cada paso \(k\), qué tareas se ejecutan. La regla: si \(t_k \ge t_\text{prox}\), se dispara y se hace \(t_\text{prox} \leftarrow t_\text{prox} + T\).</p>
+      <p>Equivale a \(k_j = \lceil jT/\Delta t\rceil\): el disparo \(j\) cae en el primer paso que no llega antes de su instante exacto \(jT\).</p>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th>\(j\)</th><th>\(jT\) (ms)</th><th>\(k_j\)</th><th>Retraso (ms)</th><th>Intervalo (ms)</th></tr>
+        <tr><td class="n">0</td><td class="n">0</td><td class="n">0</td><td class="n">0</td><td class="n">—</td></tr>
+        <tr><td class="n">1</td><td class="n">33,333</td><td class="n">34</td><td class="n">0,667</td><td class="n">34</td></tr>
+        <tr><td class="n">2</td><td class="n">66,667</td><td class="n">67</td><td class="n">0,333</td><td class="n">33</td></tr>
+        <tr><td class="n">3</td><td class="n">100,000</td><td class="n">100</td><td class="n">0</td><td class="n">33</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · por qué deriva</p>
+  <h2>Contar pasos redondeados deriva; acumular el instante, no</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(T' = \mathrm{round}(T/\Delta t)\,\Delta t = 33\) ms</td><td>Disparar cada \(n\) pasos obliga a un periodo entero: \(\mathrm{round}(33{,}33) = 33\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(f' = 1/T' = 30{,}303\) Hz</td><td>Un 1,01 % más rápida que la real</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\lfloor 60\,000/33\rfloor = 1818\) imágenes en 60 s</td><td>Disparos en los pasos 33, 66, … hasta 60 000</td></tr>
+          <tr><td><strong>4</strong></td><td>\(k_j = \lceil jT/\Delta t\rceil \le 60\,000 \iff j \le 1800\)</td><td>Con el instante acumulado, el disparo \(j\) va ligado a \(jT\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(jT - jT' = j\,(T - T') = j/3\) ms</td><td>El error de redondeo, 1/3 de ms por imagen, se suma imagen tras imagen</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Se cuentan las imágenes de \((0, 60\ \text{s}]\). Ejemplo 3 del script.</p>
+    </div>
+    <div class="stack">
+      <p><strong>La diferencia de fondo.</strong> Con el instante acumulado, el error de cada disparo es el redondeo al paso: menor que \(\Delta t\) y sin memoria, porque el siguiente se calcula desde \(jT\), no desde el disparo anterior. Contando pasos, cada periodo arrastra el error del anterior.</p>
+      <p><strong>Con números:</strong> tras 1800 imágenes, la versión redondeada va \(1800/3 = 600\) ms adelantada, y 600 ms son justo las 18 imágenes de 33 ms que sobran: 1818 en lugar de 1800.</p>
+      <div class="callout clave"><span class="tag">En resumen</span>Disparar cada \(\mathrm{round}(T/\Delta t) = 33\) pasos da 30,30 Hz: en un minuto, 1818 imágenes en lugar de 1800. Guardar el siguiente instante programado y sumarle el periodo exacto da 1800, con intervalos de 33 y 34 ms.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · precisión</p>
+  <h2>El tiempo, de un contador entero: en float32, \(t \mathrel{+}= \Delta t\) deriva</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El instante del paso se puede llevar de dos formas: sumando \(\Delta t\) a un flotante en cada paso, o calculando \(t_k = k\,\Delta t\) desde el contador entero \(k\). En float64 casi da igual; en float32, no.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Tiempo simulado</th><th>\(t \mathrel{+}= \Delta t\) en float32</th><th>Error</th></tr>
+          <tr><td class="n">1 s</td><td class="n">0,999991 s</td><td class="n">−0,009 ms</td></tr>
+          <tr><td class="n">10 s</td><td class="n">10,000411 s</td><td class="n">+0,41 ms</td></tr>
+          <tr><td class="n">60 s</td><td class="n">59,978664 s</td><td class="n">−21,3 ms</td></tr>
+          <tr><td class="n">600 s</td><td class="n">600,516541 s</td><td class="n">+517 ms</td></tr>
+          <tr><td class="n">3600 s</td><td class="n">3530,204102 s</td><td class="n">−69,8 s</td></tr>
+        </table>
+      </div>
+      <p class="small muted">\(\Delta t\) = 1 ms. Ejemplo 4 del script.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Por qué.</strong> Entre 32 y 64 s, dos float32 consecutivos están separados 3,815 µs. 1 ms son 262,14 separaciones y cada suma se redondea a 262: cada paso avanza 0,99945 ms, 0,55 µs de menos. El redondeo es <em>el mismo en todos los pasos</em> del tramo, así que no se compensa: de 32 a 60 s son 28 000 pasos y −15,4 ms.</p>
+      <p>Al cruzar una potencia de 2 la separación se duplica y el signo puede cambiar: por eso el error sube y baja en la tabla, y crece sin control con las horas.</p>
+      <div class="callout clave"><span class="tag">Regla</span>El reloj es el contador entero \(k\) y \(t_k = k\,\Delta t\) se calcula cuando hace falta. Un <code>int32</code> de pasos de 1 ms dura \(2^{31}\) ms, unos 24,9 días.</div>
+    </div>
   </div>
 </section>
 
@@ -384,7 +625,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <h2>En lockstep, pensar no cuesta tiempo: hay que cobrarlo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>En <em>lockstep</em> (B1), el simulador espera a que el autopiloto o la política terminen: su cálculo dura cero en tiempo simulado.</li>
         <li>En los entornos de aprendizaje, igual: en Isaac Lab, la acción se aplica durante <code>decimation</code> pasos de física, y el paso del entorno es <code>decimation</code> × <code>sim.dt</code> <a class="cite" data-ref="isaaclab"></a>. La acción calculada con la observación de \(t\) actúa ya en \(t\).</li>
         <li>En un dron real, entre la medida y la acción hay cómputo: la red de percepción de Swift tarda 40 ms por pasada en una Jetson TX2 y su política, 8 ms en la CPU <a class="cite" data-ref="kaufmann2023"></a>.</li>
@@ -408,7 +649,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
           <text x="135" y="155" text-anchor="middle" class="t-muted" font-size="12">cómputo</text>
           <rect x="170" y="162" width="180" height="16" class="box-accent"/>
           <text x="260" y="200" text-anchor="middle" class="t-accent" font-size="12">acción aplicada desde t + latencia</text>
-          <text x="420" y="175" class="t-time" font-size="12">el estado ya cambió</text>
+          <text x="512" y="175" text-anchor="end" class="t-time" font-size="12">el estado ya cambió</text>
         </svg>
         <figcaption>La misma acción, aplicada en el acto o después del cómputo.</figcaption>
       </figure>
@@ -421,6 +662,26 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <p class="num">Parte 2</p>
   <h2>Retardos: de dónde salen y cómo se simulan</h2>
   <p>Un presupuesto de latencia con cifras reales, un búfer que la reproduce y lo que un predictor puede y no puede arreglar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra de los retardos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(\Delta t\)</td><td><strong>Aviso:</strong> aquí es el periodo de la señal discreta de que se hable (1 ms en el búfer del giróscopo, 10 ms en el eje del ejemplo)</td><td>Eje a 100 Hz: \(\Delta t\) = 10 ms</td></tr>
+      <tr><td>\(\tau\), \(d\)</td><td>Retardo en segundos y en pasos enteros: \(\tau = d\,\Delta t\)</td><td>90 ms = 9 pasos a 100 Hz</td></tr>
+      <tr><td>\(m\), \(\alpha\), \(D\)</td><td>Parte entera y fraccionaria de un retardo, \(\tau = (m+\alpha)\Delta t\); casillas del búfer</td><td>2,5 ms a 1 kHz: \(m = 2\), \(\alpha = 0{,}5\)</td></tr>
+      <tr><td>\(x_k = (p_k, v_k)\), \(u_k\), \(w_k\)</td><td>Estado del eje (posición en m, velocidad en m/s), mando (aceleración, m/s²) y ráfaga de viento</td><td>\(x = (0{,}10;\ 0)\): 10 cm, en reposo</td></tr>
+      <tr><td>\(A\), \(B\), \(G\), \(W\)</td><td>Matrices del modelo discreto \(x_{k+1} = Ax_k + Bu_k + Gw_k\) y covarianza de \(w\)</td><td>\(A = \left[\begin{smallmatrix}1&\Delta t\\0&1\end{smallmatrix}\right]\)</td></tr>
+      <tr><td>\(K = (k_p, k_d)\)</td><td>Ganancia del LQR, \(u = -Kx = -(k_p\,p + k_d\,v)\). En la parte 4, \(K\) será otra cosa</td><td>\(K\) = (60,48; 11,00)</td></tr>
+      <tr><td>\(\hat x_k\), \(\hat d\)</td><td>Estado actual predicho y retardo que <em>supone</em> el predictor</td><td>\(\hat d = 5\): supone 50 ms</td></tr>
+      <tr><td>\(s\), \(\omega\), \(L(s)\)</td><td>Variable de Laplace, frecuencia (rad/s) y función de lazo abierto (A2)</td><td>\(L(s) = (k_p + k_d s)/s^2\)</td></tr>
+      <tr><td>\(\omega_c\), \(\varphi_m\)</td><td>Cruce de ganancia (\(|L| = 1\)) y margen de fase (A2, hoja 21)</td><td>12,08 rad/s y 65,5°</td></tr>
+      <tr><td>\(J\), \(J_0\)</td><td>Coste medio cuadrático del eje, con retardo y sin él</td><td>\(J/J_0\) = 2,87 a 100 ms</td></tr>
+    </table>
+  </div>
 </section>
 
 <section class="slide">
@@ -443,8 +704,40 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
       </table>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">Tres tipos</span>(1) <strong>Transporte:</strong> un dato llega tarde, intacto. (2) <strong>Dinámico:</strong> un filtro o un motor responden con lentitud (el filtro, también con fase). (3) <strong>De muestreo:</strong> el dato se queda congelado hasta el siguiente. Se simulan distinto: búfer, modelo dinámico (B2) y retenedor.</div>
+      <div class="callout clave"><span class="tag">Tres tipos</span>(1) <strong>Transporte:</strong> un dato llega tarde, intacto. (2) <strong>Dinámico:</strong> un filtro o un motor responden con lentitud (el filtro, también con fase). (3) <strong>De muestreo:</strong> el dato se queda congelado hasta el siguiente. Se simulan distinto: búfer, modelo dinámico (B2) y retenedor (dibujados en la hoja siguiente).</div>
       <div class="callout realidad"><span class="tag">En PX4</span>Cada sensor auxiliar declara su retardo respecto a la IMU: 110 ms el GNSS, 7 ms el flujo óptico, 5 ms el telémetro, 0 la visión externa por defecto, hasta un máximo de 200 ms (<code>EKF2_DELAY_MAX</code>) <a class="cite" data-ref="px4ekf2,px4gnssdelay"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · tres tipos</p>
+  <h2>Transporte, dinámica y muestreo: tres formas de llegar tarde</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 400 270" role="img" aria-label="Una senoide de 2 Hz y sus versiones retrasada, filtrada y retenida">
+        <line x1="60" y1="55" x2="380" y2="55" class="ln-rule"/>
+        <line x1="60" y1="140" x2="380" y2="140" class="ln-rule"/>
+        <line x1="60" y1="225" x2="380" y2="225" class="ln-rule"/>
+        <text x="60" y="15" class="t-bold" font-size="13">1 · transporte, 60 ms</text>
+        <text x="60" y="100" class="t-bold" font-size="13">2 · primer orden, 50 ms</text>
+        <text x="60" y="185" class="t-bold" font-size="13">3 · retención a 20 Hz</text>
+        <path d="M60.0,55.0 L62.1,53.1 L64.3,51.2 L66.4,49.4 L68.5,47.5 L70.7,45.7 L72.8,44.0 L74.9,42.2 L77.1,40.5 L79.2,38.9 L81.3,37.4 L83.5,35.9 L85.6,34.5 L87.7,33.1 L89.9,31.9 L92.0,30.7 L94.1,29.7 L96.3,28.7 L98.4,27.9 L100.5,27.1 L102.7,26.5 L104.8,25.9 L106.9,25.5 L109.1,25.2 L111.2,25.1 L113.3,25.0 L115.5,25.1 L117.6,25.2 L119.7,25.5 L121.9,25.9 L124.0,26.5 L126.1,27.1 L128.3,27.9 L130.4,28.7 L132.5,29.7 L134.7,30.7 L136.8,31.9 L138.9,33.1 L141.1,34.5 L143.2,35.9 L145.3,37.4 L147.5,38.9 L149.6,40.5 L151.7,42.2 L153.9,44.0 L156.0,45.7 L158.1,47.5 L160.3,49.4 L162.4,51.2 L164.5,53.1 L166.7,55.0 L168.8,56.9 L170.9,58.8 L173.1,60.6 L175.2,62.5 L177.3,64.3 L179.5,66.0 L181.6,67.8 L183.7,69.5 L185.9,71.1 L188.0,72.6 L190.1,74.1 L192.3,75.5 L194.4,76.9 L196.5,78.1 L198.7,79.3 L200.8,80.3 L202.9,81.3 L205.1,82.1 L207.2,82.9 L209.3,83.5 L211.5,84.1 L213.6,84.5 L215.7,84.8 L217.9,84.9 L220.0,85.0 L222.1,84.9 L224.3,84.8 L226.4,84.5 L228.5,84.1 L230.7,83.5 L232.8,82.9 L234.9,82.1 L237.1,81.3 L239.2,80.3 L241.3,79.3 L243.5,78.1 L245.6,76.9 L247.7,75.5 L249.9,74.1 L252.0,72.6 L254.1,71.1 L256.3,69.5 L258.4,67.8 L260.5,66.0 L262.7,64.3 L264.8,62.5 L266.9,60.6 L269.1,58.8 L271.2,56.9 L273.3,55.0 L275.5,53.1 L277.6,51.2 L279.7,49.4 L281.9,47.5 L284.0,45.7 L286.1,44.0 L288.3,42.2 L290.4,40.5 L292.5,38.9 L294.7,37.4 L296.8,35.9 L298.9,34.5 L301.1,33.1 L303.2,31.9 L305.3,30.7 L307.5,29.7 L309.6,28.7 L311.7,27.9 L313.9,27.1 L316.0,26.5 L318.1,25.9 L320.3,25.5 L322.4,25.2 L324.5,25.1 L326.7,25.0 L328.8,25.1 L330.9,25.2 L333.1,25.5 L335.2,25.9 L337.3,26.5 L339.5,27.1 L341.6,27.9 L343.7,28.7 L345.9,29.7 L348.0,30.7 L350.1,31.9 L352.3,33.1 L354.4,34.5 L356.5,35.9 L358.7,37.4 L360.8,38.9 L362.9,40.5 L365.1,42.2 L367.2,44.0 L369.3,45.7 L371.5,47.5 L373.6,49.4 L375.7,51.2 L377.9,53.1 L380.0,55.0" class="ln" stroke-width="1.6"/>
+        <path d="M60.0,75.5 L62.1,74.1 L64.3,72.6 L66.4,71.1 L68.5,69.5 L70.7,67.8 L72.8,66.0 L74.9,64.3 L77.1,62.5 L79.2,60.6 L81.3,58.8 L83.5,56.9 L85.6,55.0 L87.7,53.1 L89.9,51.2 L92.0,49.4 L94.1,47.5 L96.3,45.7 L98.4,44.0 L100.5,42.2 L102.7,40.5 L104.8,38.9 L106.9,37.4 L109.1,35.9 L111.2,34.5 L113.3,33.1 L115.5,31.9 L117.6,30.7 L119.7,29.7 L121.9,28.7 L124.0,27.9 L126.1,27.1 L128.3,26.5 L130.4,25.9 L132.5,25.5 L134.7,25.2 L136.8,25.1 L138.9,25.0 L141.1,25.1 L143.2,25.2 L145.3,25.5 L147.5,25.9 L149.6,26.5 L151.7,27.1 L153.9,27.9 L156.0,28.7 L158.1,29.7 L160.3,30.7 L162.4,31.9 L164.5,33.1 L166.7,34.5 L168.8,35.9 L170.9,37.4 L173.1,38.9 L175.2,40.5 L177.3,42.2 L179.5,44.0 L181.6,45.7 L183.7,47.5 L185.9,49.4 L188.0,51.2 L190.1,53.1 L192.3,55.0 L194.4,56.9 L196.5,58.8 L198.7,60.6 L200.8,62.5 L202.9,64.3 L205.1,66.0 L207.2,67.8 L209.3,69.5 L211.5,71.1 L213.6,72.6 L215.7,74.1 L217.9,75.5 L220.0,76.9 L222.1,78.1 L224.3,79.3 L226.4,80.3 L228.5,81.3 L230.7,82.1 L232.8,82.9 L234.9,83.5 L237.1,84.1 L239.2,84.5 L241.3,84.8 L243.5,84.9 L245.6,85.0 L247.7,84.9 L249.9,84.8 L252.0,84.5 L254.1,84.1 L256.3,83.5 L258.4,82.9 L260.5,82.1 L262.7,81.3 L264.8,80.3 L266.9,79.3 L269.1,78.1 L271.2,76.9 L273.3,75.5 L275.5,74.1 L277.6,72.6 L279.7,71.1 L281.9,69.5 L284.0,67.8 L286.1,66.0 L288.3,64.3 L290.4,62.5 L292.5,60.6 L294.7,58.8 L296.8,56.9 L298.9,55.0 L301.1,53.1 L303.2,51.2 L305.3,49.4 L307.5,47.5 L309.6,45.7 L311.7,44.0 L313.9,42.2 L316.0,40.5 L318.1,38.9 L320.3,37.4 L322.4,35.9 L324.5,34.5 L326.7,33.1 L328.8,31.9 L330.9,30.7 L333.1,29.7 L335.2,28.7 L337.3,27.9 L339.5,27.1 L341.6,26.5 L343.7,25.9 L345.9,25.5 L348.0,25.2 L350.1,25.1 L352.3,25.0 L354.4,25.1 L356.5,25.2 L358.7,25.5 L360.8,25.9 L362.9,26.5 L365.1,27.1 L367.2,27.9 L369.3,28.7 L371.5,29.7 L373.6,30.7 L375.7,31.9 L377.9,33.1 L380.0,34.5" class="ln-accent" stroke-width="2.4"/>
+        <path d="M60.0,140.0 L62.1,138.1 L64.3,136.2 L66.4,134.4 L68.5,132.5 L70.7,130.7 L72.8,129.0 L74.9,127.2 L77.1,125.5 L79.2,123.9 L81.3,122.4 L83.5,120.9 L85.6,119.5 L87.7,118.1 L89.9,116.9 L92.0,115.7 L94.1,114.7 L96.3,113.7 L98.4,112.9 L100.5,112.1 L102.7,111.5 L104.8,110.9 L106.9,110.5 L109.1,110.2 L111.2,110.1 L113.3,110.0 L115.5,110.1 L117.6,110.2 L119.7,110.5 L121.9,110.9 L124.0,111.5 L126.1,112.1 L128.3,112.9 L130.4,113.7 L132.5,114.7 L134.7,115.7 L136.8,116.9 L138.9,118.1 L141.1,119.5 L143.2,120.9 L145.3,122.4 L147.5,123.9 L149.6,125.5 L151.7,127.2 L153.9,129.0 L156.0,130.7 L158.1,132.5 L160.3,134.4 L162.4,136.2 L164.5,138.1 L166.7,140.0 L168.8,141.9 L170.9,143.8 L173.1,145.6 L175.2,147.5 L177.3,149.3 L179.5,151.0 L181.6,152.8 L183.7,154.5 L185.9,156.1 L188.0,157.6 L190.1,159.1 L192.3,160.5 L194.4,161.9 L196.5,163.1 L198.7,164.3 L200.8,165.3 L202.9,166.3 L205.1,167.1 L207.2,167.9 L209.3,168.5 L211.5,169.1 L213.6,169.5 L215.7,169.8 L217.9,169.9 L220.0,170.0 L222.1,169.9 L224.3,169.8 L226.4,169.5 L228.5,169.1 L230.7,168.5 L232.8,167.9 L234.9,167.1 L237.1,166.3 L239.2,165.3 L241.3,164.3 L243.5,163.1 L245.6,161.9 L247.7,160.5 L249.9,159.1 L252.0,157.6 L254.1,156.1 L256.3,154.5 L258.4,152.8 L260.5,151.0 L262.7,149.3 L264.8,147.5 L266.9,145.6 L269.1,143.8 L271.2,141.9 L273.3,140.0 L275.5,138.1 L277.6,136.2 L279.7,134.4 L281.9,132.5 L284.0,130.7 L286.1,129.0 L288.3,127.2 L290.4,125.5 L292.5,123.9 L294.7,122.4 L296.8,120.9 L298.9,119.5 L301.1,118.1 L303.2,116.9 L305.3,115.7 L307.5,114.7 L309.6,113.7 L311.7,112.9 L313.9,112.1 L316.0,111.5 L318.1,110.9 L320.3,110.5 L322.4,110.2 L324.5,110.1 L326.7,110.0 L328.8,110.1 L330.9,110.2 L333.1,110.5 L335.2,110.9 L337.3,111.5 L339.5,112.1 L341.6,112.9 L343.7,113.7 L345.9,114.7 L348.0,115.7 L350.1,116.9 L352.3,118.1 L354.4,119.5 L356.5,120.9 L358.7,122.4 L360.8,123.9 L362.9,125.5 L365.1,127.2 L367.2,129.0 L369.3,130.7 L371.5,132.5 L373.6,134.4 L375.7,136.2 L377.9,138.1 L380.0,140.0" class="ln" stroke-width="1.6"/>
+        <path d="M60.0,153.5 L62.1,152.1 L64.3,150.7 L66.4,149.3 L68.5,147.8 L70.7,146.2 L72.8,144.7 L74.9,143.1 L77.1,141.5 L79.2,139.9 L81.3,138.3 L83.5,136.7 L85.6,135.1 L87.7,133.6 L89.9,132.0 L92.0,130.5 L94.1,129.1 L96.3,127.7 L98.4,126.3 L100.5,125.0 L102.7,123.7 L104.8,122.5 L106.9,121.4 L109.1,120.3 L111.2,119.3 L113.3,118.4 L115.5,117.6 L117.6,116.9 L119.7,116.3 L121.9,115.7 L124.0,115.3 L126.1,115.0 L128.3,114.7 L130.4,114.6 L132.5,114.5 L134.7,114.6 L136.8,114.7 L138.9,115.0 L141.1,115.3 L143.2,115.8 L145.3,116.3 L147.5,117.0 L149.6,117.7 L151.7,118.5 L153.9,119.4 L156.0,120.4 L158.1,121.5 L160.3,122.6 L162.4,123.8 L164.5,125.1 L166.7,126.4 L168.8,127.8 L170.9,129.2 L173.1,130.7 L175.2,132.2 L177.3,133.7 L179.5,135.3 L181.6,136.9 L183.7,138.5 L185.9,140.1 L188.0,141.7 L190.1,143.3 L192.3,144.8 L194.4,146.4 L196.5,147.9 L198.7,149.4 L200.8,150.9 L202.9,152.3 L205.1,153.7 L207.2,155.0 L209.3,156.3 L211.5,157.5 L213.6,158.6 L215.7,159.7 L217.9,160.6 L220.0,161.5 L222.1,162.4 L224.3,163.1 L226.4,163.7 L228.5,164.2 L230.7,164.7 L232.8,165.0 L234.9,165.3 L237.1,165.4 L239.2,165.5 L241.3,165.4 L243.5,165.3 L245.6,165.0 L247.7,164.7 L249.9,164.2 L252.0,163.7 L254.1,163.0 L256.3,162.3 L258.4,161.5 L260.5,160.6 L262.7,159.6 L264.8,158.5 L266.9,157.4 L269.1,156.2 L271.2,154.9 L273.3,153.6 L275.5,152.2 L277.6,150.8 L279.7,149.3 L281.9,147.8 L284.0,146.3 L286.1,144.7 L288.3,143.1 L290.4,141.5 L292.5,139.9 L294.7,138.3 L296.8,136.7 L298.9,135.2 L301.1,133.6 L303.2,132.1 L305.3,130.6 L307.5,129.1 L309.6,127.7 L311.7,126.3 L313.9,125.0 L316.0,123.7 L318.1,122.5 L320.3,121.4 L322.4,120.3 L324.5,119.4 L326.7,118.5 L328.8,117.6 L330.9,116.9 L333.1,116.3 L335.2,115.8 L337.3,115.3 L339.5,115.0 L341.6,114.7 L343.7,114.6 L345.9,114.5 L348.0,114.6 L350.1,114.7 L352.3,115.0 L354.4,115.3 L356.5,115.8 L358.7,116.3 L360.8,117.0 L362.9,117.7 L365.1,118.5 L367.2,119.4 L369.3,120.4 L371.5,121.5 L373.6,122.6 L375.7,123.8 L377.9,125.1 L380.0,126.4" class="ln-accent" stroke-width="2.4"/>
+        <path d="M60.0,225.0 L62.1,223.1 L64.3,221.2 L66.4,219.4 L68.5,217.5 L70.7,215.7 L72.8,214.0 L74.9,212.2 L77.1,210.5 L79.2,208.9 L81.3,207.4 L83.5,205.9 L85.6,204.5 L87.7,203.1 L89.9,201.9 L92.0,200.7 L94.1,199.7 L96.3,198.7 L98.4,197.9 L100.5,197.1 L102.7,196.5 L104.8,195.9 L106.9,195.5 L109.1,195.2 L111.2,195.1 L113.3,195.0 L115.5,195.1 L117.6,195.2 L119.7,195.5 L121.9,195.9 L124.0,196.5 L126.1,197.1 L128.3,197.9 L130.4,198.7 L132.5,199.7 L134.7,200.7 L136.8,201.9 L138.9,203.1 L141.1,204.5 L143.2,205.9 L145.3,207.4 L147.5,208.9 L149.6,210.5 L151.7,212.2 L153.9,214.0 L156.0,215.7 L158.1,217.5 L160.3,219.4 L162.4,221.2 L164.5,223.1 L166.7,225.0 L168.8,226.9 L170.9,228.8 L173.1,230.6 L175.2,232.5 L177.3,234.3 L179.5,236.0 L181.6,237.8 L183.7,239.5 L185.9,241.1 L188.0,242.6 L190.1,244.1 L192.3,245.5 L194.4,246.9 L196.5,248.1 L198.7,249.3 L200.8,250.3 L202.9,251.3 L205.1,252.1 L207.2,252.9 L209.3,253.5 L211.5,254.1 L213.6,254.5 L215.7,254.8 L217.9,254.9 L220.0,255.0 L222.1,254.9 L224.3,254.8 L226.4,254.5 L228.5,254.1 L230.7,253.5 L232.8,252.9 L234.9,252.1 L237.1,251.3 L239.2,250.3 L241.3,249.3 L243.5,248.1 L245.6,246.9 L247.7,245.5 L249.9,244.1 L252.0,242.6 L254.1,241.1 L256.3,239.5 L258.4,237.8 L260.5,236.0 L262.7,234.3 L264.8,232.5 L266.9,230.6 L269.1,228.8 L271.2,226.9 L273.3,225.0 L275.5,223.1 L277.6,221.2 L279.7,219.4 L281.9,217.5 L284.0,215.7 L286.1,214.0 L288.3,212.2 L290.4,210.5 L292.5,208.9 L294.7,207.4 L296.8,205.9 L298.9,204.5 L301.1,203.1 L303.2,201.9 L305.3,200.7 L307.5,199.7 L309.6,198.7 L311.7,197.9 L313.9,197.1 L316.0,196.5 L318.1,195.9 L320.3,195.5 L322.4,195.2 L324.5,195.1 L326.7,195.0 L328.8,195.1 L330.9,195.2 L333.1,195.5 L335.2,195.9 L337.3,196.5 L339.5,197.1 L341.6,197.9 L343.7,198.7 L345.9,199.7 L348.0,200.7 L350.1,201.9 L352.3,203.1 L354.4,204.5 L356.5,205.9 L358.7,207.4 L360.8,208.9 L362.9,210.5 L365.1,212.2 L367.2,214.0 L369.3,215.7 L371.5,217.5 L373.6,219.4 L375.7,221.2 L377.9,223.1 L380.0,225.0" class="ln" stroke-width="1.6"/>
+        <path d="M60.0,225.0 L81.3,225.0 L81.3,207.4 L102.7,207.4 L102.7,196.5 L124.0,196.5 L124.0,196.5 L145.3,196.5 L145.3,207.4 L166.7,207.4 L166.7,225.0 L188.0,225.0 L188.0,242.6 L209.3,242.6 L209.3,253.5 L230.7,253.5 L230.7,253.5 L252.0,253.5 L252.0,242.6 L273.3,242.6 L273.3,225.0 L294.7,225.0 L294.7,207.4 L316.0,207.4 L316.0,196.5 L337.3,196.5 L337.3,196.5 L358.7,196.5 L358.7,207.4 L380.0,207.4 L380.0,225.0 L380.0,225.0" class="ln-accent" stroke-width="2.4"/>
+        <text x="60" y="266" class="t-mono t-faint" font-size="12">0</text>
+        <text x="380" y="266" text-anchor="end" class="t-mono t-faint" font-size="12">0,75 s</text>
+      </svg>
+      <figcaption>Gris: la señal, una senoide de 2 Hz. Color: lo que llega. Ejemplo 5 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>1 · Transporte:</strong> \(y(t) = x(t - \tau)\). Llega intacto y tarde: misma amplitud, fase \(-\omega\tau\) (a 2 Hz y 60 ms, −43,2°). Se simula con un <strong>búfer</strong>.</p>
+      <p><strong>2 · Dinámico:</strong> \(\tau_m\,\dot y = x - y\), un filtro o un motor con constante de tiempo \(\tau_m\). Atenúa y retrasa: amplitud \(1/\sqrt{1+(\omega\tau_m)^2}\) = 0,85 y fase \(-\arctan\omega\tau_m\) = −32,1° (como 45 ms a 2 Hz). Se simula con un <strong>modelo dinámico</strong> (B2).</p>
+      <p><strong>3 · De muestreo:</strong> \(y(t) = x(kT_s)\) entre \(kT_s\) y \((k+1)T_s\). Escalera que va, de media, \(T_s/2\) por detrás: 25 ms a 20 Hz. Se simula con un <strong>retenedor</strong> (A2, hoja 15).</p>
+      <p class="small muted">\(\tau_m\): constante de tiempo; \(T_s\): periodo de muestreo.</p>
     </div>
   </div>
 </section>
@@ -468,18 +761,334 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
         </svg>
         <figcaption>Búfer circular de \(D\) casillas: memoria fija, índices enteros, apto para <code>jit</code>.</figcaption>
       </figure>
-      <ul class="small">
+      <ul>
         <li><strong>Inicio:</strong> llénalo con el estado inicial, no con ceros, o la primera medida retrasada dirá que el dron está en el origen.</li>
-        <li><strong>Memoria:</strong> 16 384 entornos con 200 ms a 1 kHz y 17 números por casilla son 223 MB en float32; a 200 Hz, 45 MB. Guarda a la frecuencia del sensor, no a la de la física.</li>
+        <li><strong>Memoria:</strong> 16 384 entornos con 200 ms a 1 kHz (200 casillas) y 17 números por casilla son \(16\,384 \times 200 \times 17 \times 4\) B = 223 MB en float32; a 200 Hz (40 casillas), 45 MB. Guarda a la frecuencia del sensor, no a la de la física.</li>
       </ul>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: el retardo fraccionario por interpolación lineal también filtra</summary>
-        <p class="small">Para un retardo \(\tau = (m+\alpha)\Delta t\), con \(0\le\alpha&lt;1\), se interpola \(y_k = (1-\alpha)\,x_{k-m} + \alpha\,x_{k-m-1}\). Su respuesta en frecuencia es</p>
-        \[ H(e^{j\omega\Delta t}) = e^{-j\omega m\Delta t}\big[(1-\alpha) + \alpha\,e^{-j\omega\Delta t}\big]. \]
-        <p class="small">A baja frecuencia, el corchete vale \(\approx e^{-j\omega\alpha\Delta t}\): el retardo es el deseado. Pero su módulo, \(\sqrt{1 - 2\alpha(1-\alpha)(1-\cos\omega\Delta t)}\), cae hasta \(|1-2\alpha|\) en Nyquist: con \(\alpha = 0{,}5\), un filtro paso bajo que anula lo más rápido. Interpolar el giróscopo de 1 kHz para un retardo de 2,5 ms le quita ruido de alta frecuencia que el real sí tiene.</p>
-      </details>
+      <p><strong>Con números</strong> (\(D = 8\), \(d = 3\)):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Paso \(k\)</th><th>Escribe \(x_k\) en</th><th>Lee \(x_{k-3}\) de</th></tr>
+          <tr><td class="n">8</td><td class="n">8 mod 8 = 0</td><td class="n">5 mod 8 = 5</td></tr>
+          <tr><td class="n">10</td><td class="n">2</td><td class="n">7</td></tr>
+          <tr><td class="n">11</td><td class="n">3</td><td class="n">8 mod 8 = 0</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Ejemplo 6 del script. El retardo fraccionario, en la hoja siguiente.</p>
       <div class="callout realidad"><span class="tag">Así lo hacen</span>Tan et al. guardan la historia de observaciones con su instante y la interpolan linealmente en \(n\Delta t - t_\text{lat}\) <a class="cite" data-ref="tan2018"></a>. Isaac Lab retrasa las órdenes de los actuadores con un búfer circular y un retardo entero, sorteado por entorno al reiniciar, entre <code>min_delay</code> y <code>max_delay</code> pasos de física <a class="cite" data-ref="isaaclab"></a>. MuJoCo 3.5 añadió búferes de historia a actuadores y sensores, con retenedor, interpolación lineal o cúbica <a class="cite" data-ref="mujoco35"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · retardo fraccionario</p>
+  <h2>Retrasar media muestra interpolando también filtra</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p><strong>Origen:</strong> un retardo \(\tau = (m+\alpha)\Delta t\), con \(0 \le \alpha \lt 1\), cae entre dos muestras guardadas; se interpola entre ellas, \(y_k = (1-\alpha)\,x_{k-m} + \alpha\,x_{k-m-1}\). Para ver qué hace a cada frecuencia, se le mete una senoide compleja \(x_k = e^{j\omega k\Delta t}\) (\(j\): unidad imaginaria).</p>
+      <p><strong>Qué queremos saber:</strong> si es un retardo puro (módulo 1 a toda frecuencia, como \(e^{-j\omega\tau}\)) o si además cambia la amplitud. Su respuesta en frecuencia es el factor \(H\) que multiplica a \(x_k\) en el paso 1.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(y_k = x_k\,e^{-j\omega m\Delta t}\big[(1-\alpha) + \alpha\,e^{-j\theta}\big]\), \(\theta = \omega\Delta t\)</td><td>Retrasar \(n\) pasos multiplica por \(e^{-j\omega n\Delta t}\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|H|^2 = (1-\alpha)^2 + \alpha^2 + 2\alpha(1-\alpha)\cos\theta\)</td><td>\(|a + b\,e^{-j\theta}|^2\) con \(a, b\) reales; \(|e^{-j\omega m\Delta t}| = 1\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(|H|^2 = 1 - 2\alpha(1-\alpha)(1-\cos\theta)\)</td><td>\((1-\alpha)^2 + \alpha^2 = 1 - 2\alpha(1-\alpha)\)</td></tr>
+          <tr><td><strong>4</strong></td><td>En Nyquist, \(\theta = \pi\): \(|H| = |1 - 2\alpha|\)</td><td>\(\cos\pi = -1\): \(1 - 4\alpha(1-\alpha) = (1-2\alpha)^2\)</td></tr>
+          <tr><td><strong>5</strong></td><td>Con \(\theta\) pequeño: \(\big[\ \big] \approx 1 - j\alpha\theta \approx e^{-j\alpha\theta}\)</td><td>\(e^{-j\theta} \approx 1 - j\theta\): \(\alpha\) pasos más de retardo, lo buscado</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · retardo fraccionario · 2</p>
+  <h2>Cuánto atenúa la interpolación, frecuencia a frecuencia</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 540 270" role="img" aria-label="Módulo de la respuesta en frecuencia de la interpolación lineal para tres valores de alfa">
+          <line x1="60" y1="230" x2="500" y2="230" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="230" class="ln-rule"/>
+          <line x1="280" y1="30" x2="280" y2="230" class="ln-rule"/>
+          <line x1="500" y1="30" x2="500" y2="230" class="ln-rule"/>
+          <line x1="60" y1="130" x2="500" y2="130" class="ln-rule"/>
+          <text x="52" y="234" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="134" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+          <text x="60" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="280" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">π/2</text>
+          <text x="500" y="250" text-anchor="end" class="t-mono t-faint" font-size="12">π (Nyquist)</text>
+          <text x="280" y="266" text-anchor="middle" class="t-muted" font-size="12">θ = ωΔt</text>
+          <text x="24" y="84" text-anchor="middle" class="t-muted" font-size="13">|H|</text>
+          <path d="M60.0,30.0 L67.3,30.0 L74.7,30.0 L82.0,30.0 L89.3,30.0 L96.7,30.0 L104.0,30.0 L111.3,30.0 L118.7,30.0 L126.0,30.0 L133.3,30.0 L140.7,30.0 L148.0,30.0 L155.3,30.0 L162.7,30.0 L170.0,30.0 L177.3,30.0 L184.7,30.0 L192.0,30.0 L199.3,30.0 L206.7,30.0 L214.0,30.0 L221.3,30.0 L228.7,30.0 L236.0,30.0 L243.3,30.0 L250.7,30.0 L258.0,30.0 L265.3,30.0 L272.7,30.0 L280.0,30.0 L287.3,30.0 L294.7,30.0 L302.0,30.0 L309.3,30.0 L316.7,30.0 L324.0,30.0 L331.3,30.0 L338.7,30.0 L346.0,30.0 L353.3,30.0 L360.7,30.0 L368.0,30.0 L375.3,30.0 L382.7,30.0 L390.0,30.0 L397.3,30.0 L404.7,30.0 L412.0,30.0 L419.3,30.0 L426.7,30.0 L434.0,30.0 L441.3,30.0 L448.7,30.0 L456.0,30.0 L463.3,30.0 L470.7,30.0 L478.0,30.0 L485.3,30.0 L492.7,30.0 L500.0,30.0" class="ln" stroke-width="2"/>
+          <path d="M60.0,30.0 L67.3,30.1 L74.7,30.2 L82.0,30.5 L89.3,30.8 L96.7,31.3 L104.0,31.8 L111.3,32.5 L118.7,33.3 L126.0,34.1 L133.3,35.1 L140.7,36.1 L148.0,37.3 L155.3,38.5 L162.7,39.9 L170.0,41.3 L177.3,42.8 L184.7,44.4 L192.0,46.1 L199.3,47.9 L206.7,49.7 L214.0,51.6 L221.3,53.6 L228.7,55.7 L236.0,57.9 L243.3,60.1 L250.7,62.3 L258.0,64.6 L265.3,67.0 L272.7,69.4 L280.0,71.9 L287.3,74.4 L294.7,76.9 L302.0,79.5 L309.3,82.1 L316.7,84.7 L324.0,87.3 L331.3,89.9 L338.7,92.5 L346.0,95.1 L353.3,97.7 L360.7,100.3 L368.0,102.8 L375.3,105.3 L382.7,107.7 L390.0,110.0 L397.3,112.3 L404.7,114.5 L412.0,116.6 L419.3,118.6 L426.7,120.4 L434.0,122.1 L441.3,123.7 L448.7,125.1 L456.0,126.4 L463.3,127.5 L470.7,128.4 L478.0,129.1 L485.3,129.6 L492.7,129.9 L500.0,130.0" class="ln-accent" stroke-width="2.4"/>
+          <path d="M60.0,30.0 L67.3,30.1 L74.7,30.3 L82.0,30.6 L89.3,31.1 L96.7,31.7 L104.0,32.5 L111.3,33.3 L118.7,34.4 L126.0,35.5 L133.3,36.8 L140.7,38.2 L148.0,39.8 L155.3,41.5 L162.7,43.3 L170.0,45.2 L177.3,47.3 L184.7,49.5 L192.0,51.8 L199.3,54.2 L206.7,56.8 L214.0,59.5 L221.3,62.3 L228.7,65.2 L236.0,68.2 L243.3,71.3 L250.7,74.6 L258.0,77.9 L265.3,81.4 L272.7,84.9 L280.0,88.6 L287.3,92.3 L294.7,96.2 L302.0,100.1 L309.3,104.1 L316.7,108.2 L324.0,112.4 L331.3,116.7 L338.7,121.1 L346.0,125.5 L353.3,130.0 L360.7,134.6 L368.0,139.2 L375.3,143.9 L382.7,148.7 L390.0,153.5 L397.3,158.3 L404.7,163.2 L412.0,168.2 L419.3,173.2 L426.7,178.2 L434.0,183.3 L441.3,188.4 L448.7,193.6 L456.0,198.7 L463.3,203.9 L470.7,209.1 L478.0,214.3 L485.3,219.5 L492.7,224.8 L500.0,230.0" class="ln-time" stroke-width="2.4"/>
+          <text x="300" y="22" font-size="12" class="t-muted">α = 0 (retardo entero)</text>
+          <text x="440" y="110" text-anchor="middle" class="t-accent" font-size="12">α = 0,25</text>
+          <text x="380" y="205" text-anchor="end" class="t-time" font-size="12">α = 0,5</text>
+        </svg>
+        <figcaption>\(|H|\) de la interpolación lineal. Ejemplo 7 del script.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <p>Es la fórmula del paso 3 de la hoja anterior. A baja frecuencia las tres curvas valen 1: la interpolación retrasa lo pedido sin tocar la amplitud. Cerca de Nyquist, en cambio, \(\alpha = 0{,}25\) deja pasar la mitad y \(\alpha = 0{,}5\) nada: con \(\alpha = 0{,}5\), \(|H| = |(1 + e^{-j\theta})/2| = |\cos(\theta/2)|\).</p>
+      <p><strong>Ejemplo:</strong> el giróscopo a 1 kHz con 2,5 ms de retardo da \(m = 2\), \(\alpha = 0{,}5\) y \(|H| = |\cos(\theta/2)|\): 0,951 a 100 Hz, 0,707 a 250 Hz y 0 a 500 Hz. Le quita ruido de alta frecuencia que el real sí tiene.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · en frecuencia</p>
+  <h2>Un retardo puro resta fase \(-\omega\tau\): lo que cuesta en el eje del ejemplo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Recordatorio de A2 (hojas 15 y 23, con la derivación completa). Solo hace falta esto:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(y(t) = x(t-\tau) \Rightarrow Y(s) = e^{-s\tau}X(s)\)</td><td>Desplazar en el tiempo multiplica la transformada por \(e^{-s\tau}\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(s = j\omega\): \(|e^{-j\omega\tau}| = 1\), \(\arg e^{-j\omega\tau} = -\omega\tau\)</td><td>No cambia la ganancia; resta una fase que crece con \(\omega\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\varphi_m(\tau) = \varphi_m - \omega_c\tau\)</td><td>\(|L|\) no cambia, así que el cruce \(\omega_c\) sigue donde estaba</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\tau_\text{max} = \varphi_m/\omega_c\) (\(\varphi_m\) en rad)</td><td>Margen agotado: \(\varphi_m(\tau) = 0\)</td></tr>
+          <tr><td><strong>5</strong></td><td>Retenedor \(\approx e^{-s\Delta t/2}\)</td><td>Medio periodo de retardo (A2, hoja 15)</td></tr>
+        </table>
+      </div>
+      <p><strong>En el eje</strong> (hojas siguientes), \(\omega_c\) = 12,08 rad/s: cada 10 ms cuestan 6,92°, el retenedor a 100 Hz 3,46°, 50 ms ya 34,6°, y con 94,7 ms se agotan los 65,5° de margen.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 292" role="img" aria-label="Fase de un retardo puro frente a la frecuencia para tres retardos, con el cruce y el margen del eje">
+        <line x1="60" y1="30" x2="520" y2="30" class="ln-rule"/>
+        <line x1="60" y1="85" x2="520" y2="85" class="ln-rule"/>
+        <line x1="60" y1="140" x2="520" y2="140" class="ln-rule"/>
+        <line x1="60" y1="195" x2="520" y2="195" class="ln-rule"/>
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">0°</text>
+        <text x="52" y="89" text-anchor="end" class="t-mono t-faint" font-size="12">−30°</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">−60°</text>
+        <text x="52" y="199" text-anchor="end" class="t-mono t-faint" font-size="12">−90°</text>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">−120°</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="213" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="367" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">30</text>
+        <text x="290" y="287" text-anchor="middle" class="t-muted" font-size="12">ω (rad/s)</text>
+        <line x1="245.3" y1="30" x2="245.3" y2="250" class="ln ln-dash"/>
+        <line x1="60" y1="150.1" x2="520" y2="150.1" class="ln-tesis ln-dash" stroke-width="1.4"/>
+        <text x="250" y="22" class="t-muted" font-size="12">ω<tspan font-size="10" dy="4">c</tspan><tspan dy="-4"> = 12,08 rad/s</tspan></text>
+        <text x="66" y="168" class="t-tesis" font-size="12">−φ<tspan font-size="10" dy="4">m</tspan><tspan dy="-4"> = −65,5°</tspan></text>
+        <path d="M60.0,30.0 L520.0,61.5" class="ln-accent" stroke-width="2.2"/>
+        <path d="M60.0,30.0 L520.0,187.6" class="ln-accent" stroke-width="2.2"/>
+        <path d="M60.0,30.0 L399.1,250.0" class="ln-time" stroke-width="2.4"/>
+        <circle cx="245.3" cy="42.7" r="4" class="fill-accent"/>
+        <circle cx="245.3" cy="93.5" r="4" class="fill-accent"/>
+        <circle cx="245.3" cy="150.2" r="4.5" class="fill-time"/>
+        <text x="515" y="52" text-anchor="end" class="t-accent" font-size="12">τ = 10 ms</text>
+        <text x="515" y="178" text-anchor="end" class="t-accent" font-size="12">τ = 50 ms</text>
+        <text x="398" y="236" class="t-time" font-size="12">τ = 94,7 ms</text>
+      </svg>
+      <figcaption>Fase \(-\omega\tau\) de tres retardos. Morado: \(-\varphi_m\), donde el margen se agota; en \(\omega_c\), el retardo de 94,7 ms llega justo ahí. Ejemplo 8 del script.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · el experimento</p>
+  <h2>El eje del ejemplo: un dron que se mantiene en un punto con viento</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 196" role="img" aria-label="Lazo del eje: LQR, retenedor, doble integrador con viento, muestreo y búfer de retardo">
+      <defs><marker id="b4f-eje" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="40" y="30" width="200" height="56" rx="6" class="box-accent"/>
+      <text x="140" y="54" text-anchor="middle" class="t-bold" font-size="14">LQR</text>
+      <text x="140" y="74" text-anchor="middle" font-size="13">u = −K · (lo que recibe)</text>
+      <rect x="300" y="30" width="180" height="56" rx="6" class="box"/>
+      <text x="390" y="54" text-anchor="middle" class="t-bold" font-size="14">retenedor</text>
+      <text x="390" y="74" text-anchor="middle" font-size="13">u fijo 10 ms</text>
+      <circle cx="545" cy="58" r="16" class="box"/>
+      <text x="545" y="63" text-anchor="middle" font-size="16">+</text>
+      <text x="545" y="16" text-anchor="middle" class="t-time" font-size="13">w: ráfaga</text>
+      <line x1="545" y1="22" x2="545" y2="40" class="ln" marker-end="url(#b4f-eje)"/>
+      <rect x="610" y="30" width="230" height="56" rx="6" class="box"/>
+      <text x="725" y="54" text-anchor="middle" class="t-bold" font-size="14">doble integrador</text>
+      <text x="725" y="74" text-anchor="middle" font-size="13">p̈ = u + w</text>
+      <rect x="910" y="30" width="200" height="56" rx="6" class="box"/>
+      <text x="1010" y="54" text-anchor="middle" class="t-bold" font-size="14">muestreo</text>
+      <text x="1010" y="74" text-anchor="middle" font-size="13">cada 10 ms: x<tspan font-size="10" dy="4">k</tspan><tspan dy="-4"> = (p, v)</tspan></text>
+      <rect x="520" y="122" width="250" height="56" rx="6" class="box-time"/>
+      <text x="645" y="146" text-anchor="middle" class="t-bold" font-size="14">búfer de retardo</text>
+      <text x="645" y="166" text-anchor="middle" font-size="13">entrega x<tspan font-size="10" dy="4">k−d</tspan><tspan dy="-4">, d pasos tarde</tspan></text>
+      <line x1="240" y1="58" x2="298" y2="58" class="ln" marker-end="url(#b4f-eje)"/>
+      <text x="269" y="50" text-anchor="middle" font-size="13">u<tspan font-size="10" dy="4">k</tspan></text>
+      <line x1="480" y1="58" x2="527" y2="58" class="ln" marker-end="url(#b4f-eje)"/>
+      <line x1="561" y1="58" x2="608" y2="58" class="ln" marker-end="url(#b4f-eje)"/>
+      <line x1="840" y1="58" x2="908" y2="58" class="ln" marker-end="url(#b4f-eje)"/>
+      <text x="874" y="50" text-anchor="middle" font-size="13">x(t)</text>
+      <path d="M1110,58 L1150,58 L1150,150 L772,150" class="ln" marker-end="url(#b4f-eje)"/>
+      <text x="1160" y="110" font-size="13">x<tspan font-size="10" dy="4">k</tspan></text>
+      <path d="M520,150 L140,150 L140,88" class="ln" marker-end="url(#b4f-eje)"/>
+      <text x="330" y="142" text-anchor="middle" font-size="13">x<tspan font-size="10" dy="4">k−d</tspan></text>
+    </svg>
+    <figcaption>El lazo de las hojas siguientes. Lo único que cambia entre experimentos es el búfer (y, más adelante, un predictor delante del LQR).</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Modelo:</strong> un eje horizontal en estacionario como doble integrador, \(\ddot p = u + w\), con \(u\) la aceleración mandada (inclinación por \(g\)) y \(w\) una ráfaga blanca de 1 m/s² por paso. Discretizado a 100 Hz con el mando retenido:</p>
+      \[ x_{k+1} = \underbrace{\begin{bmatrix}1&\Delta t\\0&1\end{bmatrix}}_{A} x_k + \underbrace{\begin{bmatrix}\Delta t^2/2\\ \Delta t\end{bmatrix}}_{B = G} (u_k + w_k),\quad \Delta t = 0{,}01\ \text{s} \]
+    </div>
+    <div class="stack">
+      <p><strong>Control:</strong> LQR con \(Q = \mathrm{diag}(1, 0)\) (solo cuenta la posición) y \(R = 1/4096\). En continuo, la Riccati de este caso se resuelve a mano y da \(k_p = \sqrt{q/r} = 64 = \omega_n^2\) y \(k_d = \sqrt{2k_p} = 11{,}31 = 2\zeta\omega_n\): \(\omega_n\) = 8 rad/s, \(\zeta\) = 0,707. En discreto a 100 Hz, \(K\) = (60,48; 11,00).</p>
+      <p class="small muted">El mando se satura a 4,9 m/s² (unos 26,6° de inclinación). Ejemplo 9 del script; el experimento con viento está en <code>figuras_b4.py</code>, sección 3.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · el límite</p>
+  <h2>Por qué el eje es inestable desde 90 ms sin predictor</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:53%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(L(s) = \dfrac{k_p + k_d s}{s^2}\)</td><td>PD (\(v = sp\)) por la planta \(1/s^2\), con el lazo abierto en \(u\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(|L(j\omega)| = 1 \iff \omega^4 = k_p^2 + k_d^2\,\omega^2\)</td><td>\(|k_p + jk_d\omega|^2 = k_p^2 + k_d^2\omega^2\) y \(|(j\omega)^2| = \omega^2\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\omega_c^2 = \tfrac12\big(k_d^2 + \sqrt{k_d^4 + 4k_p^2}\big) = 146{,}0\)</td><td>Segundo grado en \(\omega^2\); la raíz positiva</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\arg L(j\omega_c) = -180° + \arctan(k_d\omega_c/k_p)\)</td><td>\(1/s^2\) aporta −180°; el PD adelanta</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\varphi_m = \arctan(2{,}197) = 65{,}5° = 1{,}144\) rad</td><td>\(\varphi_m = 180° + \arg L(j\omega_c)\), con \(\omega_c\) = 12,08 rad/s</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\tau_\text{max} = \varphi_m/\omega_c = 94{,}7\) ms</td><td>Paso 4 de la hoja anterior</td></tr>
+          <tr><td><strong>7</strong></td><td>\(d\,\Delta t + \Delta t/2 \ge 94{,}7\) ms \(\iff d \ge 8{,}97\)</td><td>La medida de \(k-d\) se aplica entre \(k\) y \(k+1\): \(d\) pasos y medio de retenedor</td></tr>
+        </table>
+      </div>
+      <p>Así que \(d = 9\): <strong>90 ms</strong>. Con números: \(k_d^2\) = 120,96, \(\sqrt{k_d^4 + 4k_p^2}\) = 171,06, \(\omega_c\) = 12,084 rad/s.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Comprobación exacta.</strong> El lazo discreto con \(u_k = -Kx_{k-d}\) es lineal en el estado aumentado \((x_k, x_{k-1}, \dots, x_{k-d})\). Es estable si todos sus autovalores tienen módulo menor que 1:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(d\)</th><th>Retardo</th><th>Radio espectral</th></tr>
+          <tr><td class="n">0</td><td class="n">0 ms</td><td class="n">0,945</td></tr>
+          <tr><td class="n">4</td><td class="n">40 ms</td><td class="n">0,922</td></tr>
+          <tr><td class="n">7</td><td class="n">70 ms</td><td class="n">0,977</td></tr>
+          <tr><td class="n">8</td><td class="n">80 ms</td><td class="n">0,990</td></tr>
+          <tr><td class="n">9</td><td class="n">90 ms</td><td class="n"><strong>1,0003</strong></td></tr>
+          <tr><td class="n">10</td><td class="n">100 ms</td><td class="n">1,008</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Ejemplo 9 del script. La cuenta continua y la discreta coinciden en el paso.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · predictor · 1</p>
+  <h2>Un predictor propaga la medida vieja con los mandos guardados</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 660 285" role="img" aria-label="Predictor: la medida de k menos 3 se propaga tres pasos con los mandos del búfer hasta el estado actual">
+        <defs><marker id="b4f-pred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <line x1="60" y1="250" x2="640" y2="250" class="ln-rule"/>
+        <line x1="90" y1="244" x2="90" y2="256" class="ln"/>
+        <text x="90" y="274" text-anchor="middle" class="t-mono t-faint" font-size="13">k−3</text>
+        <line x1="230" y1="244" x2="230" y2="256" class="ln"/>
+        <text x="230" y="274" text-anchor="middle" class="t-mono t-faint" font-size="13">k−2</text>
+        <line x1="370" y1="244" x2="370" y2="256" class="ln"/>
+        <text x="370" y="274" text-anchor="middle" class="t-mono t-faint" font-size="13">k−1</text>
+        <line x1="510" y1="244" x2="510" y2="256" class="ln"/>
+        <text x="510" y="274" text-anchor="middle" class="t-mono t-faint" font-size="13">k</text>
+        <path d="M90,96 C180,10 420,10 506,92" class="ln-time" stroke-width="1.8" marker-end="url(#b4f-pred)"/>
+        <text x="300" y="30" text-anchor="middle" class="t-time" font-size="13">la medida tomada en k−3 llega en k</text>
+        <circle cx="90" cy="110" r="9" class="fill-time"/>
+        <text x="90" y="140" text-anchor="middle" font-size="14">x<tspan font-size="10" dy="4">k−3</tspan></text>
+        <line x1="102" y1="110" x2="216" y2="110" class="ln-accent" stroke-width="2" marker-end="url(#b4f-pred)"/>
+        <circle cx="230" cy="110" r="8" class="fill-accent"/>
+        <line x1="242" y1="110" x2="356" y2="110" class="ln-accent" stroke-width="2" marker-end="url(#b4f-pred)"/>
+        <circle cx="370" cy="110" r="8" class="fill-accent"/>
+        <line x1="382" y1="110" x2="496" y2="110" class="ln-accent" stroke-width="2" marker-end="url(#b4f-pred)"/>
+        <circle cx="510" cy="110" r="8" class="fill-accent"/>
+        <text x="230" y="140" text-anchor="middle" class="t-accent" font-size="14">x̂<tspan font-size="10" dy="4">k−2</tspan></text>
+        <text x="370" y="140" text-anchor="middle" class="t-accent" font-size="14">x̂<tspan font-size="10" dy="4">k−1</tspan></text>
+        <text x="510" y="140" text-anchor="middle" class="t-accent t-bold" font-size="14">x̂<tspan font-size="10" dy="4">k</tspan></text>
+        <rect x="98" y="170" width="124" height="40" rx="5" class="box-soft"/>
+        <text x="160" y="196" text-anchor="middle" font-size="14">u<tspan font-size="10" dy="4">k−3</tspan></text>
+        <line x1="160" y1="168" x2="160" y2="118" class="ln ln-dash"/>
+        <rect x="238" y="170" width="124" height="40" rx="5" class="box-soft"/>
+        <text x="300" y="196" text-anchor="middle" font-size="14">u<tspan font-size="10" dy="4">k−2</tspan></text>
+        <line x1="300" y1="168" x2="300" y2="118" class="ln ln-dash"/>
+        <rect x="378" y="170" width="124" height="40" rx="5" class="box-soft"/>
+        <text x="440" y="196" text-anchor="middle" font-size="14">u<tspan font-size="10" dy="4">k−1</tspan></text>
+        <line x1="440" y1="168" x2="440" y2="118" class="ln ln-dash"/>
+        <text x="300" y="232" text-anchor="middle" class="t-muted" font-size="13">búfer de mandos ya enviados</text>
+        <rect x="545" y="170" width="95" height="40" rx="5" class="box-accent"/>
+        <text x="592" y="196" text-anchor="middle" font-size="13">u<tspan font-size="10" dy="4">k</tspan><tspan dy="-4"> = −Kx̂</tspan></text>
+        <line x1="520" y1="118" x2="575" y2="168" class="ln-accent" marker-end="url(#b4f-pred)"/>
+        <text x="160" y="100" text-anchor="middle" class="t-accent" font-size="12">A·+Bu</text>
+        <text x="300" y="100" text-anchor="middle" class="t-accent" font-size="12">A·+Bu</text>
+        <text x="440" y="100" text-anchor="middle" class="t-accent" font-size="12">A·+Bu</text>
+      </svg>
+      <figcaption>Con \(d = 3\). En \(k\) llega \(x_{k-3}\); el modelo lo avanza tres pasos, cada uno con el mando que de verdad se aplicó entonces.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué entra:</strong> la medida \(x_{k-d}\), que llega \(d\) pasos tarde, y los \(d\) mandos ya enviados desde entonces, \(u_{k-d}, \dots, u_{k-1}\), que el controlador guarda en un búfer propio. <strong>Qué sale:</strong> \(\hat x_k\), el estado actual que predice el modelo, y con él el mando \(u_k = -K\hat x_k\).</p>
+      \[ \hat x_k = \underbrace{A^d x_{k-d}}_{\text{evolución libre}} + \sum_{i=0}^{d-1} \underbrace{A^{d-1-i} B\,u_{k-d+i}}_{\text{efecto del mando } i} \]
+      <p>El mando \(u_{k-d+i}\) lleva \(d-1-i\) pasos evolucionando: el más viejo, \(d-1\); el último, ninguno.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · predictor · 2</p>
+  <h2>De dónde sale el predictor y qué error no puede quitar</h2>
+  <div class="stack">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:57%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x_{k-d+1} = Ax_{k-d} + Bu_{k-d} + Gw_{k-d}\)</td><td>El modelo, un paso</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\begin{aligned}x_{k-d+2} = {}&A^2x_{k-d} + ABu_{k-d} + Bu_{k-d+1}\\ &+ AGw_{k-d} + Gw_{k-d+1}\end{aligned}\)</td><td>Meter el paso 1 en el modelo</td></tr>
+          <tr><td><strong>3</strong></td><td>\(x_k = A^dx_{k-d} + \sum_{i=0}^{d-1} A^{d-1-i}(Bu_{k-d+i} + Gw_{k-d+i})\)</td><td>Repetir hasta \(d\) pasos</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\hat x_k = \mathbb E[x_k \mid x_{k-d}, u] = A^dx_{k-d} + \sum_i A^{d-1-i}Bu_{k-d+i}\)</td><td>Las ráfagas no observadas tienen media cero</td></tr>
+          <tr><td><strong>5</strong></td><td>\(e_k = x_k - \hat x_k = \sum_{i=0}^{d-1} A^{d-1-i}Gw_{k-d+i}\)</td><td>Lo que queda: el viento dentro de la ventana</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\mathrm{Cov}(e_k) = \sum_{i=0}^{d-1} A^iGWG^\top A^{i\top}\)</td><td>\(w\) independientes; cambiar \(i\) por \(d-1-i\)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="cols">
+    <p>Cada término del paso 6 es una matriz semidefinida positiva: la covarianza <strong>crece con \(d\)</strong>, y ningún controlador recupera esa información. Es la idea del predictor de Smith, en versión de espacio de estados.</p>
+    <p>El predictor es el paso 4: la mejor estimación de \(x_k\) con lo que se sabe. Lo que no se sabe (paso 5) es lo que pagará el coste en las hojas siguientes.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · predictor · 3</p>
+  <h2>El predictor a mano, y el tamaño del error que deja</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>A mano, con \(d = 2\):</strong> \(x_{k-2} = (0{,}10;\ 0)\) y mandos \(-0{,}5\) y \(-0{,}4\) m/s² (valores de ejemplo).</p>
+      <ul>
+        <li>Paso 1: \(p = 0{,}10 + 0{,}01\cdot 0\) \(+\ 0{,}00005\cdot(-0{,}5)\) \(= 0{,}099975\); \(v = 0{,}01\cdot(-0{,}5) = -0{,}005\).</li>
+        <li>Paso 2: \(p = 0{,}099975 - 0{,}00005\) \(-\ 0{,}00002 = 0{,}099905\); \(v = -0{,}009\).</li>
+        <li>Mando: con la medida vieja, \(-Kx_{k-2} = -6{,}05\); con la predicción, \(-K\hat x_k = -5{,}94\) m/s².</li>
+      </ul>
+      <p>Con \(A^2 = \left[\begin{smallmatrix}1&0{,}02\\0&1\end{smallmatrix}\right]\) y \(AB = (0{,}00015;\ 0{,}01)\), la fórmula cerrada da lo mismo de una vez: \(A^2x_{k-2} + AB\,u_{k-2} + B\,u_{k-1} = (0{,}099905;\ -0{,}009)\).</p>
+    </div>
+    <div class="stack">
+      <p><strong>El error irreducible</strong> del eje (paso 6 de la hoja anterior, con \(W\) = 1 (m/s²)² por paso):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Retardo</th><th>Desv. típica de \(e_k\): posición</th><th>velocidad</th></tr>
+          <tr><td class="n">10 ms</td><td class="n">0,005 cm</td><td class="n">1,00 cm/s</td></tr>
+          <tr><td class="n">50 ms</td><td class="n">0,064 cm</td><td class="n">2,24 cm/s</td></tr>
+          <tr><td class="n">100 ms</td><td class="n">0,18 cm</td><td class="n">3,16 cm/s</td></tr>
+          <tr><td class="n">150 ms</td><td class="n">0,34 cm</td><td class="n">3,87 cm/s</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Con la ráfaga de 1 m/s² del experimento. Ejemplo 10 del script.</p>
     </div>
   </div>
 </section>
@@ -516,15 +1125,11 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
       <figcaption>Coste medio \(J/J_0\) (escala logarítmica) de un eje del dron con LQR de 8 rad/s a 100 Hz, ráfagas de viento y medida de posición y velocidad retrasada. 40 000 pasos por punto. <code>figuras_b4.py</code>, sección 3.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Sin predictor</strong> (\(u_k = -K x_{k-d}\)), el lazo es inestable desde 90 ms: margen de fase de 65,5° con cruce en 12,1 rad/s da \(65{,}5°/12{,}1 = 94,7\) ms, menos 5 ms del retenedor (A2).</li>
+      <ul>
+        <li><strong>Sin predictor</strong> (\(u_k = -K x_{k-d}\)), el lazo es inestable desde 90 ms: margen de fase de 65,5° (1,144 rad) con cruce en 12,08 rad/s da \(1{,}144/12{,}08 = 94{,}7\) ms, menos 5 ms del retenedor (derivado en la hoja «Por qué el eje es inestable»).</li>
         <li><strong>Con predictor exacto</strong>, estable a cualquier retardo, pero el coste crece igual: ×1,7 a 50 ms, ×2,9 a 100 ms, ×4,5 a 150 ms.</li>
       </ul>
-      <details class="deriv"><summary>Derivación: el predictor y su error irreducible</summary>
-        <p class="small">Con la medida \(x_{k-d}\) y las acciones ya enviadas, el modelo da</p>
-        \[ \hat x_k = A^d x_{k-d} + \sum_{i=0}^{d-1} A^{d-1-i} B\,u_{k-d+i}. \]
-        <p class="small">El verdadero es \(x_k = \hat x_k + \sum_{i=0}^{d-1} A^{d-1-i} G\,w_{k-d+i}\): las ráfagas dentro de la ventana no se han observado. Su covarianza, \(\sum_i A^i G W G^\top A^{i\top}\), crece con \(d\): ningún controlador recupera esa información. Es la idea del predictor de Smith, en versión de espacio de estados.</p>
-      </details>
+      <div class="callout clave"><span class="tag">Por qué crece el coste</span>El predictor no ve las ráfagas que caen dentro de la ventana de retardo: su error crece con el retardo (hoja anterior), y el controlador actúa con ese error.</div>
     </div>
   </div>
 </section>
@@ -549,7 +1154,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
       <p class="xsmall muted">Coste \(J/J_0\) del experimento anterior. <code>figuras_b4.py</code>, sección 3.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Pasarse</strong> de retardo cuesta poco: suponer 100 ms con 0 ms reales multiplica el coste por 1,58.</li>
         <li><strong>Quedarse corto</strong> cuesta mucho: suponer 50 ms con 120 ms reales lo multiplica por 17 y con 150 ms, por casi 500. El predictor deja un retardo sin compensar que el lazo no tolera.</li>
       </ul>
@@ -560,10 +1165,63 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
 </section>
 
 <!-- ============ PARTE 3 ============ -->
+<section class="slide">
+  <p class="kicker">Retardos · por qué el desajuste es asimétrico</p>
+  <h2>Por qué quedarse corto con el retardo es lo caro</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>El predictor avanza \(x_{k-d}\) solo \(\hat d\) pasos</td><td>Cree que la medida tiene \(\hat d\) pasos</td></tr>
+          <tr><td><strong>2</strong></td><td>Si \(\hat d \lt d\): predice, más o menos, \(x_{k-(d-\hat d)}\)</td><td>Le faltan \(d - \hat d\) pasos por avanzar</td></tr>
+          <tr><td><strong>3</strong></td><td>Sin compensar: \((d - \hat d)\,\Delta t + \Delta t/2\)</td><td>Más el medio paso del retenedor</td></tr>
+          <tr><td><strong>4</strong></td><td>Inestable si pasa de 94,7 ms</td><td>El margen del eje (hoja «Por qué el eje es inestable»)</td></tr>
+          <tr><td><strong>5</strong></td><td>Si \(\hat d \gt d\): predice \(\hat d - d\) pasos por delante</td><td>Un adelanto: el lazo no pierde margen por ello</td></tr>
+        </table>
+      </div>
+      <p>Es una aproximación: el predictor usa además mandos que no son los que tocaban. El cálculo exacto lo corrige un poco.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Real</th><th>Supone</th><th>Sin compensar (regla)</th><th>Radio espectral exacto</th></tr>
+          <tr><td class="n">0 ms</td><td class="n">100 ms</td><td class="n">5 ms (se adelanta)</td><td class="n">0,968</td></tr>
+          <tr><td class="n">120 ms</td><td class="n">50 ms</td><td class="n">75 ms</td><td class="n">0,996</td></tr>
+          <tr><td class="n">130 ms</td><td class="n">50 ms</td><td class="n">85 ms</td><td class="n">1,002</td></tr>
+          <tr><td class="n">150 ms</td><td class="n">50 ms</td><td class="n">105 ms</td><td class="n">1,010</td></tr>
+          <tr><td class="n">150 ms</td><td class="n">100 ms</td><td class="n">55 ms</td><td class="n">0,989</td></tr>
+        </table>
+      </div>
+      <p>Suponiendo 50 ms con 120 reales, el lazo lineal aún es estable, pero apenas: ×17 en la tabla anterior. Con 150 reales ya es inestable, y con el mando saturado a 4,9 m/s² el coste se multiplica por 479. El límite exacto suponiendo 50 ms cae entre 120 y 130 ms reales, algo antes de los 140 que da la regla.</p>
+      <p class="small muted">Lazo lineal sin saturación, estado aumentado con las medidas y los mandos guardados. Ejemplo 10 del script.</p>
+    </div>
+  </div>
+</section>
+
 <section class="slide divider" data-section="Asincronía">
   <p class="num">Parte 3</p>
   <h2>Jitter, pérdidas y marcas de tiempo</h2>
   <p>Los retardos reales no son constantes, las medidas se pierden y cada sensor va a su ritmo. Lo que salva al estimador y a la política es saber cuándo se tomó cada dato.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Qué es cada letra de la asincronía</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(L\)</td><td>Latencia fija de una medida, de la captura a la llegada al consumidor (s)</td><td>Cámara del ejemplo: 40 ms</td></tr>
+      <tr><td>\(T\) (o \(T_\text{cám}\))</td><td>Periodo del sensor</td><td>33,3 ms a 30 Hz</td></tr>
+      <tr><td>\(U\); edad</td><td>Tiempo desde la última llegada hasta que el control mira; <strong>edad</strong> = instante actual − instante de la medida que se usa</td><td>Edad entre 40 y 73 ms</td></tr>
+      <tr><td>\(j\), \(d_j\), \(\bar d\), \(\sigma\), \(\varepsilon_j\)</td><td>Número de medida (enviada en el paso \(j\)), su retardo en pasos, el retardo medio, la desviación típica del jitter y un ruido de media 0 y varianza 1. <strong>Aviso:</strong> \(\varepsilon_j\) no es la deriva \(\varepsilon\) de la parte 1</td><td>\(\bar d\) = 80 ms, \(\sigma\) = 20 ms</td></tr>
+      <tr><td>\(a_j\)</td><td>Paso en que llega la medida \(j\)</td><td>FIFO: \(a_j \ge a_{j-1}\)</td></tr>
+      <tr><td>\(p\)</td><td>Probabilidad de perder cada medida, independiente de las demás (Bernoulli)</td><td>\(p\) = 0,2</td></tr>
+      <tr><td>\(G\), \(B\); \(p_{gb}\), \(p_{bg}\)</td><td>Estados bueno (<em>good</em>) y malo (<em>bad</em>) del canal, y probabilidades de pasar de uno a otro en un paso. <strong>Aviso:</strong> no son las matrices \(G\) y \(B\) de la parte 2</td><td>\(p_{gb}\) = 0,0125; \(p_{bg}\) = 0,05</td></tr>
+      <tr><td>\(P\), \(\pi_G\), \(\pi_B\)</td><td>Matriz de transición 2×2 de la cadena y probabilidades estacionarias (fracción del tiempo en cada estado)</td><td>\(\pi_B\) = 0,2: un 20 % de pérdidas</td></tr>
+      <tr><td>\(o = (y, t_\text{medida})\)</td><td>Observación con marca: el valor medido y el instante en que se midió</td><td>Hoja «Conexión con tu tesis»</td></tr>
+    </table>
+  </div>
 </section>
 
 <section class="slide">
@@ -600,23 +1258,70 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
       <figcaption>Cámara a 30 Hz con 40 ms de la captura a la llegada (valor supuesto) y control a 100 Hz que usa la última imagen llegada. Línea: edad continua; puntos: la que ve cada paso de control. <code>figuras_b4.py</code>, sección 2.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
-        <li>Entre llegadas, la edad crece con pendiente 1; con cada imagen nueva vuelve a la latencia. Oscila entre 40 y 73 ms.</li>
-        <li>Para el control, la media es 55 ms. La teoría da latencia + \(T_\text{cám}/2 = 56{,}7\) ms; el resto lo quita el muestreo a 100 Hz.</li>
+      <ul>
+        <li>Entre llegadas, la edad crece con pendiente 1; con cada imagen nueva vuelve a la latencia. Oscila entre 40 y 73 ms; en los instantes del control, entre 40 y 70.</li>
+        <li>Para el control, la media es 55 ms. La teoría da latencia + \(T_\text{cám}/2 = 56{,}7\) ms; el resto lo quita el muestreo a 100 Hz (hoja siguiente).</li>
       </ul>
-      <details class="deriv"><summary>Derivación: la edad media de una medida periódica</summary>
-        <p class="small">Si las medidas llegan cada \(T\) con latencia \(L\) y el control mira en un instante sin relación con esa fase, el tiempo desde la última llegada es uniforme en \([0, T)\). La edad es \(L + U\), con media \(L + T/2\) y desviación \(T/\sqrt{12}\): 9,6 ms a 30 Hz. Bajar la latencia y subir la frecuencia ayudan por igual.</p>
-      </details>
       <div class="callout clave"><span class="tag">Consecuencia</span>Aunque el retardo de transporte sea fijo, el retardo efectivo que ve el control no lo es. Una política que solo ve «la última imagen» recibe un retardo con dientes de sierra.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
+  <p class="kicker">Asincronía · edad media · 1</p>
+  <h2>De dónde sale la edad media: latencia más medio periodo</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p><strong>Origen:</strong> lo que usa el control en \(t\) se capturó \(L\) antes de llegar, y llegó hace \(U\). Si el control mira sin relación con la fase de la cámara, \(U\) es cualquier valor entre 0 y \(T\) con la misma probabilidad.</p>
+      <p>Es el diente de sierra de la hoja anterior: la edad sube con pendiente 1 desde \(L\) hasta \(L + T\) y vuelve a \(L\) con cada imagen.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\text{edad} = L + U\)</td><td>Latencia de la última imagen más lo que lleva esperando</td></tr>
+          <tr><td><strong>2</strong></td><td>\(U \sim \mathcal U[0, T)\)</td><td>Ninguna fase del ciclo de la cámara es preferida</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E[\text{edad}] = L + T/2 = 40 + 16{,}7 = 56{,}7\) ms</td><td>Media de la uniforme; \(L\) es fija</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\text{desv} = T/\sqrt{12} = 9{,}6\) ms</td><td>Varianza de la uniforme en \([0, T)\): \(T^2/12\)</td></tr>
+        </table>
+      </div>
+      <p>Bajar la latencia \(L\) y subir la frecuencia (bajar \(T\)) ayudan por igual a la media. La simulación de la hoja anterior da 55 ms, no 56,7: la diferencia está en la hoja siguiente.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · edad media · 2</p>
+  <h2>Con el control a 100 Hz, \(U\) solo toma diez valores: 55 ms</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>5</strong></td><td>\(U \in \{0, \delta, 2\delta, \dots, T - \delta\}\), \(\delta = 10/3\) ms</td><td>10 ms y 33,3 ms encajan cada 100 ms; las fases del control respecto a la cámara caen en una rejilla de \(\delta\)</td></tr>
+        <tr><td><strong>6</strong></td><td>\(\mathbb E[U] = (T - \delta)/2 = 15\) ms \(\Rightarrow\) edad media <strong>55 ms</strong></td><td>Media de 10 valores equiespaciados de 0 a \(T - \delta\), todos igual de a menudo</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Con un control mucho más rápido que la cámara, \(\delta \to 0\) y se vuelve a la uniforme: 56,7 ms. La pregunta 3 de la autoevaluación usa esa versión continua.</p>
+    </div>
+  </div>
+  <p><strong>Comprobación a mano</strong>, un ciclo de 100 ms (imágenes capturadas cada 33,3 ms y llegadas 40 ms después):</p>
+  <div class="table-wrap">
+    <table class="t">
+          <tr><th>Control en (ms)</th><td class="n">100</td><td class="n">110</td><td class="n">120</td><td class="n">130</td><td class="n">140</td><td class="n">150</td><td class="n">160</td><td class="n">170</td><td class="n">180</td><td class="n">190</td></tr>
+          <tr><th>Imagen capturada en</th><td class="n">33,33</td><td class="n">66,67</td><td class="n">66,67</td><td class="n">66,67</td><td class="n">100,00</td><td class="n">100,00</td><td class="n">100,00</td><td class="n">100,00</td><td class="n">133,33</td><td class="n">133,33</td></tr>
+          <tr><th>\(U\) (ms)</th><td class="n">26,67</td><td class="n">3,33</td><td class="n">13,33</td><td class="n">23,33</td><td class="n">0</td><td class="n">10,00</td><td class="n">20,00</td><td class="n">30,00</td><td class="n">6,67</td><td class="n">16,67</td></tr>
+          <tr><th>Edad (ms)</th><td class="n">66,67</td><td class="n">43,33</td><td class="n">53,33</td><td class="n">63,33</td><td class="n">40,00</td><td class="n">50,00</td><td class="n">60,00</td><td class="n">70,00</td><td class="n">46,67</td><td class="n">56,67</td></tr>
+    </table>
+  </div>
+  <p>Media de la última fila: 55,0 ms; entre 40 y 70 ms (la edad continua llega a 73,3). Ejemplo 11 del script.</p>
+</section>
+
+<section class="slide">
   <p class="kicker">Asincronía · modelos</p>
   <h2>Cuatro defectos de tiempo que un simulador debería poder inyectar</h2>
   <div class="cols c4 body cards-sm">
-    <div class="card"><span class="meta">1 · JITTER</span><h3>Retardo variable</h3><p>Cada medida con su retardo, \(d_j = \bar d + \sigma\varepsilon_j\). En orden de llegada (FIFO): \(a_j = \max(j + d_j,\ a_{j-1})\), de modo que el jitter solo retrasa. Si el canal permite adelantar (UDP), el consumidor debe descartar lo más viejo que lo que ya tiene.</p></div>
+    <div class="card"><span class="meta">1 · JITTER</span><h3>Retardo variable</h3><p>Cada medida con su retardo, \(d_j = \bar d + \sigma\varepsilon_j\). En orden de llegada (FIFO): \(a_j = \max(j + d_j,\ a_{j-1})\), de modo que el jitter solo retrasa (dibujado dos hojas más adelante). Si el canal permite adelantar (UDP), el consumidor debe descartar lo más viejo que lo que ya tiene.</p></div>
     <div class="card"><span class="meta">2 · PÉRDIDAS</span><h3>Independientes o a ráfagas</h3><p>Bernoulli con probabilidad \(p\), o una cadena de dos estados (bueno y malo) con probabilidades de paso \(p_{gb}\) y \(p_{bg}\): pérdida media \(p_{gb}/(p_{gb}+p_{bg})\), ráfagas de \(1/p_{bg}\) pasos de media <a class="cite" data-ref="gilbert1960,elliott1963"></a>.</p></div>
     <div class="card"><span class="meta">3 · RELOJES</span><h3>Desfase y deriva</h3><p>\(t_\text{ap} = (1+\varepsilon)\,t + b\) para cada aparato. Con desfase entre cámara e IMU, el VIO funde datos que no son del mismo instante; VINS-Mono sin calibrar el desfase solo tolera unos 6 ms <a class="cite" data-ref="qin2018"></a>.</p></div>
     <div class="card"><span class="meta">4 · CÓMPUTO</span><h3>Latencia de inferencia</h3><p>Una distribución medida en el hardware de destino, aplicada a la acción. Cuando la inferencia supera el periodo de control, la política decide con datos de hace más de un paso y sus acciones se solapan <a class="cite" data-ref="xiao2020,zhu2026"></a>.</p></div>
@@ -624,6 +1329,258 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <div class="cols">
     <div class="callout realidad"><span class="tag">Medido en un dron</span>Bouteiller et al. motivan su trabajo con un registro real de los retardos de comunicación por WiFi entre un ordenador y un robot volador <a class="cite" data-ref="bouteiller2021"></a>. Para tu simulador: mide la distribución en tu sistema y reprodúcela; no inventes una gaussiana.</div>
     <div class="callout realidad"><span class="tag">El middleware también cuenta</span>En ROS 2, la latencia depende sobre todo del DDS que se use; la capa de ROS añade hasta un 50 % en mensajes pequeños. En una Raspberry Pi 4 se perdía cerca del 30 % de los mensajes de 500 KB <a class="cite" data-ref="kronauer2021"></a>.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · jitter FIFO</p>
+  <h2>Jitter que respeta el orden: solo puede retrasar</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 600 264" role="img" aria-label="Seis medidas con retardos aleatorios; las que adelantarían a la anterior esperan">
+        <defs><marker id="b4f-fifo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <line x1="40" y1="50" x2="572" y2="50" class="ln-rule"/>
+        <line x1="40" y1="200" x2="572" y2="200" class="ln-rule"/>
+        <line x1="40" y1="196" x2="40" y2="204" class="ln"/>
+        <text x="40" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <line x1="78" y1="196" x2="78" y2="204" class="ln"/>
+        <text x="78" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <line x1="116" y1="196" x2="116" y2="204" class="ln"/>
+        <text x="116" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <line x1="154" y1="196" x2="154" y2="204" class="ln"/>
+        <text x="154" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+        <line x1="192" y1="196" x2="192" y2="204" class="ln"/>
+        <text x="192" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+        <line x1="230" y1="196" x2="230" y2="204" class="ln"/>
+        <text x="230" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">5</text>
+        <line x1="268" y1="196" x2="268" y2="204" class="ln"/>
+        <text x="268" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">6</text>
+        <line x1="306" y1="196" x2="306" y2="204" class="ln"/>
+        <text x="306" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">7</text>
+        <line x1="344" y1="196" x2="344" y2="204" class="ln"/>
+        <text x="344" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">8</text>
+        <line x1="382" y1="196" x2="382" y2="204" class="ln"/>
+        <text x="382" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">9</text>
+        <line x1="420" y1="196" x2="420" y2="204" class="ln"/>
+        <text x="420" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <line x1="458" y1="196" x2="458" y2="204" class="ln"/>
+        <text x="458" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">11</text>
+        <line x1="496" y1="196" x2="496" y2="204" class="ln"/>
+        <text x="496" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">12</text>
+        <line x1="534" y1="196" x2="534" y2="204" class="ln"/>
+        <text x="534" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">13</text>
+        <line x1="572" y1="196" x2="572" y2="204" class="ln"/>
+        <text x="572" y="220" text-anchor="middle" class="t-mono t-faint" font-size="12">14</text>
+        <text x="40" y="22" class="t-muted" font-size="13">se mide en el paso j</text>
+        <text x="40" y="258" class="t-muted" font-size="13">llega en el paso a<tspan font-size="10" dy="4">j</tspan><tspan dy="-4"> (pasos de 10 ms)</tspan></text>
+        <line x1="40" y1="54" x2="344" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="40" cy="50" r="5" class="fill-accent"/>
+        <text x="40" y="40" text-anchor="middle" font-size="12">0</text>
+        <line x1="78" y1="54" x2="496" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="78" cy="50" r="5" class="fill-accent"/>
+        <text x="78" y="40" text-anchor="middle" font-size="12">1</text>
+        <line x1="116" y1="54" x2="382" y2="196" class="ln ln-dash"/>
+        <circle cx="382" cy="200" r="4.5" class="box"/>
+        <line x1="116" y1="54" x2="496" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="116" cy="50" r="5" class="fill-accent"/>
+        <text x="116" y="40" text-anchor="middle" font-size="12">2</text>
+        <line x1="154" y1="54" x2="496" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="154" cy="50" r="5" class="fill-accent"/>
+        <text x="154" y="40" text-anchor="middle" font-size="12">3</text>
+        <line x1="192" y1="54" x2="420" y2="196" class="ln ln-dash"/>
+        <circle cx="420" cy="200" r="4.5" class="box"/>
+        <line x1="192" y1="54" x2="496" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="192" cy="50" r="5" class="fill-accent"/>
+        <text x="192" y="40" text-anchor="middle" font-size="12">4</text>
+        <line x1="230" y1="54" x2="534" y2="192" class="ln-accent" stroke-width="2" marker-end="url(#b4f-fifo)"/>
+        <circle cx="230" cy="50" r="5" class="fill-accent"/>
+        <text x="230" y="40" text-anchor="middle" font-size="12">5</text>
+        <text x="496" y="238" text-anchor="middle" class="t-accent" font-size="12">4 llegan juntas</text>
+      </svg>
+      <figcaption>Discontinua: cuándo llegaría cada medida con su retardo sorteado; color: cuándo llega de verdad en un canal FIFO. Ejemplo 12 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Origen:</strong> cada medida sortea su retardo, \(d_j = \bar d + \sigma\varepsilon_j\). En un canal que entrega en orden (FIFO: una cola, un puerto serie, TCP), una medida no puede adelantar a la anterior; si su retardo la haría llegar antes, espera:</p>
+      \[ a_j = \max\big(j + d_j,\ a_{j-1}\big) \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(j\)</th><td class="n">0</td><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">4</td><td class="n">5</td></tr>
+          <tr><th>\(d_j\)</th><td class="n">8</td><td class="n">11</td><td class="n">7</td><td class="n">9</td><td class="n">6</td><td class="n">8</td></tr>
+          <tr><th>\(j + d_j\)</th><td class="n">8</td><td class="n">12</td><td class="n">9</td><td class="n">12</td><td class="n">10</td><td class="n">13</td></tr>
+          <tr><th>\(a_j\)</th><td class="n">8</td><td class="n">12</td><td class="n">12</td><td class="n">12</td><td class="n">12</td><td class="n">13</td></tr>
+          <tr><th>\(a_j - j\)</th><td class="n">8</td><td class="n">11</td><td class="n">10</td><td class="n">9</td><td class="n">8</td><td class="n">8</td></tr>
+        </table>
+      </div>
+      <p>Pedido, 8,17 pasos de media; efectivo, 9,00. Por eso la edad media sube de 80 a 90 ms con \(\sigma\) = 20 ms y a 112 con 40 ms (ejemplo 12, 200 000 medidas). Si el canal permite adelantar (UDP), el consumidor descarta lo más viejo que lo que ya tiene.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · pérdidas a ráfagas · 1</p>
+  <h2>La cadena de Gilbert-Elliott: un canal con memoria de dos estados</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" role="img" aria-label="Cadena de Markov de dos estados, bueno y malo, con sus probabilidades de paso">
+          <defs><marker id="b4f-ge" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <circle cx="150" cy="120" r="48" class="box-accent"/>
+          <circle cx="370" cy="120" r="48" class="box-time"/>
+          <text x="150" y="118" text-anchor="middle" class="t-bold" font-size="20">G</text>
+          <text x="150" y="140" text-anchor="middle" font-size="13">llega</text>
+          <text x="150" y="156" text-anchor="middle" font-size="13">todo</text>
+          <text x="370" y="118" text-anchor="middle" class="t-bold" font-size="20">B</text>
+          <text x="370" y="140" text-anchor="middle" font-size="13">se pierde</text>
+          <text x="370" y="156" text-anchor="middle" font-size="13">todo</text>
+          <path d="M188,90 Q260,40 332,90" class="ln" stroke-width="1.6" marker-end="url(#b4f-ge)"/>
+          <path d="M332,150 Q260,200 188,150" class="ln" stroke-width="1.6" marker-end="url(#b4f-ge)"/>
+          <text x="260" y="52" text-anchor="middle" font-size="14">p<tspan font-size="10" dy="4">gb</tspan></text>
+          <text x="260" y="206" text-anchor="middle" font-size="14">p<tspan font-size="10" dy="4">bg</tspan></text>
+          <path d="M110,93 C40,50 40,190 110,147" class="ln" stroke-width="1.6" marker-end="url(#b4f-ge)"/>
+          <path d="M410,93 C480,50 480,190 410,147" class="ln" stroke-width="1.6" marker-end="url(#b4f-ge)"/>
+          <text x="40" y="40" font-size="13">1 − p<tspan font-size="10" dy="4">gb</tspan></text>
+          <text x="480" y="40" text-anchor="end" font-size="13">1 − p<tspan font-size="10" dy="4">bg</tspan></text>
+        </svg>
+        <figcaption>La versión más simple, la del script: en \(G\) llega todo y en \(B\) se pierde todo <a class="cite" data-ref="gilbert1960,elliott1963"></a>.</figcaption>
+      </figure>
+      <p>En cada paso el canal sigue en su estado o cambia, con una probabilidad que solo depende del estado actual. Por filas, desde \(G\) y desde \(B\):</p>
+      \[ P = \begin{bmatrix} 1 - p_{gb} & p_{gb} \\ p_{bg} & 1 - p_{bg} \end{bmatrix} \]
+    </div>
+    <div class="stack">
+      <p><strong>¿Qué fracción de medidas se pierde?</strong> La del tiempo que el canal pasa en \(B\) a la larga, \(\pi_B\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\pi = \pi P\), \(\pi_G + \pi_B = 1\)</td><td>Estacionaria: un paso más no cambia las proporciones</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\pi_B = \pi_G\,p_{gb} + \pi_B(1 - p_{bg})\)</td><td>Segunda columna de \(\pi P\): se llega a \(B\) desde \(G\) o quedándose</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\pi_B\,p_{bg} = \pi_G\,p_{gb}\)</td><td>Restar \(\pi_B(1-p_{bg})\): lo que sale de \(B\) iguala a lo que entra</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\pi_B = \dfrac{p_{gb}}{p_{gb} + p_{bg}}\)</td><td>Sustituir \(\pi_G = 1 - \pi_B\) y despejar</td></tr>
+        </table>
+      </div>
+      <p><strong>Ejemplo:</strong> un 20 % de pérdidas en ráfagas de 200 ms a 100 Hz (20 pasos, hoja siguiente) pide \(p_{bg} = 1/20 = 0{,}05\) y, despejando el paso 4, \(p_{gb} = 0{,}2\,p_{bg}/0{,}8 = 0{,}0125\). Comprobación: \(0{,}0125/0{,}0625 = 0{,}2\). Ejemplo 13 del script.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · pérdidas a ráfagas · 2</p>
+  <h2>Con el mismo 20 %, sueltas o en ráfagas: no es la misma pérdida</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 166" role="img" aria-label="Trescientos pasos de un canal con pérdidas independientes y de uno con ráfagas, con la misma tasa">
+      <rect x="60" y="34" width="1080" height="30" class="box-soft"/>
+      <rect x="60" y="104" width="1080" height="30" class="box-soft"/>
+      <rect x="70.8" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="92.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="114.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="132.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="142.8" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="150.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="193.2" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="204.0" y="34" width="10.8" height="30" class="fill-time"/>
+      <rect x="232.8" y="34" width="10.8" height="30" class="fill-time"/>
+      <rect x="319.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="344.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="355.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="362.4" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="373.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="380.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="430.8" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="466.8" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="484.8" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="513.6" y="34" width="14.4" height="30" class="fill-time"/>
+      <rect x="549.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="556.8" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="567.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="589.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="596.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="603.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="621.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="672.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="679.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="686.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="697.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="704.4" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="718.8" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="762.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="812.4" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="855.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="862.8" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="873.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="909.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="981.6" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1021.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1032.0" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1042.8" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="1057.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1075.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1093.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1111.2" y="34" width="3.6" height="30" class="fill-time"/>
+      <rect x="1132.8" y="34" width="7.2" height="30" class="fill-time"/>
+      <rect x="157.2" y="104" width="18.0" height="30" class="fill-time"/>
+      <rect x="438.0" y="104" width="50.4" height="30" class="fill-time"/>
+      <rect x="614.4" y="104" width="147.6" height="30" class="fill-time"/>
+      <text x="60" y="26" font-size="13">Bernoulli, p = 0,2: 62 pérdidas (21 %), ninguna ráfaga de más de 4 pasos</text>
+      <text x="60" y="96" font-size="13">Gilbert-Elliott, p<tspan font-size="10" dy="4">gb</tspan><tspan dy="-4"> = 0,0125, p</tspan><tspan font-size="10" dy="4">bg</tspan><tspan dy="-4"> = 0,05:</tspan><tspan> 60 pérdidas (20 %) en 3 ráfagas, de 5, 14 y 41 pasos</tspan></text>
+      <text x="60" y="156" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+      <text x="420" y="156" text-anchor="middle" class="t-mono t-faint" font-size="12">1 s</text>
+      <text x="780" y="156" text-anchor="middle" class="t-mono t-faint" font-size="12">2 s</text>
+      <text x="1140" y="156" text-anchor="middle" class="t-mono t-faint" font-size="12">3 s</text>
+    </svg>
+    <figcaption>300 pasos a 100 Hz; cada marca, una medida perdida. Ejemplo 13 del script (semilla elegida para que las dos tiras pierdan cerca del 20 %).</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>En \(B\), cada paso se sale con probabilidad \(p_{bg}\)</td><td>La cadena no recuerda cuánto lleva en \(B\)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\Pr(n \text{ pasos}) = (1 - p_{bg})^{n-1}\,p_{bg}\)</td><td>\(n-1\) pasos quedándose y uno saliendo: geométrica</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\mathbb E[n] = 1/p_{bg}\) = 20 pasos</td><td>Media de la geométrica</td></tr>
+        <tr><td><strong>4</strong></td><td>Bernoulli: \(p_{gb} = p\), \(p_{bg} = 1 - p\) \(\Rightarrow\) \(1/(1-p)\) = 1,25 pasos</td><td>Caso sin memoria: el estado siguiente no depende del actual</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>En un millón de pasos: Gilbert-Elliott pierde el 19,7 % con ráfagas de 19,95 pasos de media y una de 200; Bernoulli, el 20,0 % con 1,25 de media y ninguna de más de 9.</p>
+      <p>Lo que cuenta para el control es la ráfaga, no la tasa: en una de 20 pasos, la última medida llega a tener 80 + 200 ms (hoja siguiente).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · sin marca de tiempo</p>
+  <h2>Sin marca de tiempo, una ráfaga se convierte en retardo sin compensar</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 290" role="img" aria-label="Edad de la última medida durante una ráfaga de pérdidas de 200 ms frente al retardo que supone el predictor">
+        <line x1="60" y1="240" x2="540" y2="240" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="240" class="ln-rule"/>
+        <rect x="252.0" y="30" width="88.0" height="210" class="box-time" opacity="0.55"/>
+        <line x1="60" y1="184.0" x2="540" y2="184.0" class="ln-accent ln-dash" stroke-width="1.6"/>
+        <line x1="60" y1="121.2" x2="540" y2="121.2" class="ln-tesis ln-dash" stroke-width="1.6"/>
+        <path d="M60.0,184.0 L68.0,184.0 L76.0,184.0 L84.0,184.0 L92.0,184.0 L100.0,184.0 L108.0,184.0 L116.0,184.0 L124.0,184.0 L132.0,184.0 L140.0,184.0 L148.0,184.0 L156.0,184.0 L164.0,184.0 L172.0,184.0 L180.0,184.0 L340.0,44.0 L340.0,184.0 L540.0,184.0" class="ln-time" stroke-width="2.6"/>
+        <text x="52" y="244.0" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="188.0" text-anchor="end" class="t-mono t-faint" font-size="12">80</text>
+        <text x="52" y="125.0" text-anchor="end" class="t-mono t-faint" font-size="12">170</text>
+        <text x="52" y="48.0" text-anchor="end" class="t-mono t-faint" font-size="12">280 ms</text>
+        <text x="180.0" y="22" class="t-time" font-size="12">ráfaga de 20 pasos (200 ms)</text>
+        <text x="66" y="202.0" class="t-accent" font-size="12">supuesto sin marca: 80 ms</text>
+        <text x="535" y="115.2" text-anchor="end" class="t-tesis" font-size="12">80 + 89,7 ms: margen agotado</text>
+        <text x="300" y="262" text-anchor="middle" class="t-mono t-faint" font-size="12">pasos de 10 ms</text>
+        <text x="300" y="282" text-anchor="middle" class="t-muted" font-size="12">zona sombreada: el lazo va sin margen</text>
+      </svg>
+      <figcaption>Esquema: edad de la última medida recibida con 80 ms de retardo nominal y una ráfaga de 20 medidas perdidas. Ejemplo 14 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Sin marca, el predictor supone que la última medida tiene 80 ms y la propaga 8 pasos, aunque tenga más. En primera aproximación queda sin compensar <strong>edad − 80 ms</strong>, más los 5 ms del retenedor (como en la tabla de desajuste).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Ráfaga</th><th>Edad máxima</th><th>Sin compensar</th></tr>
+          <tr><td class="n">5 pasos</td><td class="n">130 ms</td><td class="n">55 ms</td></tr>
+          <tr><td class="n">10 pasos</td><td class="n">180 ms</td><td class="n">105 ms</td></tr>
+          <tr><td class="n">20 pasos</td><td class="n">280 ms</td><td class="n">205 ms</td></tr>
+        </table>
+      </div>
+      <p>Por encima de unos 95 ms sin compensar, el margen del eje (hoja «Por qué el eje es inestable») está agotado mientras dura la ráfaga. <strong>Con la marca</strong>, el predictor propaga la edad real: solo paga la información que falta.</p>
+    </div>
   </div>
 </section>
 
@@ -649,8 +1606,8 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
       <p class="xsmall muted">Coste \(J/J_0\) del eje de la parte 2 con predictor. <code>figuras_b4.py</code>, sección 4.</p>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li>El mismo 20 % de pérdidas es inofensivo si son sueltas y desestabiliza el lazo si llegan en ráfagas de 200 ms y el predictor supone que la última medida tiene 80 ms.</li>
+      <ul>
+        <li>El mismo 20 % de pérdidas es inofensivo si son sueltas y desestabiliza el lazo si llegan en ráfagas de 200 ms y el predictor supone que la última medida tiene 80 ms (hoja anterior).</li>
         <li>Con la edad real, el predictor sigue estable: solo paga la información que de verdad falta.</li>
       </ul>
       <div class="callout realidad"><span class="tag">En PX4</span>Los mensajes internos llevan dos tiempos: <code>timestamp</code> (cuándo se publicó) y <code>timestamp_sample</code> (cuándo se midió el dato en que se basa). En <code>actuator_motors</code>, el segundo es el de la muestra del giróscopo que originó esa orden a los motores <a class="cite" data-ref="px4msg"></a>.</div>
@@ -664,7 +1621,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <h2>Medir la latencia en los registros de vuelo, antes de inventarla</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Con las marcas internas:</strong> en un registro de PX4, <code>timestamp − timestamp_sample</code> de <code>actuator_motors</code> es el tiempo desde la muestra del giróscopo hasta la orden a los motores; el de <code>vehicle_angular_velocity</code>, el del filtrado. El registrador guarda <code>actuator_motors</code> cada 100 ms por defecto: suficiente para una distribución, no para cada paso <a class="cite" data-ref="px4msg,px4logger"></a>.</li>
         <li><strong>Desde fuera:</strong> correlación cruzada entre una consigna y la respuesta medida (por ejemplo, la consigna de velocidad angular y el giróscopo) en maniobras con excitación. El máximo de la correlación da el retardo total, dinámica incluida.</li>
         <li><strong>Con un estímulo:</strong> Tan et al. mandan un pulso de PWM de un paso y miden cuándo responde el motor <a class="cite" data-ref="tan2018"></a>.</li>
@@ -686,21 +1643,138 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 4</p>
+  <h2>Qué es cada letra del aprendizaje con retardos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(s_t\), \(a_t\)</td><td>Estado del entorno y acción en el paso \(t\). <strong>Aviso:</strong> \(s\) ya no es la variable de Laplace, ni \(a\) la llegada \(a_j\) de la parte 3</td><td>\(s_t\): posición, velocidad, actitud…</td></tr>
+      <tr><td>\(d\)</td><td>Retardo de observación, en pasos de control</td><td>150 ms a 100 Hz: \(d\) = 15</td></tr>
+      <tr><td>\(o_t = s_{t-d}\)</td><td>Lo que observa la política en \(t\): el estado de hace \(d\) pasos</td><td>Con \(d = 3\): \(o_t = s_{t-3}\)</td></tr>
+      <tr><td>\(z_t\)</td><td>Estado aumentado: la última observación y las acciones enviadas desde entonces</td><td>\((s_{t-3}, a_{t-3}, a_{t-2}, a_{t-1})\)</td></tr>
+      <tr><td>\(S\), \(A\)</td><td>Conjuntos de estados y de acciones del MDP (no la matriz \(A\) de la parte 2)</td><td>\(S\times A^K\): pares estado-acciones</td></tr>
+      <tr><td>\(K\)</td><td>Con retardos aleatorios, cuántas acciones hay que guardar: el retardo máximo combinado (no la ganancia LQR)</td><td>Hasta 150 ms a 100 Hz: \(K\) = 15</td></tr>
+      <tr><td>\(\mathbb N\)</td><td>Números naturales: los valores posibles de cada retardo aleatorio</td><td>\(S\times A^K\times\mathbb N^2\)</td></tr>
+      <tr><td>\(p(s' \mid s, a)\), \(r(s, a)\)</td><td>Modelo de transición y recompensa del MDP</td><td>\(s_{t+1} = s_t + a_t\) en el ejemplo</td></tr>
+      <tr><td>\(b_t(s_t) = p(s_t \mid z_t)\)</td><td>Belief: distribución del estado actual dada la información disponible</td><td>Gaussiana que se ensancha con \(d\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · el problema</p>
+  <h2>Qué ve la política cuando la observación llega tarde</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 312" role="img" aria-label="Estados y acciones con retardo de observación de tres pasos y el búfer del estado aumentado">
+        <defs><marker id="b4f-mdp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <circle cx="80" cy="60" r="26" class="box"/>
+        <text x="80" y="65" text-anchor="middle" font-size="14">s<tspan font-size="10" dy="4">t−3</tspan></text>
+        <circle cx="220" cy="60" r="26" class="box"/>
+        <text x="220" y="65" text-anchor="middle" font-size="14">s<tspan font-size="10" dy="4">t−2</tspan></text>
+        <circle cx="360" cy="60" r="26" class="box"/>
+        <text x="360" y="65" text-anchor="middle" font-size="14">s<tspan font-size="10" dy="4">t−1</tspan></text>
+        <circle cx="500" cy="60" r="26" class="box"/>
+        <text x="500" y="65" text-anchor="middle" font-size="14">s<tspan font-size="10" dy="4">t</tspan></text>
+        <line x1="108" y1="60" x2="190" y2="60" class="ln-tesis" stroke-width="2" marker-end="url(#b4f-mdp)"/>
+        <text x="150.0" y="48" text-anchor="middle" class="t-tesis" font-size="13">a<tspan font-size="10" dy="4">t−3</tspan></text>
+        <line x1="248" y1="60" x2="330" y2="60" class="ln-tesis" stroke-width="2" marker-end="url(#b4f-mdp)"/>
+        <text x="290.0" y="48" text-anchor="middle" class="t-tesis" font-size="13">a<tspan font-size="10" dy="4">t−2</tspan></text>
+        <line x1="388" y1="60" x2="470" y2="60" class="ln-tesis" stroke-width="2" marker-end="url(#b4f-mdp)"/>
+        <text x="430.0" y="48" text-anchor="middle" class="t-tesis" font-size="13">a<tspan font-size="10" dy="4">t−1</tspan></text>
+        <path d="M108,24 L108,14 L472,14 L472,24" class="ln-tesis" stroke-width="1.2"/>
+        <text x="290" y="10" text-anchor="middle" class="t-tesis" font-size="12">acciones en vuelo: enviadas, aún no vistas</text>
+        <path d="M86,86 C140,150 380,150 470,130" class="ln-time" stroke-width="1.8" marker-end="url(#b4f-mdp)"/>
+        <text x="250" y="158" text-anchor="middle" class="t-time" font-size="13">o<tspan font-size="10" dy="4">t</tspan> = s<tspan font-size="10" dy="4">t−3</tspan></text>
+        <rect x="472" y="110" width="140" height="40" rx="6" class="box-accent"/>
+        <text x="542" y="135" text-anchor="middle" font-size="13">política en t</text>
+        <rect x="100" y="196" width="90" height="34" class="box-time"/>
+        <text x="145" y="218" text-anchor="middle" font-size="13">s<tspan font-size="10" dy="4">t−3</tspan></text>
+        <rect x="100" y="270" width="90" height="34" class="box-time"/>
+        <text x="145" y="292" text-anchor="middle" font-size="13">s<tspan font-size="10" dy="4">t−2</tspan></text>
+        <rect x="190" y="196" width="90" height="34" class="box-soft"/>
+        <text x="235" y="218" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t−3</tspan></text>
+        <rect x="190" y="270" width="90" height="34" class="box-soft"/>
+        <text x="235" y="292" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t−2</tspan></text>
+        <rect x="280" y="196" width="90" height="34" class="box-soft"/>
+        <text x="325" y="218" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t−2</tspan></text>
+        <rect x="280" y="270" width="90" height="34" class="box-soft"/>
+        <text x="325" y="292" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t−1</tspan></text>
+        <rect x="370" y="196" width="90" height="34" class="box-soft"/>
+        <text x="415" y="218" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t−1</tspan></text>
+        <rect x="370" y="270" width="90" height="34" class="box-accent"/>
+        <text x="415" y="292" text-anchor="middle" font-size="13">a<tspan font-size="10" dy="4">t</tspan></text>
+        <line x1="235" y1="232" x2="149" y2="266" class="ln" marker-end="url(#b4f-mdp)"/>
+        <line x1="325" y1="232" x2="239" y2="266" class="ln" marker-end="url(#b4f-mdp)"/>
+        <line x1="415" y1="232" x2="325" y2="266" class="ln" marker-end="url(#b4f-mdp)"/>
+        <line x1="130" y1="232" x2="130" y2="266" class="ln-time" marker-end="url(#b4f-mdp)"/>
+        <text x="90" y="218" text-anchor="end" font-size="14" class="t-bold">z<tspan font-size="10" dy="4">t</tspan></text>
+        <text x="90" y="292" text-anchor="end" font-size="14" class="t-bold">z<tspan font-size="10" dy="4">t+1</tspan></text>
+        <text x="470" y="292" class="t-accent" font-size="12">nueva</text>
+        <text x="470" y="218" class="t-muted" font-size="12">se desplaza una casilla</text>
+      </svg>
+      <figcaption>Con \(d = 3\). Arriba: lo que pasa en el entorno y lo que llega a la política. Abajo: el estado aumentado \(z_t\) un paso después; \(s_{t-2}\) sale de \(s_{t-3}\) y \(a_{t-3}\) con la dinámica.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>En \(t\) la política recibe \(s_{t-3}\), pero el estado ya ha avanzado tres pasos con \(a_{t-3}, a_{t-2}, a_{t-1}\), que ella misma envió y que la observación todavía no refleja.</p>
+      <p><strong>A mano:</strong> \(s_{t+1} = s_t + a_t\), \(d = 2\) y \(s_{t-2} = 0\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Acciones en vuelo</th><th>\(s_t\)</th></tr>
+          <tr><td class="n">(+1, +1)</td><td class="n">2</td></tr>
+          <tr><td class="n">(−1, −1)</td><td class="n">−2</td></tr>
+          <tr><td class="n">(+1, −1)</td><td class="n">0</td></tr>
+        </table>
+      </div>
+      <p>La misma observación y tres estados actuales distintos: \(s_{t-d}\) solo no es markoviano. Con las acciones al lado, \(z_t\) determina \(s_t\). Ejemplo 15 del script.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Aprender · MDP con retardo</p>
   <h2>Con retardo, el estado es la última observación más las acciones en vuelo</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con retardo de observación \(d\), en \(t\) se observa \(s_{t-d}\). Pero \(s_t\) depende también de \(a_{t-d},\dots,a_{t-1}\), que la observación no lleva: el proceso visto por la política no es markoviano.</p>
+      <p>Con retardo de observación \(d\), en \(t\) se observa \(s_{t-d}\). Pero \(s_t\) depende también de \(a_{t-d},\dots,a_{t-1}\), que la observación no lleva: el proceso visto por la política no es markoviano.</p>
       \[ z_t = \big(s_{t-d},\ a_{t-d},\ a_{t-d+1},\ \dots,\ a_{t-1}\big) \]
-      <p class="small">sí lo es. Con retardos aleatorios hay que añadir las últimas \(K\) acciones, con \(K\) el retardo máximo combinado, y los propios retardos: el espacio es \(S\times A^K\times\mathbb N^2\) <a class="cite" data-ref="bouteiller2021"></a>. La discusión de los MDP con retardo se remonta a Katsikopoulos y Engelbrecht <a class="cite" data-ref="katsikopoulos2003,walsh2008"></a>.</p>
+      <p>sí lo es (paso a paso, en la hoja siguiente). Con retardos aleatorios hay que añadir las últimas \(K\) acciones, con \(K\) el retardo máximo combinado, y los propios retardos: el espacio es \(S\times A^K\times\mathbb N^2\) <a class="cite" data-ref="bouteiller2021"></a>. La discusión de los MDP con retardo se remonta a Katsikopoulos y Engelbrecht <a class="cite" data-ref="katsikopoulos2003,walsh2008"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: por qué \(z_t\) es markoviano y qué es su belief</summary>
-        <p class="small">\(z_{t+1} = (s_{t+1-d}, a_{t+1-d},\dots,a_t)\). Su primer elemento sigue \(p(s_{t+1-d}\mid s_{t-d}, a_{t-d})\), que solo usa componentes de \(z_t\); el resto es un desplazamiento del búfer más la nueva acción \(a_t\). Así que \(p(z_{t+1}\mid z_t, a_t)\) no depende de nada anterior.</p>
-        <p class="small">El belief sobre el estado actual es \(b_t(s_t) = p(s_t\mid z_t)\): \(d\) pasos de predicción desde \(s_{t-d}\) con las acciones del búfer. Con dinámica determinista es el predictor de la parte 2; con ruido, una distribución que se ensancha con \(d\).</p>
-      </details>
       <div class="callout error"><span class="tag">Error frecuente</span>Apilar las últimas observaciones sin las acciones. La acción enviada y aún no reflejada es una parte no observada del estado <a class="cite" data-ref="bouteiller2021"></a>; con retardos aleatorios y desordenados, apilar observaciones tampoco basta <a class="cite" data-ref="karamzade2025"></a>.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>El coste: la dimensión crece con \(d\) por la frecuencia de control. A 100 Hz, 150 ms son 15 acciones. Un belief recurrente lo comprime, si se entrena con los retardos que habrá en vuelo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · por qué funciona</p>
+  <h2>Por qué \(z_t\) es markoviano, y cuál es su belief</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(z_{t+1} = (s_{t+1-d},\ a_{t+1-d}, \dots, a_{t-1},\ a_t)\)</td><td>La definición, un paso después</td></tr>
+          <tr><td><strong>2</strong></td><td>\(a_{t+1-d}, \dots, a_{t-1}\) ya están en \(z_t\)</td><td>Es el búfer desplazado una casilla</td></tr>
+          <tr><td><strong>3</strong></td><td>\(a_t\) es la acción que se elige ahora</td><td>La entrada del paso</td></tr>
+          <tr><td><strong>4</strong></td><td>\(s_{t+1-d} \sim p(\cdot \mid s_{t-d}, a_{t-d})\)</td><td>La dinámica, \(d\) pasos atrás; \(s_{t-d}\) y \(a_{t-d}\) están en \(z_t\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(p(z_{t+1} \mid z_t, a_t, z_{t-1}, \dots) = p(z_{t+1} \mid z_t, a_t)\)</td><td>Nada anterior a \(z_t\) entra en 1–4: es markoviano</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\tilde r(z_t, a_t) = \mathbb E[r(s_t, a_t) \mid z_t]\)</td><td>La recompensa del estado actual, promediada sobre lo que \(z_t\) deja abierto</td></tr>
+        </table>
+      </div>
+      <p>Con retardos aleatorios hacen falta las últimas \(K\) acciones y los propios retardos (hoja anterior).</p>
+    </div>
+    <div class="stack">
+      <p><strong>El belief</strong> sobre el estado actual es \(b_t(s_t) = p(s_t \mid z_t)\): \(d\) pasos de predicción desde \(s_{t-d}\) con las acciones del búfer.</p>
+      <ul>
+        <li>Con dinámica determinista, un punto: es el predictor de la parte 2.</li>
+        <li>Con dinámica lineal y ruido gaussiano, una gaussiana con la media del predictor y la covarianza \(\sum_i A^iGWG^\top A^{i\top}\) de la parte 2: en el eje, 0,06 cm de desviación en posición a 50 ms y 0,34 cm a 150 ms.</li>
+        <li>En general, una distribución que se ensancha con \(d\).</li>
+      </ul>
+      <div class="aparte"><span class="rotulo">El precio en dimensión</span>
+        <p>\(z_t\) añade \(d\) acciones al estado. A 100 Hz, 150 ms son 15 acciones; si cada una tiene 4 componentes, 60 números más en la entrada del actor (ejemplo 15).</p>
+      </div>
     </div>
   </div>
 </section>
@@ -742,7 +1816,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <h2>Los retardos en tu simulador, como parte del entorno</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
+      <ol>
         <li><strong>Reloj</strong> con contador global y tareas sin deriva (parte 1).</li>
         <li><strong>Búfer por canal</strong> (cada sensor y la acción), a la frecuencia del canal, inicializado con el estado inicial.</li>
         <li><strong>Por episodio:</strong> sortea el retardo medio de cada canal en un rango que cubra con holgura el medido (parte 2: quedarse corto es lo caro).</li>
@@ -776,7 +1850,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <h2>El tiempo es parte del modelo de observación</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Observación con marca:</strong> \(o = (y, t_\text{medida})\). Sin la marca, el belief no sabe a qué instante pertenece cada dato.</li>
         <li><strong>Belief con acciones en vuelo:</strong> el estado de información incluye las acciones enviadas desde la última observación, y su incertidumbre crece con la edad.</li>
         <li><strong>World model asíncrono:</strong> la predicción entre observaciones es justo lo que un world model sabe hacer; la actualización tiene que aceptar datos tardíos y desordenados.</li>
@@ -914,8 +1988,8 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
   <h2>Multifrecuencia, búferes de retardo y jitter en el simulador JAX</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Reloj multifrecuencia</strong> con contador común y sin deriva, vectorizado.</li>
         <li><strong>Búferes de retardo</strong> por canal: retardo fraccionario, jitter FIFO, pérdidas a ráfagas.</li>
         <li><strong>Retardo y predictor</strong> en tu cascada: margen de retardo medido frente al de A2 y la tabla de desajuste.</li>
@@ -927,7 +2001,7 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>1818 frente a 1800 imágenes; edad media de 55 ms; inestabilidad sin predictor hacia 90 ms; la tabla de desajuste y la de marcas de tiempo.</div>
       <div class="callout realidad"><span class="tag">Hardware</span>Todo en CPU; con GPU, la vectorización del paso 1 se nota a partir de miles de entornos.</div>
-      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b4.py</code>.</p>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b4.py</code>; los ejemplos numéricos de las hojas, en <code>figuras/ejemplos_b4.py</code>.</p>
     </div>
   </div>
 </section>
@@ -979,112 +2053,141 @@ estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
 <h3>Notación general</h3>
 <p>Subíndice \(k\) o \(t\): paso discreto. \(\hat{\ }\): predicción del modelo. \(\bar{\ }\): valor medio.</p>
 <dl>
-<dt>\(\hat x_k\)</dt><dd data-hojas="13">Estado predicho en el paso \(k\) a partir de la medida retrasada \(x_{k-d}\) y de las acciones ya enviadas.</dd>
-<dt>\(\mathbb N\)</dt><dd data-hojas="21">Conjunto de los números naturales; aquí, valores posibles de cada retardo aleatorio.</dd>
-<dt>\(\max(\cdot,\cdot)\)</dt><dd data-hojas="17">Máximo de dos valores; en la llegada FIFO impide que una medida llegue antes que la anterior.</dd>
-<dt>\(\mathrm{round}(\cdot)\)</dt><dd data-hojas="7">Redondeo al entero más próximo; da el número de pasos entre disparos de un sensor con deriva.</dd>
-<dt>\(\mid\)</dt><dd data-hojas="21">En \(p(a\mid b)\): probabilidad de \(a\) condicionada a \(b\).</dd>
+<dt>\(\hat x_k\)</dt><dd data-hojas="16,25,26,27">Estado predicho en el paso \(k\) a partir de la medida retrasada \(x_{k-d}\) y de las acciones ya enviadas.</dd>
+<dt>\(\mathbb N\)</dt><dd data-hojas="44,46">Conjunto de los números naturales; aquí, valores posibles de cada retardo aleatorio.</dd>
+<dt>\(\max(\cdot,\cdot)\)</dt><dd data-hojas="36,37">Máximo de dos valores; en la llegada FIFO impide que una medida llegue antes que la anterior.</dd>
+<dt>\(\mathrm{round}(\cdot)\)</dt><dd data-hojas="6,11">Redondeo al entero más próximo; da el número de pasos entre disparos de un sensor con deriva.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="47">En \(p(a\mid b)\): probabilidad de \(a\) condicionada a \(b\).</dd>
 </dl>
 <h3>Parte 1 · El reloj del simulador</h3>
 <dl>
-<dt>\(\text{RTF}\)</dt><dd data-hojas="6">Factor de tiempo real, escalar adimensional: \(\Delta t_\text{sim}/\Delta t_\text{pared}\). Mayor que 1 al entrenar; igual a 1 con hardware en el lazo.</dd>
-<dt>\(\Delta t_\text{sim}\)</dt><dd data-hojas="6">Tiempo simulado transcurrido, en segundos; el que integra la física.</dd>
-<dt>\(\Delta t_\text{pared}\)</dt><dd data-hojas="6">Tiempo de pared (del ordenador) transcurrido, en segundos.</dd>
-<dt>\(t_\text{ap}\)</dt><dd data-hojas="6,17">Tiempo que marca el reloj de un aparato (controladora, ordenador de a bordo, sensor): \(t_\text{ap}=(1+\varepsilon)\,t+b\).</dd>
-<dt>\(t\)</dt><dd data-hojas="6">Tiempo verdadero (el del simulador), escalar en segundos.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="6">Deriva del reloj de un aparato: error relativo de frecuencia, adimensional.</dd>
-<dt>\(b\)</dt><dd data-hojas="6">Desfase constante del reloj de un aparato respecto al tiempo verdadero, en segundos.</dd>
-<dt>\(T\)</dt><dd data-hojas="7,16">Periodo de un sensor o de las medidas periódicas, en segundos (en la hoja 7, el de la cámara).</dd>
-<dt>\(\Delta t\)</dt><dd data-hojas="7,12">Paso base de la física (1 ms en el ejemplo) y periodo de muestreo de las señales discretas.</dd>
-<dt>\(k\)</dt><dd data-hojas="8,12">Contador global de pasos, escalar entero común a todos los entornos; también índice de paso discreto en las fórmulas.</dd>
+<dt>\(\text{RTF}\)</dt><dd data-hojas="6,7">Factor de tiempo real, escalar adimensional: \(\Delta t_\text{sim}/\Delta t_\text{pared}\). Mayor que 1 al entrenar; igual a 1 con hardware en el lazo.</dd>
+<dt>\(\Delta t_\text{sim}\)</dt><dd data-hojas="7">Tiempo simulado transcurrido, en segundos; el que integra la física.</dd>
+<dt>\(\Delta t_\text{pared}\)</dt><dd data-hojas="7">Tiempo de pared (del ordenador) transcurrido, en segundos.</dd>
+<dt>\(t_\text{ap}\)</dt><dd data-hojas="6,7">Tiempo que marca el reloj de un aparato (controladora, ordenador de a bordo, sensor): \(t_\text{ap}=(1+\varepsilon)\,t+b\).</dd>
+<dt>\(t\)</dt><dd data-hojas="7">Tiempo verdadero (el del simulador), escalar en segundos.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="6,7">Deriva del reloj de un aparato: error relativo de frecuencia, adimensional.</dd>
+<dt>\(b\)</dt><dd data-hojas="6,7">Desfase constante del reloj de un aparato respecto al tiempo verdadero, en segundos.</dd>
+<dt>\(T\)</dt><dd data-hojas="6,10,33">Periodo de un sensor o de las medidas periódicas, en segundos (en la hoja 10, el de la cámara).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="6,10,16">Paso base de la física (1 ms en el ejemplo) y periodo de muestreo de las señales discretas.</dd>
+<dt>\(k\)</dt><dd data-hojas="6,13">Contador global de pasos, escalar entero común a todos los entornos; también índice de paso discreto en las fórmulas.</dd>
+<dt>\(f\)</dt><dd data-hojas="6">Frecuencia de una tarea, en Hz; \(T = 1/f\).</dd>
+<dt>\(t_k\)</dt><dd data-hojas="6,10">Instante del paso \(k\): \(t_k = k\,\Delta t\), calculado desde el contador entero.</dd>
+<dt>\(t_\text{prox}\)</dt><dd data-hojas="6,10">Siguiente instante programado de una tarea; al dispararse se le suma el periodo exacto \(T\).</dd>
+<dt>\(j\) (disparo)</dt><dd data-hojas="6,10,11">Número de disparo de una tarea (0, 1, 2…); el disparo \(j\) le toca en \(jT\).</dd>
+<dt>\(k_j\)</dt><dd data-hojas="6,10">Paso de física en que ocurre el disparo \(j\): \(k_j=\lceil jT/\Delta t\rceil\).</dd>
+<dt>\(\lceil\cdot\rceil\)</dt><dd data-hojas="6,10">Techo: el menor entero mayor o igual; \(\lfloor\cdot\rfloor\), el suelo.</dd>
+<dt>\(T'\), \(f'\)</dt><dd data-hojas="11">Periodo redondeado a pasos enteros, \(\mathrm{round}(T/\Delta t)\,\Delta t\) = 33 ms, y su frecuencia, 30,303 Hz.</dd>
 </dl>
 <h3>Parte 2 · Retardos</h3>
 <dl>
-<dt>\(D\)</dt><dd data-hojas="12">Número de casillas del búfer circular de retardo; el retardo máximo representable es \(D-1\) pasos.</dd>
-<dt>\(d\) (búfer y predictor)</dt><dd data-hojas="12,13">Retardo en pasos enteros: lectura \(d\) pasos atrás en el búfer; en el predictor, retardo de la medida.</dd>
-<dt>\(\tau\)</dt><dd data-hojas="12">Retardo fraccionario en segundos: \(\tau=(m+\alpha)\Delta t\).</dd>
-<dt>\(m\)</dt><dd data-hojas="12">Parte entera del retardo fraccionario, en pasos.</dd>
-<dt>\(\alpha\)</dt><dd data-hojas="12">Parte fraccionaria del retardo, con \(0\le\alpha\lt 1\); peso de la interpolación lineal.</dd>
-<dt>\(x_{k-m}\)</dt><dd data-hojas="12">Muestra de la señal \(m\) pasos atrás; junto con \(x_{k-m-1}\), extremo de la interpolación.</dd>
-<dt>\(y_k\)</dt><dd data-hojas="12">Salida retrasada por interpolación: \(y_k=(1-\alpha)x_{k-m}+\alpha x_{k-m-1}\).</dd>
-<dt>\(H(e^{j\omega\Delta t})\)</dt><dd data-hojas="12">Respuesta en frecuencia del retardo fraccionario por interpolación; su módulo cae hasta \(|1-2\alpha|\) en Nyquist.</dd>
-<dt>\(\omega\)</dt><dd data-hojas="12">Frecuencia angular, en rad/s, en la respuesta en frecuencia del retardo.</dd>
-<dt>\(j\) (imaginaria)</dt><dd data-hojas="12">Unidad imaginaria en \(e^{j\omega\Delta t}\).</dd>
-<dt>\(J/J_0\)</dt><dd data-hojas="13">Coste medio de un experimento relativo al coste sin retardo; escalar adimensional.</dd>
-<dt>\(u_k\)</dt><dd data-hojas="13">Acción de control (entrada) en el paso \(k\). En el predictor, \(u_{k-d+i}\) son las acciones ya enviadas.</dd>
-<dt>\(K\) (ganancia LQR)</dt><dd data-hojas="13">Matriz de ganancia del LQR: \(u_k=-K\,x_{k-d}\).</dd>
-<dt>\(x_{k-d}\)</dt><dd data-hojas="13">Estado medido con retardo de \(d\) pasos.</dd>
-<dt>\(x_k\)</dt><dd data-hojas="13">Estado verdadero en el paso \(k\), igual a \(\hat x_k\) más el efecto de las ráfagas no observadas.</dd>
-<dt>\(A\), \(B\)</dt><dd data-hojas="13">Matrices discretas de dinámica y de entrada del modelo del eje: \(x_{k+1}=Ax_k+Bu_k+Gw_k\).</dd>
-<dt>\(G\)</dt><dd data-hojas="13">Matriz por la que entra la perturbación (ráfagas de viento) en la dinámica.</dd>
-<dt>\(w\)</dt><dd data-hojas="13">Perturbación (ráfaga de viento) en cada paso, vector de ruido de proceso.</dd>
-<dt>\(W\)</dt><dd data-hojas="13">Covarianza de la perturbación \(w\); entra en la covarianza del error del predictor \(\sum_i A^iGWG^\top A^{i\top}\).</dd>
-<dt>\(i\)</dt><dd data-hojas="13">Índice de suma sobre los \(d\) pasos de la ventana de retardo.</dd>
+<dt>\(D\)</dt><dd data-hojas="16,19">Número de casillas del búfer circular de retardo; el retardo máximo representable es \(D-1\) pasos.</dd>
+<dt>\(d\) (búfer y predictor)</dt><dd data-hojas="16,19,25">Retardo en pasos enteros: lectura \(d\) pasos atrás en el búfer; en el predictor, retardo de la medida.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="16,20,22">Retardo fraccionario en segundos: \(\tau=(m+\alpha)\Delta t\).</dd>
+<dt>\(m\)</dt><dd data-hojas="16,20">Parte entera del retardo fraccionario, en pasos.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="16,20">Parte fraccionaria del retardo, con \(0\le\alpha\lt 1\); peso de la interpolación lineal.</dd>
+<dt>\(x_{k-m}\)</dt><dd data-hojas="20">Muestra de la señal \(m\) pasos atrás; junto con \(x_{k-m-1}\), extremo de la interpolación.</dd>
+<dt>\(y_k\)</dt><dd data-hojas="20">Salida retrasada por interpolación: \(y_k=(1-\alpha)x_{k-m}+\alpha x_{k-m-1}\).</dd>
+<dt>\(H(e^{j\omega\Delta t})\)</dt><dd data-hojas="20,21">Respuesta en frecuencia del retardo fraccionario por interpolación; su módulo cae hasta \(|1-2\alpha|\) en Nyquist.</dd>
+<dt>\(\omega\)</dt><dd data-hojas="16,20,22">Frecuencia angular, en rad/s, en la respuesta en frecuencia del retardo.</dd>
+<dt>\(j\) (imaginaria)</dt><dd data-hojas="20">Unidad imaginaria en \(e^{j\omega\Delta t}\).</dd>
+<dt>\(J/J_0\)</dt><dd data-hojas="16,28,29">Coste medio de un experimento relativo al coste sin retardo; escalar adimensional.</dd>
+<dt>\(u_k\)</dt><dd data-hojas="16,23,25">Acción de control (entrada) en el paso \(k\). En el predictor, \(u_{k-d+i}\) son las acciones ya enviadas.</dd>
+<dt>\(K\) (ganancia LQR)</dt><dd data-hojas="16,23,24">Matriz de ganancia del LQR: \(u_k=-K\,x_{k-d}\).</dd>
+<dt>\(x_{k-d}\)</dt><dd data-hojas="24,25">Estado medido con retardo de \(d\) pasos.</dd>
+<dt>\(x_k\)</dt><dd data-hojas="16,23,26">Estado verdadero en el paso \(k\), igual a \(\hat x_k\) más el efecto de las ráfagas no observadas.</dd>
+<dt>\(A\), \(B\)</dt><dd data-hojas="16,23,26">Matrices discretas de dinámica y de entrada del modelo del eje: \(x_{k+1}=Ax_k+Bu_k+Gw_k\).</dd>
+<dt>\(G\)</dt><dd data-hojas="16,23,26">Matriz por la que entra la perturbación (ráfagas de viento) en la dinámica.</dd>
+<dt>\(w\)</dt><dd data-hojas="16,23,26">Perturbación (ráfaga de viento) en cada paso, vector de ruido de proceso.</dd>
+<dt>\(W\)</dt><dd data-hojas="16,26">Covarianza de la perturbación \(w\); entra en la covarianza del error del predictor \(\sum_i A^iGWG^\top A^{i\top}\).</dd>
+<dt>\(i\)</dt><dd data-hojas="25,26">Índice de suma sobre los \(d\) pasos de la ventana de retardo.</dd>
+<dt>\(\tau_m\)</dt><dd data-hojas="18">Constante de tiempo de un retardo dinámico (filtro o motor de primer orden): \(\tau_m\dot y = x - y\).</dd>
+<dt>\(T_s\)</dt><dd data-hojas="18">Periodo de muestreo de una señal retenida; la retención retrasa \(T_s/2\) de media.</dd>
+<dt>\(\theta\)</dt><dd data-hojas="20">Frecuencia normalizada \(\theta=\omega\Delta t\), en rad por muestra; \(\pi\) es Nyquist.</dd>
+<dt>\(s\)</dt><dd data-hojas="16,22">Variable de Laplace; con \(s=j\omega\), respuesta en frecuencia. Un retardo puro es \(e^{-s\tau}\).</dd>
+<dt>\(L(s)\)</dt><dd data-hojas="16,24">Función de lazo abierto (A2); en el eje, \((k_p+k_d s)/s^2\).</dd>
+<dt>\(\omega_c\)</dt><dd data-hojas="16,22,24">Cruce de ganancia, donde \(|L(j\omega)|=1\): 12,08 rad/s en el eje.</dd>
+<dt>\(\varphi_m\)</dt><dd data-hojas="16,22,24">Margen de fase, \(180°+\arg L(j\omega_c)\): 65,5° (1,144 rad) en el eje.</dd>
+<dt>\(\tau_\text{max}\)</dt><dd data-hojas="22,24">Retardo que agota el margen: \(\varphi_m/\omega_c\) = 94,7 ms en el eje.</dd>
+<dt>\(p\), \(v\)</dt><dd data-hojas="16,23">Posición (m) y velocidad (m/s) del eje: \(x=(p,v)\).</dd>
+<dt>\(k_p\), \(k_d\)</dt><dd data-hojas="16,23,24">Componentes de la ganancia LQR del eje: \(u=-(k_p\,p+k_d\,v)\); 60,48 y 11,00 en discreto.</dd>
+<dt>\(Q\), \(R\); \(q\), \(r\)</dt><dd data-hojas="23">Pesos del LQR: \(Q=\mathrm{diag}(q,0)\) con \(q=1\) y \(R=r=1/4096\).</dd>
+<dt>\(\omega_n\), \(\zeta\)</dt><dd data-hojas="23">Frecuencia natural (8 rad/s) y amortiguamiento (0,707) del eje con el LQR continuo.</dd>
+<dt>\(\hat d\)</dt><dd data-hojas="16,30">Retardo, en pasos, que supone el predictor; si \(\hat d\lt d\), quedan sin compensar unos \(d-\hat d\).</dd>
+<dt>\(e_k\)</dt><dd data-hojas="26,27">Error del predictor, \(x_k-\hat x_k\): el viento dentro de la ventana de retardo.</dd>
 </dl>
 <h3>Parte 3 · Jitter, pérdidas y marcas de tiempo</h3>
 <dl>
-<dt>\(T_\text{cám}\)</dt><dd data-hojas="16">Periodo de la cámara, en segundos (a 30 Hz).</dd>
-<dt>\(L\)</dt><dd data-hojas="16">Latencia fija de una medida, de la captura a la llegada, en segundos.</dd>
-<dt>\(U\)</dt><dd data-hojas="16">Tiempo desde la última llegada hasta el instante en que mira el control; variable uniforme en \([0,T)\). La edad es \(L+U\).</dd>
-<dt>\(d_j\)</dt><dd data-hojas="17">Retardo de la medida \(j\)-ésima con jitter: \(d_j=\bar d+\sigma\varepsilon_j\).</dd>
-<dt>\(\bar d\)</dt><dd data-hojas="17">Retardo medio (nominal) del canal.</dd>
-<dt>\(\sigma\)</dt><dd data-hojas="17,18">Desviación típica del jitter del retardo (p. ej. 20 o 40 ms en la tabla de la hoja 18).</dd>
-<dt>\(\varepsilon_j\) (jitter)</dt><dd data-hojas="17">Variable aleatoria que da el jitter de la medida \(j\); distinta de la deriva \(\varepsilon\) del reloj.</dd>
-<dt>\(a_j\)</dt><dd data-hojas="17">Instante de llegada de la medida \(j\) en un canal FIFO: \(a_j=\max(j+d_j,a_{j-1})\).</dd>
-<dt>\(p\)</dt><dd data-hojas="17">Probabilidad de pérdida de cada medida en el modelo de Bernoulli (pérdidas independientes).</dd>
-<dt>\(p_{gb}\)</dt><dd data-hojas="17">Probabilidad de paso del estado bueno al malo en la cadena de dos estados de las pérdidas a ráfagas.</dd>
-<dt>\(p_{bg}\)</dt><dd data-hojas="17">Probabilidad de paso del estado malo al bueno; las ráfagas duran \(1/p_{bg}\) pasos de media.</dd>
-<dt>\(o\)</dt><dd data-hojas="26">Observación con marca de tiempo: \(o=(y,t_\text{medida})\).</dd>
-<dt>\(y\)</dt><dd data-hojas="26">Valor de la medida dentro de una observación con marca.</dd>
-<dt>\(t_\text{medida}\)</dt><dd data-hojas="26">Instante en que se tomó la medida; la marca de tiempo que debe llevar el dato.</dd>
+<dt>\(T_\text{cám}\)</dt><dd data-hojas="32,33">Periodo de la cámara, en segundos (a 30 Hz).</dd>
+<dt>\(L\)</dt><dd data-hojas="32,34">Latencia fija de una medida, de la captura a la llegada, en segundos.</dd>
+<dt>\(U\)</dt><dd data-hojas="32,34">Tiempo desde la última llegada hasta el instante en que mira el control; variable uniforme en \([0,T)\). La edad es \(L+U\).</dd>
+<dt>\(d_j\)</dt><dd data-hojas="32,36,37">Retardo de la medida \(j\)-ésima con jitter: \(d_j=\bar d+\sigma\varepsilon_j\).</dd>
+<dt>\(\bar d\)</dt><dd data-hojas="32,36,37">Retardo medio (nominal) del canal.</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="32,36,41">Desviación típica del jitter del retardo (p. ej. 20 o 40 ms en la tabla de la hoja 41).</dd>
+<dt>\(\varepsilon_j\) (jitter)</dt><dd data-hojas="32,36">Variable aleatoria que da el jitter de la medida \(j\); distinta de la deriva \(\varepsilon\) del reloj.</dd>
+<dt>\(a_j\)</dt><dd data-hojas="32,36,37">Instante de llegada de la medida \(j\) en un canal FIFO: \(a_j=\max(j+d_j,a_{j-1})\).</dd>
+<dt>\(p\)</dt><dd data-hojas="32,36,39">Probabilidad de pérdida de cada medida en el modelo de Bernoulli (pérdidas independientes).</dd>
+<dt>\(p_{gb}\)</dt><dd data-hojas="32,36,38">Probabilidad de paso del estado bueno al malo en la cadena de dos estados de las pérdidas a ráfagas.</dd>
+<dt>\(p_{bg}\)</dt><dd data-hojas="32,36,38,39">Probabilidad de paso del estado malo al bueno; las ráfagas duran \(1/p_{bg}\) pasos de media.</dd>
+<dt>\(o\)</dt><dd data-hojas="32,52">Observación con marca de tiempo: \(o=(y,t_\text{medida})\).</dd>
+<dt>\(y\)</dt><dd data-hojas="52">Valor de la medida dentro de una observación con marca.</dd>
+<dt>\(t_\text{medida}\)</dt><dd data-hojas="52">Instante en que se tomó la medida; la marca de tiempo que debe llevar el dato.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="35">Separación de los valores que toma \(U\) cuando control y cámara tienen periodos conmensurables: 10/3 ms.</dd>
+<dt>\(G\), \(B\) (estados)</dt><dd data-hojas="32,38">Estados bueno y malo del canal de Gilbert-Elliott; en la versión simple, en \(B\) se pierde todo.</dd>
+<dt>\(P\)</dt><dd data-hojas="32,38">Matriz de transición 2×2 de la cadena de dos estados.</dd>
+<dt>\(\pi_G\), \(\pi_B\)</dt><dd data-hojas="32,38">Probabilidades estacionarias; \(\pi_B=p_{gb}/(p_{gb}+p_{bg})\) es la tasa de pérdidas.</dd>
+<dt>\(n\)</dt><dd data-hojas="39">Duración de una ráfaga, en pasos: geométrica de media \(1/p_{bg}\).</dd>
 </dl>
 <h3>Parte 4 · Aprender con retardos</h3>
 <dl>
-<dt>\(s_t\)</dt><dd data-hojas="21">Estado verdadero del entorno en el paso \(t\).</dd>
-<dt>\(s_{t-d}\)</dt><dd data-hojas="21">Estado observado con retardo de observación \(d\): lo que la política ve en \(t\).</dd>
-<dt>\(a_t\)</dt><dd data-hojas="21">Acción tomada en el paso \(t\); \(a_{t-d},\dots,a_{t-1}\) son las acciones en vuelo aún no reflejadas en la observación.</dd>
-<dt>\(z_t\)</dt><dd data-hojas="21">Estado aumentado markoviano con retardo: \(z_t=(s_{t-d},a_{t-d},\dots,a_{t-1})\).</dd>
-<dt>\(K\) (acciones guardadas)</dt><dd data-hojas="21">Con retardos aleatorios, número de últimas acciones que hay que añadir; es el retardo máximo combinado.</dd>
-<dt>\(S\times A^K\times\mathbb N^2\)</dt><dd data-hojas="21">Espacio de estados aumentado con retardos aleatorios: estado, \(K\) acciones y los dos retardos.</dd>
-<dt>\(S\), \(A\) (conjuntos)</dt><dd data-hojas="21,22">Conjunto de estados y conjunto de acciones del MDP; \(S\times A\) es el estado aumentado del RL en tiempo real.</dd>
-<dt>\(b_t(s_t)\)</dt><dd data-hojas="21">Belief sobre el estado actual: \(b_t(s_t)=p(s_t\mid z_t)\), obtenido con \(d\) pasos de predicción desde \(s_{t-d}\).</dd>
-<dt>\(p(\cdot\mid\cdot)\)</dt><dd data-hojas="21">Modelo de transición o probabilidad condicionada, p. ej. \(p(z_{t+1}\mid z_t,a_t)\).</dd>
-<dt>\(z_{t+1}\)</dt><dd data-hojas="21">Estado aumentado en el paso siguiente: desplaza el búfer de acciones y añade \(a_t\).</dd>
+<dt>\(s_t\)</dt><dd data-hojas="44,45,46">Estado verdadero del entorno en el paso \(t\).</dd>
+<dt>\(s_{t-d}\)</dt><dd data-hojas="45,46">Estado observado con retardo de observación \(d\): lo que la política ve en \(t\).</dd>
+<dt>\(a_t\)</dt><dd data-hojas="44,45,46">Acción tomada en el paso \(t\); \(a_{t-d},\dots,a_{t-1}\) son las acciones en vuelo aún no reflejadas en la observación.</dd>
+<dt>\(z_t\)</dt><dd data-hojas="44,45,46">Estado aumentado markoviano con retardo: \(z_t=(s_{t-d},a_{t-d},\dots,a_{t-1})\).</dd>
+<dt>\(K\) (acciones guardadas)</dt><dd data-hojas="44,46">Con retardos aleatorios, número de últimas acciones que hay que añadir; es el retardo máximo combinado.</dd>
+<dt>\(S\times A^K\times\mathbb N^2\)</dt><dd data-hojas="46">Espacio de estados aumentado con retardos aleatorios: estado, \(K\) acciones y los dos retardos.</dd>
+<dt>\(S\), \(A\) (conjuntos)</dt><dd data-hojas="44,46,48">Conjunto de estados y conjunto de acciones del MDP; \(S\times A\) es el estado aumentado del RL en tiempo real.</dd>
+<dt>\(b_t(s_t)\)</dt><dd data-hojas="44,47">Belief sobre el estado actual: \(b_t(s_t)=p(s_t\mid z_t)\), obtenido con \(d\) pasos de predicción desde \(s_{t-d}\).</dd>
+<dt>\(p(\cdot\mid\cdot)\)</dt><dd data-hojas="44,47">Modelo de transición o probabilidad condicionada, p. ej. \(p(z_{t+1}\mid z_t,a_t)\).</dd>
+<dt>\(z_{t+1}\)</dt><dd data-hojas="47">Estado aumentado en el paso siguiente: desplaza el búfer de acciones y añade \(a_t\).</dd>
+<dt>\(d\) (observación)</dt><dd data-hojas="44,45">Retardo de observación en pasos de control.</dd>
+<dt>\(o_t\)</dt><dd data-hojas="44,45">Lo que observa la política en \(t\): \(o_t=s_{t-d}\).</dd>
+<dt>\(r(s,a)\)</dt><dd data-hojas="44,47">Recompensa del MDP; sobre \(z_t\) se usa su media \(\tilde r(z_t,a_t)\).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>RTF</dt><dd data-hojas="6">Real-time factor: tiempo simulado dividido por tiempo de pared.</dd>
-<dt>IMU</dt><dd data-hojas="7">Inertial measurement unit: giróscopo y acelerómetro.</dd>
-<dt>GNSS</dt><dd data-hojas="7,11">Global navigation satellite system: posicionamiento por satélite; en PX4 llega al EKF con 110 ms de retardo por defecto.</dd>
-<dt>SITL</dt><dd data-hojas="7">Software in the loop: autopiloto real ejecutado contra un simulador.</dd>
-<dt>JAX</dt><dd data-hojas="2,8">Biblioteca de cálculo con compilación y vectorización (jit, vmap, lax.scan) en la que se escribe el simulador.</dd>
-<dt>FIFO</dt><dd data-hojas="17">First in, first out: canal que entrega las medidas en orden de envío, de modo que el jitter solo retrasa.</dd>
-<dt>UDP</dt><dd data-hojas="17">User datagram protocol: canal que puede entregar fuera de orden.</dd>
-<dt>LQR</dt><dd data-hojas="13">Linear-quadratic regulator: controlador de realimentación de estado \(u=-Kx\) óptimo para un coste cuadrático.</dd>
-<dt>EKF</dt><dd data-hojas="11">Extended Kalman filter: estimador de PX4 (EKF2) que tiene un horizonte retrasado.</dd>
-<dt>ESKF</dt><dd data-hojas="32">Error-state Kalman filter: el estimador de A4a, al que el laboratorio añade marcas de tiempo.</dd>
-<dt>VIO</dt><dd data-hojas="17,23">Visual-inertial odometry: estimación de movimiento fundiendo cámara e IMU.</dd>
-<dt>VINS-Mono</dt><dd data-hojas="4,17">Sistema de VIO monocular cuyo desfase cámara-IMU se calibra en línea.</dd>
-<dt>MDP</dt><dd data-hojas="4,21">Markov decision process: proceso de decisión de Markov, con estado completamente observado.</dd>
-<dt>POMDP</dt><dd data-hojas="3,22">Partially observable MDP: MDP en el que solo se observa parte del estado.</dd>
+<dt>RTF</dt><dd data-hojas="7">Real-time factor: tiempo simulado dividido por tiempo de pared.</dd>
+<dt>IMU</dt><dd data-hojas="9">Inertial measurement unit: giróscopo y acelerómetro.</dd>
+<dt>GNSS</dt><dd data-hojas="9,17">Global navigation satellite system: posicionamiento por satélite; en PX4 llega al EKF con 110 ms de retardo por defecto.</dd>
+<dt>SITL</dt><dd data-hojas="9">Software in the loop: autopiloto real ejecutado contra un simulador.</dd>
+<dt>JAX</dt><dd data-hojas="2,13">Biblioteca de cálculo con compilación y vectorización (jit, vmap, lax.scan) en la que se escribe el simulador.</dd>
+<dt>FIFO</dt><dd data-hojas="36">First in, first out: canal que entrega las medidas en orden de envío, de modo que el jitter solo retrasa.</dd>
+<dt>UDP</dt><dd data-hojas="36">User datagram protocol: canal que puede entregar fuera de orden.</dd>
+<dt>LQR</dt><dd data-hojas="28">Linear-quadratic regulator: controlador de realimentación de estado \(u=-Kx\) óptimo para un coste cuadrático.</dd>
+<dt>EKF</dt><dd data-hojas="17">Extended Kalman filter: estimador de PX4 (EKF2) que tiene un horizonte retrasado.</dd>
+<dt>ESKF</dt><dd data-hojas="58">Error-state Kalman filter: el estimador de A4a, al que el laboratorio añade marcas de tiempo.</dd>
+<dt>VIO</dt><dd data-hojas="36,49">Visual-inertial odometry: estimación de movimiento fundiendo cámara e IMU.</dd>
+<dt>VINS-Mono</dt><dd data-hojas="4,36">Sistema de VIO monocular cuyo desfase cámara-IMU se calibra en línea.</dd>
+<dt>MDP</dt><dd data-hojas="4,46">Markov decision process: proceso de decisión de Markov, con estado completamente observado.</dd>
+<dt>POMDP</dt><dd data-hojas="3,48">Partially observable MDP: MDP en el que solo se observa parte del estado.</dd>
 <dt>RL</dt><dd data-hojas="4">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>SAC</dt><dd data-hojas="22">Soft actor-critic: algoritmo actor-crítico fuera de política, usado como referencia en el RL en tiempo real.</dd>
-<dt>DCAC</dt><dd data-hojas="22">Delay-correcting actor-critic: actor-crítico que remuestrea parcialmente las trayectorias del búfer para corregir el valor con retardos aleatorios.</dd>
-<dt>DDS</dt><dd data-hojas="6,17">Data distribution service: middleware de comunicación de ROS 2 y del puente de PX4.</dd>
-<dt>ROS 2</dt><dd data-hojas="6,17">Robot Operating System 2: middleware de robótica con tiempo de sistema, monótono y ROS.</dd>
-<dt>MAVLink</dt><dd data-hojas="6">Protocolo de mensajes entre controladora y ordenador de a bordo.</dd>
-<dt>PX4</dt><dd data-hojas="6,11">Autopiloto de código abierto para drones.</dd>
-<dt>EKF2</dt><dd data-hojas="11">Implementación del EKF de PX4; sus parámetros (p. ej. EKF2_DELAY_MAX) fijan el retardo de cada sensor respecto a la IMU.</dd>
-<dt>uORB</dt><dd data-hojas="34">Sistema de mensajes internos de PX4, con campos timestamp y timestamp_sample.</dd>
-<dt>PWM</dt><dd data-hojas="19">Pulse-width modulation: señal de mando a los motores; Tan et al. mandan un pulso de un paso para medir la respuesta.</dd>
+<dt>SAC</dt><dd data-hojas="48">Soft actor-critic: algoritmo actor-crítico fuera de política, usado como referencia en el RL en tiempo real.</dd>
+<dt>DCAC</dt><dd data-hojas="48">Delay-correcting actor-critic: actor-crítico que remuestrea parcialmente las trayectorias del búfer para corregir el valor con retardos aleatorios.</dd>
+<dt>DDS</dt><dd data-hojas="8,36">Data distribution service: middleware de comunicación de ROS 2 y del puente de PX4.</dd>
+<dt>ROS 2</dt><dd data-hojas="8,36">Robot Operating System 2: middleware de robótica con tiempo de sistema, monótono y ROS.</dd>
+<dt>MAVLink</dt><dd data-hojas="8">Protocolo de mensajes entre controladora y ordenador de a bordo.</dd>
+<dt>PX4</dt><dd data-hojas="8,17">Autopiloto de código abierto para drones.</dd>
+<dt>EKF2</dt><dd data-hojas="17">Implementación del EKF de PX4; sus parámetros (p. ej. EKF2_DELAY_MAX) fijan el retardo de cada sensor respecto a la IMU.</dd>
+<dt>uORB</dt><dd data-hojas="60">Sistema de mensajes internos de PX4, con campos timestamp y timestamp_sample.</dd>
+<dt>PWM</dt><dd data-hojas="42">Pulse-width modulation: señal de mando a los motores; Tan et al. mandan un pulso de un paso para medir la respuesta.</dd>
 <dt>PD</dt><dd data-hojas="3">Controlador proporcional-derivativo; en el Minitaur corre en el microcontrolador con 3 ms de latencia.</dd>
-<dt>TX2</dt><dd data-hojas="3,9">Jetson TX2: ordenador de a bordo de NVIDIA en el que corren las redes de Swift y del Minitaur.</dd>
-<dt>Swift</dt><dd data-hojas="3,23">Sistema de drones de carreras de Kaufmann et al., con 40 ms de la cámara a los motores.</dd>
-<dt>MuJoCo</dt><dd data-hojas="4,12">Simulador físico; desde la 3.5 incluye búferes de retardo en actuadores y sensores.</dd>
-<dt>Isaac Lab</dt><dd data-hojas="9,12">Marco de simulación y RL de NVIDIA; retrasa las órdenes de actuador con un búfer circular.</dd>
-<dt>Minitaur</dt><dd data-hojas="3,23">Robot cuadrúpedo de Tan et al., ejemplo de sim-to-real con latencia medida.</dd>
-<dt>ANYmal</dt><dd data-hojas="23">Robot cuadrúpedo de Hwangbo et al., con red de actuador entrenada.</dd>
-<dt>H2</dt><dd data-hojas="24">Hito 2 del curso, al que contribuye el simulador con canales de tiempo.</dd>
+<dt>TX2</dt><dd data-hojas="3,14">Jetson TX2: ordenador de a bordo de NVIDIA en el que corren las redes de Swift y del Minitaur.</dd>
+<dt>Swift</dt><dd data-hojas="3,49">Sistema de drones de carreras de Kaufmann et al., con 40 ms de la cámara a los motores.</dd>
+<dt>MuJoCo</dt><dd data-hojas="4,19">Simulador físico; desde la 3.5 incluye búferes de retardo en actuadores y sensores.</dd>
+<dt>Isaac Lab</dt><dd data-hojas="14,19">Marco de simulación y RL de NVIDIA; retrasa las órdenes de actuador con un búfer circular.</dd>
+<dt>Minitaur</dt><dd data-hojas="3,49">Robot cuadrúpedo de Tan et al., ejemplo de sim-to-real con latencia medida.</dd>
+<dt>ANYmal</dt><dd data-hojas="49">Robot cuadrúpedo de Hwangbo et al., con red de actuador entrenada.</dd>
+<dt>H2</dt><dd data-hojas="50">Hito 2 del curso, al que contribuye el simulador con canales de tiempo.</dd>
 </dl>
 </aside>
 

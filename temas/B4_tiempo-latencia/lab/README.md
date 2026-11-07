@@ -16,7 +16,7 @@ Dar a tu simulador un reloj multifrecuencia y canales con retardo, jitter y pér
 | Predictor que supone 50 ms con 120 ms reales | ×17 | 3 |
 | 20 % de pérdidas en ráfagas de 200 ms: predictor con 80 ms frente a predictor con la edad real | ×487 frente a ×4,8 | 4 |
 
-El script de las figuras está en `../figuras/figuras_b4.py` (numpy, unos 30 s).
+El script de las figuras está en `../figuras/figuras_b4.py` (numpy, unos 30 s); el de los ejemplos numéricos de las hojas (deriva del reloj, retardo máximo del eje, predictor a mano, edad media, FIFO y Gilbert-Elliott), en `../figuras/ejemplos_b4.py` (segundos), con su salida en `../figuras/salida_ejemplos.txt`.
 
 ## 1. Reloj multifrecuencia (40 min)
 

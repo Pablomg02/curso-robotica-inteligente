@@ -1,0 +1,227 @@
+==============================================================================
+EJEMPLO 1. RELOJ DE UN APARATO: t_ap = (1 + eps) t + b, con valores de ejemplo
+  t =    0 s: t_ap - t = eps*t + b =   0.00 + 3.00 =   3.00 ms
+  t =   60 s: t_ap - t = eps*t + b =   1.20 + 3.00 =   4.20 ms
+  t =  600 s: t_ap - t = eps*t + b =  12.00 + 3.00 =  15.00 ms
+  figura (error del reloj frente a t, 0–600 s):
+    solo desfase: M70.0,143.8 L500.0,143.8
+    solo deriva:  M70.0,170.0 L500.0,65.0
+    los dos:      M70.0,143.8 L500.0,38.8
+    ticks y: 0 -> 170.0; 5 ms -> 126.2; 10 ms -> 82.5; 15 ms -> 38.8
+    ticks x: 0 -> 70; 300 -> 285; 600 -> 500
+==============================================================================
+EJEMPLO 2. PLANIFICADOR SIN DERIVA A ESCALA DE 1 ms: actitud a 250 Hz y cámara a 30 Hz
+  regla: en el paso k (t_k = k*dt), la tarea se dispara si t_k >= t_prox; al dispararse, t_prox += T
+  cámara: j | instante programado j*T (ms) | paso en que se dispara | retraso respecto al programado (ms)
+    0 |    0.000 |   0 | 0.000
+    1 |   33.333 |  34 | 0.667
+    2 |   66.667 |  67 | 0.333
+  regla equivalente sin acumular flotantes: k_j = ceil(j * T / dt) = ceil(1000 j / 30)
+    k_j para j = 0..6: [0, 34, 67, 100, 134, 167, 200]
+    intervalos (ms): [34, 33, 33, 34, 33, 33]
+  actitud a 250 Hz: T/dt = 4 exacto: pasos [0, 4, 8, 12, 16, 20] ...
+  figura (x de cada ms): 200 335 470 605 740 875 1010 1145
+  x de los disparos de actitud: 200 254 308 362 416 470 524 578 632 686 740 794 848 902 956 1010 1064 1118
+  x de los instantes programados de la cámara: 200.0 650.0 1100.0
+  x de los disparos de la cámara: 200.0 659.0 1104.5
+  x de los ticks de 1 ms (figura): 200 a 1145 cada 14 px
+==============================================================================
+EJEMPLO 3. CONTAR PASOS REDONDEADOS FRENTE A ACUMULAR EL INSTANTE: 1818 FRENTE A 1800
+  periodo redondeado: round(T/dt) = round(33.3333) = 33 pasos = 33 ms
+  frecuencia efectiva 1/33 ms = 30.3030 Hz; error relativo +1.010 %
+  imágenes en (0, 60 s]: floor(60000/33) = 1818  (60 s x 30.303 Hz = 1818.18)
+  acumulando el instante: imágenes en (0, 60 s] = 1800
+  adelanto acumulado de la versión redondeada respecto a la exacta tras 1, 10, 100 y 1800 imágenes (ms): [-1, -4, -34, -600]
+    = j * (33,333 - 33) ms: tras 1800 imágenes, 1800/3 = 600 ms adelantada (18 imágenes de 33 ms = 594 ms)
+==============================================================================
+EJEMPLO 4. EL TIEMPO EN float32 ACUMULANDO t += dt FRENTE A t = k * dt
+  tras    1000 pasos (t =      1 s): float32 acumulado = 0.999991 s; error =    -0.009 ms
+  tras   10000 pasos (t =     10 s): float32 acumulado = 10.000411 s; error =    +0.411 ms
+  tras   60000 pasos (t =     60 s): float32 acumulado = 59.978664 s; error =   -21.336 ms
+  tras  600000 pasos (t =    600 s): float32 acumulado = 600.516541 s; error =  +516.541 ms
+  tras 3600000 pasos (t =   3600 s): float32 acumulado = 3530.204102 s; error = -69795.898 ms
+  dt en float32 = 0.001000000047 (no es 0,001 exacto)
+  separación entre float32 consecutivos cerca de    1 s: 0.119 us
+  separación entre float32 consecutivos cerca de   16 s: 1.907 us
+  separación entre float32 consecutivos cerca de   60 s: 3.815 us
+  separación entre float32 consecutivos cerca de 3600 s: 244.141 us
+  por qué el error es sistemático: en cada tramo [2^e, 2^(e+1)) la separación es fija y cada suma se redondea igual
+    [ 8, 16) s: separación 0.954 us; 1 ms = 1048.576 separaciones -> se suman 1049: cada paso avanza 1.00040 ms (+0.404 us por paso)
+    [16, 32) s: separación 1.907 us; 1 ms = 524.288 separaciones -> se suman 524: cada paso avanza 0.99945 ms (-0.549 us por paso)
+    [32, 64) s: separación 3.815 us; 1 ms = 262.144 separaciones -> se suman 262: cada paso avanza 0.99945 ms (-0.549 us por paso)
+    de 32 a 60 s: 28000 pasos x -0.549 us = -15.4 ms
+  un contador int32 de pasos de 1 ms dura 2^31 ms = 24.9 días
+  con k entero y t = k*dt en float64 el error es < 1e-12 s en todo el rango
+==============================================================================
+EJEMPLO 5. TRES TIPOS DE RETARDO SOBRE UNA SENOIDE DE 2 Hz (datos de la figura)
+  transporte 60 ms: misma amplitud, fase -w*tau = -43.2 grados
+  primer orden de 50 ms: amplitud 1/sqrt(1+(w tau)^2) = 0.847, fase -atan(w tau) = -32.1 grados (equivale a 44.6 ms a 2 Hz)
+  retención a 20 Hz: retardo medio Ts/2 = 25 ms, fase -18.0 grados
+  panel 0 (transporte), centro y = 55:
+    original: M60.0,55.0 L62.1,53.1 L64.3,51.2 L66.4,49.4 L68.5,47.5 L70.7,45.7 L72.8,44.0 L74.9,42.2 L77.1,40.5 L79.2,38.9 L81.3,37.4 L83.5,35.9 L85.6,34.5 L87.7,33.1 L89.9,31.9 L92.0,30.7 L94.1,29.7 L96.3,28.7 L98.4,27.9 L100.5,27.1 L102.7,26.5 L104.8,25.9 L106.9,25.5 L109.1,25.2 L111.2,25.1 L113.3,25.0 L115.5,25.1 L117.6,25.2 L119.7,25.5 L121.9,25.9 L124.0,26.5 L126.1,27.1 L128.3,27.9 L130.4,28.7 L132.5,29.7 L134.7,30.7 L136.8,31.9 L138.9,33.1 L141.1,34.5 L143.2,35.9 L145.3,37.4 L147.5,38.9 L149.6,40.5 L151.7,42.2 L153.9,44.0 L156.0,45.7 L158.1,47.5 L160.3,49.4 L162.4,51.2 L164.5,53.1 L166.7,55.0 L168.8,56.9 L170.9,58.8 L173.1,60.6 L175.2,62.5 L177.3,64.3 L179.5,66.0 L181.6,67.8 L183.7,69.5 L185.9,71.1 L188.0,72.6 L190.1,74.1 L192.3,75.5 L194.4,76.9 L196.5,78.1 L198.7,79.3 L200.8,80.3 L202.9,81.3 L205.1,82.1 L207.2,82.9 L209.3,83.5 L211.5,84.1 L213.6,84.5 L215.7,84.8 L217.9,84.9 L220.0,85.0 L222.1,84.9 L224.3,84.8 L226.4,84.5 L228.5,84.1 L230.7,83.5 L232.8,82.9 L234.9,82.1 L237.1,81.3 L239.2,80.3 L241.3,79.3 L243.5,78.1 L245.6,76.9 L247.7,75.5 L249.9,74.1 L252.0,72.6 L254.1,71.1 L256.3,69.5 L258.4,67.8 L260.5,66.0 L262.7,64.3 L264.8,62.5 L266.9,60.6 L269.1,58.8 L271.2,56.9 L273.3,55.0 L275.5,53.1 L277.6,51.2 L279.7,49.4 L281.9,47.5 L284.0,45.7 L286.1,44.0 L288.3,42.2 L290.4,40.5 L292.5,38.9 L294.7,37.4 L296.8,35.9 L298.9,34.5 L301.1,33.1 L303.2,31.9 L305.3,30.7 L307.5,29.7 L309.6,28.7 L311.7,27.9 L313.9,27.1 L316.0,26.5 L318.1,25.9 L320.3,25.5 L322.4,25.2 L324.5,25.1 L326.7,25.0 L328.8,25.1 L330.9,25.2 L333.1,25.5 L335.2,25.9 L337.3,26.5 L339.5,27.1 L341.6,27.9 L343.7,28.7 L345.9,29.7 L348.0,30.7 L350.1,31.9 L352.3,33.1 L354.4,34.5 L356.5,35.9 L358.7,37.4 L360.8,38.9 L362.9,40.5 L365.1,42.2 L367.2,44.0 L369.3,45.7 L371.5,47.5 L373.6,49.4 L375.7,51.2 L377.9,53.1 L380.0,55.0
+    retrasada: M60.0,75.5 L62.1,74.1 L64.3,72.6 L66.4,71.1 L68.5,69.5 L70.7,67.8 L72.8,66.0 L74.9,64.3 L77.1,62.5 L79.2,60.6 L81.3,58.8 L83.5,56.9 L85.6,55.0 L87.7,53.1 L89.9,51.2 L92.0,49.4 L94.1,47.5 L96.3,45.7 L98.4,44.0 L100.5,42.2 L102.7,40.5 L104.8,38.9 L106.9,37.4 L109.1,35.9 L111.2,34.5 L113.3,33.1 L115.5,31.9 L117.6,30.7 L119.7,29.7 L121.9,28.7 L124.0,27.9 L126.1,27.1 L128.3,26.5 L130.4,25.9 L132.5,25.5 L134.7,25.2 L136.8,25.1 L138.9,25.0 L141.1,25.1 L143.2,25.2 L145.3,25.5 L147.5,25.9 L149.6,26.5 L151.7,27.1 L153.9,27.9 L156.0,28.7 L158.1,29.7 L160.3,30.7 L162.4,31.9 L164.5,33.1 L166.7,34.5 L168.8,35.9 L170.9,37.4 L173.1,38.9 L175.2,40.5 L177.3,42.2 L179.5,44.0 L181.6,45.7 L183.7,47.5 L185.9,49.4 L188.0,51.2 L190.1,53.1 L192.3,55.0 L194.4,56.9 L196.5,58.8 L198.7,60.6 L200.8,62.5 L202.9,64.3 L205.1,66.0 L207.2,67.8 L209.3,69.5 L211.5,71.1 L213.6,72.6 L215.7,74.1 L217.9,75.5 L220.0,76.9 L222.1,78.1 L224.3,79.3 L226.4,80.3 L228.5,81.3 L230.7,82.1 L232.8,82.9 L234.9,83.5 L237.1,84.1 L239.2,84.5 L241.3,84.8 L243.5,84.9 L245.6,85.0 L247.7,84.9 L249.9,84.8 L252.0,84.5 L254.1,84.1 L256.3,83.5 L258.4,82.9 L260.5,82.1 L262.7,81.3 L264.8,80.3 L266.9,79.3 L269.1,78.1 L271.2,76.9 L273.3,75.5 L275.5,74.1 L277.6,72.6 L279.7,71.1 L281.9,69.5 L284.0,67.8 L286.1,66.0 L288.3,64.3 L290.4,62.5 L292.5,60.6 L294.7,58.8 L296.8,56.9 L298.9,55.0 L301.1,53.1 L303.2,51.2 L305.3,49.4 L307.5,47.5 L309.6,45.7 L311.7,44.0 L313.9,42.2 L316.0,40.5 L318.1,38.9 L320.3,37.4 L322.4,35.9 L324.5,34.5 L326.7,33.1 L328.8,31.9 L330.9,30.7 L333.1,29.7 L335.2,28.7 L337.3,27.9 L339.5,27.1 L341.6,26.5 L343.7,25.9 L345.9,25.5 L348.0,25.2 L350.1,25.1 L352.3,25.0 L354.4,25.1 L356.5,25.2 L358.7,25.5 L360.8,25.9 L362.9,26.5 L365.1,27.1 L367.2,27.9 L369.3,28.7 L371.5,29.7 L373.6,30.7 L375.7,31.9 L377.9,33.1 L380.0,34.5
+  panel 1 (primer orden), centro y = 140:
+    original: M60.0,140.0 L62.1,138.1 L64.3,136.2 L66.4,134.4 L68.5,132.5 L70.7,130.7 L72.8,129.0 L74.9,127.2 L77.1,125.5 L79.2,123.9 L81.3,122.4 L83.5,120.9 L85.6,119.5 L87.7,118.1 L89.9,116.9 L92.0,115.7 L94.1,114.7 L96.3,113.7 L98.4,112.9 L100.5,112.1 L102.7,111.5 L104.8,110.9 L106.9,110.5 L109.1,110.2 L111.2,110.1 L113.3,110.0 L115.5,110.1 L117.6,110.2 L119.7,110.5 L121.9,110.9 L124.0,111.5 L126.1,112.1 L128.3,112.9 L130.4,113.7 L132.5,114.7 L134.7,115.7 L136.8,116.9 L138.9,118.1 L141.1,119.5 L143.2,120.9 L145.3,122.4 L147.5,123.9 L149.6,125.5 L151.7,127.2 L153.9,129.0 L156.0,130.7 L158.1,132.5 L160.3,134.4 L162.4,136.2 L164.5,138.1 L166.7,140.0 L168.8,141.9 L170.9,143.8 L173.1,145.6 L175.2,147.5 L177.3,149.3 L179.5,151.0 L181.6,152.8 L183.7,154.5 L185.9,156.1 L188.0,157.6 L190.1,159.1 L192.3,160.5 L194.4,161.9 L196.5,163.1 L198.7,164.3 L200.8,165.3 L202.9,166.3 L205.1,167.1 L207.2,167.9 L209.3,168.5 L211.5,169.1 L213.6,169.5 L215.7,169.8 L217.9,169.9 L220.0,170.0 L222.1,169.9 L224.3,169.8 L226.4,169.5 L228.5,169.1 L230.7,168.5 L232.8,167.9 L234.9,167.1 L237.1,166.3 L239.2,165.3 L241.3,164.3 L243.5,163.1 L245.6,161.9 L247.7,160.5 L249.9,159.1 L252.0,157.6 L254.1,156.1 L256.3,154.5 L258.4,152.8 L260.5,151.0 L262.7,149.3 L264.8,147.5 L266.9,145.6 L269.1,143.8 L271.2,141.9 L273.3,140.0 L275.5,138.1 L277.6,136.2 L279.7,134.4 L281.9,132.5 L284.0,130.7 L286.1,129.0 L288.3,127.2 L290.4,125.5 L292.5,123.9 L294.7,122.4 L296.8,120.9 L298.9,119.5 L301.1,118.1 L303.2,116.9 L305.3,115.7 L307.5,114.7 L309.6,113.7 L311.7,112.9 L313.9,112.1 L316.0,111.5 L318.1,110.9 L320.3,110.5 L322.4,110.2 L324.5,110.1 L326.7,110.0 L328.8,110.1 L330.9,110.2 L333.1,110.5 L335.2,110.9 L337.3,111.5 L339.5,112.1 L341.6,112.9 L343.7,113.7 L345.9,114.7 L348.0,115.7 L350.1,116.9 L352.3,118.1 L354.4,119.5 L356.5,120.9 L358.7,122.4 L360.8,123.9 L362.9,125.5 L365.1,127.2 L367.2,129.0 L369.3,130.7 L371.5,132.5 L373.6,134.4 L375.7,136.2 L377.9,138.1 L380.0,140.0
+    retrasada: M60.0,153.5 L62.1,152.1 L64.3,150.7 L66.4,149.3 L68.5,147.8 L70.7,146.2 L72.8,144.7 L74.9,143.1 L77.1,141.5 L79.2,139.9 L81.3,138.3 L83.5,136.7 L85.6,135.1 L87.7,133.6 L89.9,132.0 L92.0,130.5 L94.1,129.1 L96.3,127.7 L98.4,126.3 L100.5,125.0 L102.7,123.7 L104.8,122.5 L106.9,121.4 L109.1,120.3 L111.2,119.3 L113.3,118.4 L115.5,117.6 L117.6,116.9 L119.7,116.3 L121.9,115.7 L124.0,115.3 L126.1,115.0 L128.3,114.7 L130.4,114.6 L132.5,114.5 L134.7,114.6 L136.8,114.7 L138.9,115.0 L141.1,115.3 L143.2,115.8 L145.3,116.3 L147.5,117.0 L149.6,117.7 L151.7,118.5 L153.9,119.4 L156.0,120.4 L158.1,121.5 L160.3,122.6 L162.4,123.8 L164.5,125.1 L166.7,126.4 L168.8,127.8 L170.9,129.2 L173.1,130.7 L175.2,132.2 L177.3,133.7 L179.5,135.3 L181.6,136.9 L183.7,138.5 L185.9,140.1 L188.0,141.7 L190.1,143.3 L192.3,144.8 L194.4,146.4 L196.5,147.9 L198.7,149.4 L200.8,150.9 L202.9,152.3 L205.1,153.7 L207.2,155.0 L209.3,156.3 L211.5,157.5 L213.6,158.6 L215.7,159.7 L217.9,160.6 L220.0,161.5 L222.1,162.4 L224.3,163.1 L226.4,163.7 L228.5,164.2 L230.7,164.7 L232.8,165.0 L234.9,165.3 L237.1,165.4 L239.2,165.5 L241.3,165.4 L243.5,165.3 L245.6,165.0 L247.7,164.7 L249.9,164.2 L252.0,163.7 L254.1,163.0 L256.3,162.3 L258.4,161.5 L260.5,160.6 L262.7,159.6 L264.8,158.5 L266.9,157.4 L269.1,156.2 L271.2,154.9 L273.3,153.6 L275.5,152.2 L277.6,150.8 L279.7,149.3 L281.9,147.8 L284.0,146.3 L286.1,144.7 L288.3,143.1 L290.4,141.5 L292.5,139.9 L294.7,138.3 L296.8,136.7 L298.9,135.2 L301.1,133.6 L303.2,132.1 L305.3,130.6 L307.5,129.1 L309.6,127.7 L311.7,126.3 L313.9,125.0 L316.0,123.7 L318.1,122.5 L320.3,121.4 L322.4,120.3 L324.5,119.4 L326.7,118.5 L328.8,117.6 L330.9,116.9 L333.1,116.3 L335.2,115.8 L337.3,115.3 L339.5,115.0 L341.6,114.7 L343.7,114.6 L345.9,114.5 L348.0,114.6 L350.1,114.7 L352.3,115.0 L354.4,115.3 L356.5,115.8 L358.7,116.3 L360.8,117.0 L362.9,117.7 L365.1,118.5 L367.2,119.4 L369.3,120.4 L371.5,121.5 L373.6,122.6 L375.7,123.8 L377.9,125.1 L380.0,126.4
+  panel 2 (retención), centro y = 225:
+    original: M60.0,225.0 L62.1,223.1 L64.3,221.2 L66.4,219.4 L68.5,217.5 L70.7,215.7 L72.8,214.0 L74.9,212.2 L77.1,210.5 L79.2,208.9 L81.3,207.4 L83.5,205.9 L85.6,204.5 L87.7,203.1 L89.9,201.9 L92.0,200.7 L94.1,199.7 L96.3,198.7 L98.4,197.9 L100.5,197.1 L102.7,196.5 L104.8,195.9 L106.9,195.5 L109.1,195.2 L111.2,195.1 L113.3,195.0 L115.5,195.1 L117.6,195.2 L119.7,195.5 L121.9,195.9 L124.0,196.5 L126.1,197.1 L128.3,197.9 L130.4,198.7 L132.5,199.7 L134.7,200.7 L136.8,201.9 L138.9,203.1 L141.1,204.5 L143.2,205.9 L145.3,207.4 L147.5,208.9 L149.6,210.5 L151.7,212.2 L153.9,214.0 L156.0,215.7 L158.1,217.5 L160.3,219.4 L162.4,221.2 L164.5,223.1 L166.7,225.0 L168.8,226.9 L170.9,228.8 L173.1,230.6 L175.2,232.5 L177.3,234.3 L179.5,236.0 L181.6,237.8 L183.7,239.5 L185.9,241.1 L188.0,242.6 L190.1,244.1 L192.3,245.5 L194.4,246.9 L196.5,248.1 L198.7,249.3 L200.8,250.3 L202.9,251.3 L205.1,252.1 L207.2,252.9 L209.3,253.5 L211.5,254.1 L213.6,254.5 L215.7,254.8 L217.9,254.9 L220.0,255.0 L222.1,254.9 L224.3,254.8 L226.4,254.5 L228.5,254.1 L230.7,253.5 L232.8,252.9 L234.9,252.1 L237.1,251.3 L239.2,250.3 L241.3,249.3 L243.5,248.1 L245.6,246.9 L247.7,245.5 L249.9,244.1 L252.0,242.6 L254.1,241.1 L256.3,239.5 L258.4,237.8 L260.5,236.0 L262.7,234.3 L264.8,232.5 L266.9,230.6 L269.1,228.8 L271.2,226.9 L273.3,225.0 L275.5,223.1 L277.6,221.2 L279.7,219.4 L281.9,217.5 L284.0,215.7 L286.1,214.0 L288.3,212.2 L290.4,210.5 L292.5,208.9 L294.7,207.4 L296.8,205.9 L298.9,204.5 L301.1,203.1 L303.2,201.9 L305.3,200.7 L307.5,199.7 L309.6,198.7 L311.7,197.9 L313.9,197.1 L316.0,196.5 L318.1,195.9 L320.3,195.5 L322.4,195.2 L324.5,195.1 L326.7,195.0 L328.8,195.1 L330.9,195.2 L333.1,195.5 L335.2,195.9 L337.3,196.5 L339.5,197.1 L341.6,197.9 L343.7,198.7 L345.9,199.7 L348.0,200.7 L350.1,201.9 L352.3,203.1 L354.4,204.5 L356.5,205.9 L358.7,207.4 L360.8,208.9 L362.9,210.5 L365.1,212.2 L367.2,214.0 L369.3,215.7 L371.5,217.5 L373.6,219.4 L375.7,221.2 L377.9,223.1 L380.0,225.0
+    retrasada: M60.0,225.0 L81.3,225.0 L81.3,207.4 L102.7,207.4 L102.7,196.5 L124.0,196.5 L124.0,196.5 L145.3,196.5 L145.3,207.4 L166.7,207.4 L166.7,225.0 L188.0,225.0 L188.0,242.6 L209.3,242.6 L209.3,253.5 L230.7,253.5 L230.7,253.5 L252.0,253.5 L252.0,242.6 L273.3,242.6 L273.3,225.0 L294.7,225.0 L294.7,207.4 L316.0,207.4 L316.0,196.5 L337.3,196.5 L337.3,196.5 L358.7,196.5 L358.7,207.4 L380.0,207.4 L380.0,225.0 L380.0,225.0
+==============================================================================
+EJEMPLO 6. BÚFER CIRCULAR: D = 8 CASILLAS, RETARDO d = 3, Y MEMORIA
+  k =  8: se escribe x_8 en la casilla k mod D = 0; se lee x_5 de (k-d) mod D = 5
+  k =  9: se escribe x_9 en la casilla k mod D = 1; se lee x_6 de (k-d) mod D = 6
+  k = 10: se escribe x_10 en la casilla k mod D = 2; se lee x_7 de (k-d) mod D = 7
+  k = 11: se escribe x_11 en la casilla k mod D = 3; se lee x_8 de (k-d) mod D = 0
+  k = 12: se escribe x_12 en la casilla k mod D = 4; se lee x_9 de (k-d) mod D = 1
+  16384 entornos x 200 casillas x 17 float32 x 4 B = 222.8 MB
+  16384 entornos x 40 casillas x 17 float32 x 4 B = 44.6 MB
+  centros de las casillas en el anillo (casilla 0 arriba, sentido horario):
+    0: (150.0, 45.0)
+    1: (210.1, 69.9)
+    2: (235.0, 130.0)
+    3: (210.1, 190.1)
+    4: (150.0, 215.0)
+    5: (89.9, 190.1)
+    6: (65.0, 130.0)
+    7: (89.9, 69.9)
+==============================================================================
+EJEMPLO 7. RETARDO FRACCIONARIO POR INTERPOLACIÓN LINEAL: |H| Y FASE
+  alpha = 0.0: |H| en theta = 0, pi/5, pi/2, pi: [1.0, 1.0, 1.0, 1.0] (fórmula [1.0, 1.0, 1.0, 1.0]); |1-2 alpha| = 1.0
+  alpha = 0.25: |H| en theta = 0, pi/5, pi/2, pi: [1.0, 0.9635, 0.7906, 0.5] (fórmula [1.0, 0.9635, 0.7906, 0.5]); |1-2 alpha| = 0.5
+  alpha = 0.5: |H| en theta = 0, pi/5, pi/2, pi: [1.0, 0.9511, 0.7071, 0.0] (fórmula [1.0, 0.9511, 0.7071, 0.0]); |1-2 alpha| = 0.0
+  baja frecuencia (theta = 0.1): fase del corchete con alpha = 0,25: -0.02498 rad; -alpha*theta = -0.02500 rad
+  giróscopo a 1 kHz, retardo de 2,5 ms -> m = 2, alpha = 0,5; |H| = |cos(theta/2)|:
+    100 Hz (theta = 0.628): |H| = 0.951
+    250 Hz (theta = 1.571): |H| = 0.707
+    400 Hz (theta = 2.513): |H| = 0.309
+    500 Hz (theta = 3.142): |H| = 0.000
+  path |H| alpha=0.0: M60.0,30.0 L67.3,30.0 L74.7,30.0 L82.0,30.0 L89.3,30.0 L96.7,30.0 L104.0,30.0 L111.3,30.0 L118.7,30.0 L126.0,30.0 L133.3,30.0 L140.7,30.0 L148.0,30.0 L155.3,30.0 L162.7,30.0 L170.0,30.0 L177.3,30.0 L184.7,30.0 L192.0,30.0 L199.3,30.0 L206.7,30.0 L214.0,30.0 L221.3,30.0 L228.7,30.0 L236.0,30.0 L243.3,30.0 L250.7,30.0 L258.0,30.0 L265.3,30.0 L272.7,30.0 L280.0,30.0 L287.3,30.0 L294.7,30.0 L302.0,30.0 L309.3,30.0 L316.7,30.0 L324.0,30.0 L331.3,30.0 L338.7,30.0 L346.0,30.0 L353.3,30.0 L360.7,30.0 L368.0,30.0 L375.3,30.0 L382.7,30.0 L390.0,30.0 L397.3,30.0 L404.7,30.0 L412.0,30.0 L419.3,30.0 L426.7,30.0 L434.0,30.0 L441.3,30.0 L448.7,30.0 L456.0,30.0 L463.3,30.0 L470.7,30.0 L478.0,30.0 L485.3,30.0 L492.7,30.0 L500.0,30.0
+  path |H| alpha=0.25: M60.0,30.0 L67.3,30.1 L74.7,30.2 L82.0,30.5 L89.3,30.8 L96.7,31.3 L104.0,31.8 L111.3,32.5 L118.7,33.3 L126.0,34.1 L133.3,35.1 L140.7,36.1 L148.0,37.3 L155.3,38.5 L162.7,39.9 L170.0,41.3 L177.3,42.8 L184.7,44.4 L192.0,46.1 L199.3,47.9 L206.7,49.7 L214.0,51.6 L221.3,53.6 L228.7,55.7 L236.0,57.9 L243.3,60.1 L250.7,62.3 L258.0,64.6 L265.3,67.0 L272.7,69.4 L280.0,71.9 L287.3,74.4 L294.7,76.9 L302.0,79.5 L309.3,82.1 L316.7,84.7 L324.0,87.3 L331.3,89.9 L338.7,92.5 L346.0,95.1 L353.3,97.7 L360.7,100.3 L368.0,102.8 L375.3,105.3 L382.7,107.7 L390.0,110.0 L397.3,112.3 L404.7,114.5 L412.0,116.6 L419.3,118.6 L426.7,120.4 L434.0,122.1 L441.3,123.7 L448.7,125.1 L456.0,126.4 L463.3,127.5 L470.7,128.4 L478.0,129.1 L485.3,129.6 L492.7,129.9 L500.0,130.0
+  path |H| alpha=0.5: M60.0,30.0 L67.3,30.1 L74.7,30.3 L82.0,30.6 L89.3,31.1 L96.7,31.7 L104.0,32.5 L111.3,33.3 L118.7,34.4 L126.0,35.5 L133.3,36.8 L140.7,38.2 L148.0,39.8 L155.3,41.5 L162.7,43.3 L170.0,45.2 L177.3,47.3 L184.7,49.5 L192.0,51.8 L199.3,54.2 L206.7,56.8 L214.0,59.5 L221.3,62.3 L228.7,65.2 L236.0,68.2 L243.3,71.3 L250.7,74.6 L258.0,77.9 L265.3,81.4 L272.7,84.9 L280.0,88.6 L287.3,92.3 L294.7,96.2 L302.0,100.1 L309.3,104.1 L316.7,108.2 L324.0,112.4 L331.3,116.7 L338.7,121.1 L346.0,125.5 L353.3,130.0 L360.7,134.6 L368.0,139.2 L375.3,143.9 L382.7,148.7 L390.0,153.5 L397.3,158.3 L404.7,163.2 L412.0,168.2 L419.3,173.2 L426.7,178.2 L434.0,183.3 L441.3,188.4 L448.7,193.6 L456.0,198.7 L463.3,203.9 L470.7,209.1 L478.0,214.3 L485.3,219.5 L492.7,224.8 L500.0,230.0
+  ticks: x pi/2 -> 280, pi -> 500; y 0,5 -> 130, 0,707 -> 88.6
+==============================================================================
+EJEMPLO 8. RETARDO PURO EN FRECUENCIA: FASE -w*tau Y MARGEN CONSUMIDO EN EL EJE (w_c = 12,084 rad/s)
+  tau =    5 ms: fase en w_c = -w_c tau = -0.0604 rad =  -3.46 grados; margen que queda  62.1 grados
+  tau =   10 ms: fase en w_c = -w_c tau = -0.1208 rad =  -6.92 grados; margen que queda  58.6 grados
+  tau =   50 ms: fase en w_c = -w_c tau = -0.6042 rad = -34.62 grados; margen que queda  30.9 grados
+  tau =   90 ms: fase en w_c = -w_c tau = -1.0876 rad = -62.31 grados; margen que queda   3.2 grados
+  cada 10 ms de retardo cuestan 6.92 grados a 12.084 rad/s
+  retenedor a 100 Hz: T/2 = 5 ms -> 3.46 grados
+  retardo que agota el margen: 1.1437 rad / 12.084 rad/s = 94.65 ms
+  recta tau = 10.0 ms: M60.0,30.0 L520.0,61.5
+  recta tau = 50.0 ms: M60.0,30.0 L520.0,187.6
+  recta tau = 94.7 ms: M60.0,30.0 L520.0,250.0 (corta y = -120 en w = 22.12 -> x = 399.1)
+  w_c -> x = 245.3; -65,5 grados -> y = 150.1; ticks y: -30 85.0, -60 140.0, -90 195.0, -120 250.0
+  ticks x: 0 60, 10 213, 20 367, 30 520
+    punto en w_c para tau = 10.0 ms: y = 42.7
+    punto en w_c para tau = 50.0 ms: y = 93.5
+    punto en w_c para tau = 94.7 ms: y = 150.2
+==============================================================================
+EJEMPLO 9. EL EJE DEL EJEMPLO: LQR, LAZO, CRUCE, MARGEN Y RETARDO MÁXIMO
+  A = [[1, 0.01], [0, 1]]; B = [0.00005, 0.01]; Q = diag(1, 0); R = 1/4096 = 2.441e-04
+  en continuo, LQR de p'' = u con q = 1, r = 1/4096: k_p = sqrt(q/r) = 64.00 = w_n^2 (w_n = 8.00 rad/s); k_d = sqrt(2 k_p) = 11.314 = 2 zeta w_n (zeta = 0.707)
+  LQR discreto a 100 Hz: K = [k_p, k_d] = [60.481, 10.998]
+  |L(jw)| = 1 con L(s) = (k_p + k_d s)/s^2:  w^4 = k_p^2 + k_d^2 w^2 -> w^2 = (k_d^2 + sqrt(k_d^4 + 4 k_p^2))/2
+    k_d^2 = 120.96; k_d^4 = 14631.6; 4 k_p^2 = 14631.6; raíz = 171.06; w_c^2 = 146.01; w_c = 12.084 rad/s
+    comprobación |L(j w_c)| = 1.000000
+  arg L(j w_c) = -180 + atan(k_d w_c / k_p) = -180 + atan(2.1974) = -180 + 65.53 grados
+  margen de fase = 65.53 grados = 1.1437 rad
+  retardo máximo = PM/w_c = 1.1437/12.084 = 94.65 ms; menos T/2 del retenedor = 89.65 ms
+  retardo d pasos -> retardo total d*T + T/2: inestable cuando d*10 + 5 >= 94.7 ms -> d >= 8.97 -> d = 9
+  discreto exacto, u_k = -K x_(k-d): d =  0 (  0 ms): radio espectral = 0.9450
+  discreto exacto, u_k = -K x_(k-d): d =  4 ( 40 ms): radio espectral = 0.9222
+  discreto exacto, u_k = -K x_(k-d): d =  7 ( 70 ms): radio espectral = 0.9769
+  discreto exacto, u_k = -K x_(k-d): d =  8 ( 80 ms): radio espectral = 0.9903
+  discreto exacto, u_k = -K x_(k-d): d =  9 ( 90 ms): radio espectral = 1.0003
+  discreto exacto, u_k = -K x_(k-d): d = 10 (100 ms): radio espectral = 1.0079
+==============================================================================
+EJEMPLO 10. PREDICTOR A MANO: d = 2 PASOS EN EL EJE (valores de ejemplo)
+  x_(k-2) = [0.1, 0.0] (m, m/s); u_(k-2) = -0.5, u_(k-1) = -0.4 m/s^2
+  paso 1: p = 0.100000 + 0.01*0.000000 + 0.00005*(-0.5) = 0.099975;  v = 0.000000 + 0.01*(-0.5) = -0.005000
+  paso 2: p = 0.099975 + 0.01*-0.005000 + 0.00005*(-0.4) = 0.099905;  v = -0.005000 + 0.01*(-0.4) = -0.009000
+  fórmula cerrada A^2 x + A B u_(k-2) + B u_(k-1) = [0.099905, -0.009]
+  A^2 = [[1.0, 0.02], [0.0, 1.0]]; A B = [0.00015, 0.01]
+  mando con la medida vieja: -K x_(k-2) = -6.048; con la predicción: -K x^_k = -5.943 m/s^2
+  error del predictor, d =  1 ( 10 ms): desv. típica posición 0.005 cm, velocidad 1.00 cm/s
+  error del predictor, d =  2 ( 20 ms): desv. típica posición 0.016 cm, velocidad 1.41 cm/s
+  error del predictor, d =  5 ( 50 ms): desv. típica posición 0.064 cm, velocidad 2.24 cm/s
+  error del predictor, d = 10 (100 ms): desv. típica posición 0.182 cm, velocidad 3.16 cm/s
+  error del predictor, d = 15 (150 ms): desv. típica posición 0.335 cm, velocidad 3.87 cm/s
+  (sigma_w = 1 m/s^2 por paso, como en figuras_b4.py)
+  d = 1 a mano: G G^T sigma^2 = B B^T = [[2.50e-09, 5.00e-07], [., 1.00e-04]] -> desv. v = 1.00 cm/s
+  predictor desajustado (lineal, sin saturación): radio espectral; retardo sin compensar (d - d^)*10 + 5 ms
+    real   0 ms, supone 100 ms: radio = 0.9681; sin compensar    5 ms
+    real 100 ms, supone 100 ms: radio = 0.9450; sin compensar    5 ms
+    real 120 ms, supone  50 ms: radio = 0.9961; sin compensar   75 ms
+    real 130 ms, supone  50 ms: radio = 1.0018; sin compensar   85 ms
+    real 140 ms, supone  50 ms: radio = 1.0064; sin compensar   95 ms
+    real 150 ms, supone  50 ms: radio = 1.0101; sin compensar  105 ms
+    real 120 ms, supone 100 ms: radio = 0.9584; sin compensar   25 ms
+    real 150 ms, supone 100 ms: radio = 0.9888; sin compensar   55 ms
+==============================================================================
+EJEMPLO 11. EDAD MEDIA DE LA ÚLTIMA IMAGEN: CÁMARA A 30 Hz, 40 ms DE LATENCIA, CONTROL A 100 Hz
+  control en t (ms) | última llegada (ms) | su captura (ms) | U = t - llegada | edad = t - captura
+    100 |   73.33 |   33.33 |  26.67 |  66.67
+    110 |  106.67 |   66.67 |   3.33 |  43.33
+    120 |  106.67 |   66.67 |  13.33 |  53.33
+    130 |  106.67 |   66.67 |  23.33 |  63.33
+    140 |  140.00 |  100.00 |   0.00 |  40.00
+    150 |  140.00 |  100.00 |  10.00 |  50.00
+    160 |  140.00 |  100.00 |  20.00 |  60.00
+    170 |  140.00 |  100.00 |  30.00 |  70.00
+    180 |  173.33 |  133.33 |   6.67 |  46.67
+    190 |  173.33 |  133.33 |  16.67 |  56.67
+  media de las 10 edades = 55.00 ms; mín 40.00; máx 70.00
+  continuo (U uniforme en [0, T)): media L + T/2 = 56.67 ms; desv. típica T/sqrt(12) = 9.62 ms
+  discreto: U toma 0, delta, ..., T - delta con delta = 3.333 ms (rejilla común de 10 ms y 33,3 ms): media (T - delta)/2 = 15.00 -> edad 55.00 ms
+  edad continua: entre L = 40.0 y L + T = 73.3 ms
+==============================================================================
+EJEMPLO 12. JITTER FIFO A MANO: retardos de ejemplo en pasos de 10 ms
+  j | d_j | j + d_j | a_j = max(j + d_j, a_(j-1)) | retardo efectivo a_j - j
+    0 | 8 | 8 | 8 | 8
+    1 | 11 | 12 | 12 | 11
+    2 | 7 | 9 | 12 | 10
+    3 | 9 | 12 | 12 | 9
+    4 | 6 | 10 | 12 | 8
+    5 | 8 | 13 | 13 | 8
+  retardo medio pedido 8.17 pasos; efectivo FIFO 9.00 pasos
+  sigma = 10 ms: retardo efectivo medio FIFO = 82.3 ms (pedido 80 ms)
+  sigma = 20 ms: retardo efectivo medio FIFO = 89.9 ms (pedido 80 ms)
+  sigma = 40 ms: retardo efectivo medio FIFO = 112.3 ms (pedido 80 ms)
+==============================================================================
+EJEMPLO 13. PÉRDIDAS: BERNOULLI FRENTE A GILBERT-ELLIOTT CON EL MISMO 20 %
+  ráfagas de 20 pasos (200 ms a 100 Hz): p_bg = 1/20 = 0.05; para un 20 %: p_gb = 0,2 p_bg / 0,8 = 0.0125
+  P = [[1 - p_gb, p_gb], [p_bg, 1 - p_bg]] = [[0.9875, 0.0125], [0.05, 0.95]]  (filas: desde G, desde B)
+  estados: G (bueno, llega todo) y B (malo, se pierde todo); p_gb = P(G -> B), p_bg = P(B -> G)
+  estacionaria: pi_B = p_gb/(p_gb + p_bg) = 0.0125/0.0625 = 0.200; pi_G = 0.800
+  comprobación: autovector de P^T con autovalor 1, normalizado (pi_G, pi_B): [0.8, 0.2]; pi P = [0.8, 0.2]
+  duración media de ráfaga 1/p_bg = 20 pasos; de tramo bueno 1/p_gb = 80 pasos
+    P(ráfaga de  1 pasos) = (1 - p_bg)^(n-1) p_bg = 0.0500
+    P(ráfaga de  2 pasos) = (1 - p_bg)^(n-1) p_bg = 0.0475
+    P(ráfaga de  5 pasos) = (1 - p_bg)^(n-1) p_bg = 0.0407
+    P(ráfaga de 20 pasos) = (1 - p_bg)^(n-1) p_bg = 0.0189
+  Bernoulli del 20 %: ráfagas de 1/(1 - 0,2) = 1.25 pasos de media
+  simulación de 1000000 pasos: pérdida 19.74 %; ráfaga media 19.95 pasos; la más larga 200 pasos
+  Bernoulli: pérdida 20.01 %; ráfaga media 1.25 pasos; la más larga 9 pasos
+  semilla de las tiras: 18
+  tiras de la figura (300 pasos): Bernoulli pierde 62 (21 %), Gilbert-Elliott 60 (20 %)
+  Bernoulli: 47 ráfagas, longitudes varias; más larga 4
+   rects: 70.8:3.6 92.4:3.6 114.0:3.6 132.0:3.6 142.8:3.6 150.0:3.6 193.2:7.2 204.0:10.8 232.8:10.8 319.2:3.6 344.4:3.6 355.2:3.6 362.4:7.2 373.2:3.6 380.4:3.6 430.8:7.2 466.8:3.6 484.8:3.6 513.6:14.4 549.6:3.6 556.8:7.2 567.6:3.6 589.2:3.6 596.4:3.6 603.6:3.6 621.6:3.6 672.0:3.6 679.2:3.6 686.4:3.6 697.2:3.6 704.4:3.6 718.8:3.6 762.0:3.6 812.4:7.2 855.6:3.6 862.8:7.2 873.6:3.6 909.6:3.6 981.6:3.6 1021.2:3.6 1032.0:3.6 1042.8:7.2 1057.2:3.6 1075.2:3.6 1093.2:3.6 1111.2:3.6 1132.8:7.2
+  Gilbert-Elliott: 3 ráfagas, longitudes [5, 14, 41]; más larga 41
+   rects: 157.2:18.0 438.0:50.4 614.4:147.6
+==============================================================================
+EJEMPLO 14. PREDICTOR SIN MARCA DURANTE UNA RÁFAGA: CUÁNTO RETARDO QUEDA SIN COMPENSAR
+  ráfaga de  5 pasos: la última medida llega a tener 130 ms; sin marca se compensan 80 ms; quedan 50 ms + 5 ms sin compensar frente a los 94.7 ms del margen
+  ráfaga de 10 pasos: la última medida llega a tener 180 ms; sin marca se compensan 80 ms; quedan 100 ms + 5 ms sin compensar frente a los 94.7 ms del margen
+  ráfaga de 20 pasos: la última medida llega a tener 280 ms; sin marca se compensan 80 ms; quedan 200 ms + 5 ms sin compensar frente a los 94.7 ms del margen
+  ráfaga de 40 pasos: la última medida llega a tener 480 ms; sin marca se compensan 80 ms; quedan 400 ms + 5 ms sin compensar frente a los 94.7 ms del margen
+==============================================================================
+EJEMPLO 15. POR QUÉ s_(t-d) SOLO NO ES MARKOVIANO: s_(t+1) = s_t + a_t, d = 2
+  s_(t-2) = 0, acciones en vuelo (1, 1): s_t = 2; z_t = (0, 1, 1)
+  s_(t-2) = 0, acciones en vuelo (-1, -1): s_t = -2; z_t = (0, -1, -1)
+  s_(t-2) = 0, acciones en vuelo (1, -1): s_t = 0; z_t = (0, 1, -1)
+  misma observación s_(t-2) = 0 y tres estados actuales distintos: el futuro depende de lo que la observación no lleva
+  dimensión de z_t con d =  3 y acciones de 1 componentes: dim(s) + 3*1 = dim(s) + 3
+  dimensión de z_t con d =  3 y acciones de 4 componentes: dim(s) + 3*4 = dim(s) + 12
+  dimensión de z_t con d = 15 y acciones de 1 componentes: dim(s) + 15*1 = dim(s) + 15
+  dimensión de z_t con d = 15 y acciones de 4 componentes: dim(s) + 15*4 = dim(s) + 60
