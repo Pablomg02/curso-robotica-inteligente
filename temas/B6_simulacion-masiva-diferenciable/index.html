@@ -48,7 +48,7 @@
   <h2>Aprender cuesta muchas muestras; las muestras baratas cambian lo que es posible</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Rudin et al. entrenan a andar en terreno irregular con 1500 actualizaciones de PPO de 98 304 muestras: unos \(1{,}5\cdot10^8\) pasos, en menos de 20 minutos con 4096 robots simulados en una GPU <a class="cite" data-ref="rudin2022"></a>.</li>
         <li>Si además el simulador es diferenciable, el gradiente del coste respecto a la política sale por diferenciación automática: en un cuadricóptero, Heeg et al. dicen converger en 23 s frente a 2 min 15 s con PPO, con menos del 20 % de las muestras <a class="cite" data-ref="heeg2025"></a>.</li>
         <li>Pero ese gradiente puede ser ciego (no ve un choque) o explotar con el horizonte. Saber cuándo pasa es lo que separa un atajo de una trampa.</li>
@@ -85,7 +85,7 @@
   <h2>Lo que cambió con la física en la GPU</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Sin copias a la CPU:</strong> en Isaac Gym, la física y la red viven en la GPU y se pasan los datos sin pasar por la CPU; sus autores hablan de mejoras de dos a tres órdenes de magnitud frente a un simulador en CPU con la red en GPU <a class="cite" data-ref="makoviychuk2021"></a>.</li>
         <li><strong>Cifras de NVIDIA:</strong> Ant hasta 700 000 pasos/s; Ant en 20 s y Humanoid en 4 min de entrenamiento en una A100 <a class="cite" data-ref="makoviychuk2021"></a>. Brax, cifras de Google: millones de pasos/s en un acelerador, y RL de 100 a 1000 veces más barato <a class="cite" data-ref="freeman2021"></a>.</li>
         <li><strong>Locomoción real:</strong> 4096 robots, lotes de 98 304 muestras, 1500 actualizaciones en menos de 20 min en una RTX A6000, con transferencia a ANYmal <a class="cite" data-ref="rudin2022"></a>.</li>
@@ -94,6 +94,89 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">El límite que no es la GPU</span>Con más entornos para un mismo lote, cada uno aporta menos pasos seguidos. Isaac Gym no ganaba nada pasando Ant de 8192 a 16 384 entornos «por la menor longitud del horizonte»; Humanoid entrenaba peor por encima de 4096 <a class="cite" data-ref="makoviychuk2021"></a>.</div>
       <div class="callout error"><span class="tag">Error frecuente</span>Comparar «pasos por segundo» entre artículos: cambian la física, el número de subpasos, los contactos, el render y el hardware (B1). Mide el tuyo, en tu tarea.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra en las hojas de rendimiento</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Símbolo</th><th>Qué es</th><th style="width:34%">Ejemplo en el x500 de este tema</th></tr>
+      <tr><td>\(s\)</td><td>Estado de <strong>un</strong> entorno: posición (3), velocidad (3), cuaternión (4), velocidad angular (3) y velocidad de los 4 motores</td><td>17 números; en estacionario, cuaternión \((1,0,0,0)\) y motores a unos 760 rad/s</td></tr>
+      <tr><td>\(u\)</td><td>Mando que da la política: las 4 velocidades de motor pedidas</td><td>\(760 + 300\tanh(\cdot)\) rad/s</td></tr>
+      <tr><td>\(\theta\)</td><td>Pesos de la política, los mismos para todos los entornos (en el código, <code>params</code>)</td><td>MLP 17-64-64-4</td></tr>
+      <tr><td>\(N\)</td><td>Número de entornos que avanzan a la vez (el \(n_\text{entornos}\) de PPO)</td><td>De 1 a 1 048 576 en las medidas</td></tr>
+      <tr><td>\(S\)</td><td>El lote: los \(N\) estados apilados, una fila por entorno. No confundir con la sensibilidad \(S_t\) de la parte 2</td><td>Matriz 4096 × 17 en float32: 0,3 MB</td></tr>
+      <tr><td>\(\Delta t_f\)</td><td>Paso de la física; hay 10 por cada paso de control</td><td>1 ms; control a <span class="hz">100 Hz</span></td></tr>
+      <tr><td>\(t(N)\)</td><td>Tiempo de reloj de <strong>un</strong> paso de control de todo el lote</td><td>133 µs con 4096 entornos en la GPU</td></tr>
+      <tr><td>\(R(N)\)</td><td>Rendimiento: pasos de entorno por segundo, \(R = N/t(N)\)</td><td>4096 / 133 µs ≈ 31 millones/s</td></tr>
+      <tr><td>\(t_0\), \(\kappa\)</td><td>Coste fijo de un paso del lote y coste añadido por cada entorno (el modelo de la hoja «Un coste fijo por paso y un coste por entorno»)</td><td>75 µs y 11,8 ns en la RTX 4060 Ti</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · el esquema</p>
+  <h2>Qué hacen <code>vmap</code>, <code>scan</code> y <code>jit</code> con el paso de un dron</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 390" style="max-height:470px" role="img" aria-label="Una función escrita para un dron se convierte con vmap en una función sobre un lote de N filas, scan la repite en el tiempo y jit compila el conjunto">
+        <defs>
+          <marker id="b6m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b6ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="b6mt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+        </defs>
+        <text x="20" y="24" class="t-muted" font-size="13">escrito para UN dron</text>
+        <rect x="170" y="38" width="220" height="40" rx="5" class="box"/>
+        <text x="280" y="63" text-anchor="middle" class="t-mono" font-size="14">paso_entorno(θ, s)</text>
+        <path d="M84 58 H166" class="ln" marker-end="url(#b6m)"/>
+        <text x="20" y="62" class="t-mono" font-size="13">s (17)</text>
+        <path d="M392 58 H474" class="ln" marker-end="url(#b6m)"/>
+        <text x="480" y="62" class="t-mono" font-size="13">s′ (17)</text>
+        <path d="M280 80 V150" class="ln-accent" marker-end="url(#b6ma)"/>
+        <text x="270" y="108" text-anchor="end" class="t-accent t-bold" font-size="14">vmap</text>
+        <text x="270" y="125" text-anchor="end" class="t-muted" font-size="12">añade el eje de lote</text>
+        <text x="350" y="104" class="t-muted" font-size="12">θ: una sola copia</text>
+        <text x="350" y="119" class="t-muted" font-size="12">(in_axes = None)</text>
+        <path d="M360 124 V150" class="ln" marker-end="url(#b6m)"/>
+        <rect x="12" y="138" width="536" height="200" rx="6" class="ln-dash" fill="none"/>
+        <text x="75" y="164" text-anchor="middle" class="t-mono" font-size="13">S: N × 17</text>
+        <rect x="30" y="172" width="90" height="14" class="box-soft"/>
+        <rect x="30" y="190" width="90" height="14" class="box-soft"/>
+        <rect x="30" y="208" width="90" height="14" class="box-soft"/>
+        <text x="75" y="238" text-anchor="middle" class="t-faint" font-size="14">⋮</text>
+        <rect x="30" y="246" width="90" height="14" class="box-soft"/>
+        <text x="36" y="183" class="t-mono t-faint" font-size="10">entorno 1</text>
+        <text x="36" y="201" class="t-mono t-faint" font-size="10">entorno 2</text>
+        <text x="36" y="219" class="t-mono t-faint" font-size="10">entorno 3</text>
+        <text x="36" y="257" class="t-mono t-faint" font-size="10">entorno N</text>
+        <rect x="170" y="152" width="220" height="112" rx="5" class="box-accent"/>
+        <text x="280" y="178" text-anchor="middle" class="t-bold" font-size="14">paso por lotes</text>
+        <text x="280" y="199" text-anchor="middle" class="t-muted" font-size="12">las mismas cuentas en cada fila</text>
+        <text x="280" y="222" text-anchor="middle" class="t-mono" font-size="12">W₁s  →  S·W₁ᵀ</text>
+        <text x="280" y="243" text-anchor="middle" class="t-mono t-muted" font-size="12">(N×17)·(17×64) = N×64</text>
+        <path d="M122 214 H166" class="ln" marker-end="url(#b6m)"/>
+        <path d="M392 214 H436" class="ln" marker-end="url(#b6m)"/>
+        <text x="485" y="164" text-anchor="middle" class="t-mono" font-size="13">S′: N × 17</text>
+        <rect x="440" y="172" width="90" height="14" class="box-soft"/>
+        <rect x="440" y="190" width="90" height="14" class="box-soft"/>
+        <rect x="440" y="208" width="90" height="14" class="box-soft"/>
+        <text x="485" y="238" text-anchor="middle" class="t-faint" font-size="14">⋮</text>
+        <rect x="440" y="246" width="90" height="14" class="box-soft"/>
+        <path d="M485 264 V300 H75 V266" class="ln-time" marker-end="url(#b6mt)"/>
+        <text x="280" y="320" text-anchor="middle" class="t-time" font-size="13">scan: 100 pasos; S′ vuelve a entrar como S</text>
+        <text x="280" y="360" text-anchor="middle" class="t-muted" font-size="13">jit (recuadro discontinuo): se compila una vez con formas fijas</text>
+        <text x="280" y="378" text-anchor="middle" class="t-muted" font-size="13">y luego corre en el acelerador sin volver a Python</text>
+      </svg>
+      <figcaption>El despliegue de la hoja siguiente, dibujado: una función de un dron, un lote de \(N\) filas y un bucle en el tiempo, todo dentro de un programa compilado.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong><code>vmap</code></strong> convierte una función de un estado \(s\) en una función de un lote \(S\): es el bucle <code>for i in range(N)</code> sin bucle. Cada operación pasa a ser de matrices; \(\theta\) no tiene eje de lote y se comparte.</p>
+      <p><strong><code>scan</code></strong> es el bucle en el tiempo, dentro del programa compilado: lleva \(S\) de un paso al siguiente.</p>
+      <p><strong><code>jit</code></strong> traza la función una vez y la compila con XLA; después, cada llamada lanza núcleos en la GPU sin pasar por el intérprete.</p>
+      <div class="callout clave"><span class="tag">El caso concreto</span>Con \(N = 4096\), la primera capa de la red deja de ser una matriz 64 × 17 por un vector de 17 y pasa a ser un producto (4096 × 17)·(17 × 64): 4096 veces el trabajo en una sola operación, que es lo que llena una GPU.</div>
     </div>
   </div>
 </section>
@@ -118,7 +201,7 @@ def despliegue(params, S):         # S: (n_entornos, 17)
       <p class="xsmall muted">Núcleo de <code>figuras_b6.py</code>, sección 1: x500 con 13 estados y 4 motores, política MLP 17-64-64-4, 10 subpasos de 1 ms por paso de control.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Forma fija:</strong> mismo tamaño de estado en todos los entornos y en todos los pasos; nada de listas que crecen.</li>
         <li><strong>Sin ramas por entorno:</strong> <code>jnp.where</code> en lugar de <code>if</code>; bajo <code>vmap</code>, un <code>lax.cond</code> con predicado por lote ejecuta las dos ramas (B4).</li>
         <li><strong>Reinicio automático</strong> dentro de <code>jit</code>, entorno a entorno.</li>
@@ -161,7 +244,7 @@ def despliegue(params, S):         # S: (n_entornos, 17)
       <figcaption>Pasos de entorno por segundo (escala logarítmica) del x500 vectorizado en un i7-14700K y una RTX 4060 Ti, JAX 0.12. Tus cifras serán otras. <code>figuras_b6.py</code>, sección 1.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Compilar ya gana:</strong> un solo entorno con <code>jit</code> en CPU da 1,2 millones de pasos/s frente a unos 3900 en Python: el intérprete era el cuello de botella.</li>
         <li><strong>CPU:</strong> satura enseguida, hacia 5,5 millones, y fluctúa con la caché y los hilos.</li>
         <li><strong>GPU:</strong> con un entorno, 13 000 pasos/s (cada paso lanza núcleos casi vacíos); con 4096, 31 millones; pico de 72 millones con 65 536; con un millón, 31 millones: la memoria manda.</li>
@@ -172,11 +255,178 @@ def despliegue(params, S):         # S: (n_entornos, 17)
 </section>
 
 <section class="slide">
+  <p class="kicker">Escala · por qué sube</p>
+  <h2>Un coste fijo por paso y un coste por entorno</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Origen:</strong> cada paso del lote cuesta un tiempo fijo \(t_0\) aunque haya un solo entorno (lanzar los núcleos, sincronizar, leer los pesos) más un tiempo \(\kappa\) por cada entorno (sus cuentas).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(t(N) = t_0 + \kappa N\)</td><td>El modelo: fijo más proporcional</td></tr>
+          <tr><td><strong>2</strong></td><td>\(R(N) = \dfrac{N}{t_0 + \kappa N}\)</td><td>Cada paso del lote avanza \(N\) entornos</td></tr>
+          <tr><td><strong>3</strong></td><td>\(N \ll t_0/\kappa\): \(R \approx N/t_0\)</td><td>Domina el coste fijo: doblar \(N\) dobla \(R\) casi gratis</td></tr>
+          <tr><td><strong>4</strong></td><td>\(N \gg t_0/\kappa\): \(R \approx 1/\kappa\)</td><td>La GPU está llena: más entornos no aceleran</td></tr>
+          <tr><td><strong>5</strong></td><td>\(N^* = t_0/\kappa\), \(R(N^*) = \tfrac{1}{2\kappa}\)</td><td>Los dos términos pesan igual: la mitad del techo</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Con las medidas de la RTX 4060 Ti:</strong></p>
+      <ul>
+        <li>1 entorno: 7,5 ms por 100 pasos, así que \(t_0 \approx 75\) µs.</li>
+        <li>De 16 384 a 65 536 entornos, \(t\) pasa de 332 a 914 µs: \(\kappa \approx 582\ \text{µs} / 49\,152 \approx 11{,}8\) ns.</li>
+        <li>\(N^* \approx 75\ \text{µs}/11{,}8\ \text{ns} \approx 6300\) entornos; techo \(1/\kappa \approx 85\) millones de pasos/s.</li>
+        <li>Con 4096: \(t = 75 + 0{,}0118\cdot 4096 \approx 123\) µs y \(R \approx 33\) millones (medidos, 133 µs y 31 millones).</li>
+      </ul>
+      <div class="aparte"><span class="rotulo">Lo que el modelo no dice</span>
+        <p>Supone \(\kappa\) constante. Por encima de 65 536 entornos, el coste medido de cada entorno añadido sube a 21 y luego a 37 ns, y \(R\) baja en lugar de quedarse en el techo: hoja siguiente. Ejemplo 1 del script.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · y por qué baja</p>
+  <h2>Medido: el coste fijo, la pendiente y el codo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Tiempo de un paso del lote frente al número de entornos en CPU y GPU, con el modelo de coste fijo más coste por entorno">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="217" text-anchor="end" class="t-mono t-faint" font-size="12">1 µs</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">100</text>
+        <text x="52" y="71" text-anchor="end" class="t-mono t-faint" font-size="12">10⁴</text>
+        <line x1="60" y1="140" x2="520" y2="140" class="ln-rule"/>
+        <line x1="60" y1="66.7" x2="520" y2="66.7" class="ln-rule"/>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="133" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="206" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10²</text>
+        <text x="279" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10³</text>
+        <text x="352" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁴</text>
+        <text x="425" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁵</text>
+        <text x="498" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁶</text>
+        <line x1="60" y1="123.8" x2="300" y2="123.8" class="ln-dash"/>
+        <text x="64" y="118" class="t-muted" font-size="12">1 entorno en Python: 277 µs</text>
+        <path d="M60.0,144.6 L71.3,144.6 L82.5,144.6 L93.8,144.6 L105.1,144.6 L116.4,144.6 L127.6,144.6 L138.9,144.6 L150.2,144.5 L161.4,144.5 L172.7,144.5 L184.0,144.5 L195.2,144.4 L206.5,144.3 L217.8,144.2 L229.1,144.1 L240.3,143.9 L251.6,143.6 L262.9,143.1 L274.1,142.6 L285.4,141.8 L296.7,140.7 L308.0,139.3 L319.2,137.5 L330.5,135.2 L341.8,132.5 L353.0,129.2 L364.3,125.5 L375.6,121.3 L386.8,116.8 L398.1,112.0 L409.4,106.9 L420.7,101.7 L431.9,96.4 L443.2,91.0 L454.5,85.5 L465.7,79.9 L477.0,74.4 L488.3,68.8 L499.6,63.1" fill="none" class="ln-dash ln-accent"/>
+        <path d="M60.0,144.6 L147.9,143.2 L235.8,142.0 L323.8,135.5 L367.7,120.9 L411.7,104.8 L455.6,77.6 L499.6,47.3" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,213.3 L147.9,182.3 L235.8,152.0 L323.8,101.0 L367.7,74.3 L411.7,63.8" fill="none" class="ln-time" stroke-width="2.5"/>
+        <text x="70" y="139" class="t-accent" font-size="12">GPU: t₀ ≈ 75 µs, casi plano</text>
+        <text x="250" y="178" class="t-time" font-size="13">CPU</text>
+        <text x="470" y="110" class="t-accent" font-size="13">GPU</text>
+        <text x="330" y="160" class="t-accent" font-size="12">discontinua: t₀ + κN</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">entornos en paralelo, N</text>
+      </svg>
+      <figcaption>Tiempo de un paso de control del lote, \(t(N)\), en escala logarítmica: las mismas medidas que la figura de rendimiento (<code>salida_cpu.txt</code>, <code>salida_gpu.txt</code>), divididas en lugar de multiplicadas. Ejemplo 1 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>GPU hasta 256 entornos:</strong> \(t\) casi no cambia (75 → 88 µs): el lote crece gratis y \(R\) crece casi como \(N\).</li>
+        <li><strong>De 4096 a 65 536:</strong> \(t\) crece casi como \(N\) y \(R\) se acerca al techo (72 millones medidos).</li>
+        <li><strong>Más allá, el codo:</strong> cada entorno añadido cuesta 11,8, luego 20,9 y luego 36,7 ns, y \(R\) cae a 52 y 31 millones. El estado del lote ya pesa 18 MB con 262 144 entornos y 71 MB con un millón, más los intermedios de la red: lo que la figura de rendimiento resumía como «la memoria manda».</li>
+        <li><strong>CPU:</strong> \(t_0\) de 1 µs, pero cada entorno cuesta de 0,1 a 0,4 µs: gana con uno y pierde con miles.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · el lote de PPO</p>
+  <h2>El lote de PPO es una rejilla de entornos por pasos seguidos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Rejilla del lote de PPO: filas de entornos, columnas de pasos; una fila es una trayectoria y una columna es un paso del lote">
+        <rect x="110" y="84" width="384" height="24" class="box-accent"/>
+        <rect x="350" y="60" width="16" height="168" class="box-time"/>
+        <line x1="110" y1="60" x2="110" y2="156" class="ln-rule"/>
+        <line x1="126" y1="60" x2="126" y2="156" class="ln-rule"/>
+        <line x1="142" y1="60" x2="142" y2="156" class="ln-rule"/>
+        <line x1="158" y1="60" x2="158" y2="156" class="ln-rule"/>
+        <line x1="174" y1="60" x2="174" y2="156" class="ln-rule"/>
+        <line x1="190" y1="60" x2="190" y2="156" class="ln-rule"/>
+        <line x1="206" y1="60" x2="206" y2="156" class="ln-rule"/>
+        <line x1="222" y1="60" x2="222" y2="156" class="ln-rule"/>
+        <line x1="238" y1="60" x2="238" y2="156" class="ln-rule"/>
+        <line x1="254" y1="60" x2="254" y2="156" class="ln-rule"/>
+        <line x1="270" y1="60" x2="270" y2="156" class="ln-rule"/>
+        <line x1="286" y1="60" x2="286" y2="156" class="ln-rule"/>
+        <line x1="302" y1="60" x2="302" y2="156" class="ln-rule"/>
+        <line x1="318" y1="60" x2="318" y2="156" class="ln-rule"/>
+        <line x1="334" y1="60" x2="334" y2="156" class="ln-rule"/>
+        <line x1="350" y1="60" x2="350" y2="156" class="ln-rule"/>
+        <line x1="366" y1="60" x2="366" y2="156" class="ln-rule"/>
+        <line x1="382" y1="60" x2="382" y2="156" class="ln-rule"/>
+        <line x1="398" y1="60" x2="398" y2="156" class="ln-rule"/>
+        <line x1="414" y1="60" x2="414" y2="156" class="ln-rule"/>
+        <line x1="430" y1="60" x2="430" y2="156" class="ln-rule"/>
+        <line x1="446" y1="60" x2="446" y2="156" class="ln-rule"/>
+        <line x1="462" y1="60" x2="462" y2="156" class="ln-rule"/>
+        <line x1="478" y1="60" x2="478" y2="156" class="ln-rule"/>
+        <line x1="494" y1="60" x2="494" y2="156" class="ln-rule"/>
+        <line x1="110" y1="60" x2="494" y2="60" class="ln-rule"/>
+        <line x1="110" y1="84" x2="494" y2="84" class="ln-rule"/>
+        <line x1="110" y1="108" x2="494" y2="108" class="ln-rule"/>
+        <line x1="110" y1="132" x2="494" y2="132" class="ln-rule"/>
+        <line x1="110" y1="156" x2="494" y2="156" class="ln-rule"/>
+        <line x1="110" y1="180" x2="110" y2="228" class="ln-rule"/>
+        <line x1="126" y1="180" x2="126" y2="228" class="ln-rule"/>
+        <line x1="142" y1="180" x2="142" y2="228" class="ln-rule"/>
+        <line x1="158" y1="180" x2="158" y2="228" class="ln-rule"/>
+        <line x1="174" y1="180" x2="174" y2="228" class="ln-rule"/>
+        <line x1="190" y1="180" x2="190" y2="228" class="ln-rule"/>
+        <line x1="206" y1="180" x2="206" y2="228" class="ln-rule"/>
+        <line x1="222" y1="180" x2="222" y2="228" class="ln-rule"/>
+        <line x1="238" y1="180" x2="238" y2="228" class="ln-rule"/>
+        <line x1="254" y1="180" x2="254" y2="228" class="ln-rule"/>
+        <line x1="270" y1="180" x2="270" y2="228" class="ln-rule"/>
+        <line x1="286" y1="180" x2="286" y2="228" class="ln-rule"/>
+        <line x1="302" y1="180" x2="302" y2="228" class="ln-rule"/>
+        <line x1="318" y1="180" x2="318" y2="228" class="ln-rule"/>
+        <line x1="334" y1="180" x2="334" y2="228" class="ln-rule"/>
+        <line x1="350" y1="180" x2="350" y2="228" class="ln-rule"/>
+        <line x1="366" y1="180" x2="366" y2="228" class="ln-rule"/>
+        <line x1="382" y1="180" x2="382" y2="228" class="ln-rule"/>
+        <line x1="398" y1="180" x2="398" y2="228" class="ln-rule"/>
+        <line x1="414" y1="180" x2="414" y2="228" class="ln-rule"/>
+        <line x1="430" y1="180" x2="430" y2="228" class="ln-rule"/>
+        <line x1="446" y1="180" x2="446" y2="228" class="ln-rule"/>
+        <line x1="462" y1="180" x2="462" y2="228" class="ln-rule"/>
+        <line x1="478" y1="180" x2="478" y2="228" class="ln-rule"/>
+        <line x1="494" y1="180" x2="494" y2="228" class="ln-rule"/>
+        <line x1="110" y1="180" x2="494" y2="180" class="ln-rule"/>
+        <line x1="110" y1="204" x2="494" y2="204" class="ln-rule"/>
+        <line x1="110" y1="228" x2="494" y2="228" class="ln-rule"/>
+        <text x="104" y="76" text-anchor="end" class="t-mono t-faint" font-size="11">1</text>
+        <text x="104" y="100" text-anchor="end" class="t-mono t-faint" font-size="11">2</text>
+        <text x="104" y="124" text-anchor="end" class="t-mono t-faint" font-size="11">3</text>
+        <text x="104" y="148" text-anchor="end" class="t-mono t-faint" font-size="11">4</text>
+        <text x="104" y="196" text-anchor="end" class="t-mono t-faint" font-size="11">4095</text>
+        <text x="104" y="220" text-anchor="end" class="t-mono t-faint" font-size="11">4096</text>
+        <text x="104" y="174" text-anchor="end" class="t-faint" font-size="13">⋮</text>
+        <text x="302" y="174" text-anchor="middle" class="t-faint" font-size="13">⋮</text>
+        <path d="M490 96 H116" class="ln-accent" stroke-width="2"/>
+        <text x="302" y="24" text-anchor="middle" class="t-muted" font-size="13">pasos seguidos de cada entorno: n_pasos = 24 →</text>
+        <text x="40" y="150" text-anchor="middle" class="t-muted" font-size="13" transform="rotate(-90 40 150)">N = 4096 entornos</text>
+        <text x="358" y="48" text-anchor="middle" class="t-time" font-size="12">una columna: un paso del lote</text>
+        <text x="110" y="256" class="t-accent" font-size="13">una fila: una trayectoria de 24 pasos; GAE la recorre hacia atrás</text>
+        <text x="110" y="288" class="t-mono" font-size="14">B = N · n_pasos = 4096 × 24 = 98 304 muestras</text>
+      </svg>
+      <figcaption>La configuración de Rudin et al. <a class="cite" data-ref="rudin2022"></a> dibujada. Una columna es una llamada al despliegue vectorizado de las hojas anteriores. Ejemplo 2 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>A lote \(B\) fijo, más entornos son filas más cortas: con 98 304 muestras, 2048 entornos dan 48 pasos por fila; 4096, 24; 8192, 12; y 16 384, solo 6.</p>
+      <p>La ventaja de PPO (GAE) se calcula a lo largo de cada fila: con filas cortas, casi toda la información del futuro sale del crítico y no de recompensas vistas.</p>
+      <div class="callout clave"><span class="tag">Fin por tiempo no es fin del episodio</span>El objetivo del crítico en un paso es \(r_t + \gamma\,(1 - d_t)\,V(s_{t+1})\), con \(r_t\) la recompensa, \(\gamma\) el descuento, \(V\) el crítico y \(d_t = 1\) si el episodio <em>termina</em> (un choque). Si una fila se corta solo por tiempo y la política no ve el reloj, \(d_t\) debe ser 0: se conserva \(V(s_{t+1})\). Rudin et al. lo hacen y señalan que la interfaz de Gym no lo distinguía y que implementaciones populares lo ignoraban <a class="cite" data-ref="rudin2022"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Escala · PPO</p>
   <h2>Más entornos o más pasos por entorno: el lote es su producto</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">El lote de PPO es \(B = n_\text{entornos}\cdot n_\text{pasos}\). A \(B\) fijo, más entornos significa trayectorias más cortas por actualización.</p>
+      <p>El lote de PPO es \(B = n_\text{entornos}\cdot n_\text{pasos}\). A \(B\) fijo, más entornos significa trayectorias más cortas por actualización.</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Hallazgo de Rudin et al.</th><th>Cifra</th></tr></thead>
@@ -192,7 +442,6 @@ def despliegue(params, S):         # S: (n_entornos, 17)
       <p class="xsmall muted">Sección 2.2 y apéndice A.4 <a class="cite" data-ref="rudin2022"></a>.</p>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">Fin por tiempo no es fin del episodio</span>Si un episodio se corta por tiempo y la política no ve el reloj, el crítico debe usar su propia predicción del valor siguiente en lugar de cero. Rudin et al. lo hacen y señalan que la interfaz de Gym no lo distinguía y que implementaciones populares lo ignoraban <a class="cite" data-ref="rudin2022"></a>.</div>
       <div class="callout realidad"><span class="tag">Minilotes grandes</span>Minilotes de decenas de miles de muestras, mucho mayores que la práctica habitual, estabilizan el aprendizaje sin alargar el entrenamiento <a class="cite" data-ref="rudin2022"></a>.</div>
       <div class="callout tesis"><span class="tag">Para tu tesis</span>Una política con memoria (A7b) necesita trayectorias aún más largas por actualización: el horizonte mínimo lo pone lo que tiene que recordar, no la GPU.</div>
     </div>
@@ -238,23 +487,261 @@ def despliegue(params, S):         # S: (n_entornos, 17)
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra en las hojas de estimadores</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:33%">Ejemplo</th></tr>
+      <tr><td>\(\theta\), \(d\)</td><td>Parámetros que se optimizan, un vector de \(d\) números</td><td>Las 6 ganancias del dron plano (\(d = 6\)). En el muro, \(\theta\) es la altura de consigna (\(d = 1\))</td></tr>
+      <tr><td>\(\xi\)</td><td>Toda la aleatoriedad de un despliegue, sorteada antes y pasada como entrada</td><td>Estado inicial y ráfagas de cada paso</td></tr>
+      <tr><td>\(J(\theta,\xi)\)</td><td>Coste de <strong>un</strong> despliegue (un escalar)</td><td>Error cuadrático medio de posición en 10 s</td></tr>
+      <tr><td>\(\bar J(\theta)\), \(g\)</td><td>Coste esperado \(\mathbb E_\xi[J(\theta,\xi)]\), lo que se quiere minimizar, y su gradiente verdadero \(g = \nabla_\theta \bar J\)</td><td>\(g\) es lo que ningún estimador ve directamente</td></tr>
+      <tr><td>\(\hat g\), \(n\)</td><td>Una estimación de \(g\) (aleatoria), hecha con \(n\) muestras o perturbaciones</td><td>\(n = 16\) parejas en el dron plano</td></tr>
+      <tr><td>\(\varepsilon\), \(\sigma\)</td><td>Perturbación gaussiana estándar (\(d\) números, \(\varepsilon\sim\mathcal N(0,I)\)) y su tamaño en unidades de \(\theta\)</td><td>\(\sigma = 0{,}1\) m en el muro</td></tr>
+      <tr><td>\(J_\sigma(\theta)\)</td><td>Coste suavizado: \(\mathbb E_\varepsilon[J(\theta+\sigma\varepsilon)]\), el promedio de \(J\) en una nube gaussiana alrededor de \(\theta\)</td><td>Si \(J\) salta, \(J_\sigma\) no</td></tr>
+      <tr><td>\(\mathcal N(u;\theta,\sigma^2 I)\)</td><td>Densidad gaussiana de media \(\theta\) y covarianza \(\sigma^2 I\), evaluada en \(u\)</td><td>La nube de la fila anterior</td></tr>
+      <tr><td>\(p(\xi)\)</td><td>Densidad de la aleatoriedad; no depende de \(\theta\)</td><td>Ráfagas \(\mathcal N(0, 2^2)\) m/s² por paso</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · el esquema</p>
+  <h2>Dos maneras de sacar el gradiente de un simulador</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 350" style="max-height:440px" role="img" aria-label="Orden cero: varias simulaciones con parámetros perturbados se combinan; primer orden: una simulación hacia delante y una retropropagación hacia atrás">
+        <defs>
+          <marker id="b6dm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b6da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="b6ds" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <text x="20" y="20" class="t-time t-bold" font-size="14">Orden cero: n simulaciones, solo se mira J</text>
+        <text x="30" y="98" class="t-mono" font-size="16">θ</text>
+        <path d="M46 92 L106 50" class="ln" marker-end="url(#b6dm)"/>
+        <path d="M46 94 L106 86" class="ln" marker-end="url(#b6dm)"/>
+        <path d="M46 96 L106 122" class="ln" marker-end="url(#b6dm)"/>
+        <rect x="110" y="36" width="140" height="28" rx="4" class="box-time"/>
+        <rect x="110" y="72" width="140" height="28" rx="4" class="box-time"/>
+        <rect x="110" y="108" width="140" height="28" rx="4" class="box-time"/>
+        <text x="180" y="55" text-anchor="middle" class="t-mono" font-size="13">sim(θ + σε₁)</text>
+        <text x="180" y="91" text-anchor="middle" class="t-mono" font-size="13">sim(θ + σε₂)</text>
+        <text x="180" y="127" text-anchor="middle" class="t-mono" font-size="13">sim(θ + σεₙ)</text>
+        <text x="180" y="152" text-anchor="middle" class="t-faint" font-size="12">(en paralelo)</text>
+        <text x="262" y="55" class="t-mono" font-size="13">J₁</text>
+        <text x="262" y="91" class="t-mono" font-size="13">J₂</text>
+        <text x="262" y="127" class="t-mono" font-size="13">Jₙ</text>
+        <path d="M288 51 L330 80" class="ln" marker-end="url(#b6dm)"/>
+        <path d="M288 87 L330 87" class="ln" marker-end="url(#b6dm)"/>
+        <path d="M288 123 L330 94" class="ln" marker-end="url(#b6dm)"/>
+        <rect x="334" y="66" width="200" height="42" rx="5" class="box-time"/>
+        <text x="434" y="92" text-anchor="middle" class="t-mono" font-size="13">ĝ = (1/nσ) Σ Jᵢ εᵢ</text>
+        <line x1="20" y1="178" x2="540" y2="178" class="ln-rule"/>
+        <text x="20" y="204" class="t-accent t-bold" font-size="14">Primer orden: una simulación y una retropropagación</text>
+        <text x="30" y="258" class="t-mono" font-size="16">θ</text>
+        <path d="M46 253 H86" class="ln" marker-end="url(#b6dm)"/>
+        <circle cx="104" cy="253" r="14" class="box"/><text x="104" y="258" text-anchor="middle" class="t-mono" font-size="12">x₀</text>
+        <circle cx="184" cy="253" r="14" class="box"/><text x="184" y="258" text-anchor="middle" class="t-mono" font-size="12">x₁</text>
+        <circle cx="264" cy="253" r="14" class="box"/><text x="264" y="258" text-anchor="middle" class="t-mono" font-size="12">x₂</text>
+        <text x="320" y="258" text-anchor="middle" class="t-faint" font-size="14">…</text>
+        <circle cx="384" cy="253" r="14" class="box"/><text x="384" y="258" text-anchor="middle" class="t-mono" font-size="12">x_H</text>
+        <path d="M120 236 H166" class="ln-accent" marker-end="url(#b6da)"/>
+        <path d="M200 236 H246" class="ln-accent" marker-end="url(#b6da)"/>
+        <path d="M280 236 H366" class="ln-accent" marker-end="url(#b6da)"/>
+        <text x="244" y="226" text-anchor="middle" class="t-accent" font-size="12">hacia delante: guarda los estados</text>
+        <path d="M384 276 H106" class="ln-tesis ln-dash" marker-end="url(#b6ds)"/>
+        <text x="244" y="296" text-anchor="middle" class="t-tesis" font-size="12">hacia atrás: regla de la cadena por los H pasos</text>
+        <rect x="430" y="232" width="104" height="42" rx="5" class="box-accent"/>
+        <text x="482" y="258" text-anchor="middle" class="t-mono" font-size="13">ĝ = ∇θ J</text>
+        <path d="M400 253 H426" class="ln" marker-end="url(#b6dm)"/>
+        <text x="20" y="334" class="t-muted" font-size="13">El primer orden necesita las derivadas de cada paso: el simulador deja de ser una caja negra.</text>
+      </svg>
+      <figcaption>Lo que entra (\(\theta\)), lo que se simula y lo que sale (\(\hat g\)) en cada estimador.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Orden cero:</strong> prueba \(\theta\) desplazado en \(n\) direcciones al azar y mira si el coste sube o baja. Solo evalúa \(J\): vale con cualquier simulador, aunque no sea diferenciable.</p>
+      <p><strong>Primer orden:</strong> simula una vez y retropropaga el coste por los \(H\) pasos con diferenciación automática. Pide un simulador diferenciable.</p>
+      <div class="callout realidad"><span class="tag">En el dron plano de este tema</span>Con \(d = 6\) ganancias: el orden cero usa 16 parejas de perturbaciones, 32 simulaciones por estimación; el primer orden, 1 simulación y 1 retropropagación. Las hojas siguientes derivan cada uno.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Gradientes · dos estimadores</p>
   <h2>Probar y mirar el resultado, o derivar a través de la física</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Queremos \(\nabla_\theta\,\mathbb E_\xi[J(\theta,\xi)]\), con \(\xi\) la aleatoriedad (ráfagas, estado inicial, ruido de la política).</p>
-      <p class="small"><strong>Orden cero</strong> (función de puntuación, estrategias evolutivas): solo necesita evaluar \(J\). Con suavizado gaussiano,</p>
+      <p>Queremos \(\nabla_\theta\,\mathbb E_\xi[J(\theta,\xi)]\), con \(\xi\) la aleatoriedad (ráfagas, estado inicial, ruido de la política).</p>
+      <p><strong>Orden cero</strong> (función de puntuación, estrategias evolutivas): solo necesita evaluar \(J\). Con suavizado gaussiano,</p>
       \[ \nabla_\theta\,\mathbb E_\varepsilon\big[J(\theta+\sigma\varepsilon)\big] = \tfrac{1}{\sigma}\,\mathbb E_\varepsilon\big[J(\theta+\sigma\varepsilon)\,\varepsilon\big]. \]
-      <p class="small"><strong>Primer orden</strong> (de la trayectoria, reparametrización): deriva cada muestra,</p>
+      <p><strong>Primer orden</strong> (de la trayectoria, reparametrización): deriva cada muestra,</p>
       \[ \nabla_\theta\,\mathbb E_\xi\big[J(\theta,\xi)\big] = \mathbb E_\xi\big[\nabla_\theta J(\theta,\xi)\big], \]
-      <p class="small">válido si \(J(\cdot,\xi)\) es continua y lipschitziana con constante integrable. Suh et al. los llaman ZoBG y FoBG <a class="cite" data-ref="suh2022"></a>.</p>
+      <p>válido si \(J(\cdot,\xi)\) es continua y lipschitziana con constante integrable. Suh et al. los llaman ZoBG y FoBG <a class="cite" data-ref="suh2022"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: de dónde salen y dónde falla el primer orden</summary>
-        <p class="small">Orden cero: \(\mathbb E[J(\theta+\sigma\varepsilon)] = \int J(u)\,\mathcal N(u;\theta,\sigma^2 I)\,du\). Derivando la densidad, \(\nabla_\theta \mathcal N = \mathcal N\,(u-\theta)/\sigma^2\), y con \(u = \theta+\sigma\varepsilon\) sale la fórmula. No pide nada a \(J\): ni continuidad.</p>
-        <p class="small">Primer orden: intercambiar derivada y esperanza exige que \(J\) no salte. Con \(J = \mathbf 1[z(\theta,\xi) &lt; h]\), \(\nabla_\theta J = 0\) en casi todo punto, pero \(\nabla_\theta P(z&lt;h)\neq 0\): la derivada de la esperanza tiene un término de frontera (regla de Leibniz) que el gradiente de cada muestra no ve.</p>
-      </details>
       <div class="callout clave"><span class="tag">El reparto clásico</span>Orden cero: varianza que crece con la dimensión de \(\theta\), sin sesgo aunque haya saltos. Primer orden: poca varianza en problemas suaves, a cambio de exigir suavidad y de retropropagar por todo el despliegue.</div>
+      <p>Qué viene, en orden:</p>
+      <ul>
+        <li>de dónde sale la fórmula de orden cero y cuánto varía;</li>
+        <li>de dónde sale la de primer orden y qué condición pide;</li>
+        <li>cómo se retropropaga un despliegue, a mano;</li>
+        <li>y qué pasa cuando la condición falla: el muro.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · orden cero, derivación</p>
+  <h2>De dónde sale el estimador de orden cero</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p><strong>Origen:</strong> no se deriva \(J\); se deriva la densidad gaussiana con la que se promedia, que es suave aunque \(J\) no lo sea.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J_\sigma(\theta) = \displaystyle\int J(u)\,\mathcal N(u;\theta,\sigma^2 I)\,du\)</td><td>Cambio de variable \(u = \theta+\sigma\varepsilon\): \(u\) es gaussiana de media \(\theta\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\nabla_\theta J_\sigma = \displaystyle\int J(u)\,\nabla_\theta \mathcal N(u;\theta,\sigma^2 I)\,du\)</td><td>\(\theta\) solo aparece en la densidad: \(J\) no se deriva</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\nabla_\theta \mathcal N = \mathcal N\cdot\dfrac{u-\theta}{\sigma^2}\)</td><td>\(\log\mathcal N = -\tfrac{\|u-\theta\|^2}{2\sigma^2} + \text{cte}\) y \(\nabla\mathcal N = \mathcal N\,\nabla\log\mathcal N\): el truco de la puntuación</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\nabla_\theta J_\sigma = \mathbb E_u\Big[J(u)\,\dfrac{u-\theta}{\sigma^2}\Big]\)</td><td>Una integral contra la densidad es una esperanza</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\nabla_\theta J_\sigma = \tfrac1\sigma\,\mathbb E_\varepsilon\big[J(\theta+\sigma\varepsilon)\,\varepsilon\big]\)</td><td>Deshacer el cambio: \(u-\theta = \sigma\varepsilon\)</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\hat g = \dfrac{1}{n\sigma}\displaystyle\sum_{i=1}^n J(\theta+\sigma\varepsilon_i)\,\varepsilon_i\)</td><td>La esperanza se estima con la media de \(n\) perturbaciones</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué estima de verdad</span>El gradiente de \(J_\sigma\), el coste <em>suavizado</em>, no el de \(J\). Si \(J\) es suave y \(\sigma\) pequeña, se parecen; si \(J\) salta, \(J_\sigma\) sigue siendo derivable. Por eso no pide nada a \(J\), ni continuidad.</div>
+      <div class="aparte"><span class="rotulo">Parejas antitéticas</span>
+        <p>Como \(\mathbb E[\varepsilon] = 0\), restar \(J(\theta)\) no cambia la media. Usar cada \(\varepsilon_i\) y su opuesto da</p>
+        <p>\(\hat g = \frac{1}{2n\sigma}\sum_i \big[J(\theta+\sigma\varepsilon_i) - J(\theta-\sigma\varepsilon_i)\big]\varepsilon_i\),</p>
+        <p>la forma que usa <code>figuras_b6.py</code>: 16 parejas, 32 simulaciones.</p>
+      </div>
+      <p class="small muted">Paso 3 comprobado con números (\(u = 1{,}3\), \(\theta = 1\), \(\sigma^2 = 0{,}04\)): diferencias finitas y fórmula dan 4,85691. Ejemplo 3 del script.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · orden cero, varianza</p>
+  <h2>Orden cero a mano, y por qué su varianza crece con la dimensión</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>A mano, en 1-D:</strong> \(J(\theta) = \theta^2\) en \(\theta = 1\) (gradiente verdadero 2), con \(\sigma = 0{,}1\) y una pareja.</p>
+      <ul>
+        <li>\(\varepsilon = 0{,}5\): \(J(1{,}05) = 1{,}1025\), \(J(0{,}95) = 0{,}9025\); \(\hat g = \frac{0{,}2}{0{,}2}\cdot 0{,}5 = 0{,}5\).</li>
+        <li>\(\varepsilon = 1\): \(\hat g = 2\). \(\varepsilon = 1{,}5\): \(\hat g = 4{,}5\).</li>
+        <li>En general, \(\hat g = 2\theta\varepsilon^2\): acierta en media (\(\mathbb E[\varepsilon^2] = 1\)), pero su varianza es \(2g^2 = 8\).</li>
+      </ul>
+      <p>Un millón de parejas: media 2,003 y varianza 8,03. Sin la pareja, \(J(\theta+\sigma\varepsilon)\varepsilon/\sigma\) tiene varianza 114: el término \(J(\theta)\varepsilon/\sigma\) solo añade ruido. Ejemplo 3.</p>
+    </div>
+    <div class="stack">
+      <p><strong>En \(d\) dimensiones</strong>, con \(J\) lineal de gradiente \(g\) y una pareja:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J(\theta{+}\sigma\varepsilon) - J(\theta{-}\sigma\varepsilon) = 2\sigma\,g^\top\varepsilon\)</td><td>\(J\) lineal</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\hat g = (g^\top\varepsilon)\,\varepsilon\), \(\mathbb E[\hat g] = g\)</td><td>Fórmula antitética; \(\mathbb E[\varepsilon\varepsilon^\top] = I\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E\|\hat g\|^2 = (d+2)\,\|g\|^2\)</td><td>Ejes con \(g\) en el primero: \(\mathbb E[\varepsilon_1^4] = 3\) y \(d-1\) términos \(\mathbb E[\varepsilon_1^2\varepsilon_j^2] = 1\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathbb E\|\hat g - g\|^2 = \dfrac{(d+1)\,\|g\|^2}{n}\)</td><td>Restar \(\|g\|^2\); \(n\) parejas independientes dividen por \(n\)</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Con números</span>\(d = 6\), \(n = 16\): desviación relativa \(\sqrt{7/16} = 0{,}66\) (medida, 0,66). Una red de \(10^4\) pesos con 16 parejas: 25 veces la norma de \(g\). El primer orden no tiene este término. Ejemplo 4.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · primer orden, derivación</p>
+  <h2>Primer orden: meter la derivada dentro de la esperanza</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Origen:</strong> la aleatoriedad entra como un argumento más del simulador (las ráfagas se sortean antes y se pasan como entrada), así que su distribución no depende de \(\theta\). Basta con derivar cada despliegue.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\bar J(\theta) = \displaystyle\int J(\theta,\xi)\,p(\xi)\,d\xi\)</td><td>Definición; \(p\) no depende de \(\theta\) (reparametrización)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\nabla_\theta\bar J = \displaystyle\int \nabla_\theta J(\theta,\xi)\,p(\xi)\,d\xi\)</td><td>Derivar dentro de la integral: vale si \(J(\cdot,\xi)\) es continua y lipschitziana con constante integrable</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\nabla_\theta\bar J = \mathbb E_\xi\big[\nabla_\theta J(\theta,\xi)\big]\)</td><td>Otra vez, integral contra la densidad = esperanza</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\hat g = \frac1n\sum_{i=1}^n \nabla_\theta J(\theta,\xi_i)\)</td><td>Cada muestra: un despliegue y una retropropagación</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>A mano:</strong> \(J(\theta,\xi) = (\theta+\xi)^2\) con \(\xi\sim\mathcal N(0,1)\) y \(\theta = 1\). Entonces \(\bar J = \theta^2+1\) y \(g = 2\theta = 2\).</p>
+      <ul>
+        <li>Cada muestra da \(\nabla_\theta J = 2(\theta+\xi)\): con \(\xi = -1\), 0; con \(\xi = 0\), 2; con \(\xi = 0{,}5\), 3.</li>
+        <li>Media 2 y varianza \(4\,\mathrm{Var}(\xi) = 4\): solo el ruido de las ráfagas.</li>
+        <li>El orden cero con una pareja y el mismo \(\xi\) da \(2(\theta+\xi)\varepsilon^2\), de varianza \(3\cdot4(\theta^2+1) - 4 = 20\): el ruido de las ráfagas más el del sorteo de \(\varepsilon\). Ejemplo 5.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Dónde falla</span>En el paso 2. Si \(J\) salta (un choque, un contacto, una terminación), derivar cada muestra no ve el salto. Lo veremos con el muro.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · a través del tiempo, el esquema</p>
+  <h2>Un despliegue como grafo de cómputo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 350" style="max-height:440px" role="img" aria-label="Grafo de un despliegue de tres pasos: los parámetros entran en la política en cada paso, la dinámica encadena los estados y los costes se suman; el modo inverso recorre la cadena hacia atrás">
+        <defs>
+          <marker id="b6gm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b6ga" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          <marker id="b6gs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <rect x="230" y="8" width="100" height="30" rx="5" class="box-accent"/>
+        <text x="280" y="29" text-anchor="middle" class="t-mono t-bold" font-size="15">θ</text>
+        <path d="M250 38 L130 68" class="ln-accent ln-dash" marker-end="url(#b6ga)"/>
+        <path d="M280 38 L280 68" class="ln-accent ln-dash" marker-end="url(#b6ga)"/>
+        <path d="M310 38 L430 68" class="ln-accent ln-dash" marker-end="url(#b6ga)"/>
+        <rect x="100" y="70" width="60" height="28" rx="4" class="box"/><text x="130" y="89" text-anchor="middle" class="t-mono" font-size="13">π_θ</text>
+        <rect x="250" y="70" width="60" height="28" rx="4" class="box"/><text x="280" y="89" text-anchor="middle" class="t-mono" font-size="13">π_θ</text>
+        <rect x="400" y="70" width="60" height="28" rx="4" class="box"/><text x="430" y="89" text-anchor="middle" class="t-mono" font-size="13">π_θ</text>
+        <circle cx="50" cy="180" r="18" class="box"/><text x="50" y="185" text-anchor="middle" class="t-mono" font-size="13">x₀</text>
+        <circle cx="205" cy="180" r="18" class="box"/><text x="205" y="185" text-anchor="middle" class="t-mono" font-size="13">x₁</text>
+        <circle cx="355" cy="180" r="18" class="box"/><text x="355" y="185" text-anchor="middle" class="t-mono" font-size="13">x₂</text>
+        <circle cx="505" cy="180" r="18" class="box"/><text x="505" y="185" text-anchor="middle" class="t-mono" font-size="13">x₃</text>
+        <path d="M62 166 L110 100" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M217 166 L262 100" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M367 166 L412 100" class="ln" marker-end="url(#b6gm)"/>
+        <rect x="105" y="166" width="50" height="28" rx="4" class="box-soft"/><text x="130" y="185" text-anchor="middle" class="t-mono" font-size="13">f</text>
+        <rect x="255" y="166" width="50" height="28" rx="4" class="box-soft"/><text x="280" y="185" text-anchor="middle" class="t-mono" font-size="13">f</text>
+        <rect x="405" y="166" width="50" height="28" rx="4" class="box-soft"/><text x="430" y="185" text-anchor="middle" class="t-mono" font-size="13">f</text>
+        <path d="M130 98 V162" class="ln" marker-end="url(#b6gm)"/><text x="136" y="134" class="t-mono t-muted" font-size="12">u₀</text>
+        <path d="M280 98 V162" class="ln" marker-end="url(#b6gm)"/><text x="286" y="134" class="t-mono t-muted" font-size="12">u₁</text>
+        <path d="M430 98 V162" class="ln" marker-end="url(#b6gm)"/><text x="436" y="134" class="t-mono t-muted" font-size="12">u₂</text>
+        <path d="M68 180 H101" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M155 180 H183" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M223 180 H251" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M305 180 H333" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M373 180 H401" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M455 180 H483" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M130 228 V198" class="ln" marker-end="url(#b6gm)"/><text x="130" y="242" text-anchor="middle" class="t-mono t-muted" font-size="12">w₀</text>
+        <path d="M280 228 V198" class="ln" marker-end="url(#b6gm)"/><text x="280" y="242" text-anchor="middle" class="t-mono t-muted" font-size="12">w₁</text>
+        <path d="M430 228 V198" class="ln" marker-end="url(#b6gm)"/><text x="430" y="242" text-anchor="middle" class="t-mono t-muted" font-size="12">w₂</text>
+        <path d="M205 198 V278" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M355 198 V278" class="ln" marker-end="url(#b6gm)"/>
+        <path d="M505 198 V278" class="ln" marker-end="url(#b6gm)"/>
+        <rect x="170" y="280" width="370" height="30" rx="5" class="box-time"/>
+        <text x="355" y="300" text-anchor="middle" class="t-mono" font-size="13">J = c₁ + c₂ + c₃ (cada c_t depende de x_t)</text>
+        <path d="M530 326 H180" class="ln-tesis ln-dash" marker-end="url(#b6gs)"/>
+        <text x="530" y="344" text-anchor="end" class="t-tesis" font-size="12">modo inverso: del coste hacia atrás, λ₃ → λ₂ → λ₁</text>
+      </svg>
+      <figcaption>Un despliegue de \(H = 3\) pasos. \(\theta\) entra en <em>cada</em> paso por la política, y cada estado depende de todos los anteriores: por eso la regla de la cadena se alarga con el horizonte.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:24%">Símbolo</th><th>Qué es</th></tr>
+          <tr><td>\(x_t\)</td><td>Estado en el paso \(t\) (\(n_x\) números; 6 en el dron plano)</td></tr>
+          <tr><td>\(u_t = \pi_\theta(x_t)\)</td><td>Acción que da la política (\(n_u\) números)</td></tr>
+          <tr><td>\(w_t\)</td><td>Ráfaga del paso \(t\): es parte de \(\xi\)</td></tr>
+          <tr><td>\(f\)</td><td>Un paso del simulador: \(x_{t+1} = f(x_t,u_t,w_t)\)</td></tr>
+          <tr><td>\(c(x_t,u_t)\), \(H\)</td><td>Coste por paso y horizonte: \(J = \sum_t c(x_t,u_t)\) con \(H\) pasos</td></tr>
+          <tr><td>\(\lambda_t\)</td><td>Adjunto: cuánto cambia el coste futuro si se empuja \(x_t\) (hojas siguientes)</td></tr>
+        </table>
+      </div>
+      <p>Hacia delante se calcula qué hace \(\theta\) a cada estado; hacia atrás, qué hace cada estado al coste. Dan el mismo gradiente; JAX usa el segundo.</p>
     </div>
   </div>
 </section>
@@ -262,26 +749,130 @@ def despliegue(params, S):         # S: (n_entornos, 17)
 <section class="slide">
   <p class="kicker">Gradientes · a través del tiempo</p>
   <h2>Retropropagar un despliegue: un producto de jacobianos</h2>
-  <div class="cols">
+  <div class="cols w60">
     <div class="stack">
-      <p class="small">Con \(x_{t+1} = f(x_t, u_t, w_t)\), \(u_t = \pi_\theta(x_t)\) y \(J = \sum_t c(x_t,u_t)\), la sensibilidad \(S_t = \partial x_t/\partial\theta\) cumple</p>
-      \[ S_{t+1} = \underbrace{(f_x + f_u\,\pi_x)}_{A_t}\,S_t + f_u\,\pi_\theta, \]
-      \[ S_t = \sum_{k&lt;t} A_{t-1}\cdots A_{k+1}\, f_u\,\pi_\theta\big|_k . \]
-      <p class="small">El gradiente suma productos de hasta \(H\) jacobianos del lazo cerrado. Si su radio espectral pasa de 1, o si la dinámica es caótica, esos productos crecen exponencialmente aunque la trayectoria esté acotada <a class="cite" data-ref="metz2021"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x_{t+1} = f\big(x_t,\ \pi_\theta(x_t),\ w_t\big)\)</td><td>\(\theta\) entra por la política, y además a través de \(x_t\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(S_{t+1} = f_x S_t + f_u\,(\pi_x S_t + \pi_\theta)\)</td><td>Regla de la cadena: \(x_t\) depende de \(\theta\) (\(S_t\)), y \(u_t\) depende de \(\theta\) directamente y a través de \(x_t\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(S_{t+1} = \underbrace{(f_x + f_u\,\pi_x)}_{A_t}\,S_t + f_u\,\pi_\theta\)</td><td>Agrupar los términos en \(S_t\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(S_0 = 0\)</td><td>El estado inicial no depende de \(\theta\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(S_t = \sum_{k\lt t} A_{t-1}\cdots A_{k+1}\, f_u\,\pi_\theta\big|_k\)</td><td>Desenrollar 3: el empujón del paso \(k\) cruza los jacobianos de \(k+1\) a \(t-1\)</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\nabla_\theta J = \sum_t \big[c_x S_t + c_u(\pi_x S_t + \pi_\theta)\big]\)</td><td>La regla de la cadena en el coste</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: el modo inverso y su memoria</summary>
-        <p class="small">En modo inverso (lo que hace <code>jax.grad</code> a través de <code>lax.scan</code>), se propaga el adjunto hacia atrás, \(\lambda_t = c_x + A_t^\top\lambda_{t+1}\), y \(\nabla_\theta J = \sum_t (c_u + \lambda_{t+1}^\top f_u)\,\pi_\theta\). Coste en tiempo: unas pocas veces el directo. Coste en memoria: hay que guardar los \(H\) estados (o recalcularlos por tramos). Por eso con 10 000 entornos Heeg et al. se quedaban sin memoria en la retropropagación con el modelo completo, y usan un modelo simplificado para el camino de vuelta <a class="cite" data-ref="heeg2025"></a>.</p>
-      </details>
-      <div class="callout realidad"><span class="tag">Medido en Brax</span>En Ant, para pocos pasos la pérdida parece suave; con más pasos se vuelve «muy sensible a los parámetros», y la varianza del gradiente crece con la longitud del despliegue; lo trazan a autovalores de los jacobianos mayores que 1 (preprint) <a class="cite" data-ref="metz2021"></a>.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:30%">Jacobiano</th><th>Qué es · tamaño</th></tr>
+          <tr><td>\(f_x\), \(f_u\)</td><td>\(\partial f/\partial x\) y \(\partial f/\partial u\) · \(n_x\times n_x\), \(n_x\times n_u\)</td></tr>
+          <tr><td>\(\pi_x\), \(\pi_\theta\)</td><td>\(\partial\pi/\partial x\) y \(\partial\pi/\partial\theta\) · \(n_u\times n_x\), \(n_u\times d\)</td></tr>
+          <tr><td>\(S_t\)</td><td>Sensibilidad \(\partial x_t/\partial\theta\) · \(n_x\times d\)</td></tr>
+          <tr><td>\(A_t\)</td><td>Jacobiano del lazo cerrado · \(n_x\times n_x\)</td></tr>
+          <tr><td>\(c_x\), \(c_u\)</td><td>Derivadas del coste por paso (filas)</td></tr>
+        </table>
+      </div>
+      <p>El efecto en \(x_t\) de lo que hizo la política en el paso \(k\) pasa por \(t-1-k\) jacobianos del lazo cerrado. Con \(H = 1000\), el gradiente suma términos de hasta 999 factores.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · a través del tiempo, a mano</p>
+  <h2>Tres pasos hacia delante y hacia atrás</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>El sistema:</strong> \(x_{t+1} = x_t + 0{,}5\,u_t\), política \(u_t = -\theta x_t\) con \(\theta = 1\), \(x_0 = 1\) y \(J = x_1^2 + x_2^2 + x_3^2\).</p>
+      <p>Jacobianos: \(f_x = 1\), \(f_u = 0{,}5\), \(\pi_x = -\theta = -1\), \(\pi_\theta = -x_t\). Lazo cerrado: \(A = 1 + 0{,}5\cdot(-1) = 0{,}5\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>\(x_t\)</th><th>\(S_t\) (hacia delante)</th><th>\(\lambda_t\) (hacia atrás)</th></tr>
+          <tr><td>0</td><td class="n">1</td><td class="n">0</td><td class="n">—</td></tr>
+          <tr><td>1</td><td class="n">0,5</td><td class="n">−0,5</td><td class="n">1,3125</td></tr>
+          <tr><td>2</td><td class="n">0,25</td><td class="n">−0,5</td><td class="n">0,625</td></tr>
+          <tr><td>3</td><td class="n">0,125</td><td class="n">−0,375</td><td class="n">0,25</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Diferencias finitas: −0,843750. Ejemplo 6 del script.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Hacia delante</strong>, con \(S_{t+1} = 0{,}5\,S_t - 0{,}5\,x_t\): \(S_1 = -0{,}5\), \(S_2 = -0{,}25 - 0{,}25 = -0{,}5\), \(S_3 = -0{,}25 - 0{,}125 = -0{,}375\). Luego</p>
+      \[ \begin{aligned}\tfrac{dJ}{d\theta} &= \textstyle\sum_t 2x_tS_t\\ &= 2(-0{,}25 - 0{,}125 - 0{,}047) = -0{,}84375.\end{aligned} \]
+      <p><strong>Hacia atrás</strong>, con \(\lambda_3 = 2x_3\) y \(\lambda_t = 2x_t + A\,\lambda_{t+1}\): \(\lambda_3 = 0{,}25\), \(\lambda_2 = 0{,}5 + 0{,}125\), \(\lambda_1 = 1 + 0{,}3125\). Luego</p>
+      \[ \begin{aligned}\tfrac{dJ}{d\theta} &= \textstyle\sum_{t=0}^{2} \lambda_{t+1}\, f_u\,\pi_\theta\big|_t\\ &= -0{,}5\,(1{,}3125 + 0{,}3125 + 0{,}0625) = -0{,}84375.\end{aligned} \]
+      <div class="callout clave"><span class="tag">Lo que hay que ver</span>El mismo número por los dos caminos. Hacia atrás hace falta \(x_t\) de cada paso (está en \(\pi_\theta|_t\)): hay que guardar la trayectoria.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · el modo inverso</p>
+  <h2>El modo inverso en general: un recorrido hacia atrás y su memoria</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Origen:</strong> \(\lambda_t\) es la derivada del coste <em>desde \(t\) en adelante</em> respecto a \(x_t\). Empujar \(x_t\) cambia el coste de este paso (directamente y a través de \(u_t\)) y el estado siguiente:</p>
+      \[ \lambda_t = c_x^\top + \pi_x^\top c_u^\top + A_t^\top\lambda_{t+1}, \]
+      \[ \nabla_\theta J = \textstyle\sum_t \big(c_u + \lambda_{t+1}^\top f_u\big)\,\pi_\theta . \]
+      <p>Se empieza por el final: \(\lambda_H\) es la derivada del coste final (0 si no lo hay). Es lo que hace <code>jax.grad</code> a través de <code>lax.scan</code>. Tiempo: unas pocas veces el despliegue directo. Memoria: los \(H\) estados (o recalcularlos por tramos).</p>
+      <div class="aparte"><span class="rotulo">Si el coste depende del mando</span>
+        <p>Falta fácil el término \(\pi_x^\top c_u^\top\). En el ejemplo anterior con \(c = x^2 + u^2\), el gradiente es 1,125; sin ese término saldría 1,875. Ejemplo 6.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">La memoria, en la práctica</span>Con 10 000 entornos, Heeg et al. se quedaban sin memoria en la retropropagación con el modelo completo, y usan un modelo simplificado para el camino de vuelta <a class="cite" data-ref="heeg2025"></a>.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Dreamer retropropaga por el modelo latente durante 15 pasos imaginados, no 1000, y cierra el horizonte con un crítico <a class="cite" data-ref="hafner2020"></a>: el horizonte corto es parte del diseño (A8a).</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
+  <p class="kicker">Gradientes · explota o se anula</p>
+  <h2>Por qué el gradiente explota o se anula con el horizonte</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" style="max-height:245px" role="img" aria-label="Potencias a elevado a t en escala logarítmica para cuatro valores de a: dos que se anulan, una casi constante y una que explota">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="140" x2="520" y2="140" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻³</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">10³</text>
+        <text x="52" y="71" text-anchor="end" class="t-mono t-faint" font-size="12">10²</text>
+        <text x="52" y="217" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻²</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="213" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text>
+        <text x="367" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">200</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">300</text>
+        <path d="M60,140 L407.7,250" class="ln-tesis" stroke-width="2.5"/>
+        <path d="M60,140 L520,197.7" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60,140 L520,141.0" class="ln-time" stroke-width="2.5"/>
+        <path d="M60,140 L520,45.4" class="ln" stroke-width="2.5"/>
+        <text x="236" y="234" class="t-tesis" font-size="13">a = 0,97</text>
+        <text x="515" y="215" text-anchor="end" class="t-accent" font-size="13">a = 0,988</text>
+        <text x="515" y="132" text-anchor="end" class="t-time" font-size="13">a = 0,9998</text>
+        <text x="505" y="40" text-anchor="end" class="t-muted" font-size="13">a = 1,02</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">pasos t que separan la acción de su efecto</text>
+      </svg>
+      <figcaption>\(|a^t|\), el peso con el que una acción de hace \(t\) pasos entra en el gradiente, en escala logarítmica. Ejemplo 7 del script.</figcaption>
+      <div class="callout realidad"><span class="tag">Medido en Brax</span>Con más pasos, la pérdida de Ant se vuelve «muy sensible a los parámetros» y la varianza del gradiente crece; lo trazan a autovalores de los jacobianos mayores que 1, incluso con trayectorias acotadas (preprint) <a class="cite" data-ref="metz2021"></a>.</div>
+    </figure>
+    <div class="stack">
+      <p>En escalar, \(x_{t+1} = a\,x_t + b\,\theta\): \(A_t = a\) y el paso 5 da \(S_H = b\,\frac{1-a^H}{1-a}\).</p>
+      <ul>
+        <li>\(|a| \lt 1\): lo lejano pesa \(a^{t-k}\to 0\), <strong>se anula</strong>, y \(S\) se queda en \(b/(1-a)\): el gradiente solo ve unos \(1/(1-a)\) pasos.</li>
+        <li>\(|a| \approx 1\): memoria larga; \(S\) crece casi como \(H\).</li>
+        <li>\(|a| \gt 1\): <strong>explota</strong>; con \(a = 1{,}01\), \(a^{1000} = 2{,}1\cdot10^4\).</li>
+      </ul>
+      <p>En el dron plano, el radio espectral \(\rho\) de \(A\) hace el papel de \(|a|\): 0,988 (unos 83 pasos, 0,83 s) y 0,9998 (unos 4800 pasos, 48 s).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Gradientes · problema suave</p>
-  <h2>Un dron en estacionario: el primer orden gana en varianza; el coste depende del hardware</h2>
+  <h2>Un dron en estacionario: el primer orden gana en varianza</h2>
   <div class="cols">
     <div class="stack">
       <div class="table-wrap">
@@ -299,12 +890,89 @@ def despliegue(params, S):         # S: (n_entornos, 17)
       <p class="xsmall muted">Desviación típica de cada estimación relativa a la norma del gradiente medio. Dron plano a 100 Hz con ráfagas, política lineal de 6 ganancias, 512 estimaciones. <code>figuras_b6.py</code>, sección 2.</p>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Varianza:</strong> una sola retropropagación es menos ruidosa que un estimador de orden cero con 32 simulaciones, en todos los horizontes.</li>
-        <li><strong>Horizonte:</strong> con el lazo poco amortiguado (constante de tiempo de 48 s), la norma del gradiente medio crece 250 veces de 10 a 3000 pasos, y la peor muestra es 8 veces la media.</li>
-        <li><strong>Coste, H = 1000:</strong> en CPU, el primer orden cuesta 4,3 veces simular y el orden cero, 48; en GPU, 3,4 y 2,5: las 32 simulaciones van en paralelo y la retropropagación no.</li>
+      <p><strong>El experimento:</strong></p>
+      <ul>
+        <li>Dron plano (posición horizontal y vertical, inclinación y sus velocidades: 6 estados), en estacionario con ráfagas de 2 m/s² por paso.</li>
+        <li>Política lineal de \(d = 6\) ganancias; coste: error cuadrático medio de posición más un poco de mando.</li>
+        <li>Orden cero: 16 parejas antitéticas de tamaño el 5 % de cada ganancia, con las mismas ráfagas en sus 32 simulaciones.</li>
+        <li>Medida: \(\sqrt{\mathbb E\|\hat g - \bar g\|^2}\,/\,\|\bar g\|\), con \(\bar g\) la media de las 512 estimaciones de primer orden. Un 1 es ruido tan grande como la señal.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · problema suave, lectura</p>
+  <h2>Qué dice la tabla: varianza, horizonte y un coste que depende del hardware</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Varianza:</strong> una sola retropropagación es menos ruidosa que un estimador de orden cero con 32 simulaciones, en todos los horizontes. El orden cero suma al ruido de las ráfagas el de su sorteo, el término \((d+1)/n\) de la hoja de varianza.</li>
+        <li><strong>Horizonte:</strong> con el lazo poco amortiguado (constante de tiempo de 48 s), la norma del gradiente medio crece 250 veces de 10 a 3000 pasos, y la peor muestra es 8 veces la media: el producto de jacobianos con \(\rho\) casi 1.</li>
       </ul>
       <div class="callout clave"><span class="tag">Lección</span>En un problema suave y estable, el gradiente a través del simulador es la mejor información por simulación. Pero «por simulación» no es «por segundo»: en una GPU, el orden cero puede salir más barato.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 170" role="img" aria-label="Coste de cada estimador en veces lo que cuesta solo simular, en CPU y en GPU">
+        <text x="20" y="16" class="t-muted" font-size="13">coste con H = 1000, en veces lo que cuesta solo simular</text>
+        <text x="140" y="46" text-anchor="end" class="t-mono" font-size="12">CPU · 1.er orden</text>
+        <rect x="150" y="34" width="31.5" height="16" class="box-accent"/><text x="188" y="47" class="t-mono t-accent" font-size="12">×4,3</text>
+        <text x="140" y="70" text-anchor="end" class="t-mono" font-size="12">CPU · orden 0</text>
+        <rect x="150" y="58" width="356.5" height="16" class="box-time"/><text x="500" y="71" text-anchor="end" class="t-mono t-time" font-size="12">×48</text>
+        <text x="140" y="104" text-anchor="end" class="t-mono" font-size="12">GPU · 1.er orden</text>
+        <rect x="150" y="92" width="25.4" height="16" class="box-accent"/><text x="182" y="105" class="t-mono t-accent" font-size="12">×3,4</text>
+        <text x="140" y="128" text-anchor="end" class="t-mono" font-size="12">GPU · orden 0</text>
+        <rect x="150" y="116" width="18.6" height="16" class="box-time"/><text x="176" y="129" class="t-mono t-time" font-size="12">×2,5</text>
+        <line x1="150" y1="142" x2="520" y2="142" class="ln-rule"/>
+        <text x="150" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">0</text>
+        <text x="224" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">10</text>
+        <text x="298" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">20</text>
+        <text x="372" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">30</text>
+        <text x="446" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">40</text>
+        <text x="520" y="158" text-anchor="middle" class="t-mono t-faint" font-size="11">50</text>
+      </svg>
+      <figcaption>512 estimaciones con \(H = 1000\). En la GPU, las 32 simulaciones del orden cero van en paralelo y la retropropagación, paso a paso, no. <code>figuras_b6.py</code>, sección 2; ejemplo 11 del script.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · discontinuidad, el esquema</p>
+  <h2>El experimento del muro: qué entra y qué sale</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Vista lateral: un dron vuela a la altura de consigna hacia un muro de tres metros; junto al muro, la campana de alturas al cruzar con la parte por debajo de tres metros sombreada">
+        <defs>
+          <marker id="b6wm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <line x1="20" y1="270" x2="545" y2="270" class="ln"/>
+        <line x1="40" y1="100" x2="540" y2="100" class="ln-dash"/>
+        <text x="110" y="74" class="t-muted" font-size="12">consigna θ (aquí 3,4 m)</text>
+        <rect x="420" y="120" width="20" height="150" class="box-soft"/>
+        <text x="414" y="140" text-anchor="end" class="t-muted" font-size="12">muro: 3 m</text>
+        <line x1="400" y1="120" x2="540" y2="120" class="ln-rule"/>
+        <path d="M66,100 C120,86 160,116 220,98 S320,113 360,95 S405,112 420,107" class="ln-accent" stroke-width="2"/>
+        <rect x="50" y="96" width="30" height="7" rx="2" class="fill-accent"/>
+        <ellipse cx="50" cy="93" rx="10" ry="2.5" class="fill-ink3"/>
+        <ellipse cx="80" cy="93" rx="10" ry="2.5" class="fill-ink3"/>
+        <text x="96" y="130" class="t-accent" font-size="12">5 m/s →</text>
+        <path d="M160 160 V135" class="ln" marker-end="url(#b6wm)"/>
+        <path d="M300 60 V82" class="ln" marker-end="url(#b6wm)"/>
+        <text x="168" y="168" class="t-muted" font-size="12">ráfagas verticales w</text>
+        <path d="M446,161.2 L446.9,161.2 L447.1,159.5 L447.5,157.8 L447.8,156.0 L448.3,154.3 L448.9,152.6 L449.6,150.9 L450.4,149.2 L451.3,147.5 L452.5,145.7 L453.8,144.0 L455.3,142.3 L457.0,140.6 L459.0,138.9 L461.2,137.2 L463.7,135.4 L466.4,133.7 L469.3,132.0 L472.5,130.3 L476.0,128.6 L479.6,126.9 L483.4,125.1 L487.4,123.4 L491.4,121.7 L495.5,120.0 L446,120.0 Z" class="box-tesis"/>
+        <path d="M446.9,161.2 L447.2,159.2 L447.6,157.1 L448.1,155.1 L448.7,153.0 L449.5,151.0 L450.5,149.0 L451.7,146.9 L453.1,144.9 L454.8,142.8 L456.8,140.8 L459.2,138.8 L461.8,136.7 L464.9,134.7 L468.2,132.6 L472.0,130.6 L476.0,128.6 L480.4,126.5 L484.9,124.5 L489.7,122.4 L494.5,120.4 L499.4,118.4 L504.1,116.3 L508.6,114.3 L512.8,112.2 L516.6,110.2 L519.8,108.2 L522.5,106.1 L524.4,104.1 L525.6,102.0 L526.0,100.0 L525.6,98.0 L524.4,95.9 L522.5,93.9 L519.8,91.8 L516.6,89.8 L512.8,87.8 L508.6,85.7 L504.1,83.7 L499.4,81.6 L494.5,79.6 L489.7,77.6 L484.9,75.5 L480.4,73.5 L476.0,71.4 L472.0,69.4 L468.2,67.4 L464.9,65.3 L461.8,63.3 L459.2,61.2 L456.8,59.2 L454.8,57.2 L453.1,55.1 L451.7,53.1 L450.5,51.0 L449.5,49.0 L448.7,47.0 L448.1,44.9 L447.6,42.9 L447.2,40.8 L446.9,38.8" class="ln-tesis" fill="none"/>
+        <line x1="446" y1="39" x2="446" y2="161" class="ln-rule"/>
+        <text x="500" y="60" class="t-tesis" font-size="12">z al cruzar</text>
+        <text x="472" y="152" class="t-tesis t-bold" font-size="12">choque</text>
+        <path d="M60 288 H420" class="ln-rule"/>
+        <text x="240" y="284" text-anchor="middle" class="t-muted" font-size="12">10 m: 200 pasos de 10 ms</text>
+      </svg>
+      <figcaption>Vista lateral. La campana es la distribución de la altura \(z\) al llegar al muro (desviación de 0,41 m); lo sombreado, la probabilidad de choque. Campana calculada en el ejemplo 8 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Entra</strong> \(\theta\), la altura de consigna (\(d = 1\)). Un controlador lleva la altura \(z\) hacia ella, \(\ddot z = 4(\theta - z) - 3\dot z + w\), con ráfagas \(w\) en cada paso.</p>
+      <p><strong>Sale</strong> \(J = 2\theta + 100\cdot\mathbf 1[z \lt 3]\), con \(z\) la altura al cruzar: subir cuesta 2 por metro; chocar, 100. \(\mathbf 1[\cdot]\) vale 1 si se cumple la condición y 0 si no.</p>
+      <div class="callout clave"><span class="tag">Por qué se reduce a 1-D</span>Con \(\eta = z - \theta\), la ecuación de \(\eta\) no contiene \(\theta\) (y empieza en 0). Así que \(z = \theta + \eta\), con \(\eta\) gaussiana de desviación \(\sigma_z = 0{,}408\) m que no depende de \(\theta\). Ejemplo 8.</div>
     </div>
   </div>
 </section>
@@ -353,10 +1021,56 @@ def despliegue(params, S):         # S: (n_entornos, 17)
           </tbody>
         </table>
       </div>
-      <ul class="small">
+      <ul>
         <li>El primer orden ve solo la energía de subir: vale 2 en todas partes y empuja a bajar hasta chocar.</li>
         <li>El orden cero, ruidoso, apunta bien: es el sesgo frente a la varianza de Suh et al. <a class="cite" data-ref="suh2022"></a>.</li>
       </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · discontinuidad, la cuenta</p>
+  <h2>Por qué el primer orden no ve el muro: la cuenta en 1-D</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J(\theta,\eta) = 2\theta + 100\cdot\mathbf 1[\theta+\eta \lt 3]\)</td><td>\(z = \theta+\eta\) (hoja del esquema)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\partial J/\partial\theta = 2\) para casi todo \(\eta\)</td><td>El indicador es plano salvo en \(\theta+\eta = 3\) (probabilidad cero): es lo que da el primer orden</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\bar J(\theta) = 2\theta + 100\,\Phi\big(\tfrac{3-\theta}{\sigma_z}\big)\)</td><td>Esperanza de un indicador = probabilidad; \(\Phi\): distribución de la normal estándar</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\bar J'(\theta) = 2 - \tfrac{100}{\sigma_z}\,\Phi'\big(\tfrac{3-\theta}{\sigma_z}\big)\)</td><td>Regla de la cadena: \(\Phi'\) es la densidad gaussiana estándar, y la derivada de \(\tfrac{3-\theta}{\sigma_z}\) es \(-\tfrac{1}{\sigma_z}\)</td></tr>
+          <tr><td><strong>5</strong></td><td>El término \(-\tfrac{100}{\sigma_z}\Phi'\) es de frontera</td><td>Lo que cambia \(P(\text{choque})\) al mover la frontera (regla de Leibniz): ninguna muestra lo ve</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 270" style="max-height:215px" role="img" aria-label="Densidad de la altura al cruzar el muro para dos consignas; el área por debajo de tres metros es la probabilidad de choque">
+          <line x1="40" y1="230" x2="520" y2="230" class="ln-rule"/>
+          <path d="M40.0,229.5 L43.4,229.4 L46.9,229.3 L50.3,229.2 L53.7,229.1 L57.1,228.9 L60.6,228.7 L64.0,228.5 L67.4,228.2 L70.9,228.0 L74.3,227.6 L77.7,227.3 L81.1,226.9 L84.6,226.4 L88.0,225.9 L91.4,225.3 L94.9,224.7 L98.3,223.9 L101.7,223.1 L105.1,222.2 L108.6,221.2 L112.0,220.1 L115.4,218.8 L118.9,217.5 L122.3,216.0 L125.7,214.4 L129.1,212.6 L132.6,210.7 L136.0,208.7 L139.4,206.4 L142.9,204.0 L146.3,201.4 L149.7,198.6 L153.1,195.7 L156.6,192.5 L160.0,189.2 L163.4,185.7 L166.9,182.0 L170.3,178.1 L173.7,174.0 L177.1,169.7 L180.6,165.3 L184.0,160.7 L187.4,156.0 L190.9,151.1 L194.3,146.1 L197.7,141.0 L201.1,135.8 L204.6,130.6 L208.0,125.3 L211.4,120.1 L211.4,230.0 L40.0,230.0 Z" class="box-tesis"/>
+          <path d="M40.0,229.5 L43.4,229.4 L46.9,229.3 L50.3,229.2 L53.7,229.1 L57.1,228.9 L60.6,228.7 L64.0,228.5 L67.4,228.2 L70.9,228.0 L74.3,227.6 L77.7,227.3 L81.1,226.9 L84.6,226.4 L88.0,225.9 L91.4,225.3 L94.9,224.7 L98.3,223.9 L101.7,223.1 L105.1,222.2 L108.6,221.2 L112.0,220.1 L115.4,218.8 L118.9,217.5 L122.3,216.0 L125.7,214.4 L129.1,212.6 L132.6,210.7 L136.0,208.7 L139.4,206.4 L142.9,204.0 L146.3,201.4 L149.7,198.6 L153.1,195.7 L156.6,192.5 L160.0,189.2 L163.4,185.7 L166.9,182.0 L170.3,178.1 L173.7,174.0 L177.1,169.7 L180.6,165.3 L184.0,160.7 L187.4,156.0 L190.9,151.1 L194.3,146.1 L197.7,141.0 L201.1,135.8 L204.6,130.6 L208.0,125.3 L211.4,120.1 L214.9,114.8 L218.3,109.5 L221.7,104.4 L225.1,99.3 L228.6,94.3 L232.0,89.5 L235.4,84.9 L238.9,80.5 L242.3,76.3 L245.7,72.3 L249.1,68.7 L252.6,65.4 L256.0,62.4 L259.4,59.7 L262.9,57.5 L266.3,55.6 L269.7,54.1 L273.1,53.1 L276.6,52.4 L280.0,52.2 L283.4,52.4 L286.9,53.1 L290.3,54.1 L293.7,55.6 L297.1,57.5 L300.6,59.7 L304.0,62.4 L307.4,65.4 L310.9,68.7 L314.3,72.3 L317.7,76.3 L321.1,80.5 L324.6,84.9 L328.0,89.5 L331.4,94.3 L334.9,99.3 L338.3,104.4 L341.7,109.5 L345.1,114.8 L348.6,120.1 L352.0,125.3 L355.4,130.6 L358.9,135.8 L362.3,141.0 L365.7,146.1 L369.1,151.1 L372.6,156.0 L376.0,160.7 L379.4,165.3 L382.9,169.7 L386.3,174.0 L389.7,178.1 L393.1,182.0 L396.6,185.7 L400.0,189.2 L403.4,192.5 L406.9,195.7 L410.3,198.6 L413.7,201.4 L417.1,204.0 L420.6,206.4 L424.0,208.7 L427.4,210.7 L430.9,212.6 L434.3,214.4 L437.7,216.0 L441.1,217.5 L444.6,218.8 L448.0,220.1 L451.4,221.2 L454.9,222.2 L458.3,223.1 L461.7,223.9 L465.1,224.7 L468.6,225.3 L472.0,225.9 L475.4,226.4 L478.9,226.9 L482.3,227.3 L485.7,227.6 L489.1,228.0 L492.6,228.2 L496.0,228.5 L499.4,228.7 L502.9,228.9 L506.3,229.1 L509.7,229.2 L513.1,229.3 L516.6,229.4 L520.0,229.5" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <path d="M40.0,229.8 L43.4,229.8 L46.9,229.7 L50.3,229.6 L53.7,229.6 L57.1,229.5 L60.6,229.4 L64.0,229.3 L67.4,229.2 L70.9,229.1 L74.3,228.9 L77.7,228.7 L81.1,228.5 L84.6,228.2 L88.0,228.0 L91.4,227.6 L94.9,227.3 L98.3,226.9 L101.7,226.4 L105.1,225.9 L108.6,225.3 L112.0,224.7 L115.4,223.9 L118.9,223.1 L122.3,222.2 L125.7,221.2 L129.1,220.1 L132.6,218.8 L136.0,217.5 L139.4,216.0 L142.9,214.4 L146.3,212.6 L149.7,210.7 L153.1,208.7 L156.6,206.4 L160.0,204.0 L163.4,201.4 L166.9,198.6 L170.3,195.7 L173.7,192.5 L177.1,189.2 L180.6,185.7 L184.0,182.0 L187.4,178.1 L190.9,174.0 L194.3,169.7 L197.7,165.3 L201.1,160.7 L204.6,156.0 L208.0,151.1 L211.4,146.1 L214.9,141.0 L218.3,135.8 L221.7,130.6 L225.1,125.3 L228.6,120.1 L232.0,114.8 L235.4,109.5 L238.9,104.4 L242.3,99.3 L245.7,94.3 L249.1,89.5 L252.6,84.9 L256.0,80.5 L259.4,76.3 L262.9,72.3 L266.3,68.7 L269.7,65.4 L273.1,62.4 L276.6,59.7 L280.0,57.5 L283.4,55.6 L286.9,54.1 L290.3,53.1 L293.7,52.4 L297.1,52.2 L300.6,52.4 L304.0,53.1 L307.4,54.1 L310.9,55.6 L314.3,57.5 L317.7,59.7 L321.1,62.4 L324.6,65.4 L328.0,68.7 L331.4,72.3 L334.9,76.3 L338.3,80.5 L341.7,84.9 L345.1,89.5 L348.6,94.3 L352.0,99.3 L355.4,104.4 L358.9,109.5 L362.3,114.8 L365.7,120.1 L369.1,125.3 L372.6,130.6 L376.0,135.8 L379.4,141.0 L382.9,146.1 L386.3,151.1 L389.7,156.0 L393.1,160.7 L396.6,165.3 L400.0,169.7 L403.4,174.0 L406.9,178.1 L410.3,182.0 L413.7,185.7 L417.1,189.2 L420.6,192.5 L424.0,195.7 L427.4,198.6 L430.9,201.4 L434.3,204.0 L437.7,206.4 L441.1,208.7 L444.6,210.7 L448.0,212.6 L451.4,214.4 L454.9,216.0 L458.3,217.5 L461.7,218.8 L465.1,220.1 L468.6,221.2 L472.0,222.2 L475.4,223.1 L478.9,223.9 L482.3,224.7 L485.7,225.3 L489.1,225.9 L492.6,226.4 L496.0,226.9 L499.4,227.3 L502.9,227.6 L506.3,228.0 L509.7,228.2 L513.1,228.5 L516.6,228.7 L520.0,228.9" fill="none" class="ln-accent ln-dash"/>
+          <line x1="211.4" y1="30" x2="211.4" y2="230" class="ln"/>
+          <text x="205" y="44" text-anchor="end" class="t-muted" font-size="12">muro: 3 m</text>
+          <circle cx="211.4" cy="120.1" r="4" class="fill-tesis"/>
+          <text x="196" y="112" text-anchor="end" class="t-tesis" font-size="12">densidad en 3 m: 0,605</text>
+          <text x="80" y="160" class="t-tesis" font-size="12">área: P(choque)</text>
+          <text x="80" y="176" class="t-tesis" font-size="12">= 0,163</text>
+          <text x="270" y="44" text-anchor="end" class="t-accent" font-size="12">θ = 3,4</text>
+          <text x="310" y="44" class="t-accent" font-size="12">θ = 3,5 (discontinua)</text>
+          <text x="40" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+          <text x="211.4" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+          <text x="382.9" y="248" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+          <text x="290" y="266" text-anchor="middle" class="t-muted" font-size="13">altura al cruzar el muro, z (m)</text>
+        </svg>
+        <figcaption>Al subir \(\theta\), la campana se desplaza y el área de choque pierde, por cada metro, la densidad en 3 m: es el paso 4. Ejemplo 8.</figcaption>
+      </figure>
+      <p><strong>A mano en \(\theta = 3{,}4\):</strong> \((3-3{,}4)/0{,}408 = -0{,}980\); \(\Phi'(0{,}980) = 0{,}2467\); dividido por 0,408, 0,605; por 100, 60,5. Verdadero: \(2 - 60{,}5 = -58{,}5\). Primer orden: 2,00.</p>
+      <div class="aparte"><span class="rotulo">Comprobación</span>
+        <p>La tabla del muro da −59,8, con diferencias finitas sobre 200 000 trayectorias y un ruido de Monte Carlo de ±0,9: cuadra. Mínimo exacto, 4,14 m (figura: 4,15).</p>
+      </div>
     </div>
   </div>
 </section>
@@ -366,7 +1080,7 @@ def despliegue(params, S):         # S: (n_entornos, 17)
   <h2>Suavizar el salto no basta: sesgo empírico y varianza enorme</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Sustituimos el muro por una sigmoide de 1 cm de anchura: ahora el coste es continuo y el primer orden es insesgado en teoría.</p>
+      <p>Sustituimos el muro por una sigmoide de 1 cm de anchura: ahora el coste es continuo y el primer orden es insesgado en teoría.</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>θ</th><th>Verdadero</th><th>1.er orden (4096 muestras)</th><th>Desviación por muestra</th></tr></thead>
@@ -378,14 +1092,135 @@ def despliegue(params, S):         # S: (n_entornos, 17)
         </table>
       </div>
       <p class="xsmall muted"><code>figuras_b6.py</code>, sección 3. El orden cero con 64 perturbaciones tiene una desviación de 27 a 3,4 m.</p>
-      <ul class="small">
-        <li>Casi todas las muestras dan 2 y unas pocas, las que rozan el muro, dan miles: con pocas muestras, el estimador «parece» sesgado. Es lo que Suh et al. llaman <strong>sesgo empírico</strong> <a class="cite" data-ref="suh2022"></a>.</li>
-      </ul>
+    </div>
+    <div class="stack">
+      <p>Casi todas las muestras dan 2 y unas pocas, las que rozan el muro, dan miles. La media de 4096 depende de las pocas decenas que caen cerca de la pared: con pocas muestras, el estimador «parece» sesgado.</p>
+      <p>Es lo que Suh et al. llaman <strong>sesgo empírico</strong> <a class="cite" data-ref="suh2022"></a>: insesgado en esperanza, pero con una varianza tan grande que una estimación concreta suele quedar lejos.</p>
+      <div class="callout clave"><span class="tag">La pregunta</span>¿Por qué 337 y no 3? La hoja siguiente lo cuenta: la varianza crece como 1 / anchura de la sigmoide.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · rigidez, la cuenta</p>
+  <h2>Por qué la varianza explota al afilar la sigmoide</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J = 2\theta + 100\,\mathrm{sig}\big(\tfrac{3-z}{\ell}\big)\)</td><td>\(\mathrm{sig}(v) = 1/(1+e^{-v})\), de anchura \(\ell\) (1 cm); \(z = \theta+\eta\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{\partial J}{\partial\theta} = 2 - \dfrac{100}{\ell}\,\mathrm{sig}'\big(\tfrac{3-z}{\ell}\big)\)</td><td>Regla de la cadena; \(\mathrm{sig}' \le 1/4\): hasta \(2 - 2500\) con \(\ell = 1\) cm</td></tr>
+          <tr><td><strong>3</strong></td><td>Solo cuenta la banda \(|z-3| \lesssim 3\ell\)</td><td>Fuera, \(\mathrm{sig}' \approx 0\) y la muestra vale 2</td></tr>
+          <tr><td><strong>4</strong></td><td>Media \(\to 2 - 100\,p_z(3)\)</td><td>El pico tiene área 100 y cae donde la densidad de \(z\) vale \(p_z(3)\): insesgado si \(\ell\to 0\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\mathrm{Var} \approx 100^2\,p_z(3)\,/\,(6\ell)\)</td><td>El cuadrado del pico tiene área \(100^2/\ell\cdot\int\mathrm{sig}'^2 = 100^2/(6\ell)\)</td></tr>
+        </table>
+      </div>
+      <p><strong>Con números</strong> (\(\theta = 3{,}4\), \(p_z(3) = 0{,}605\)): \(100\sqrt{0{,}605/0{,}06} = 317\); la cuenta exacta da 312 y la tabla, 337 (medida con 4096 muestras). Con \(\ell = 10\) cm: unos 80. Ejemplo 9.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 280" style="max-height:255px" role="img" aria-label="Gradiente por muestra frente a la altura al cruzar con la sigmoide de un centímetro: vale dos en casi todas partes y un pico de menos dos mil quinientos en tres metros">
+          <rect x="221" y="30" width="138" height="220" class="box-soft"/>
+          <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+          <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+          <line x1="60" y1="45.7" x2="520" y2="45.7" class="ln-rule"/>
+          <text x="52" y="50" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="128" text-anchor="end" class="t-mono t-faint" font-size="12">−1000</text>
+          <text x="52" y="207" text-anchor="end" class="t-mono t-faint" font-size="12">−2000</text>
+          <path d="M60.0,45.6 L62.3,45.6 L64.6,45.6 L66.9,45.6 L69.2,45.6 L71.5,45.6 L73.8,45.6 L76.1,45.6 L78.4,45.6 L80.7,45.6 L83.0,45.7 L85.3,45.7 L87.6,45.7 L89.9,45.7 L92.2,45.7 L94.5,45.7 L96.8,45.7 L99.1,45.8 L101.4,45.8 L103.7,45.8 L106.0,45.8 L108.3,45.8 L110.6,45.9 L112.9,45.9 L115.2,45.9 L117.5,46.0 L119.8,46.0 L122.1,46.1 L124.4,46.1 L126.7,46.2 L129.0,46.3 L131.3,46.3 L133.6,46.4 L135.9,46.5 L138.2,46.6 L140.5,46.7 L142.8,46.9 L145.1,47.0 L147.4,47.1 L149.7,47.3 L152.0,47.5 L154.3,47.7 L156.6,47.9 L158.9,48.2 L161.2,48.4 L163.5,48.7 L165.8,49.1 L168.1,49.4 L170.4,49.8 L172.7,50.3 L175.0,50.8 L177.3,51.3 L179.6,51.9 L181.9,52.6 L184.2,53.3 L186.5,54.1 L188.8,55.0 L191.1,55.9 L193.4,57.0 L195.7,58.2 L198.0,59.4 L200.3,60.8 L202.6,62.4 L204.9,64.1 L207.2,65.9 L209.5,67.9 L211.8,70.1 L214.1,72.5 L216.4,75.1 L218.7,78.0 L221.0,81.1 L223.3,84.4 L225.6,88.0 L227.9,91.9 L230.2,96.1 L232.5,100.6 L234.8,105.5 L237.1,110.6 L239.4,116.1 L241.7,121.9 L244.0,128.1 L246.3,134.5 L248.6,141.2 L250.9,148.2 L253.2,155.4 L255.5,162.7 L257.8,170.2 L260.1,177.8 L262.4,185.3 L264.7,192.8 L267.0,200.0 L269.3,207.0 L271.6,213.6 L273.9,219.8 L276.2,225.3 L278.5,230.2 L280.8,234.3 L283.1,237.6 L285.4,240.0 L287.7,241.5 L290.0,242.0 L292.3,241.5 L294.6,240.0 L296.9,237.6 L299.2,234.3 L301.5,230.2 L303.8,225.3 L306.1,219.8 L308.4,213.6 L310.7,207.0 L313.0,200.0 L315.3,192.8 L317.6,185.3 L319.9,177.8 L322.2,170.2 L324.5,162.7 L326.8,155.4 L329.1,148.2 L331.4,141.2 L333.7,134.5 L336.0,128.1 L338.3,121.9 L340.6,116.1 L342.9,110.6 L345.2,105.5 L347.5,100.6 L349.8,96.1 L352.1,91.9 L354.4,88.0 L356.7,84.4 L359.0,81.1 L361.3,78.0 L363.6,75.1 L365.9,72.5 L368.2,70.1 L370.5,67.9 L372.8,65.9 L375.1,64.1 L377.4,62.4 L379.7,60.8 L382.0,59.4 L384.3,58.2 L386.6,57.0 L388.9,55.9 L391.2,55.0 L393.5,54.1 L395.8,53.3 L398.1,52.6 L400.4,51.9 L402.7,51.3 L405.0,50.8 L407.3,50.3 L409.6,49.8 L411.9,49.4 L414.2,49.1 L416.5,48.7 L418.8,48.4 L421.1,48.2 L423.4,47.9 L425.7,47.7 L428.0,47.5 L430.3,47.3 L432.6,47.1 L434.9,47.0 L437.2,46.9 L439.5,46.7 L441.8,46.6 L444.1,46.5 L446.4,46.4 L448.7,46.3 L451.0,46.3 L453.3,46.2 L455.6,46.1 L457.9,46.1 L460.2,46.0 L462.5,46.0 L464.8,45.9 L467.1,45.9 L469.4,45.9 L471.7,45.8 L474.0,45.8 L476.3,45.8 L478.6,45.8 L480.9,45.8 L483.2,45.7 L485.5,45.7 L487.8,45.7 L490.1,45.7 L492.4,45.7 L494.7,45.7 L497.0,45.7 L499.3,45.6 L501.6,45.6 L503.9,45.6 L506.2,45.6 L508.5,45.6 L510.8,45.6 L513.1,45.6 L515.4,45.6 L517.7,45.6 L520.0,45.6" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <text x="66" y="64" class="t-accent" font-size="12">2 (casi todas)</text>
+          <text x="308" y="236" class="t-accent" font-size="12">−2498 en z = 3 m</text>
+          <text x="290" y="24" text-anchor="middle" class="t-muted" font-size="12">banda |z − 3| &lt; 3ℓ</text>
+          <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">2,90</text>
+          <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">3,00</text>
+          <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">3,10 m</text>
+        </svg>
+        <figcaption>Gradiente de una muestra frente a su altura al cruzar, \(\ell\) = 1 cm. En 20 cm, la densidad de \(z\) casi no cambia: el pico es lo único que aporta. Ejemplo 9.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Sesgo empírico, contado</span>De 4096 muestras, unas 150 caen en la banda: la media depende de ellas. Afilar la sigmoide (más realista) multiplica la varianza.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · el reparto</p>
+  <h2>Discontinuidad, rigidez y caos: qué estimador sufre en cada caso</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Caso</th><th>Primer orden</th><th>Orden cero</th></tr></thead>
+          <tbody>
+            <tr><td>Suave y estable</td><td>Poca varianza: la mejor información por simulación</td><td>Más varianza, que crece con \(d\)</td></tr>
+            <tr><td>Salto (choque, contacto)</td><td>Sesgado: no ve el salto</td><td>Sin sesgo</td></tr>
+            <tr><td>Aproximación rígida del salto</td><td>Sesgo empírico: varianza enorme con pocas muestras</td><td>Como con el salto</td></tr>
+            <tr><td>Rigidez persistente o caos</td><td>Más varianza que el orden cero</td><td>Menos varianza</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Para un dron</span>Vuelo libre: suave, el primer orden brilla. Aterrizar, chocar, saturar o cambiar de modo: saltos, y vuelve el orden cero o un crítico que suavice.</div>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Suh et al. (2022)</span>Con discontinuidades, el primer orden está sesgado y el orden cero no; con aproximaciones rígidas, aparece el sesgo empírico; con rigidez persistente o caos, el primer orden tiene más varianza. Proponen el estimador de orden α, una mezcla de los dos que se va al orden cero cerca de los saltos <a class="cite" data-ref="suh2022"></a>.</div>
       <div class="callout realidad"><span class="tag">En contacto real</span>Schwarke et al.: el contacto blando da gradientes, pero sus políticas no transfieren al contacto rígido; y subir la rigidez para ganar realismo «desestabiliza el gradiente» <a class="cite" data-ref="schwarke2025"></a>.</div>
-      <div class="callout clave"><span class="tag">Para un dron</span>Vuelo libre: suave, el primer orden brilla. Aterrizar, chocar, saturar o cambiar de modo: saltos, y vuelve el orden cero o un crítico que suavice.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · SHAC, el esquema</p>
+  <h2>SHAC: ventanas cortas que siguen donde acabó la anterior</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Línea temporal de SHAC: trayectorias paralelas cortadas en ventanas de h pasos, gradiente solo dentro de cada ventana y un crítico al final de cada una">
+        <defs>
+          <marker id="b6sm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="b6ss" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <rect x="160" y="62" width="120" height="118" class="box-soft"/>
+        <line x1="40" y1="90" x2="520" y2="90" class="ln-accent" stroke-width="2"/>
+        <line x1="40" y1="125" x2="520" y2="125" class="ln-accent" stroke-width="2"/>
+        <line x1="40" y1="160" x2="330" y2="160" class="ln-accent" stroke-width="2"/>
+        <line x1="336" y1="160" x2="520" y2="160" class="ln-accent" stroke-width="2"/>
+        <text x="333" y="165" text-anchor="middle" class="t-time t-bold" font-size="15">×</text>
+        <text x="342" y="182" class="t-time" font-size="12">termina: se reinicia</text>
+        <text x="34" y="94" text-anchor="end" class="t-mono t-faint" font-size="11">i=1</text>
+        <text x="34" y="129" text-anchor="end" class="t-mono t-faint" font-size="11">i=2</text>
+        <text x="34" y="164" text-anchor="end" class="t-mono t-faint" font-size="11">i=N</text>
+        <line x1="160" y1="56" x2="160" y2="196" class="ln-tesis ln-dash"/>
+        <line x1="280" y1="56" x2="280" y2="196" class="ln-tesis ln-dash"/>
+        <line x1="400" y1="56" x2="400" y2="196" class="ln-tesis ln-dash"/>
+        <line x1="520" y1="56" x2="520" y2="196" class="ln-tesis ln-dash"/>
+        <rect x="138" y="30" width="44" height="22" rx="4" class="box-tesis"/><text x="160" y="46" text-anchor="middle" class="t-mono" font-size="12">V_φ</text>
+        <rect x="258" y="30" width="44" height="22" rx="4" class="box-tesis"/><text x="280" y="46" text-anchor="middle" class="t-mono" font-size="12">V_φ</text>
+        <rect x="378" y="30" width="44" height="22" rx="4" class="box-tesis"/><text x="400" y="46" text-anchor="middle" class="t-mono" font-size="12">V_φ</text>
+        <rect x="498" y="30" width="44" height="22" rx="4" class="box-tesis"/><text x="520" y="46" text-anchor="middle" class="t-mono" font-size="12">V_φ</text>
+        <path d="M276 108 Q220 96 164 108" class="ln-tesis" marker-end="url(#b6ss)"/>
+        <path d="M276 143 Q220 131 164 143" class="ln-tesis" marker-end="url(#b6ss)"/>
+        <text x="160" y="212" text-anchor="middle" class="t-tesis" font-size="12">corte</text>
+        <text x="280" y="212" text-anchor="middle" class="t-tesis" font-size="12">corte</text>
+        <text x="400" y="212" text-anchor="middle" class="t-tesis" font-size="12">corte</text>
+        <line x1="40" y1="232" x2="530" y2="232" class="ln"/>
+        <text x="40" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="160" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">h</text>
+        <text x="280" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">2h</text>
+        <text x="400" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">3h</text>
+        <text x="520" y="250" text-anchor="middle" class="t-mono t-faint" font-size="12">4h</text>
+        <text x="220" y="76" text-anchor="middle" class="t-tesis" font-size="11">gradiente</text>
+        <text x="280" y="276" text-anchor="middle" class="t-muted" font-size="13">la ventana siguiente parte de los estados finales de esta, sin gradiente entre ellas</text>
+      </svg>
+      <figcaption>\(N\) trayectorias en paralelo, cortadas en ventanas de \(h\) pasos. Sombreada, una ventana: el gradiente (flechas) la recorre hacia atrás y se detiene en sus bordes; al final, el crítico \(V_\phi\) valora lo que queda.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Cada iteración de SHAC <a class="cite" data-ref="xu2022"></a>:</p>
+      <ol>
+        <li>Desplegar \(N\) trayectorias \(h\) pasos desde los estados finales de la iteración anterior (un entorno se reinicia solo si termina).</li>
+        <li>Pérdida del actor: recompensas de la ventana más el crítico al final (hoja siguiente).</li>
+        <li>Un paso de Adam con el gradiente analítico a través de los \(h\) pasos.</li>
+        <li>Ajustar el crítico a objetivos TD(λ) calculados con esas trayectorias, y mover suavemente hacia él una copia objetivo.</li>
+      </ol>
+      <p class="small muted">Aquí \(\lambda\) es el parámetro de TD(λ), no el adjunto.</p>
     </div>
   </div>
 </section>
@@ -395,13 +1230,30 @@ def despliegue(params, S):         # S: (n_entornos, 17)
   <h2>Ventanas cortas y un crítico que las cierra</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">SHAC retropropaga solo por ventanas cortas de \(h\) pasos y cierra cada una con un crítico aprendido <a class="cite" data-ref="xu2022"></a>:</p>
+      <p>SHAC retropropaga solo por ventanas cortas de \(h\) pasos y cierra cada una con un crítico aprendido <a class="cite" data-ref="xu2022"></a>:</p>
       \[ \mathcal L_\theta = -\frac{1}{Nh}\sum_{i=1}^{N}\Big[\sum_{t=t_0}^{t_0+h-1}\gamma^{t-t_0} r(s_t^i,a_t^i) + \gamma^h V_\phi(s^i_{t_0+h})\Big]. \]
-      <ul class="small">
-        <li>El gradiente se corta entre ventanas: nada de productos de 1000 jacobianos. El crítico «absorbe» el paisaje ruidoso de horizontes largos y las discontinuidades de las terminaciones.</li>
-        <li>Mejor resultado con \(h\) = 16 o 32 en Ant; la retropropagación tarda unas 2 veces el paso directo.</li>
-      </ul>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:36%">Término</th><th>Qué es</th></tr>
+          <tr><td>\(-\tfrac{1}{Nh}\sum_i\)</td><td>Promedio sobre las \(N\) trayectorias y los \(h\) pasos; el signo, porque se maximiza la recompensa</td></tr>
+          <tr><td>\(\sum_t \gamma^{t-t_0} r(s_t^i,a_t^i)\)</td><td>Recompensa de la ventana, descontada desde su inicio \(t_0\)</td></tr>
+          <tr><td>\(\gamma^h V_\phi(s^i_{t_0+h})\)</td><td>Lo que queda del episodio: el crítico estima el retorno futuro desde el último estado</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Notación de SHAC: recompensa \(r\) en lugar de coste \(c\), estado \(s\) y acción \(a\) en lugar de \(x\) y \(u\). \(h\) es la longitud de la ventana y \(t_0\) su primer paso (no el coste fijo de la parte 1).</p>
     </div>
+    <div class="stack">
+      <p><strong>Por qué cura:</strong> el gradiente se corta entre ventanas, así que ningún producto tiene más de \(h\) jacobianos. Con \(a = 1{,}01\): \(a^{1000} = 2{,}1\cdot 10^4\), pero \(a^{32} = 1{,}38\). Ejemplo 10.</p>
+      <p>El crítico «absorbe» el paisaje ruidoso de horizontes largos y convierte las discontinuidades de las terminaciones en una función suave. Mejor resultado con \(h\) = 16 o 32 en Ant; la retropropagación tarda unas 2 veces el paso directo.</p>
+      <div class="callout tesis"><span class="tag">El precio</span>El gradiente de lo que pasa más allá de la ventana es el del crítico, \(\nabla V_\phi\): si el crítico se equivoca, el actor optimiza su error. Es el mismo compromiso que en Dreamer (A8a).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · SHAC en cifras</p>
+  <h2>SHAC frente a PPO: muestras frente a reloj</h2>
+  <div class="cols">
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
@@ -415,7 +1267,10 @@ def despliegue(params, S):         # S: (n_entornos, 17)
         </table>
       </div>
       <p class="xsmall muted">SHAC <a class="cite" data-ref="xu2022"></a>; Schwarke et al., CoRL 2025 según los autores <a class="cite" data-ref="schwarke2025"></a>.</p>
+    </div>
+    <div class="stack">
       <div class="callout error"><span class="tag">Error frecuente</span>Leer «×382 en muestras» como «×382 más rápido». El reloj es lo que pagas: SHAC era más lento que PPO al principio del entrenamiento, y PPO itera más deprisa <a class="cite" data-ref="xu2022,schwarke2025"></a>.</div>
+      <div class="callout clave"><span class="tag">Cómo leerlo</span>×382 en muestras y ×17 en reloj: cada muestra de SHAC cuesta unas 22 veces más que una de PPO (simular, retropropagar, ajustar el crítico). Lo que se ahorra en muestras se paga en cálculo por muestra.</div>
     </div>
   </div>
 </section>
@@ -499,7 +1354,7 @@ def despliegue(params, S):         # S: (n_entornos, 17)
   <h2>Muestras baratas para aprender beliefs; gradientes con horizonte corto</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Belief recurrente:</strong> aprender a recordar exige trayectorias largas por actualización y mucha diversidad: el régimen de la simulación masiva, con aleatorización por entorno.</li>
         <li><strong>World model:</strong> retropropagar el actor por el modelo aprendido es primer orden a través de un simulador aprendido; lo protege lo mismo que a SHAC: horizonte imaginado corto y un crítico.</li>
         <li><strong>Observabilidad parcial:</strong> el gradiente de primer orden presupone que sabes cómo cambia el estado con la acción; con estado oculto, ese gradiente pasa por el belief, y sus errores también.</li>
@@ -637,8 +1492,8 @@ def despliegue(params, S):         # S: (n_entornos, 17)
   <h2>Miles de entornos en paralelo y gradientes a través del simulador</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Tu simulador, vectorizado:</strong> rendimiento frente a entornos en CPU y GPU.</li>
         <li><strong>Lo que se rompe a escala:</strong> claves aleatorias, NaN, reinicios sincronizados, aleatorización y precisión.</li>
         <li><strong>Primer orden frente a orden cero:</strong> varianza, coste y optimización.</li>
@@ -650,7 +1505,7 @@ def despliegue(params, S):         # S: (n_entornos, 17)
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>Tu curva de rendimiento frente a la de la presentación; 2,00 frente a −59,8 en el muro; la varianza del primer orden suavizado; el coste de cada estimador en tu hardware.</div>
       <div class="callout realidad"><span class="tag">Hardware</span>Una GPU NVIDIA de consumo o una en la nube; todo funciona en CPU, más despacio a partir de unos cientos de entornos.</div>
-      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b6.py</code>.</p>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b6.py</code>; las cuentas a mano, en <code>figuras/ejemplos_b6.py</code>.</p>
     </div>
   </div>
 </section>
@@ -696,101 +1551,140 @@ def despliegue(params, S):         # S: (n_entornos, 17)
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Subíndice \(t\): paso de tiempo. Superíndice \(i\): entorno \(i\)-ésimo del lote. \(\nabla_\theta\): gradiente respecto a los parámetros de la política.</p>
+<p>Subíndice \(t\): paso de tiempo. Superíndice \(i\): entorno o trayectoria \(i\)-ésima del lote. \(\nabla_\theta\): gradiente respecto a los parámetros. Varias letras cambian de significado entre partes (\(S\), \(t_0\), \(N\), \(\lambda\), \(h\)): hay una entrada por significado.</p>
 <dl>
-<dt>\(\nabla_\theta\)</dt><dd data-hojas="13">Gradiente respecto al vector de parámetros \(\theta\).</dd>
-<dt>\(\mathbb E_\xi\), \(\mathbb E_\varepsilon\)</dt><dd data-hojas="13">Esperanza respecto a la aleatoriedad indicada en el subíndice.</dd>
-<dt>\(\mathcal N(u;\theta,\sigma^2 I)\)</dt><dd data-hojas="13">Densidad gaussiana de media \(\theta\) y covarianza \(\sigma^2 I\) evaluada en \(u\).</dd>
-<dt>\(\mathbf 1[\cdot]\)</dt><dd data-hojas="13,27">Función indicadora: vale 1 si se cumple la condición y 0 si no.</dd>
-<dt>\(\top\)</dt><dd data-hojas="14">Traspuesta de una matriz o vector, como en \(A_t^\top\).</dd>
-<dt>\(\partial\)</dt><dd data-hojas="14">Derivada parcial, como en \(S_t=\partial x_t/\partial\theta\).</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="20,21">Gradiente respecto al vector de parámetros \(\theta\).</dd>
+<dt>\(\mathbb E_\xi\), \(\mathbb E_\varepsilon\)</dt><dd data-hojas="20,21">Esperanza respecto a la aleatoriedad indicada en el subíndice.</dd>
+<dt>\(\mathcal N(u;\theta,\sigma^2 I)\)</dt><dd data-hojas="18,21">Densidad gaussiana de media \(\theta\) y covarianza \(\sigma^2 I\) evaluada en \(u\). \(\mathcal N(0,I)\): normal estándar.</dd>
+<dt>\(\mathbf 1[\cdot]\)</dt><dd data-hojas="31,33">Función indicadora: vale 1 si se cumple la condición y 0 si no.</dd>
+<dt>\(\top\)</dt><dd data-hojas="22,27">Traspuesta de una matriz o vector, como en \(A_t^\top\) o \(g^\top\varepsilon\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="25">Derivada parcial, como en \(S_t=\partial x_t/\partial\theta\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="22,29">Norma euclídea de un vector.</dd>
 </dl>
 <h3>Parte 1 · Simular a escala</h3>
 <dl>
-<dt>\(2^{16}\)</dt><dd data-hojas="8,21">65 536 drones en paralelo (cifra de Aerial Gym con una RTX 3090).</dd>
-<dt>\(10^7\)</dt><dd data-hojas="23">Orden de magnitud de pasos por segundo que una GPU de consumo supera en un dron sencillo.</dd>
+<dt>\(s\)</dt><dd data-hojas="7,8">Estado de un entorno del x500: posición, velocidad, cuaternión, velocidad angular y velocidad de los 4 motores; 17 números.</dd>
+<dt>\(u\)</dt><dd data-hojas="7">Mando de la política en la parte 1: las 4 velocidades de motor pedidas, en rad/s. En la parte 2, \(u\) es la variable de integración del orden cero y \(u_t\) la acción.</dd>
+<dt>\(\theta\) (pesos)</dt><dd data-hojas="7,8">Pesos de la política MLP, compartidos por todos los entornos (<code>params</code> en el código).</dd>
+<dt>\(N\) (entornos)</dt><dd data-hojas="7,11">Número de entornos que avanzan a la vez; igual a \(n_\text{entornos}\).</dd>
+<dt>\(S\) (lote)</dt><dd data-hojas="7,8">Lote de estados, matriz \(N\times17\), una fila por entorno. No es la sensibilidad \(S_t\) de la parte 2.</dd>
+<dt>\(W_1\)</dt><dd data-hojas="8">Matriz de pesos de la primera capa de la política, 64 × 17.</dd>
+<dt>\(\Delta t_f\)</dt><dd data-hojas="7">Paso de la física: 1 ms, 10 por paso de control.</dd>
+<dt>\(t(N)\)</dt><dd data-hojas="7,11,12">Tiempo de reloj de un paso de control de todo el lote, en µs.</dd>
+<dt>\(R(N)\)</dt><dd data-hojas="7,11">Rendimiento en pasos de entorno por segundo, \(N/t(N)\).</dd>
+<dt>\(t_0\) (coste fijo)</dt><dd data-hojas="11,12">Coste fijo de un paso del lote, aunque haya un solo entorno: unos 75 µs en la RTX 4060 Ti. En SHAC, \(t_0\) es otra cosa (ver su entrada).</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="11,12">Coste añadido por cada entorno en un paso del lote: unos 11,8 ns en la RTX 4060 Ti entre 16 384 y 65 536 entornos.</dd>
+<dt>\(N^*\)</dt><dd data-hojas="11">Número de entornos en que coste fijo y coste por entorno pesan igual, \(t_0/\kappa\); allí \(R\) es la mitad del techo \(1/\kappa\).</dd>
+<dt>\(2^{16}\)</dt><dd data-hojas="10,42">65 536 drones en paralelo (cifra de Aerial Gym con una RTX 3090).</dd>
+<dt>\(10^7\)</dt><dd data-hojas="44">Orden de magnitud de pasos por segundo que una GPU de consumo supera en un dron sencillo.</dd>
 <dt>\(1{,}5\cdot10^8\)</dt><dd data-hojas="3">Pasos totales de entrenamiento de Rudin et al. (1500 actualizaciones de 98 304 muestras).</dd>
-<dt>\(B\)</dt><dd data-hojas="9">Tamaño del lote de PPO, escalar entero: \(B=n_\text{entornos}\cdot n_\text{pasos}\).</dd>
-<dt>\(n_\text{entornos}\)</dt><dd data-hojas="9">Número de entornos simulados en paralelo.</dd>
-<dt>\(n_\text{pasos}\)</dt><dd data-hojas="9">Pasos seguidos que se recogen en cada entorno por actualización.</dd>
-<dt>\(B\approx\) 100–200k</dt><dd data-hojas="9">Rango de lote que Rudin et al. encuentran como mejor compromiso en su tarea.</dd>
+<dt>\(B\)</dt><dd data-hojas="13,14">Tamaño del lote de PPO, escalar entero: \(B=n_\text{entornos}\cdot n_\text{pasos}\), las celdas de la rejilla.</dd>
+<dt>\(n_\text{entornos}\)</dt><dd data-hojas="14">Número de entornos simulados en paralelo (las filas de la rejilla).</dd>
+<dt>\(n_\text{pasos}\)</dt><dd data-hojas="13,14">Pasos seguidos que se recogen en cada entorno por actualización (las columnas de la rejilla).</dd>
+<dt>\(B\approx\) 100–200k</dt><dd data-hojas="14">Rango de lote que Rudin et al. encuentran como mejor compromiso en su tarea.</dd>
+<dt>\(r_t\)</dt><dd data-hojas="13">Recompensa del paso \(t\) en el objetivo del crítico de PPO.</dd>
+<dt>\(V\)</dt><dd data-hojas="13">Crítico (función de valor) de PPO.</dd>
+<dt>\(d_t\)</dt><dd data-hojas="13">Indicador de fin de episodio: 1 si el episodio termina en \(t\) (un choque), 0 si sigue o si solo se corta por tiempo.</dd>
 </dl>
 <h3>Parte 2 · Estimadores de gradiente</h3>
 <dl>
-<dt>\(\theta\) (parámetros)</dt><dd data-hojas="13">Vector de parámetros de la política; en la hoja 16, además, la altura de consigna del dron, en metros.</dd>
-<dt>\(\xi\)</dt><dd data-hojas="13">Aleatoriedad del problema (ráfagas, estado inicial, ruido de la política).</dd>
-<dt>\(J(\theta,\xi)\)</dt><dd data-hojas="13">Coste de un despliegue con parámetros \(\theta\) y aleatoriedad \(\xi\); escalar.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="13">Perturbación gaussiana estándar del estimador de orden cero, del mismo tamaño que \(\theta\).</dd>
-<dt>\(\sigma\)</dt><dd data-hojas="13">Escala del suavizado gaussiano del estimador de orden cero.</dd>
-<dt>\(u\)</dt><dd data-hojas="13">Variable de integración \(u=\theta+\sigma\varepsilon\) en la derivación del orden cero. En la parte de despliegues (hoja 14), \(u_t\) es la acción.</dd>
-<dt>\(I\)</dt><dd data-hojas="13">Matriz identidad.</dd>
-<dt>\(z(\theta,\xi)\)</dt><dd data-hojas="13">Magnitud que se compara con un umbral en el ejemplo del salto (en el muro, la altura al cruzarlo).</dd>
-<dt>\(h\) (umbral)</dt><dd data-hojas="13">Umbral de la condición \(z\lt h\). En la hoja 18, \(h\) es en cambio la longitud de la ventana de SHAC.</dd>
-<dt>\(P(z\lt h)\)</dt><dd data-hojas="13">Probabilidad de que se cumpla la condición; su derivada no se ve con el gradiente de cada muestra.</dd>
-<dt>ZoBG, FoBG</dt><dd data-hojas="13">Zeroth-order y first-order batched gradient: estimadores de orden cero y de primer orden de Suh et al.</dd>
+<dt>\(\theta\) (parámetros)</dt><dd data-hojas="18,20">Vector de \(d\) parámetros que se optimizan: las 6 ganancias del dron plano. En el muro (hojas 31 a 35), la altura de consigna, en metros.</dd>
+<dt>\(d\)</dt><dd data-hojas="18,22">Dimensión de \(\theta\): 6 en el dron plano, 1 en el muro.</dd>
+<dt>\(\xi\)</dt><dd data-hojas="18,20">Aleatoriedad de un despliegue (ráfagas, estado inicial, ruido de la política), sorteada antes y pasada como entrada.</dd>
+<dt>\(p(\xi)\)</dt><dd data-hojas="18,23">Densidad de la aleatoriedad; no depende de \(\theta\).</dd>
+<dt>\(J(\theta,\xi)\)</dt><dd data-hojas="18,20">Coste de un despliegue con parámetros \(\theta\) y aleatoriedad \(\xi\); escalar.</dd>
+<dt>\(\bar J(\theta)\)</dt><dd data-hojas="18,23">Coste esperado \(\mathbb E_\xi[J(\theta,\xi)]\), lo que se minimiza.</dd>
+<dt>\(g\)</dt><dd data-hojas="18,22">Gradiente verdadero \(\nabla_\theta\bar J\). En la hoja 22, gradiente de una \(J\) lineal.</dd>
+<dt>\(\hat g\)</dt><dd data-hojas="18,21">Una estimación (aleatoria) del gradiente.</dd>
+<dt>\(\bar g\)</dt><dd data-hojas="29">Media de las 512 estimaciones de primer orden del dron plano, con la que se normaliza la desviación.</dd>
+<dt>\(n\)</dt><dd data-hojas="18,22">Número de perturbaciones (parejas) o de muestras de una estimación.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="18,21">Perturbación gaussiana estándar del estimador de orden cero, del mismo tamaño que \(\theta\).</dd>
+<dt>\(\sigma\)</dt><dd data-hojas="18,21">Tamaño de la perturbación (escala del suavizado gaussiano) del orden cero.</dd>
+<dt>\(J_\sigma(\theta)\)</dt><dd data-hojas="18,21">Coste suavizado \(\mathbb E_\varepsilon[J(\theta+\sigma\varepsilon)]\): lo que el orden cero deriva de verdad.</dd>
+<dt>\(u\) (integración)</dt><dd data-hojas="21">Variable de integración \(u=\theta+\sigma\varepsilon\) en la derivación del orden cero.</dd>
+<dt>\(I\)</dt><dd data-hojas="18,22">Matriz identidad.</dd>
+<dt>ZoBG, FoBG</dt><dd data-hojas="20">Zeroth-order y first-order batched gradient: estimadores de orden cero y de primer orden de Suh et al.</dd>
 </dl>
 <h3>Parte 2 · Gradiente a través del tiempo</h3>
 <dl>
-<dt>\(x_t\)</dt><dd data-hojas="14">Estado del sistema en el paso \(t\).</dd>
-<dt>\(f\)</dt><dd data-hojas="14">Dinámica: \(x_{t+1}=f(x_t,u_t,w_t)\). \(f_x\) y \(f_u\) son sus jacobianos respecto al estado y a la acción.</dd>
-<dt>\(u_t\)</dt><dd data-hojas="14">Acción en el paso \(t\), \(u_t=\pi_\theta(x_t)\).</dd>
-<dt>\(w_t\)</dt><dd data-hojas="14">Perturbación (ráfaga) en el paso \(t\).</dd>
-<dt>\(\pi_\theta\)</dt><dd data-hojas="14">Política con parámetros \(\theta\). \(\pi_x\) y \(\pi_\theta\) (como jacobiano) son sus derivadas respecto al estado y a los parámetros.</dd>
-<dt>\(c(x_t,u_t)\)</dt><dd data-hojas="14">Coste por paso; \(J=\sum_t c(x_t,u_t)\). \(c_x\) y \(c_u\) son sus derivadas.</dd>
-<dt>\(S_t\)</dt><dd data-hojas="14">Sensibilidad del estado a los parámetros, \(S_t=\partial x_t/\partial\theta\), matriz.</dd>
-<dt>\(A_t\)</dt><dd data-hojas="14">Jacobiano del lazo cerrado \(f_x+f_u\pi_x\), matriz que se multiplica en cada paso.</dd>
-<dt>\(H\)</dt><dd data-hojas="14">Horizonte del despliegue, en pasos; número de jacobianos que multiplica el gradiente. En el texto de la hoja 15, \(H=1000\) es uno de los horizontes probados.</dd>
-<dt>\(k\)</dt><dd data-hojas="14">Índice de suma sobre los pasos anteriores a \(t\) en la sensibilidad.</dd>
-<dt>\(\lambda_t\)</dt><dd data-hojas="14">Adjunto del modo inverso: \(\lambda_t=c_x+A_t^\top\lambda_{t+1}\).</dd>
-<dt>\(\rho\)</dt><dd data-hojas="15">Radio espectral del lazo cerrado (0,988 bien amortiguado, 0,9998 poco amortiguado).</dd>
+<dt>\(x_t\)</dt><dd data-hojas="24,25">Estado del sistema en el paso \(t\), con \(n_x\) componentes.</dd>
+<dt>\(u_t\)</dt><dd data-hojas="24,25">Acción en el paso \(t\), \(u_t=\pi_\theta(x_t)\), con \(n_u\) componentes.</dd>
+<dt>\(n_x\), \(n_u\)</dt><dd data-hojas="24,25">Dimensiones del estado y de la acción.</dd>
+<dt>\(w_t\)</dt><dd data-hojas="24">Perturbación (ráfaga) en el paso \(t\); forma parte de \(\xi\).</dd>
+<dt>\(f\)</dt><dd data-hojas="24,25">Un paso del simulador: \(x_{t+1}=f(x_t,u_t,w_t)\).</dd>
+<dt>\(f_x\), \(f_u\)</dt><dd data-hojas="25,26">Jacobianos de \(f\) respecto al estado (\(n_x\times n_x\)) y a la acción (\(n_x\times n_u\)).</dd>
+<dt>\(\pi_\theta\)</dt><dd data-hojas="24,25">Política con parámetros \(\theta\).</dd>
+<dt>\(\pi_x\), \(\pi_\theta\) (jacobianos)</dt><dd data-hojas="25,26">Derivadas de la política respecto al estado (\(n_u\times n_x\)) y a los parámetros (\(n_u\times d\)).</dd>
+<dt>\(c(x_t,u_t)\)</dt><dd data-hojas="24,25">Coste por paso; \(J=\sum_t c(x_t,u_t)\).</dd>
+<dt>\(c_x\), \(c_u\)</dt><dd data-hojas="25,27">Derivadas del coste por paso respecto al estado y a la acción (filas).</dd>
+<dt>\(S_t\)</dt><dd data-hojas="25,26">Sensibilidad del estado a los parámetros, \(S_t=\partial x_t/\partial\theta\), matriz \(n_x\times d\).</dd>
+<dt>\(A_t\)</dt><dd data-hojas="25,26">Jacobiano del lazo cerrado \(f_x+f_u\pi_x\), matriz que se multiplica en cada paso.</dd>
+<dt>\(H\)</dt><dd data-hojas="24,25">Horizonte del despliegue, en pasos; número de jacobianos que puede encadenar el gradiente.</dd>
+<dt>\(k\)</dt><dd data-hojas="25">Índice de suma sobre los pasos anteriores a \(t\) en la sensibilidad.</dd>
+<dt>\(\lambda_t\)</dt><dd data-hojas="26,27">Adjunto del modo inverso: derivada del coste desde \(t\) en adelante respecto a \(x_t\); \(\lambda_t=c_x^\top+\pi_x^\top c_u^\top+A_t^\top\lambda_{t+1}\). No es el \(\lambda\) de TD(λ).</dd>
+<dt>\(a\), \(b\) (escalares)</dt><dd data-hojas="28">Sistema escalar \(x_{t+1}=a\,x_t+b\,\theta\): \(a\) hace de jacobiano del lazo cerrado. No es la acción \(a_t\) de SHAC.</dd>
+<dt>\(\rho\)</dt><dd data-hojas="28,29">Radio espectral del lazo cerrado (0,988 bien amortiguado, 0,9998 poco amortiguado).</dd>
 </dl>
-<h3>Parte 2 · Muro, rigidez y SHAC</h3>
+<h3>Parte 2 · Muro y rigidez</h3>
 <dl>
-<dt>\(\mathbb E[J]\)</dt><dd data-hojas="16">Coste esperado del dron que cruza el muro: \(2\theta+100\,P(\text{choque})\).</dd>
-<dt>\(P(\text{choque})\)</dt><dd data-hojas="16">Probabilidad de chocar con el muro, función de la altura de consigna \(\theta\).</dd>
-<dt>\(\alpha\) (orden)</dt><dd data-hojas="17">Parámetro del estimador de orden \(\alpha\) de Suh et al., mezcla de primer orden y orden cero.</dd>
-<dt>\(\mathcal L_\theta\)</dt><dd data-hojas="18">Pérdida de SHAC que se minimiza respecto a la política.</dd>
-<dt>\(N\)</dt><dd data-hojas="18">Número de trayectorias paralelas en la pérdida de SHAC.</dd>
-<dt>\(h\) (ventana)</dt><dd data-hojas="18">Longitud de la ventana corta de retropropagación de SHAC, en pasos.</dd>
-<dt>\(i\)</dt><dd data-hojas="18">Índice de la trayectoria \(1,\dots,N\), como superíndice de estados y acciones.</dd>
-<dt>\(t_0\)</dt><dd data-hojas="18">Paso inicial de la ventana.</dd>
-<dt>\(\gamma\)</dt><dd data-hojas="18">Factor de descuento, entre 0 y 1.</dd>
-<dt>\(r(s_t^i,a_t^i)\)</dt><dd data-hojas="18">Recompensa en el paso \(t\) de la trayectoria \(i\), con estado \(s\) y acción \(a\).</dd>
-<dt>\(V_\phi\)</dt><dd data-hojas="18">Crítico aprendido, de parámetros \(\phi\), que valora el estado al final de la ventana.</dd>
-<dt>\(s^i_{t_0+h}\)</dt><dd data-hojas="18">Estado al final de la ventana de la trayectoria \(i\), donde entra el crítico.</dd>
+<dt>\(z\)</dt><dd data-hojas="31,33">Altura del dron al cruzar el muro, en metros.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="31,33">Desviación \(z-\theta\) al cruzar el muro: gaussiana, independiente de \(\theta\).</dd>
+<dt>\(\sigma_z\)</dt><dd data-hojas="31,33">Desviación típica de \(\eta\): 0,408 m.</dd>
+<dt>\(\Phi\), \(\Phi'\)</dt><dd data-hojas="33">Función de distribución de la normal estándar y su derivada, la densidad gaussiana estándar.</dd>
+<dt>\(\mathbb E[J]\)</dt><dd data-hojas="32">Coste esperado del dron que cruza el muro: \(2\theta+100\,P(\text{choque})\).</dd>
+<dt>\(P(\text{choque})\)</dt><dd data-hojas="32,33">Probabilidad de chocar con el muro, función de la altura de consigna \(\theta\).</dd>
+<dt>\(\mathrm{sig}\)</dt><dd data-hojas="35">Sigmoide \(1/(1+e^{-v})\) que sustituye al indicador en el muro suavizado.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="35">Anchura de la sigmoide del muro suavizado: 1 cm en la tabla.</dd>
+<dt>\(p_z(3)\)</dt><dd data-hojas="35">Densidad de la altura al cruzar evaluada en 3 m (0,605 por metro con \(\theta=3{,}4\) m).</dd>
+<dt>\(\alpha\) (orden)</dt><dd data-hojas="36">Parámetro del estimador de orden \(\alpha\) de Suh et al., mezcla de primer orden y orden cero.</dd>
+</dl>
+<h3>Parte 2 · SHAC</h3>
+<dl>
+<dt>\(\mathcal L_\theta\)</dt><dd data-hojas="38">Pérdida de SHAC que se minimiza respecto a la política.</dd>
+<dt>\(N\) (trayectorias)</dt><dd data-hojas="37,38">Número de trayectorias paralelas en la pérdida de SHAC.</dd>
+<dt>\(h\) (ventana)</dt><dd data-hojas="37,38">Longitud de la ventana corta de retropropagación de SHAC, en pasos.</dd>
+<dt>\(i\)</dt><dd data-hojas="38">Índice de la trayectoria \(1,\dots,N\), como superíndice de estados y acciones.</dd>
+<dt>\(t_0\) (ventana)</dt><dd data-hojas="38">Paso inicial de la ventana de SHAC (no el coste fijo de la parte 1).</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="13,38">Factor de descuento, entre 0 y 1.</dd>
+<dt>\(r(s_t^i,a_t^i)\)</dt><dd data-hojas="38">Recompensa en el paso \(t\) de la trayectoria \(i\), con estado \(s\) y acción \(a\).</dd>
+<dt>\(V_\phi\)</dt><dd data-hojas="37,38">Crítico aprendido, de parámetros \(\phi\), que valora el estado al final de la ventana.</dd>
+<dt>\(s^i_{t_0+h}\)</dt><dd data-hojas="38">Estado al final de la ventana de la trayectoria \(i\), donde entra el crítico.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
 <dt>GPU</dt><dd data-hojas="1,6">Graphics processing unit: acelerador donde se ejecutan física y red.</dd>
-<dt>CPU</dt><dd data-hojas="6,8">Central processing unit: procesador general.</dd>
-<dt>PPO</dt><dd data-hojas="3,9">Proximal policy optimization: algoritmo de RL de política que usa lotes grandes.</dd>
-<dt>GAE</dt><dd data-hojas="9">Generalized advantage estimation: estimador de la ventaja que necesita trayectorias coherentes en el tiempo.</dd>
-<dt>KL</dt><dd data-hojas="9">Divergencia de Kullback-Leibler; PPO adapta su tasa de aprendizaje a un objetivo de 0,01.</dd>
+<dt>CPU</dt><dd data-hojas="6,10">Central processing unit: procesador general.</dd>
+<dt>PPO</dt><dd data-hojas="3,14">Proximal policy optimization: algoritmo de RL de política que usa lotes grandes.</dd>
+<dt>GAE</dt><dd data-hojas="13,14">Generalized advantage estimation: estimador de la ventaja que necesita trayectorias coherentes en el tiempo.</dd>
+<dt>KL</dt><dd data-hojas="14">Divergencia de Kullback-Leibler; PPO adapta su tasa de aprendizaje a un objetivo de 0,01.</dd>
 <dt>RL</dt><dd data-hojas="2">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>MLP</dt><dd data-hojas="7">Multilayer perceptron: la red de la política (17-64-64-4).</dd>
-<dt>JIT</dt><dd data-hojas="7">Just-in-time: compilación en tiempo de ejecución (jax.jit).</dd>
-<dt>vmap, scan</dt><dd data-hojas="7">Transformaciones de JAX: vectorizar sobre un eje de lote y repetir un paso con estado.</dd>
-<dt>NaN</dt><dd data-hojas="10">Not a number: valor no definido que contamina un lote.</dd>
-<dt>TPU</dt><dd data-hojas="11">Tensor processing unit: acelerador al que MJX-JAX también puede llevar MuJoCo.</dd>
-<dt>AMD</dt><dd data-hojas="11">Fabricante de GPU; MJX-JAX corre en GPU NVIDIA y AMD.</dd>
-<dt>MTU</dt><dd data-hojas="18">Parte del nombre de la tarea «Humanoid MTU» de la tabla de SHAC; el tema no desarrolla la sigla.</dd>
-<dt>BPTT</dt><dd data-hojas="21,3">Backpropagation through time: retropropagación a través del despliegue del simulador.</dd>
-<dt>SHAC</dt><dd data-hojas="4,18">Short-horizon actor-critic: gradiente por ventanas cortas cerradas por un crítico.</dd>
-<dt>MJX</dt><dd data-hojas="4,11">MuJoCo XLA: MuJoCo reescrito en JAX (MJX-JAX) o en Warp (MJX-Warp).</dd>
-<dt>MuJoCo Warp</dt><dd data-hojas="11">MuJoCo en Warp para GPU NVIDIA; no es diferenciable.</dd>
-<dt>Newton</dt><dd data-hojas="4,11">Motor de física en GPU sobre Warp, proyecto de la Linux Foundation.</dd>
+<dt>MLP</dt><dd data-hojas="9">Multilayer perceptron: la red de la política (17-64-64-4).</dd>
+<dt>JIT</dt><dd data-hojas="8,9">Just-in-time: compilación en tiempo de ejecución (jax.jit).</dd>
+<dt>vmap, scan</dt><dd data-hojas="8,9">Transformaciones de JAX: vectorizar sobre un eje de lote y repetir un paso con estado.</dd>
+<dt>NaN</dt><dd data-hojas="15">Not a number: valor no definido que contamina un lote.</dd>
+<dt>TPU</dt><dd data-hojas="16">Tensor processing unit: acelerador al que MJX-JAX también puede llevar MuJoCo.</dd>
+<dt>AMD</dt><dd data-hojas="16">Fabricante de GPU; MJX-JAX corre en GPU NVIDIA y AMD.</dd>
+<dt>MTU</dt><dd data-hojas="39">Parte del nombre de la tarea «Humanoid MTU» de la tabla de SHAC; el tema no desarrolla la sigla.</dd>
+<dt>BPTT</dt><dd data-hojas="42,3">Backpropagation through time: retropropagación a través del despliegue del simulador.</dd>
+<dt>SHAC</dt><dd data-hojas="4,38">Short-horizon actor-critic: gradiente por ventanas cortas cerradas por un crítico.</dd>
+<dt>MJX</dt><dd data-hojas="4,16">MuJoCo XLA: MuJoCo reescrito en JAX (MJX-JAX) o en Warp (MJX-Warp).</dd>
+<dt>MuJoCo Warp</dt><dd data-hojas="16">MuJoCo en Warp para GPU NVIDIA; no es diferenciable.</dd>
+<dt>Newton</dt><dd data-hojas="4,16">Motor de física en GPU sobre Warp, proyecto de la Linux Foundation.</dd>
 <dt>Isaac Gym</dt><dd data-hojas="4,6">Simulador de NVIDIA con física y red en la misma GPU.</dd>
-<dt>Isaac Lab</dt><dd data-hojas="10,11">Entornos de aprendizaje sobre Isaac Sim, con PhysX o Newton.</dd>
+<dt>Isaac Lab</dt><dd data-hojas="15,16">Entornos de aprendizaje sobre Isaac Sim, con PhysX o Newton.</dd>
 <dt>Brax</dt><dd data-hojas="4,6">Motor de física diferenciable en JAX para aceleradores.</dd>
-<dt>Aerial Gym</dt><dd data-hojas="4,8,11">Simulador de multirrotores en GPU sobre Isaac Gym.</dd>
-<dt>PhysX</dt><dd data-hojas="10">Motor de física de NVIDIA que detecta contactos entre robots aunque se ignoren.</dd>
-<dt>rsl_rl</dt><dd data-hojas="10">Biblioteca de RL de ETH Zürich que puede sortear la longitud inicial del episodio.</dd>
-<dt>ANYmal</dt><dd data-hojas="6,18">Robot cuadrúpedo usado en la transferencia de Rudin et al. y de Schwarke et al.</dd>
-<dt>x500</dt><dd data-hojas="3,7">Dron de referencia del curso: 13 estados y 4 motores.</dd>
-<dt>GRaD-Nav</dt><dd data-hojas="21">Navegación visual con dinámica diferenciable y escena de gaussianas (tema B3b).</dd>
-<dt>MPC</dt><dd data-hojas="19">Model predictive control: control predictivo basado en un modelo.</dd>
-<dt>RPM</dt><dd data-hojas="21">Revoluciones por minuto: Learning to Fly in Seconds transfiere con mando directo de RPM.</dd>
-<dt>H2</dt><dd data-hojas="22">Hito 2 del curso: simulador vectorizado y diferenciable.</dd>
+<dt>Aerial Gym</dt><dd data-hojas="4,10,16">Simulador de multirrotores en GPU sobre Isaac Gym.</dd>
+<dt>PhysX</dt><dd data-hojas="15">Motor de física de NVIDIA que detecta contactos entre robots aunque se ignoren.</dd>
+<dt>rsl_rl</dt><dd data-hojas="15">Biblioteca de RL de ETH Zürich que puede sortear la longitud inicial del episodio.</dd>
+<dt>ANYmal</dt><dd data-hojas="6,39">Robot cuadrúpedo usado en la transferencia de Rudin et al. y de Schwarke et al.</dd>
+<dt>x500</dt><dd data-hojas="3,9">Dron de referencia del curso: 13 estados y 4 motores.</dd>
+<dt>GRaD-Nav</dt><dd data-hojas="42">Navegación visual con dinámica diferenciable y escena de gaussianas (tema B3b).</dd>
+<dt>XLA</dt><dd data-hojas="8">Compilador de álgebra lineal que usa JAX: <code>jit</code> compila con él.</dd>
+<dt>TD(λ)</dt><dd data-hojas="37">Objetivos de diferencia temporal promediados con peso λ, con los que SHAC ajusta su crítico.</dd>
+<dt>Adam</dt><dd data-hojas="37">Optimizador por gradiente con momentos adaptativos; SHAC da un paso por iteración.</dd>
+<dt>MPC</dt><dd data-hojas="40">Model predictive control: control predictivo basado en un modelo.</dd>
+<dt>RPM</dt><dd data-hojas="42">Revoluciones por minuto: Learning to Fly in Seconds transfiere con mando directo de RPM.</dd>
+<dt>H2</dt><dd data-hojas="43">Hito 2 del curso: simulador vectorizado y diferenciable.</dd>
 </dl>
 </aside>
 

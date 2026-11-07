@@ -17,7 +17,7 @@ Convertir tu simulador en uno masivo (miles de entornos en un solo proceso) y di
 | Muro duro: gradiente verdadero y de primer orden a 3,4 m | −59,8 frente a 2,00 | 4 |
 | Muro suavizado (sigmoide de 1 cm): desviación por muestra del primer orden a 3,4 m | 337 | 4 |
 
-El script de las figuras está en `../figuras/figuras_b6.py` (unos minutos; imprime el dispositivo usado).
+El script de las figuras está en `../figuras/figuras_b6.py` (unos minutos; imprime el dispositivo usado). Las cuentas a mano de la presentación (estimador de orden cero, BPTT de tres pasos, el muro en 1-D, la varianza de la sigmoide) están en `../figuras/ejemplos_b6.py`, que corre en CPU en segundos.
 
 ## 1. Tu simulador, vectorizado (50 min)
 
