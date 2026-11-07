@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B4 · Tiempo, asincronía y latencia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="B4" data-deck-title="Tiempo, asincronía y latencia · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 2 · Jornada 15 · Curso de robótica inteligente</p>
+  <h1>Tiempo, asincronía y latencia en simulación</h1>
+  <p class="subtitle">Cómo lleva el tiempo un simulador, de dónde sale cada milisegundo de retardo de un dron real, cómo se modelan el retardo, el jitter y las pérdidas, y qué hacen con ellos un estimador, un controlador y una política que aprende.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A2, A4a, B1, B3a</span>
+    <span><b>Prepara</b> B6, A6b, A7b, A8a, B7</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de B4</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Diseñar el reloj de un simulador multifrecuencia sin deriva y que se pueda vectorizar en JAX.</li>
+    <li>Hacer el presupuesto de latencia de un dron, eslabón a eslabón, con cifras de sistemas reales.</li>
+    <li>Implementar búferes de retardo con retardo fraccionario, jitter que respeta el orden y pérdidas a ráfagas.</li>
+    <li>Cuantificar qué arregla un predictor (la inestabilidad) y qué no (la información perdida), y por qué hace falta la marca de tiempo.</li>
+    <li>Convertir un problema con retardo en uno markoviano y decidir qué observa una política que aprende con retardos.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>El mundo no espera a que la red termine de pensar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En simulación, lo habitual es que la observación sea del instante actual y la acción se aplique en el acto. En un dron real, cada medida llega tarde, cada sensor a su ritmo, y la acción tarda en hacerse efectiva.</li>
+        <li>Un controlador ajustado sin retardo puede ser inestable con él: en A2 viste que cada milisegundo cuesta fase en el cruce.</li>
+        <li>Una política entrenada sin retardo aprende a confiar en información que en vuelo no tendrá. Eschmann et al. no obtienen ninguna política usable si no simulan el retardo de los rotores <a class="cite" data-ref="eschmann2024"></a>.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un retardo convierte un MDP en un POMDP: el estado actual no se observa, solo uno pasado. El belief tiene que llevar en cuenta qué ha pasado desde entonces (parte 4).</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Un sistema que gana a campeones</span>Swift tiene 40 ms de latencia sensoriomotora, frente a una media de 220 ms de los pilotos expertos contra los que compitió; su cámara va a 30 Hz <a class="cite" data-ref="kaufmann2023"></a>.</div>
+      <div class="callout realidad"><span class="tag">Medido en un robot</span>En el cuadrúpedo Minitaur, el controlador en una TX2 tenía «típicamente» 15–19 ms de latencia y el PD del microcontrolador, 3 ms. Sin modelarlo, la región de estabilidad de un controlador en simulación «es mucho mayor» que en el robot <a class="cite" data-ref="tan2018"></a>.</div>
+      <div class="callout clave"><span class="tag">Lo que no repetimos</span>Retardo y margen de fase están en A2; el horizonte retrasado de EKF2, en A4a. Aquí: cómo se simula todo eso y qué hace con ello el aprendizaje.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>Del control con tiempo muerto a las políticas que esperan</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1957–1960</span>El predictor de Smith compensa el tiempo muerto en el control de procesos (nombrado aquí sin cita: no hemos podido verificar la referencia). Gilbert modela los errores a ráfagas de un canal con una cadena de Markov de dos estados <a class="cite" data-ref="gilbert1960"></a>, que Elliott generaliza <a class="cite" data-ref="elliott1963"></a>.</div>
+    <div class="ev"><span class="yr">2003–2009</span>Primeros MDP con retardo <a class="cite" data-ref="katsikopoulos2003"></a> y los MDP con retardo constante en aprendizaje por refuerzo <a class="cite" data-ref="walsh2008"></a>.</div>
+    <div class="ev"><span class="yr">2018</span>Sim-to-real con latencia medida y aleatorizada en un cuadrúpedo <a class="cite" data-ref="tan2018"></a>. Calibración en línea del desfase cámara-IMU en VINS-Mono <a class="cite" data-ref="qin2018"></a>.</div>
+    <div class="ev"><span class="yr">2019–2021</span>RL en tiempo real <a class="cite" data-ref="ramstedt2019"></a>, control concurrente <a class="cite" data-ref="xiao2020"></a> y RL con retardos aleatorios <a class="cite" data-ref="bouteiller2021"></a>.</div>
+    <div class="ev"><span class="yr">2023–2024</span>Swift con 40 ms de latencia <a class="cite" data-ref="kaufmann2023"></a>; RL frente a control óptimo con retardo simulado <a class="cite" data-ref="song2023"></a>; historia de acciones para el retardo de los rotores <a class="cite" data-ref="eschmann2024"></a>.</div>
+    <div class="ev"><span class="yr">2025–2026</span>Búferes de retardo nativos en MuJoCo 3.5 <a class="cite" data-ref="mujoco35"></a>; belief con observaciones desordenadas en un world model <a class="cite" data-ref="karamzade2025"></a>; RL con la latencia de inferencia de políticas grandes <a class="cite" data-ref="zhu2026"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="El reloj">
+  <p class="num">Parte 1</p>
+  <h2>El reloj del simulador</h2>
+  <p>Un simulador lleva el tiempo de todos sus componentes. Si lo lleva mal, el dron simulado vive en un mundo con otras frecuencias y otros retardos que el real.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · tres tiempos</p>
+  <h2>Tiempo simulado, tiempo de pared y el reloj de cada aparato</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Tiempo simulado:</strong> el que integra la física. Avanza un paso cuando el simulador quiere, no cuando pasa el tiempo.</li>
+        <li><strong>Tiempo de pared:</strong> el del ordenador. El factor de tiempo real es \(\text{RTF} = \Delta t_\text{sim}/\Delta t_\text{pared}\): mayor que 1 al entrenar, igual a 1 con hardware en el lazo.</li>
+        <li><strong>El reloj de cada aparato:</strong> en un dron real, la controladora, el ordenador de a bordo y cada sensor tienen su reloj, con un desfase y una deriva entre ellos: \(t_\text{ap} = (1+\varepsilon)\,t + b\).</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">En ROS 2</span>Hay tiempo de sistema, tiempo monótono y tiempo ROS. Con <code>use_sim_time</code>, el tiempo ROS es el último publicado en <code>/clock</code>, y si salta hacia atrás se avisa con una llamada de retorno <a class="cite" data-ref="ros2time"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">En PX4</span>El módulo de sincronización estima el desfase y la deriva entre el ordenador de a bordo y la controladora con paquetes de ida y vuelta, por MAVLink o DDS; descarta las muestras con un tiempo de ida y vuelta demasiado alto y filtra el resto <a class="cite" data-ref="px4timesync"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Usar el reloj del ordenador (<code>time.time()</code>) dentro del código que simula: el resultado cambia con la carga de la máquina y deja de ser reproducible. En el simulador solo existe el tiempo simulado.</div>
+      <div class="callout clave"><span class="tag">Regla</span>Cada dato lleva la marca de tiempo del instante en que se midió, en el reloj del simulador. Todo lo demás (llegada, retardo, edad) se calcula a partir de ella.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · multifrecuencia</p>
+  <h2>Un paso base y cada componente a su ritmo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1200 306" role="img" aria-label="Disparos de cada componente en los primeros 100 ms con un paso base de 1 ms">
+      <text x="140" y="35" text-anchor="end" font-size="13">física 1 kHz</text>
+      <line x1="150" y1="30" x2="1150" y2="30" class="ln-rule"/>
+      <line x1="150" y1="24" x2="150" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="160" y1="24" x2="160" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="170" y1="24" x2="170" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="180" y1="24" x2="180" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="190" y1="24" x2="190" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="200" y1="24" x2="200" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="210" y1="24" x2="210" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="220" y1="24" x2="220" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="230" y1="24" x2="230" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="240" y1="24" x2="240" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="250" y1="24" x2="250" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="260" y1="24" x2="260" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="270" y1="24" x2="270" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="280" y1="24" x2="280" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="290" y1="24" x2="290" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="300" y1="24" x2="300" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="310" y1="24" x2="310" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="320" y1="24" x2="320" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="330" y1="24" x2="330" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="340" y1="24" x2="340" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="350" y1="24" x2="350" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="360" y1="24" x2="360" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="370" y1="24" x2="370" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="380" y1="24" x2="380" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="390" y1="24" x2="390" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="400" y1="24" x2="400" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="410" y1="24" x2="410" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="420" y1="24" x2="420" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="430" y1="24" x2="430" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="440" y1="24" x2="440" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="450" y1="24" x2="450" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="460" y1="24" x2="460" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="470" y1="24" x2="470" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="480" y1="24" x2="480" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="490" y1="24" x2="490" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="500" y1="24" x2="500" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="510" y1="24" x2="510" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="520" y1="24" x2="520" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="530" y1="24" x2="530" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="540" y1="24" x2="540" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="550" y1="24" x2="550" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="560" y1="24" x2="560" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="570" y1="24" x2="570" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="580" y1="24" x2="580" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="590" y1="24" x2="590" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="600" y1="24" x2="600" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="610" y1="24" x2="610" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="620" y1="24" x2="620" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="630" y1="24" x2="630" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="640" y1="24" x2="640" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="650" y1="24" x2="650" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="660" y1="24" x2="660" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="670" y1="24" x2="670" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="680" y1="24" x2="680" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="690" y1="24" x2="690" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="700" y1="24" x2="700" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="710" y1="24" x2="710" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="720" y1="24" x2="720" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="730" y1="24" x2="730" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="740" y1="24" x2="740" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="750" y1="24" x2="750" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="760" y1="24" x2="760" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="770" y1="24" x2="770" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="780" y1="24" x2="780" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="790" y1="24" x2="790" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="800" y1="24" x2="800" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="810" y1="24" x2="810" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="820" y1="24" x2="820" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="830" y1="24" x2="830" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="840" y1="24" x2="840" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="850" y1="24" x2="850" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="860" y1="24" x2="860" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="870" y1="24" x2="870" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="880" y1="24" x2="880" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="890" y1="24" x2="890" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="900" y1="24" x2="900" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="910" y1="24" x2="910" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="920" y1="24" x2="920" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="930" y1="24" x2="930" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="940" y1="24" x2="940" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="950" y1="24" x2="950" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="960" y1="24" x2="960" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="970" y1="24" x2="970" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="980" y1="24" x2="980" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="990" y1="24" x2="990" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1000" y1="24" x2="1000" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1010" y1="24" x2="1010" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1020" y1="24" x2="1020" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1030" y1="24" x2="1030" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1040" y1="24" x2="1040" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1050" y1="24" x2="1050" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1060" y1="24" x2="1060" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1070" y1="24" x2="1070" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1080" y1="24" x2="1080" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1090" y1="24" x2="1090" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1100" y1="24" x2="1100" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1110" y1="24" x2="1110" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1120" y1="24" x2="1120" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1130" y1="24" x2="1130" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1140" y1="24" x2="1140" y2="36" class="ln" stroke-width="1.1"/>
+      <line x1="1150" y1="24" x2="1150" y2="36" class="ln" stroke-width="1.1"/>
+      <text x="140" y="73" text-anchor="end" font-size="13">IMU 200 Hz</text>
+      <line x1="150" y1="68" x2="1150" y2="68" class="ln-rule"/>
+      <line x1="150" y1="58" x2="150" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="200" y1="58" x2="200" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="250" y1="58" x2="250" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="300" y1="58" x2="300" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="350" y1="58" x2="350" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="400" y1="58" x2="400" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="450" y1="58" x2="450" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="500" y1="58" x2="500" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="550" y1="58" x2="550" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="600" y1="58" x2="600" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="650" y1="58" x2="650" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="700" y1="58" x2="700" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="750" y1="58" x2="750" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="800" y1="58" x2="800" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="850" y1="58" x2="850" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="900" y1="58" x2="900" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="950" y1="58" x2="950" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1000" y1="58" x2="1000" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1050" y1="58" x2="1050" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1100" y1="58" x2="1100" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1150" y1="58" x2="1150" y2="78" class="ln-accent" stroke-width="2.5"/>
+      <text x="140" y="111" text-anchor="end" font-size="13">rate 500 Hz</text>
+      <line x1="150" y1="106" x2="1150" y2="106" class="ln-rule"/>
+      <line x1="150" y1="100" x2="150" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="170" y1="100" x2="170" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="190" y1="100" x2="190" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="210" y1="100" x2="210" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="230" y1="100" x2="230" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="250" y1="100" x2="250" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="270" y1="100" x2="270" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="290" y1="100" x2="290" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="310" y1="100" x2="310" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="330" y1="100" x2="330" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="350" y1="100" x2="350" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="370" y1="100" x2="370" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="390" y1="100" x2="390" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="410" y1="100" x2="410" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="430" y1="100" x2="430" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="450" y1="100" x2="450" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="470" y1="100" x2="470" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="490" y1="100" x2="490" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="510" y1="100" x2="510" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="530" y1="100" x2="530" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="550" y1="100" x2="550" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="570" y1="100" x2="570" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="590" y1="100" x2="590" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="610" y1="100" x2="610" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="630" y1="100" x2="630" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="650" y1="100" x2="650" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="670" y1="100" x2="670" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="690" y1="100" x2="690" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="710" y1="100" x2="710" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="730" y1="100" x2="730" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="750" y1="100" x2="750" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="770" y1="100" x2="770" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="790" y1="100" x2="790" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="810" y1="100" x2="810" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="830" y1="100" x2="830" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="850" y1="100" x2="850" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="870" y1="100" x2="870" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="890" y1="100" x2="890" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="910" y1="100" x2="910" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="930" y1="100" x2="930" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="950" y1="100" x2="950" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="970" y1="100" x2="970" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="990" y1="100" x2="990" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1010" y1="100" x2="1010" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1030" y1="100" x2="1030" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1050" y1="100" x2="1050" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1070" y1="100" x2="1070" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1090" y1="100" x2="1090" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1110" y1="100" x2="1110" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1130" y1="100" x2="1130" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <line x1="1150" y1="100" x2="1150" y2="112" class="ln-accent" stroke-width="1.1"/>
+      <text x="140" y="149" text-anchor="end" font-size="13">actitud 250 Hz</text>
+      <line x1="150" y1="144" x2="1150" y2="144" class="ln-rule"/>
+      <line x1="150" y1="134" x2="150" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="190" y1="134" x2="190" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="230" y1="134" x2="230" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="270" y1="134" x2="270" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="310" y1="134" x2="310" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="350" y1="134" x2="350" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="390" y1="134" x2="390" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="430" y1="134" x2="430" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="470" y1="134" x2="470" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="510" y1="134" x2="510" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="550" y1="134" x2="550" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="590" y1="134" x2="590" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="630" y1="134" x2="630" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="670" y1="134" x2="670" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="710" y1="134" x2="710" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="750" y1="134" x2="750" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="790" y1="134" x2="790" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="830" y1="134" x2="830" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="870" y1="134" x2="870" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="910" y1="134" x2="910" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="950" y1="134" x2="950" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="990" y1="134" x2="990" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1030" y1="134" x2="1030" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1070" y1="134" x2="1070" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1110" y1="134" x2="1110" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <line x1="1150" y1="134" x2="1150" y2="154" class="ln-accent" stroke-width="2.5"/>
+      <text x="140" y="187" text-anchor="end" font-size="13">posición 50 Hz</text>
+      <line x1="150" y1="182" x2="1150" y2="182" class="ln-rule"/>
+      <line x1="150" y1="172" x2="150" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <line x1="350" y1="172" x2="350" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <line x1="550" y1="172" x2="550" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <line x1="750" y1="172" x2="750" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <line x1="950" y1="172" x2="950" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <line x1="1150" y1="172" x2="1150" y2="192" class="ln-tesis" stroke-width="2.5"/>
+      <text x="140" y="225" text-anchor="end" font-size="13">cámara 30 Hz</text>
+      <line x1="150" y1="220" x2="1150" y2="220" class="ln-rule"/>
+      <line x1="150" y1="210" x2="150" y2="230" class="ln-time" stroke-width="2.5"/>
+      <line x1="490" y1="210" x2="490" y2="230" class="ln-time" stroke-width="2.5"/>
+      <line x1="820" y1="210" x2="820" y2="230" class="ln-time" stroke-width="2.5"/>
+      <line x1="1150" y1="210" x2="1150" y2="230" class="ln-time" stroke-width="2.5"/>
+      <text x="140" y="263" text-anchor="end" font-size="13">GNSS 10 Hz</text>
+      <line x1="150" y1="258" x2="1150" y2="258" class="ln-rule"/>
+      <line x1="150" y1="248" x2="150" y2="268" class="ln-time" stroke-width="2.5"/>
+      <line x1="1150" y1="248" x2="1150" y2="268" class="ln-time" stroke-width="2.5"/>
+      <text x="150" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+      <text x="350" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+      <text x="550" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">40</text>
+      <text x="750" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">60</text>
+      <text x="950" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">80</text>
+      <text x="1150" y="298" text-anchor="middle" class="t-mono t-faint" font-size="12">100 ms</text>
+      <path d="M150,232 C220,246 480,246 550,232" fill="none" class="ln-time ln-dash"/>
+      <text x="560" y="246" class="t-time" font-size="12">la primera imagen llega 40 ms después</text>
+    </svg>
+    <figcaption>Primeros 100 ms con un paso de física de 1 ms. La cámara a 30 Hz no cabe en un número entero de pasos: se dispara cuando el reloj alcanza el siguiente instante programado. <code>figuras_b4.py</code>, sección 1.</figcaption>
+  </figure>
+  <div class="cols">
+    <ul class="small">
+      <li><strong>Sin deriva:</strong> guarda el siguiente instante programado y súmale el periodo exacto. La cámara sale a intervalos de 33 y 34 ms, con 33,345 ms de media: un jitter determinista de menos de un paso.</li>
+      <li><strong>Con deriva:</strong> disparar cada \(\mathrm{round}(T/\Delta t) = 33\) pasos da 30,30 Hz: en un minuto, 1818 imágenes en lugar de 1800.</li>
+    </ul>
+    <div class="callout error"><span class="tag">Error frecuente</span>Un sensor a una frecuencia que no es la real. En B1 viste que la IMU del SITL con Gazebo sale a 250 Hz y el lazo de <em>rate</em> de PX4 corre a esa frecuencia, no a la de la placa.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · en JAX</p>
+  <h2>Vectorizar el reloj: todos los entornos en la misma fase</h2>
+  <div class="cols">
+    <div class="stack">
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:13.5px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere;"><code>def paso(carry, k):            # k: contador global, escalar
+    s, sens, buf = carry
+    s = fisica(s, u_aplicada(buf, k))        # 1 kHz
+    sens = lax.cond(k % 5 == 0,             # IMU a 200 Hz
+                    leer_imu, lambda s, x: x, s, sens)
+    cam = lax.cond(k &gt;= prox_cam(k),        # cámara a 30 Hz
+                   render, sin_imagen, s)
+    buf = escribir(buf, k, s, sens, cam)     # búferes de retardo
+    return (s, sens, buf), None
+
+estado, _ = lax.scan(paso, estado, jnp.arange(n_pasos))
+# vmap sobre entornos fuera de scan: k es el mismo en todos</code></pre>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Por qué la misma fase</span>Con <code>vmap</code>, si el predicado de <code>lax.cond</code> depende del lote, JAX lo convierte en <code>lax.select</code> y ejecuta las dos ramas <a class="cite" data-ref="jaxcond"></a>. Con un contador \(k\) común a todos los entornos, el predicado es escalar y la rama cara (el render) solo se ejecuta cuando toca.</div>
+      <div class="callout realidad"><span class="tag">Entonces, ¿y el jitter?</span>No se mete en el instante en que se ejecuta cada tarea, sino en el retardo con que su resultado llega al consumidor: cada entorno lee del búfer con su propio retardo. El cómputo sigue siendo regular y la observación, irregular.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Dar a cada entorno una fase aleatoria de la cámara para «aleatorizar»: bajo <code>vmap</code> se renderiza en todos los pasos y se tira casi todo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Reloj · cómputo</p>
+  <h2>En lockstep, pensar no cuesta tiempo: hay que cobrarlo</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En <em>lockstep</em> (B1), el simulador espera a que el autopiloto o la política terminen: su cálculo dura cero en tiempo simulado.</li>
+        <li>En los entornos de aprendizaje, igual: en Isaac Lab, la acción se aplica durante <code>decimation</code> pasos de física, y el paso del entorno es <code>decimation</code> × <code>sim.dt</code> <a class="cite" data-ref="isaaclab"></a>. La acción calculada con la observación de \(t\) actúa ya en \(t\).</li>
+        <li>En un dron real, entre la medida y la acción hay cómputo: la red de percepción de Swift tarda 40 ms por pasada en una Jetson TX2 y su política, 8 ms en la CPU <a class="cite" data-ref="kaufmann2023"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Cómo cobrarlo</span>Mide el tiempo de inferencia en el hardware de destino (su distribución, no solo la media) y aplícalo como retardo de la acción en el simulador. Es la idea del RL en tiempo real: la acción se elige mientras el estado sigue cambiando <a class="cite" data-ref="ramstedt2019"></a>.</div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" role="img" aria-label="Acción aplicada en el acto frente a acción aplicada tras el cómputo">
+          <line x1="40" y1="70" x2="500" y2="70" class="ln-rule"/>
+          <line x1="40" y1="170" x2="500" y2="170" class="ln-rule"/>
+          <text x="40" y="40" class="t-bold" font-size="14">Simulación ingenua</text>
+          <text x="40" y="140" class="t-bold" font-size="14">Dron real</text>
+          <line x1="100" y1="58" x2="100" y2="82" class="ln-accent" stroke-width="3"/>
+          <text x="100" y="100" text-anchor="middle" font-size="12">observa</text>
+          <rect x="100" y="62" width="180" height="16" class="box-accent"/>
+          <text x="190" y="56" text-anchor="middle" class="t-accent" font-size="12">acción aplicada desde t</text>
+          <line x1="100" y1="158" x2="100" y2="182" class="ln-accent" stroke-width="3"/>
+          <text x="100" y="200" text-anchor="middle" font-size="12">observa</text>
+          <rect x="100" y="162" width="70" height="16" class="box-soft"/>
+          <text x="135" y="155" text-anchor="middle" class="t-muted" font-size="12">cómputo</text>
+          <rect x="170" y="162" width="180" height="16" class="box-accent"/>
+          <text x="260" y="200" text-anchor="middle" class="t-accent" font-size="12">acción aplicada desde t + latencia</text>
+          <text x="420" y="175" class="t-time" font-size="12">el estado ya cambió</text>
+        </svg>
+        <figcaption>La misma acción, aplicada en el acto o después del cómputo.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Retardos">
+  <p class="num">Parte 2</p>
+  <h2>Retardos: de dónde salen y cómo se simulan</h2>
+  <p>Un presupuesto de latencia con cifras reales, un búfer que la reproduce y lo que un predictor puede y no puede arreglar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · presupuesto</p>
+  <h2>De dónde sale cada milisegundo</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Eslabón</th><th>Cifra</th><th>Fuente</th></tr></thead>
+        <tbody>
+          <tr><td>Lectura de una cámara con obturador rodante</td><td class="n"><span class="hz">≈ 30 ms</span> por imagen (1024 filas)</td><td><a class="cite" data-ref="schubert2019"></a></td></tr>
+          <tr><td>Red de percepción a bordo (Swift, Jetson TX2)</td><td class="n"><span class="hz">40 ms</span> por pasada</td><td><a class="cite" data-ref="kaufmann2023"></a></td></tr>
+          <tr><td>Política en el ordenador de a bordo</td><td class="n"><span class="hz">8 ms</span> (Swift, CPU); <span class="hz">15–19 ms</span> (Minitaur, TX2)</td><td><a class="cite" data-ref="kaufmann2023,tan2018"></a></td></tr>
+          <tr><td>Muestreo y retenedor del lazo</td><td class="n">medio periodo de media</td><td>A2</td></tr>
+          <tr><td>Filtro del giróscopo</td><td class="n">unos <span class="hz">5,6 ms</span> (Butterworth de 40 Hz)</td><td>A2</td></tr>
+          <tr><td>GNSS hasta el EKF de PX4</td><td class="n"><span class="hz">110 ms</span> por defecto (<code>SENS_GNSS0_DELAY</code>)</td><td><a class="cite" data-ref="px4gnssdelay"></a></td></tr>
+          <tr><td>Respuesta de los rotores</td><td class="n">constante de tiempo de <span class="hz">0,05–0,25 s</span></td><td><a class="cite" data-ref="eschmann2024"></a></td></tr>
+          <tr><td>De la cámara a los motores (Swift)</td><td class="n"><span class="hz">40 ms</span>; pilotos expertos, <span class="hz">220 ms</span></td><td><a class="cite" data-ref="kaufmann2023"></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Tres tipos</span>(1) <strong>Transporte:</strong> un dato llega tarde, intacto. (2) <strong>Dinámico:</strong> un filtro o un motor responden con lentitud (el filtro, también con fase). (3) <strong>De muestreo:</strong> el dato se queda congelado hasta el siguiente. Se simulan distinto: búfer, modelo dinámico (B2) y retenedor.</div>
+      <div class="callout realidad"><span class="tag">En PX4</span>Cada sensor auxiliar declara su retardo respecto a la IMU: 110 ms el GNSS, 7 ms el flujo óptico, 5 ms el telémetro, 0 la visión externa por defecto, hasta un máximo de 200 ms (<code>EKF2_DELAY_MAX</code>) <a class="cite" data-ref="px4ekf2,px4gnssdelay"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · búfer</p>
+  <h2>Un búfer de retardo, bien hecho</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 170" role="img" aria-label="Búfer circular de retardo">
+          <g font-size="12">
+          <rect x="20" y="40" width="48" height="40" class="box-soft"/><rect x="68" y="40" width="48" height="40" class="box-soft"/><rect x="116" y="40" width="48" height="40" class="box-accent"/><rect x="164" y="40" width="48" height="40" class="box-soft"/><rect x="212" y="40" width="48" height="40" class="box-soft"/><rect x="260" y="40" width="48" height="40" class="box-soft"/><rect x="308" y="40" width="48" height="40" class="box-tesis"/><rect x="356" y="40" width="48" height="40" class="box-soft"/><rect x="404" y="40" width="48" height="40" class="box-soft"/><rect x="452" y="40" width="48" height="40" class="box-soft"/>
+          <text x="140" y="65" text-anchor="middle">k−d</text>
+          <text x="332" y="65" text-anchor="middle">k</text>
+          <text x="332" y="28" text-anchor="middle" class="t-tesis">se escribe en k mod D</text>
+          <text x="140" y="28" text-anchor="middle" class="t-accent">se lee en (k−d) mod D</text>
+          <path d="M308,100 C260,140 190,140 140,100" fill="none" class="ln-accent" stroke-dasharray="4 3"/>
+          <text x="225" y="152" text-anchor="middle" class="t-muted">d pasos atrás (d ≤ D − 1)</text>
+          </g>
+        </svg>
+        <figcaption>Búfer circular de \(D\) casillas: memoria fija, índices enteros, apto para <code>jit</code>.</figcaption>
+      </figure>
+      <ul class="small">
+        <li><strong>Inicio:</strong> llénalo con el estado inicial, no con ceros, o la primera medida retrasada dirá que el dron está en el origen.</li>
+        <li><strong>Memoria:</strong> 16 384 entornos con 200 ms a 1 kHz y 17 números por casilla son 223 MB en float32; a 200 Hz, 45 MB. Guarda a la frecuencia del sensor, no a la de la física.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: el retardo fraccionario por interpolación lineal también filtra</summary>
+        <p class="small">Para un retardo \(\tau = (m+\alpha)\Delta t\), con \(0\le\alpha&lt;1\), se interpola \(y_k = (1-\alpha)\,x_{k-m} + \alpha\,x_{k-m-1}\). Su respuesta en frecuencia es</p>
+        \[ H(e^{j\omega\Delta t}) = e^{-j\omega m\Delta t}\big[(1-\alpha) + \alpha\,e^{-j\omega\Delta t}\big]. \]
+        <p class="small">A baja frecuencia, el corchete vale \(\approx e^{-j\omega\alpha\Delta t}\): el retardo es el deseado. Pero su módulo, \(\sqrt{1 - 2\alpha(1-\alpha)(1-\cos\omega\Delta t)}\), cae hasta \(|1-2\alpha|\) en Nyquist: con \(\alpha = 0{,}5\), un filtro paso bajo que anula lo más rápido. Interpolar el giróscopo de 1 kHz para un retardo de 2,5 ms le quita ruido de alta frecuencia que el real sí tiene.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Así lo hacen</span>Tan et al. guardan la historia de observaciones con su instante y la interpolan linealmente en \(n\Delta t - t_\text{lat}\) <a class="cite" data-ref="tan2018"></a>. Isaac Lab retrasa las órdenes de los actuadores con un búfer circular y un retardo entero, sorteado por entorno al reiniciar, entre <code>min_delay</code> y <code>max_delay</code> pasos de física <a class="cite" data-ref="isaaclab"></a>. MuJoCo 3.5 añadió búferes de historia a actuadores y sensores, con retenedor, interpolación lineal o cúbica <a class="cite" data-ref="mujoco35"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · predictor</p>
+  <h2>Un predictor quita la inestabilidad, no la información perdida</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Coste relativo frente al retardo real">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <text x="52" y="209" text-anchor="end" class="t-mono t-faint" font-size="12">2</text>
+        <text x="52" y="150" text-anchor="end" class="t-mono t-faint" font-size="12">5</text>
+        <text x="52" y="105" text-anchor="end" class="t-mono t-faint" font-size="12">10</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">30</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="213" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">50</text>
+        <text x="367" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">150 ms</text>
+        <line x1="336" y1="30" x2="336" y2="250" class="ln-dash"/>
+        <text x="330" y="44" text-anchor="end" class="t-muted" font-size="12">sin predictor: inestable</text>
+        <path d="M60.0,250.0 L90.7,242.3 L121.3,233.8 L152.0,223.9 L182.7,212.4 L213.3,198.2 L244.0,179.8 L305.3,108.0" fill="none" class="ln" stroke-width="2.5"/>
+        <path d="M60.0,250.0 L90.7,242.7 L121.3,235.5 L152.0,228.3 L182.7,221.2 L213.3,214.3 L244.0,207.5 L305.3,194.3 L366.7,181.7 L428.0,169.7 L520.0,152.7" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,240.8 L90.7,235.5 L121.3,230.5 L152.0,225.8 L182.7,220.5 L213.3,214.3 L244.0,206.8 L305.3,186.7 L366.7,153.2 L428.0,66.0" fill="none" class="ln-time" stroke-width="2" stroke-dasharray="6 4"/>
+        <path d="M60.0,220.3 L90.7,214.0 L121.3,206.0 L152.0,196.0 L182.7,189.2 L213.3,189.4 L244.0,191.5 L305.3,190.2 L366.7,181.7 L428.0,165.9 L520.0,118.3" fill="none" class="ln-tesis" stroke-width="2" stroke-dasharray="6 4"/>
+        <text x="296" y="112" text-anchor="end" font-size="12">sin predictor</text>
+        <text x="470" y="198" class="t-accent" font-size="12">predictor exacto</text>
+        <text x="432" y="60" class="t-time" font-size="12">supone 50 ms</text>
+        <text x="420" y="112" class="t-tesis" font-size="12">supone 100 ms</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">retardo real de la medida</text>
+      </svg>
+      <figcaption>Coste medio \(J/J_0\) (escala logarítmica) de un eje del dron con LQR de 8 rad/s a 100 Hz, ráfagas de viento y medida de posición y velocidad retrasada. 40 000 pasos por punto. <code>figuras_b4.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Sin predictor</strong> (\(u_k = -K x_{k-d}\)), el lazo es inestable desde 90 ms: margen de fase de 65,5° con cruce en 12,1 rad/s da \(65{,}5°/12{,}1 = 94,7\) ms, menos 5 ms del retenedor (A2).</li>
+        <li><strong>Con predictor exacto</strong>, estable a cualquier retardo, pero el coste crece igual: ×1,7 a 50 ms, ×2,9 a 100 ms, ×4,5 a 150 ms.</li>
+      </ul>
+      <details class="deriv"><summary>Derivación: el predictor y su error irreducible</summary>
+        <p class="small">Con la medida \(x_{k-d}\) y las acciones ya enviadas, el modelo da</p>
+        \[ \hat x_k = A^d x_{k-d} + \sum_{i=0}^{d-1} A^{d-1-i} B\,u_{k-d+i}. \]
+        <p class="small">El verdadero es \(x_k = \hat x_k + \sum_{i=0}^{d-1} A^{d-1-i} G\,w_{k-d+i}\): las ráfagas dentro de la ventana no se han observado. Su covarianza, \(\sum_i A^i G W G^\top A^{i\top}\), crece con \(d\): ningún controlador recupera esa información. Es la idea del predictor de Smith, en versión de espacio de estados.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Retardos · desajuste</p>
+  <h2>Suponer un retardo equivocado: quedarse corto es mucho peor</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Retardo real</th><th>Predictor exacto</th><th>Supone 50 ms</th><th>Supone 100 ms</th></tr></thead>
+          <tbody>
+            <tr><td>0 ms</td><td class="n">1,00</td><td class="n">1,15</td><td class="n">1,58</td></tr>
+            <tr><td>50 ms</td><td class="n">1,74</td><td class="n">1,74</td><td class="n">2,55</td></tr>
+            <tr><td>100 ms</td><td class="n">2,87</td><td class="n">4,47</td><td class="n">2,87</td></tr>
+            <tr><td>120 ms</td><td class="n">3,46</td><td class="n">17,2</td><td class="n">3,67</td></tr>
+            <tr><td>150 ms</td><td class="n">4,50</td><td class="n">479</td><td class="n">7,66</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Coste \(J/J_0\) del experimento anterior. <code>figuras_b4.py</code>, sección 3.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Pasarse</strong> de retardo cuesta poco: suponer 100 ms con 0 ms reales multiplica el coste por 1,58.</li>
+        <li><strong>Quedarse corto</strong> cuesta mucho: suponer 50 ms con 120 ms reales lo multiplica por 17 y con 150 ms, por casi 500. El predictor deja un retardo sin compensar que el lazo no tolera.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Para entrenar</span>Si aleatorizas el retardo, que el rango cubra con holgura el real medido. Y mejor que la política no tenga que adivinarlo: dale la edad de cada observación (parte 3) y la historia de acciones (parte 4).</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La pérdida de información es la parte de un POMDP que ningún truco elimina: un belief bien calibrado debe crecer en incertidumbre con la edad de la última observación.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Asincronía">
+  <p class="num">Parte 3</p>
+  <h2>Jitter, pérdidas y marcas de tiempo</h2>
+  <p>Los retardos reales no son constantes, las medidas se pierden y cada sensor va a su ritmo. Lo que salva al estimador y a la política es saber cuándo se tomó cada dato.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · edad</p>
+  <h2>La edad de lo que ve el control oscila con el ritmo del sensor</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Edad de la última imagen disponible para el control">
+        <line x1="60" y1="250" x2="430" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="205" text-anchor="end" class="t-mono t-faint" font-size="12">20</text>
+        <text x="52" y="156" text-anchor="end" class="t-mono t-faint" font-size="12">40</text>
+        <text x="52" y="107" text-anchor="end" class="t-mono t-faint" font-size="12">60</text>
+        <text x="52" y="58" text-anchor="end" class="t-mono t-faint" font-size="12">80 ms</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="183" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">50</text>
+        <text x="307" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text>
+        <text x="430" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">150 ms</text>
+        <line x1="60" y1="152.2" x2="430" y2="152.2" class="ln-dash"/>
+        <line x1="60" y1="70.7" x2="430" y2="70.7" class="ln-dash"/>
+        <line x1="60" y1="115.6" x2="430" y2="115.6" class="ln-tesis ln-dash"/>
+        <g class="ln-time" stroke-width="1.5"><line x1="76.4" y1="250" x2="76.4" y2="240"/><line x1="158.7" y1="250" x2="158.7" y2="240"/><line x1="240.9" y1="250" x2="240.9" y2="240"/><line x1="323.1" y1="250" x2="323.1" y2="240"/><line x1="405.3" y1="250" x2="405.3" y2="240"/></g>
+        <path d="M60.0,87.0 L60.1,86.9 L60.2,86.8 L60.4,86.7 L60.5,86.5 L60.6,86.4 L60.7,86.3 L60.9,86.2 L61.0,86.1 L61.1,85.9 L61.2,85.8 L61.4,85.7 L61.5,85.6 L61.6,85.4 L61.7,85.3 L61.9,85.2 L62.0,85.1 L62.1,85.0 L62.2,84.8 L62.3,84.7 L62.5,84.6 L62.6,84.5 L62.7,84.3 L62.8,84.2 L63.0,84.1 L63.1,84.0 L63.2,83.9 L63.3,83.7 L63.5,83.6 L63.6,83.5 L63.7,83.4 L63.8,83.2 L63.9,83.1 L64.1,83.0 L64.2,82.9 L64.3,82.8 L64.4,82.6 L64.6,82.5 L64.7,82.4 L64.8,82.3 L64.9,82.1 L65.1,82.0 L65.2,81.9 L65.3,81.8 L65.4,81.7 L65.6,81.5 L65.7,81.4 L65.8,81.3 L65.9,81.2 L66.0,81.0 L66.2,80.9 L66.3,80.8 L66.4,80.7 L66.5,80.6 L66.7,80.4 L66.8,80.3 L66.9,80.2 L67.0,80.1 L67.2,79.9 L67.3,79.8 L67.4,79.7 L67.5,79.6 L67.6,79.5 L67.8,79.3 L67.9,79.2 L68.0,79.1 L68.1,79.0 L68.3,78.8 L68.4,78.7 L68.5,78.6 L68.6,78.5 L68.8,78.4 L68.9,78.2 L69.0,78.1 L69.1,78.0 L69.3,77.9 L69.4,77.7 L69.5,77.6 L69.6,77.5 L69.7,77.4 L69.9,77.3 L70.0,77.1 L70.1,77.0 L70.2,76.9 L70.4,76.8 L70.5,76.6 L70.6,76.5 L70.7,76.4 L70.9,76.3 L71.0,76.2 L71.1,76.0 L71.2,75.9 L71.3,75.8 L71.5,75.7 L71.6,75.5 L71.7,75.4 L71.8,75.3 L72.0,75.2 L72.1,75.1 L72.2,74.9 L72.3,74.8 L72.5,74.7 L72.6,74.6 L72.7,74.4 L72.8,74.3 L73.0,74.2 L73.1,74.1 L73.2,74.0 L73.3,73.8 L73.4,73.7 L73.6,73.6 L73.7,73.5 L73.8,73.3 L73.9,73.2 L74.1,73.1 L74.2,73.0 L74.3,72.9 L74.4,72.7 L74.6,72.6 L74.7,72.5 L74.8,72.4 L74.9,72.2 L75.0,72.1 L75.2,72.0 L75.3,71.9 L75.4,71.8 L75.5,71.6 L75.7,71.5 L75.8,71.4 L75.9,71.3 L76.0,71.1 L76.2,71.0 L76.3,70.9 L76.4,70.8 L76.5,152.1 L76.7,152.0 L76.8,151.9 L76.9,151.8 L77.0,151.7 L77.1,151.5 L77.3,151.4 L77.4,151.3 L77.5,151.2 L77.6,151.0 L77.8,150.9 L77.9,150.8 L78.0,150.7 L78.1,150.6 L78.3,150.4 L78.4,150.3 L78.5,150.2 L78.6,150.1 L78.7,149.9 L78.9,149.8 L79.0,149.7 L79.1,149.6 L79.2,149.5 L79.4,149.3 L79.5,149.2 L79.6,149.1 L79.7,149.0 L79.9,148.8 L80.0,148.7 L80.1,148.6 L80.2,148.5 L80.4,148.4 L80.5,148.2 L80.6,148.1 L80.7,148.0 L80.8,147.9 L81.0,147.7 L81.1,147.6 L81.2,147.5 L81.3,147.4 L81.5,147.3 L81.6,147.1 L81.7,147.0 L81.8,146.9 L82.0,146.8 L82.1,146.6 L82.2,146.5 L82.3,146.4 L82.4,146.3 L82.6,146.2 L82.7,146.0 L82.8,145.9 L82.9,145.8 L83.1,145.7 L83.2,145.5 L83.3,145.4 L83.4,145.3 L83.6,145.2 L83.7,145.1 L83.8,144.9 L83.9,144.8 L84.1,144.7 L84.2,144.6 L84.3,144.4 L84.4,144.3 L84.5,144.2 L84.7,144.1 L84.8,144.0 L84.9,143.8 L85.0,143.7 L85.2,143.6 L85.3,143.5 L85.4,143.3 L85.5,143.2 L85.7,143.1 L85.8,143.0 L85.9,142.9 L86.0,142.7 L86.1,142.6 L86.3,142.5 L86.4,142.4 L86.5,142.2 L86.6,142.1 L86.8,142.0 L86.9,141.9 L87.0,141.8 L87.1,141.6 L87.3,141.5 L87.4,141.4 L87.5,141.3 L87.6,141.1 L87.8,141.0 L87.9,140.9 L88.0,140.8 L88.1,140.7 L88.2,140.5 L88.4,140.4 L88.5,140.3 L88.6,140.2 L88.7,140.0 L88.9,139.9 L89.0,139.8 L89.1,139.7 L89.2,139.6 L89.4,139.4 L89.5,139.3 L89.6,139.2 L89.7,139.1 L89.8,138.9 L90.0,138.8 L90.1,138.7 L90.2,138.6 L90.3,138.5 L90.5,138.3 L90.6,138.2 L90.7,138.1 L90.8,138.0 L91.0,137.8 L91.1,137.7 L91.2,137.6 L91.3,137.5 L91.4,137.4 L91.6,137.2 L91.7,137.1 L91.8,137.0 L91.9,136.9 L92.1,136.7 L92.2,136.6 L92.3,136.5 L92.4,136.4 L92.6,136.3 L92.7,136.1 L92.8,136.0 L92.9,135.9 L93.1,135.8 L93.2,135.6 L93.3,135.5 L93.4,135.4 L93.5,135.3 L93.7,135.2 L93.8,135.0 L93.9,134.9 L94.0,134.8 L94.2,134.7 L94.3,134.5 L94.4,134.4 L94.5,134.3 L94.7,134.2 L94.8,134.1 L94.9,133.9 L95.0,133.8 L95.1,133.7 L95.3,133.6 L95.4,133.4 L95.5,133.3 L95.6,133.2 L95.8,133.1 L95.9,133.0 L96.0,132.8 L96.1,132.7 L96.3,132.6 L96.4,132.5 L96.5,132.3 L96.6,132.2 L96.8,132.1 L96.9,132.0 L97.0,131.9 L97.1,131.7 L97.2,131.6 L97.4,131.5 L97.5,131.4 L97.6,131.2 L97.7,131.1 L97.9,131.0 L98.0,130.9 L98.1,130.8 L98.2,130.6 L98.4,130.5 L98.5,130.4 L98.6,130.3 L98.7,130.1 L98.8,130.0 L99.0,129.9 L99.1,129.8 L99.2,129.7 L99.3,129.5 L99.5,129.4 L99.6,129.3 L99.7,129.2 L99.8,129.0 L100.0,128.9 L100.1,128.8 L100.2,128.7 L100.3,128.6 L100.5,128.4 L100.6,128.3 L100.7,128.2 L100.8,128.1 L100.9,127.9 L101.1,127.8 L101.2,127.7 L101.3,127.6 L101.4,127.5 L101.6,127.3 L101.7,127.2 L101.8,127.1 L101.9,127.0 L102.1,126.8 L102.2,126.7 L102.3,126.6 L102.4,126.5 L102.5,126.4 L102.7,126.2 L102.8,126.1 L102.9,126.0 L103.0,125.9 L103.2,125.7 L103.3,125.6 L103.4,125.5 L103.5,125.4 L103.7,125.3 L103.8,125.1 L103.9,125.0 L104.0,124.9 L104.2,124.8 L104.3,124.6 L104.4,124.5 L104.5,124.4 L104.6,124.3 L104.8,124.2 L104.9,124.0 L105.0,123.9 L105.1,123.8 L105.3,123.7 L105.4,123.5 L105.5,123.4 L105.6,123.3 L105.8,123.2 L105.9,123.1 L106.0,122.9 L106.1,122.8 L106.2,122.7 L106.4,122.6 L106.5,122.4 L106.6,122.3 L106.7,122.2 L106.9,122.1 L107.0,122.0 L107.1,121.8 L107.2,121.7 L107.4,121.6 L107.5,121.5 L107.6,121.3 L107.7,121.2 L107.9,121.1 L108.0,121.0 L108.1,120.9 L108.2,120.7 L108.3,120.6 L108.5,120.5 L108.6,120.4 L108.7,120.2 L108.8,120.1 L109.0,120.0 L109.1,119.9 L109.2,119.8 L109.3,119.6 L109.5,119.5 L109.6,119.4 L109.7,119.3 L109.8,119.1 L109.9,119.0 L110.1,118.9 L110.2,118.8 L110.3,118.7 L110.4,118.5 L110.6,118.4 L110.7,118.3 L110.8,118.2 L110.9,118.0 L111.1,117.9 L111.2,117.8 L111.3,117.7 L111.4,117.6 L111.6,117.4 L111.7,117.3 L111.8,117.2 L111.9,117.1 L112.0,116.9 L112.2,116.8 L112.3,116.7 L112.4,116.6 L112.5,116.5 L112.7,116.3 L112.8,116.2 L112.9,116.1 L113.0,116.0 L113.2,115.8 L113.3,115.7 L113.4,115.6 L113.5,115.5 L113.7,115.4 L113.8,115.2 L113.9,115.1 L114.0,115.0 L114.1,114.9 L114.3,114.7 L114.4,114.6 L114.5,114.5 L114.6,114.4 L114.8,114.3 L114.9,114.1 L115.0,114.0 L115.1,113.9 L115.3,113.8 L115.4,113.6 L115.5,113.5 L115.6,113.4 L115.7,113.3 L115.9,113.2 L116.0,113.0 L116.1,112.9 L116.2,112.8 L116.4,112.7 L116.5,112.5 L116.6,112.4 L116.7,112.3 L116.9,112.2 L117.0,112.1 L117.1,111.9 L117.2,111.8 L117.3,111.7 L117.5,111.6 L117.6,111.4 L117.7,111.3 L117.8,111.2 L118.0,111.1 L118.1,111.0 L118.2,110.8 L118.3,110.7 L118.5,110.6 L118.6,110.5 L118.7,110.3 L118.8,110.2 L119.0,110.1 L119.1,110.0 L119.2,109.9 L119.3,109.7 L119.4,109.6 L119.6,109.5 L119.7,109.4 L119.8,109.2 L119.9,109.1 L120.1,109.0 L120.2,108.9 L120.3,108.8 L120.4,108.6 L120.6,108.5 L120.7,108.4 L120.8,108.3 L120.9,108.1 L121.0,108.0 L121.2,107.9 L121.3,107.8 L121.4,107.7 L121.5,107.5 L121.7,107.4 L121.8,107.3 L121.9,107.2 L122.0,107.0 L122.2,106.9 L122.3,106.8 L122.4,106.7 L122.5,106.6 L122.7,106.4 L122.8,106.3 L122.9,106.2 L123.0,106.1 L123.1,105.9 L123.3,105.8 L123.4,105.7 L123.5,105.6 L123.6,105.5 L123.8,105.3 L123.9,105.2 L124.0,105.1 L124.1,105.0 L124.3,104.8 L124.4,104.7 L124.5,104.6 L124.6,104.5 L124.8,104.4 L124.9,104.2 L125.0,104.1 L125.1,104.0 L125.2,103.9 L125.4,103.7 L125.5,103.6 L125.6,103.5 L125.7,103.4 L125.9,103.3 L126.0,103.1 L126.1,103.0 L126.2,102.9 L126.4,102.8 L126.5,102.6 L126.6,102.5 L126.7,102.4 L126.8,102.3 L127.0,102.2 L127.1,102.0 L127.2,101.9 L127.3,101.8 L127.5,101.7 L127.6,101.5 L127.7,101.4 L127.8,101.3 L128.0,101.2 L128.1,101.1 L128.2,100.9 L128.3,100.8 L128.4,100.7 L128.6,100.6 L128.7,100.4 L128.8,100.3 L128.9,100.2 L129.1,100.1 L129.2,100.0 L129.3,99.8 L129.4,99.7 L129.6,99.6 L129.7,99.5 L129.8,99.3 L129.9,99.2 L130.1,99.1 L130.2,99.0 L130.3,98.9 L130.4,98.7 L130.5,98.6 L130.7,98.5 L130.8,98.4 L130.9,98.2 L131.0,98.1 L131.2,98.0 L131.3,97.9 L131.4,97.8 L131.5,97.6 L131.7,97.5 L131.8,97.4 L131.9,97.3 L132.0,97.1 L132.2,97.0 L132.3,96.9 L132.4,96.8 L132.5,96.7 L132.6,96.5 L132.8,96.4 L132.9,96.3 L133.0,96.2 L133.1,96.0 L133.3,95.9 L133.4,95.8 L133.5,95.7 L133.6,95.6 L133.8,95.4 L133.9,95.3 L134.0,95.2 L134.1,95.1 L134.2,94.9 L134.4,94.8 L134.5,94.7 L134.6,94.6 L134.7,94.5 L134.9,94.3 L135.0,94.2 L135.1,94.1 L135.2,94.0 L135.4,93.8 L135.5,93.7 L135.6,93.6 L135.7,93.5 L135.9,93.4 L136.0,93.2 L136.1,93.1 L136.2,93.0 L136.3,92.9 L136.5,92.7 L136.6,92.6 L136.7,92.5 L136.8,92.4 L137.0,92.3 L137.1,92.1 L137.2,92.0 L137.3,91.9 L137.5,91.8 L137.6,91.6 L137.7,91.5 L137.8,91.4 L137.9,91.3 L138.1,91.2 L138.2,91.0 L138.3,90.9 L138.4,90.8 L138.6,90.7 L138.7,90.5 L138.8,90.4 L138.9,90.3 L139.1,90.2 L139.2,90.1 L139.3,89.9 L139.4,89.8 L139.6,89.7 L139.7,89.6 L139.8,89.4 L139.9,89.3 L140.0,89.2 L140.2,89.1 L140.3,89.0 L140.4,88.8 L140.5,88.7 L140.7,88.6 L140.8,88.5 L140.9,88.3 L141.0,88.2 L141.2,88.1 L141.3,88.0 L141.4,87.9 L141.5,87.7 L141.6,87.6 L141.8,87.5 L141.9,87.4 L142.0,87.2 L142.1,87.1 L142.3,87.0 L142.4,86.9 L142.5,86.8 L142.6,86.6 L142.8,86.5 L142.9,86.4 L143.0,86.3 L143.1,86.1 L143.3,86.0 L143.4,85.9 L143.5,85.8 L143.6,85.7 L143.7,85.5 L143.9,85.4 L144.0,85.3 L144.1,85.2 L144.2,85.0 L144.4,84.9 L144.5,84.8 L144.6,84.7 L144.7,84.6 L144.9,84.4 L145.0,84.3 L145.1,84.2 L145.2,84.1 L145.3,83.9 L145.5,83.8 L145.6,83.7 L145.7,83.6 L145.8,83.5 L146.0,83.3 L146.1,83.2 L146.2,83.1 L146.3,83.0 L146.5,82.8 L146.6,82.7 L146.7,82.6 L146.8,82.5 L147.0,82.4 L147.1,82.2 L147.2,82.1 L147.3,82.0 L147.4,81.9 L147.6,81.7 L147.7,81.6 L147.8,81.5 L147.9,81.4 L148.1,81.3 L148.2,81.1 L148.3,81.0 L148.4,80.9 L148.6,80.8 L148.7,80.6 L148.8,80.5 L148.9,80.4 L149.0,80.3 L149.2,80.2 L149.3,80.0 L149.4,79.9 L149.5,79.8 L149.7,79.7 L149.8,79.5 L149.9,79.4 L150.0,79.3 L150.2,79.2 L150.3,79.1 L150.4,78.9 L150.5,78.8 L150.7,78.7 L150.8,78.6 L150.9,78.4 L151.0,78.3 L151.1,78.2 L151.3,78.1 L151.4,78.0 L151.5,77.8 L151.6,77.7 L151.8,77.6 L151.9,77.5 L152.0,77.3 L152.1,77.2 L152.3,77.1 L152.4,77.0 L152.5,76.9 L152.6,76.7 L152.7,76.6 L152.9,76.5 L153.0,76.4 L153.1,76.2 L153.2,76.1 L153.4,76.0 L153.5,75.9 L153.6,75.8 L153.7,75.6 L153.9,75.5 L154.0,75.4 L154.1,75.3 L154.2,75.1 L154.4,75.0 L154.5,74.9 L154.6,74.8 L154.7,74.7 L154.8,74.5 L155.0,74.4 L155.1,74.3 L155.2,74.2 L155.3,74.0 L155.5,73.9 L155.6,73.8 L155.7,73.7 L155.8,73.6 L156.0,73.4 L156.1,73.3 L156.2,73.2 L156.3,73.1 L156.4,72.9 L156.6,72.8 L156.7,72.7 L156.8,72.6 L156.9,72.5 L157.1,72.3 L157.2,72.2 L157.3,72.1 L157.4,72.0 L157.6,71.8 L157.7,71.7 L157.8,71.6 L157.9,71.5 L158.1,71.4 L158.2,71.2 L158.3,71.1 L158.4,71.0 L158.5,70.9 L158.7,70.7 L158.8,152.1 L158.9,152.0 L159.0,151.9 L159.2,151.7 L159.3,151.6 L159.4,151.5 L159.5,151.4 L159.7,151.2 L159.8,151.1 L159.9,151.0 L160.0,150.9 L160.1,150.8 L160.3,150.6 L160.4,150.5 L160.5,150.4 L160.6,150.3 L160.8,150.1 L160.9,150.0 L161.0,149.9 L161.1,149.8 L161.3,149.7 L161.4,149.5 L161.5,149.4 L161.6,149.3 L161.7,149.2 L161.9,149.0 L162.0,148.9 L162.1,148.8 L162.2,148.7 L162.4,148.6 L162.5,148.4 L162.6,148.3 L162.7,148.2 L162.9,148.1 L163.0,147.9 L163.1,147.8 L163.2,147.7 L163.4,147.6 L163.5,147.5 L163.6,147.3 L163.7,147.2 L163.8,147.1 L164.0,147.0 L164.1,146.8 L164.2,146.7 L164.3,146.6 L164.5,146.5 L164.6,146.4 L164.7,146.2 L164.8,146.1 L165.0,146.0 L165.1,145.9 L165.2,145.7 L165.3,145.6 L165.4,145.5 L165.6,145.4 L165.7,145.3 L165.8,145.1 L165.9,145.0 L166.1,144.9 L166.2,144.8 L166.3,144.6 L166.4,144.5 L166.6,144.4 L166.7,144.3 L166.8,144.2 L166.9,144.0 L167.1,143.9 L167.2,143.8 L167.3,143.7 L167.4,143.5 L167.5,143.4 L167.7,143.3 L167.8,143.2 L167.9,143.1 L168.0,142.9 L168.2,142.8 L168.3,142.7 L168.4,142.6 L168.5,142.4 L168.7,142.3 L168.8,142.2 L168.9,142.1 L169.0,142.0 L169.1,141.8 L169.3,141.7 L169.4,141.6 L169.5,141.5 L169.6,141.3 L169.8,141.2 L169.9,141.1 L170.0,141.0 L170.1,140.9 L170.3,140.7 L170.4,140.6 L170.5,140.5 L170.6,140.4 L170.8,140.2 L170.9,140.1 L171.0,140.0 L171.1,139.9 L171.2,139.8 L171.4,139.6 L171.5,139.5 L171.6,139.4 L171.7,139.3 L171.9,139.1 L172.0,139.0 L172.1,138.9 L172.2,138.8 L172.4,138.7 L172.5,138.5 L172.6,138.4 L172.7,138.3 L172.8,138.2 L173.0,138.0 L173.1,137.9 L173.2,137.8 L173.3,137.7 L173.5,137.6 L173.6,137.4 L173.7,137.3 L173.8,137.2 L174.0,137.1 L174.1,136.9 L174.2,136.8 L174.3,136.7 L174.5,136.6 L174.6,136.5 L174.7,136.3 L174.8,136.2 L174.9,136.1 L175.1,136.0 L175.2,135.8 L175.3,135.7 L175.4,135.6 L175.6,135.5 L175.7,135.4 L175.8,135.2 L175.9,135.1 L176.1,135.0 L176.2,134.9 L176.3,134.7 L176.4,134.6 L176.5,134.5 L176.7,134.4 L176.8,134.3 L176.9,134.1 L177.0,134.0 L177.2,133.9 L177.3,133.8 L177.4,133.6 L177.5,133.5 L177.7,133.4 L177.8,133.3 L177.9,133.2 L178.0,133.0 L178.2,132.9 L178.3,132.8 L178.4,132.7 L178.5,132.5 L178.6,132.4 L178.8,132.3 L178.9,132.2 L179.0,132.1 L179.1,131.9 L179.3,131.8 L179.4,131.7 L179.5,131.6 L179.6,131.4 L179.8,131.3 L179.9,131.2 L180.0,131.1 L180.1,131.0 L180.2,130.8 L180.4,130.7 L180.5,130.6 L180.6,130.5 L180.7,130.3 L180.9,130.2 L181.0,130.1 L181.1,130.0 L181.2,129.9 L181.4,129.7 L181.5,129.6 L181.6,129.5 L181.7,129.4 L181.9,129.2 L182.0,129.1 L182.1,129.0 L182.2,128.9 L182.3,128.8 L182.5,128.6 L182.6,128.5 L182.7,128.4 L182.8,128.3 L183.0,128.1 L183.1,128.0 L183.2,127.9 L183.3,127.8 L183.5,127.7 L183.6,127.5 L183.7,127.4 L183.8,127.3 L183.9,127.2 L184.1,127.0 L184.2,126.9 L184.3,126.8 L184.4,126.7 L184.6,126.6 L184.7,126.4 L184.8,126.3 L184.9,126.2 L185.1,126.1 L185.2,125.9 L185.3,125.8 L185.4,125.7 L185.6,125.6 L185.7,125.5 L185.8,125.3 L185.9,125.2 L186.0,125.1 L186.2,125.0 L186.3,124.8 L186.4,124.7 L186.5,124.6 L186.7,124.5 L186.8,124.4 L186.9,124.2 L187.0,124.1 L187.2,124.0 L187.3,123.9 L187.4,123.7 L187.5,123.6 L187.7,123.5 L187.8,123.4 L187.9,123.3 L188.0,123.1 L188.1,123.0 L188.3,122.9 L188.4,122.8 L188.5,122.6 L188.6,122.5 L188.8,122.4 L188.9,122.3 L189.0,122.2 L189.1,122.0 L189.3,121.9 L189.4,121.8 L189.5,121.7 L189.6,121.5 L189.7,121.4 L189.9,121.3 L190.0,121.2 L190.1,121.1 L190.2,120.9 L190.4,120.8 L190.5,120.7 L190.6,120.6 L190.7,120.4 L190.9,120.3 L191.0,120.2 L191.1,120.1 L191.2,120.0 L191.3,119.8 L191.5,119.7 L191.6,119.6 L191.7,119.5 L191.8,119.3 L192.0,119.2 L192.1,119.1 L192.2,119.0 L192.3,118.9 L192.5,118.7 L192.6,118.6 L192.7,118.5 L192.8,118.4 L193.0,118.2 L193.1,118.1 L193.2,118.0 L193.3,117.9 L193.4,117.8 L193.6,117.6 L193.7,117.5 L193.8,117.4 L193.9,117.3 L194.1,117.1 L194.2,117.0 L194.3,116.9 L194.4,116.8 L194.6,116.7 L194.7,116.5 L194.8,116.4 L194.9,116.3 L195.0,116.2 L195.2,116.0 L195.3,115.9 L195.4,115.8 L195.5,115.7 L195.7,115.6 L195.8,115.4 L195.9,115.3 L196.0,115.2 L196.2,115.1 L196.3,114.9 L196.4,114.8 L196.5,114.7 L196.7,114.6 L196.8,114.5 L196.9,114.3 L197.0,114.2 L197.1,114.1 L197.3,114.0 L197.4,113.8 L197.5,113.7 L197.6,113.6 L197.8,113.5 L197.9,113.4 L198.0,113.2 L198.1,113.1 L198.3,113.0 L198.4,112.9 L198.5,112.7 L198.6,112.6 L198.7,112.5 L198.9,112.4 L199.0,112.3 L199.1,112.1 L199.2,112.0 L199.4,111.9 L199.5,111.8 L199.6,111.6 L199.7,111.5 L199.9,111.4 L200.0,111.3 L200.1,111.2 L200.2,111.0 L200.4,110.9 L200.5,110.8 L200.6,110.7 L200.7,110.5 L200.8,110.4 L201.0,110.3 L201.1,110.2 L201.2,110.1 L201.3,109.9 L201.5,109.8 L201.6,109.7 L201.7,109.6 L201.8,109.4 L202.0,109.3 L202.1,109.2 L202.2,109.1 L202.3,109.0 L202.4,108.8 L202.6,108.7 L202.7,108.6 L202.8,108.5 L202.9,108.3 L203.1,108.2 L203.2,108.1 L203.3,108.0 L203.4,107.9 L203.6,107.7 L203.7,107.6 L203.8,107.5 L203.9,107.4 L204.1,107.2 L204.2,107.1 L204.3,107.0 L204.4,106.9 L204.5,106.8 L204.7,106.6 L204.8,106.5 L204.9,106.4 L205.0,106.3 L205.2,106.1 L205.3,106.0 L205.4,105.9 L205.5,105.8 L205.7,105.7 L205.8,105.5 L205.9,105.4 L206.0,105.3 L206.1,105.2 L206.3,105.0 L206.4,104.9 L206.5,104.8 L206.6,104.7 L206.8,104.6 L206.9,104.4 L207.0,104.3 L207.1,104.2 L207.3,104.1 L207.4,103.9 L207.5,103.8 L207.6,103.7 L207.8,103.6 L207.9,103.5 L208.0,103.3 L208.1,103.2 L208.2,103.1 L208.4,103.0 L208.5,102.8 L208.6,102.7 L208.7,102.6 L208.9,102.5 L209.0,102.4 L209.1,102.2 L209.2,102.1 L209.4,102.0 L209.5,101.9 L209.6,101.7 L209.7,101.6 L209.8,101.5 L210.0,101.4 L210.1,101.3 L210.2,101.1 L210.3,101.0 L210.5,100.9 L210.6,100.8 L210.7,100.6 L210.8,100.5 L211.0,100.4 L211.1,100.3 L211.2,100.2 L211.3,100.0 L211.5,99.9 L211.6,99.8 L211.7,99.7 L211.8,99.5 L211.9,99.4 L212.1,99.3 L212.2,99.2 L212.3,99.1 L212.4,98.9 L212.6,98.8 L212.7,98.7 L212.8,98.6 L212.9,98.4 L213.1,98.3 L213.2,98.2 L213.3,98.1 L213.4,98.0 L213.5,97.8 L213.7,97.7 L213.8,97.6 L213.9,97.5 L214.0,97.3 L214.2,97.2 L214.3,97.1 L214.4,97.0 L214.5,96.9 L214.7,96.7 L214.8,96.6 L214.9,96.5 L215.0,96.4 L215.2,96.2 L215.3,96.1 L215.4,96.0 L215.5,95.9 L215.6,95.8 L215.8,95.6 L215.9,95.5 L216.0,95.4 L216.1,95.3 L216.3,95.1 L216.4,95.0 L216.5,94.9 L216.6,94.8 L216.8,94.7 L216.9,94.5 L217.0,94.4 L217.1,94.3 L217.2,94.2 L217.4,94.0 L217.5,93.9 L217.6,93.8 L217.7,93.7 L217.9,93.6 L218.0,93.4 L218.1,93.3 L218.2,93.2 L218.4,93.1 L218.5,92.9 L218.6,92.8 L218.7,92.7 L218.9,92.6 L219.0,92.5 L219.1,92.3 L219.2,92.2 L219.3,92.1 L219.5,92.0 L219.6,91.8 L219.7,91.7 L219.8,91.6 L220.0,91.5 L220.1,91.4 L220.2,91.2 L220.3,91.1 L220.5,91.0 L220.6,90.9 L220.7,90.7 L220.8,90.6 L220.9,90.5 L221.1,90.4 L221.2,90.3 L221.3,90.1 L221.4,90.0 L221.6,89.9 L221.7,89.8 L221.8,89.6 L221.9,89.5 L222.1,89.4 L222.2,89.3 L222.3,89.2 L222.4,89.0 L222.6,88.9 L222.7,88.8 L222.8,88.7 L222.9,88.5 L223.0,88.4 L223.2,88.3 L223.3,88.2 L223.4,88.1 L223.5,87.9 L223.7,87.8 L223.8,87.7 L223.9,87.6 L224.0,87.4 L224.2,87.3 L224.3,87.2 L224.4,87.1 L224.5,87.0 L224.6,86.8 L224.8,86.7 L224.9,86.6 L225.0,86.5 L225.1,86.3 L225.3,86.2 L225.4,86.1 L225.5,86.0 L225.6,85.9 L225.8,85.7 L225.9,85.6 L226.0,85.5 L226.1,85.4 L226.3,85.2 L226.4,85.1 L226.5,85.0 L226.6,84.9 L226.7,84.8 L226.9,84.6 L227.0,84.5 L227.1,84.4 L227.2,84.3 L227.4,84.1 L227.5,84.0 L227.6,83.9 L227.7,83.8 L227.9,83.7 L228.0,83.5 L228.1,83.4 L228.2,83.3 L228.3,83.2 L228.5,83.0 L228.6,82.9 L228.7,82.8 L228.8,82.7 L229.0,82.6 L229.1,82.4 L229.2,82.3 L229.3,82.2 L229.5,82.1 L229.6,81.9 L229.7,81.8 L229.8,81.7 L230.0,81.6 L230.1,81.5 L230.2,81.3 L230.3,81.2 L230.4,81.1 L230.6,81.0 L230.7,80.8 L230.8,80.7 L230.9,80.6 L231.1,80.5 L231.2,80.4 L231.3,80.2 L231.4,80.1 L231.6,80.0 L231.7,79.9 L231.8,79.7 L231.9,79.6 L232.0,79.5 L232.2,79.4 L232.3,79.3 L232.4,79.1 L232.5,79.0 L232.7,78.9 L232.8,78.8 L232.9,78.6 L233.0,78.5 L233.2,78.4 L233.3,78.3 L233.4,78.2 L233.5,78.0 L233.7,77.9 L233.8,77.8 L233.9,77.7 L234.0,77.5 L234.1,77.4 L234.3,77.3 L234.4,77.2 L234.5,77.1 L234.6,76.9 L234.8,76.8 L234.9,76.7 L235.0,76.6 L235.1,76.4 L235.3,76.3 L235.4,76.2 L235.5,76.1 L235.6,76.0 L235.8,75.8 L235.9,75.7 L236.0,75.6 L236.1,75.5 L236.2,75.3 L236.4,75.2 L236.5,75.1 L236.6,75.0 L236.7,74.9 L236.9,74.7 L237.0,74.6 L237.1,74.5 L237.2,74.4 L237.4,74.2 L237.5,74.1 L237.6,74.0 L237.7,73.9 L237.8,73.8 L238.0,73.6 L238.1,73.5 L238.2,73.4 L238.3,73.3 L238.5,73.1 L238.6,73.0 L238.7,72.9 L238.8,72.8 L239.0,72.7 L239.1,72.5 L239.2,72.4 L239.3,72.3 L239.4,72.2 L239.6,72.0 L239.7,71.9 L239.8,71.8 L239.9,71.7 L240.1,71.6 L240.2,71.4 L240.3,71.3 L240.4,71.2 L240.6,71.1 L240.7,70.9 L240.8,70.8 L240.9,152.2 L241.1,152.1 L241.2,151.9 L241.3,151.8 L241.4,151.7 L241.5,151.6 L241.7,151.4 L241.8,151.3 L241.9,151.2 L242.0,151.1 L242.2,151.0 L242.3,150.8 L242.4,150.7 L242.5,150.6 L242.7,150.5 L242.8,150.3 L242.9,150.2 L243.0,150.1 L243.2,150.0 L243.3,149.9 L243.4,149.7 L243.5,149.6 L243.6,149.5 L243.8,149.4 L243.9,149.2 L244.0,149.1 L244.1,149.0 L244.3,148.9 L244.4,148.8 L244.5,148.6 L244.6,148.5 L244.8,148.4 L244.9,148.3 L245.0,148.1 L245.1,148.0 L245.2,147.9 L245.4,147.8 L245.5,147.7 L245.6,147.5 L245.7,147.4 L245.9,147.3 L246.0,147.2 L246.1,147.0 L246.2,146.9 L246.4,146.8 L246.5,146.7 L246.6,146.6 L246.7,146.4 L246.8,146.3 L247.0,146.2 L247.1,146.1 L247.2,145.9 L247.3,145.8 L247.5,145.7 L247.6,145.6 L247.7,145.5 L247.8,145.3 L248.0,145.2 L248.1,145.1 L248.2,145.0 L248.3,144.8 L248.5,144.7 L248.6,144.6 L248.7,144.5 L248.8,144.4 L248.9,144.2 L249.1,144.1 L249.2,144.0 L249.3,143.9 L249.4,143.7 L249.6,143.6 L249.7,143.5 L249.8,143.4 L249.9,143.3 L250.1,143.1 L250.2,143.0 L250.3,142.9 L250.4,142.8 L250.6,142.6 L250.7,142.5 L250.8,142.4 L250.9,142.3 L251.0,142.2 L251.2,142.0 L251.3,141.9 L251.4,141.8 L251.5,141.7 L251.7,141.5 L251.8,141.4 L251.9,141.3 L252.0,141.2 L252.2,141.1 L252.3,140.9 L252.4,140.8 L252.5,140.7 L252.6,140.6 L252.8,140.4 L252.9,140.3 L253.0,140.2 L253.1,140.1 L253.3,140.0 L253.4,139.8 L253.5,139.7 L253.6,139.6 L253.8,139.5 L253.9,139.3 L254.0,139.2 L254.1,139.1 L254.3,139.0 L254.4,138.9 L254.5,138.7 L254.6,138.6 L254.7,138.5 L254.9,138.4 L255.0,138.2 L255.1,138.1 L255.2,138.0 L255.4,137.9 L255.5,137.8 L255.6,137.6 L255.7,137.5 L255.9,137.4 L256.0,137.3 L256.1,137.1 L256.2,137.0 L256.3,136.9 L256.5,136.8 L256.6,136.7 L256.7,136.5 L256.8,136.4 L257.0,136.3 L257.1,136.2 L257.2,136.0 L257.3,135.9 L257.5,135.8 L257.6,135.7 L257.7,135.6 L257.8,135.4 L258.0,135.3 L258.1,135.2 L258.2,135.1 L258.3,134.9 L258.4,134.8 L258.6,134.7 L258.7,134.6 L258.8,134.5 L258.9,134.3 L259.1,134.2 L259.2,134.1 L259.3,134.0 L259.4,133.8 L259.6,133.7 L259.7,133.6 L259.8,133.5 L259.9,133.4 L260.0,133.2 L260.2,133.1 L260.3,133.0 L260.4,132.9 L260.5,132.7 L260.7,132.6 L260.8,132.5 L260.9,132.4 L261.0,132.3 L261.2,132.1 L261.3,132.0 L261.4,131.9 L261.5,131.8 L261.6,131.6 L261.8,131.5 L261.9,131.4 L262.0,131.3 L262.1,131.2 L262.3,131.0 L262.4,130.9 L262.5,130.8 L262.6,130.7 L262.8,130.5 L262.9,130.4 L263.0,130.3 L263.1,130.2 L263.3,130.1 L263.4,129.9 L263.5,129.8 L263.6,129.7 L263.7,129.6 L263.9,129.4 L264.0,129.3 L264.1,129.2 L264.2,129.1 L264.4,129.0 L264.5,128.8 L264.6,128.7 L264.7,128.6 L264.9,128.5 L265.0,128.3 L265.1,128.2 L265.2,128.1 L265.4,128.0 L265.5,127.9 L265.6,127.7 L265.7,127.6 L265.8,127.5 L266.0,127.4 L266.1,127.2 L266.2,127.1 L266.3,127.0 L266.5,126.9 L266.6,126.8 L266.7,126.6 L266.8,126.5 L267.0,126.4 L267.1,126.3 L267.2,126.1 L267.3,126.0 L267.4,125.9 L267.6,125.8 L267.7,125.7 L267.8,125.5 L267.9,125.4 L268.1,125.3 L268.2,125.2 L268.3,125.0 L268.4,124.9 L268.6,124.8 L268.7,124.7 L268.8,124.6 L268.9,124.4 L269.1,124.3 L269.2,124.2 L269.3,124.1 L269.4,123.9 L269.5,123.8 L269.7,123.7 L269.8,123.6 L269.9,123.5 L270.0,123.3 L270.2,123.2 L270.3,123.1 L270.4,123.0 L270.5,122.8 L270.7,122.7 L270.8,122.6 L270.9,122.5 L271.0,122.4 L271.1,122.2 L271.3,122.1 L271.4,122.0 L271.5,121.9 L271.6,121.7 L271.8,121.6 L271.9,121.5 L272.0,121.4 L272.1,121.3 L272.3,121.1 L272.4,121.0 L272.5,120.9 L272.6,120.8 L272.8,120.6 L272.9,120.5 L273.0,120.4 L273.1,120.3 L273.2,120.2 L273.4,120.0 L273.5,119.9 L273.6,119.8 L273.7,119.7 L273.9,119.5 L274.0,119.4 L274.1,119.3 L274.2,119.2 L274.4,119.1 L274.5,118.9 L274.6,118.8 L274.7,118.7 L274.8,118.6 L275.0,118.4 L275.1,118.3 L275.2,118.2 L275.3,118.1 L275.5,118.0 L275.6,117.8 L275.7,117.7 L275.8,117.6 L276.0,117.5 L276.1,117.3 L276.2,117.2 L276.3,117.1 L276.5,117.0 L276.6,116.9 L276.7,116.7 L276.8,116.6 L276.9,116.5 L277.1,116.4 L277.2,116.2 L277.3,116.1 L277.4,116.0 L277.6,115.9 L277.7,115.8 L277.8,115.6 L277.9,115.5 L278.1,115.4 L278.2,115.3 L278.3,115.1 L278.4,115.0 L278.5,114.9 L278.7,114.8 L278.8,114.7 L278.9,114.5 L279.0,114.4 L279.2,114.3 L279.3,114.2 L279.4,114.0 L279.5,113.9 L279.7,113.8 L279.8,113.7 L279.9,113.6 L280.0,113.4 L280.2,113.3 L280.3,113.2 L280.4,113.1 L280.5,112.9 L280.6,112.8 L280.8,112.7 L280.9,112.6 L281.0,112.5 L281.1,112.3 L281.3,112.2 L281.4,112.1 L281.5,112.0 L281.6,111.8 L281.8,111.7 L281.9,111.6 L282.0,111.5 L282.1,111.4 L282.2,111.2 L282.4,111.1 L282.5,111.0 L282.6,110.9 L282.7,110.7 L282.9,110.6 L283.0,110.5 L283.1,110.4 L283.2,110.3 L283.4,110.1 L283.5,110.0 L283.6,109.9 L283.7,109.8 L283.9,109.6 L284.0,109.5 L284.1,109.4 L284.2,109.3 L284.3,109.2 L284.5,109.0 L284.6,108.9 L284.7,108.8 L284.8,108.7 L285.0,108.5 L285.1,108.4 L285.2,108.3 L285.3,108.2 L285.5,108.1 L285.6,107.9 L285.7,107.8 L285.8,107.7 L285.9,107.6 L286.1,107.4 L286.2,107.3 L286.3,107.2 L286.4,107.1 L286.6,107.0 L286.7,106.8 L286.8,106.7 L286.9,106.6 L287.1,106.5 L287.2,106.3 L287.3,106.2 L287.4,106.1 L287.6,106.0 L287.7,105.9 L287.8,105.7 L287.9,105.6 L288.0,105.5 L288.2,105.4 L288.3,105.2 L288.4,105.1 L288.5,105.0 L288.7,104.9 L288.8,104.8 L288.9,104.6 L289.0,104.5 L289.2,104.4 L289.3,104.3 L289.4,104.1 L289.5,104.0 L289.6,103.9 L289.8,103.8 L289.9,103.7 L290.0,103.5 L290.1,103.4 L290.3,103.3 L290.4,103.2 L290.5,103.0 L290.6,102.9 L290.8,102.8 L290.9,102.7 L291.0,102.6 L291.1,102.4 L291.2,102.3 L291.4,102.2 L291.5,102.1 L291.6,101.9 L291.7,101.8 L291.9,101.7 L292.0,101.6 L292.1,101.5 L292.2,101.3 L292.4,101.2 L292.5,101.1 L292.6,101.0 L292.7,100.8 L292.9,100.7 L293.0,100.6 L293.1,100.5 L293.2,100.4 L293.3,100.2 L293.5,100.1 L293.6,100.0 L293.7,99.9 L293.8,99.7 L294.0,99.6 L294.1,99.5 L294.2,99.4 L294.3,99.3 L294.5,99.1 L294.6,99.0 L294.7,98.9 L294.8,98.8 L295.0,98.6 L295.1,98.5 L295.2,98.4 L295.3,98.3 L295.4,98.2 L295.6,98.0 L295.7,97.9 L295.8,97.8 L295.9,97.7 L296.1,97.5 L296.2,97.4 L296.3,97.3 L296.4,97.2 L296.6,97.1 L296.7,96.9 L296.8,96.8 L296.9,96.7 L297.0,96.6 L297.2,96.4 L297.3,96.3 L297.4,96.2 L297.5,96.1 L297.7,96.0 L297.8,95.8 L297.9,95.7 L298.0,95.6 L298.2,95.5 L298.3,95.3 L298.4,95.2 L298.5,95.1 L298.6,95.0 L298.8,94.9 L298.9,94.7 L299.0,94.6 L299.1,94.5 L299.3,94.4 L299.4,94.2 L299.5,94.1 L299.6,94.0 L299.8,93.9 L299.9,93.8 L300.0,93.6 L300.1,93.5 L300.3,93.4 L300.4,93.3 L300.5,93.1 L300.6,93.0 L300.7,92.9 L300.9,92.8 L301.0,92.7 L301.1,92.5 L301.2,92.4 L301.4,92.3 L301.5,92.2 L301.6,92.0 L301.7,91.9 L301.9,91.8 L302.0,91.7 L302.1,91.6 L302.2,91.4 L302.4,91.3 L302.5,91.2 L302.6,91.1 L302.7,90.9 L302.8,90.8 L303.0,90.7 L303.1,90.6 L303.2,90.5 L303.3,90.3 L303.5,90.2 L303.6,90.1 L303.7,90.0 L303.8,89.8 L304.0,89.7 L304.1,89.6 L304.2,89.5 L304.3,89.4 L304.4,89.2 L304.6,89.1 L304.7,89.0 L304.8,88.9 L304.9,88.7 L305.1,88.6 L305.2,88.5 L305.3,88.4 L305.4,88.3 L305.6,88.1 L305.7,88.0 L305.8,87.9 L305.9,87.8 L306.0,87.6 L306.2,87.5 L306.3,87.4 L306.4,87.3 L306.5,87.2 L306.7,87.0 L306.8,86.9 L306.9,86.8 L307.0,86.7 L307.2,86.5 L307.3,86.4 L307.4,86.3 L307.5,86.2 L307.7,86.1 L307.8,85.9 L307.9,85.8 L308.0,85.7 L308.1,85.6 L308.3,85.4 L308.4,85.3 L308.5,85.2 L308.6,85.1 L308.8,85.0 L308.9,84.8 L309.0,84.7 L309.1,84.6 L309.3,84.5 L309.4,84.3 L309.5,84.2 L309.6,84.1 L309.8,84.0 L309.9,83.9 L310.0,83.7 L310.1,83.6 L310.2,83.5 L310.4,83.4 L310.5,83.2 L310.6,83.1 L310.7,83.0 L310.9,82.9 L311.0,82.8 L311.1,82.6 L311.2,82.5 L311.4,82.4 L311.5,82.3 L311.6,82.1 L311.7,82.0 L311.8,81.9 L312.0,81.8 L312.1,81.7 L312.2,81.5 L312.3,81.4 L312.5,81.3 L312.6,81.2 L312.7,81.0 L312.8,80.9 L313.0,80.8 L313.1,80.7 L313.2,80.6 L313.3,80.4 L313.4,80.3 L313.6,80.2 L313.7,80.1 L313.8,79.9 L313.9,79.8 L314.1,79.7 L314.2,79.6 L314.3,79.5 L314.4,79.3 L314.6,79.2 L314.7,79.1 L314.8,79.0 L314.9,78.8 L315.1,78.7 L315.2,78.6 L315.3,78.5 L315.4,78.4 L315.5,78.2 L315.7,78.1 L315.8,78.0 L315.9,77.9 L316.0,77.7 L316.2,77.6 L316.3,77.5 L316.4,77.4 L316.5,77.3 L316.7,77.1 L316.8,77.0 L316.9,76.9 L317.0,76.8 L317.2,76.6 L317.3,76.5 L317.4,76.4 L317.5,76.3 L317.6,76.2 L317.8,76.0 L317.9,75.9 L318.0,75.8 L318.1,75.7 L318.3,75.5 L318.4,75.4 L318.5,75.3 L318.6,75.2 L318.8,75.1 L318.9,74.9 L319.0,74.8 L319.1,74.7 L319.2,74.6 L319.4,74.4 L319.5,74.3 L319.6,74.2 L319.7,74.1 L319.9,74.0 L320.0,73.8 L320.1,73.7 L320.2,73.6 L320.4,73.5 L320.5,73.3 L320.6,73.2 L320.7,73.1 L320.8,73.0 L321.0,72.9 L321.1,72.7 L321.2,72.6 L321.3,72.5 L321.5,72.4 L321.6,72.2 L321.7,72.1 L321.8,72.0 L322.0,71.9 L322.1,71.8 L322.2,71.6 L322.3,71.5 L322.5,71.4 L322.6,71.3 L322.7,71.1 L322.8,71.0 L322.9,70.9 L323.1,70.8 L323.2,152.1 L323.3,152.0 L323.4,151.9 L323.6,151.8 L323.7,151.7 L323.8,151.5 L323.9,151.4 L324.1,151.3 L324.2,151.2 L324.3,151.0 L324.4,150.9 L324.5,150.8 L324.7,150.7 L324.8,150.6 L324.9,150.4 L325.0,150.3 L325.2,150.2 L325.3,150.1 L325.4,149.9 L325.5,149.8 L325.7,149.7 L325.8,149.6 L325.9,149.5 L326.0,149.3 L326.2,149.2 L326.3,149.1 L326.4,149.0 L326.5,148.8 L326.6,148.7 L326.8,148.6 L326.9,148.5 L327.0,148.4 L327.1,148.2 L327.3,148.1 L327.4,148.0 L327.5,147.9 L327.6,147.7 L327.8,147.6 L327.9,147.5 L328.0,147.4 L328.1,147.3 L328.2,147.1 L328.4,147.0 L328.5,146.9 L328.6,146.8 L328.7,146.6 L328.9,146.5 L329.0,146.4 L329.1,146.3 L329.2,146.2 L329.4,146.0 L329.5,145.9 L329.6,145.8 L329.7,145.7 L329.9,145.5 L330.0,145.4 L330.1,145.3 L330.2,145.2 L330.3,145.1 L330.5,144.9 L330.6,144.8 L330.7,144.7 L330.8,144.6 L331.0,144.4 L331.1,144.3 L331.2,144.2 L331.3,144.1 L331.5,144.0 L331.6,143.8 L331.7,143.7 L331.8,143.6 L331.9,143.5 L332.1,143.3 L332.2,143.2 L332.3,143.1 L332.4,143.0 L332.6,142.9 L332.7,142.7 L332.8,142.6 L332.9,142.5 L333.1,142.4 L333.2,142.2 L333.3,142.1 L333.4,142.0 L333.6,141.9 L333.7,141.8 L333.8,141.6 L333.9,141.5 L334.0,141.4 L334.2,141.3 L334.3,141.1 L334.4,141.0 L334.5,140.9 L334.7,140.8 L334.8,140.7 L334.9,140.5 L335.0,140.4 L335.2,140.3 L335.3,140.2 L335.4,140.0 L335.5,139.9 L335.6,139.8 L335.8,139.7 L335.9,139.6 L336.0,139.4 L336.1,139.3 L336.3,139.2 L336.4,139.1 L336.5,138.9 L336.6,138.8 L336.8,138.7 L336.9,138.6 L337.0,138.5 L337.1,138.3 L337.3,138.2 L337.4,138.1 L337.5,138.0 L337.6,137.8 L337.7,137.7 L337.9,137.6 L338.0,137.5 L338.1,137.4 L338.2,137.2 L338.4,137.1 L338.5,137.0 L338.6,136.9 L338.7,136.7 L338.9,136.6 L339.0,136.5 L339.1,136.4 L339.2,136.3 L339.3,136.1 L339.5,136.0 L339.6,135.9 L339.7,135.8 L339.8,135.6 L340.0,135.5 L340.1,135.4 L340.2,135.3 L340.3,135.2 L340.5,135.0 L340.6,134.9 L340.7,134.8 L340.8,134.7 L341.0,134.5 L341.1,134.4 L341.2,134.3 L341.3,134.2 L341.4,134.1 L341.6,133.9 L341.7,133.8 L341.8,133.7 L341.9,133.6 L342.1,133.4 L342.2,133.3 L342.3,133.2 L342.4,133.1 L342.6,133.0 L342.7,132.8 L342.8,132.7 L342.9,132.6 L343.1,132.5 L343.2,132.3 L343.3,132.2 L343.4,132.1 L343.5,132.0 L343.7,131.9 L343.8,131.7 L343.9,131.6 L344.0,131.5 L344.2,131.4 L344.3,131.2 L344.4,131.1 L344.5,131.0 L344.7,130.9 L344.8,130.8 L344.9,130.6 L345.0,130.5 L345.1,130.4 L345.3,130.3 L345.4,130.1 L345.5,130.0 L345.6,129.9 L345.8,129.8 L345.9,129.7 L346.0,129.5 L346.1,129.4 L346.3,129.3 L346.4,129.2 L346.5,129.0 L346.6,128.9 L346.8,128.8 L346.9,128.7 L347.0,128.6 L347.1,128.4 L347.2,128.3 L347.4,128.2 L347.5,128.1 L347.6,127.9 L347.7,127.8 L347.9,127.7 L348.0,127.6 L348.1,127.5 L348.2,127.3 L348.4,127.2 L348.5,127.1 L348.6,127.0 L348.7,126.8 L348.8,126.7 L349.0,126.6 L349.1,126.5 L349.2,126.4 L349.3,126.2 L349.5,126.1 L349.6,126.0 L349.7,125.9 L349.8,125.7 L350.0,125.6 L350.1,125.5 L350.2,125.4 L350.3,125.3 L350.4,125.1 L350.6,125.0 L350.7,124.9 L350.8,124.8 L350.9,124.6 L351.1,124.5 L351.2,124.4 L351.3,124.3 L351.4,124.2 L351.6,124.0 L351.7,123.9 L351.8,123.8 L351.9,123.7 L352.1,123.5 L352.2,123.4 L352.3,123.3 L352.4,123.2 L352.5,123.1 L352.7,122.9 L352.8,122.8 L352.9,122.7 L353.0,122.6 L353.2,122.4 L353.3,122.3 L353.4,122.2 L353.5,122.1 L353.7,122.0 L353.8,121.8 L353.9,121.7 L354.0,121.6 L354.1,121.5 L354.3,121.3 L354.4,121.2 L354.5,121.1 L354.6,121.0 L354.8,120.9 L354.9,120.7 L355.0,120.6 L355.1,120.5 L355.3,120.4 L355.4,120.2 L355.5,120.1 L355.6,120.0 L355.8,119.9 L355.9,119.8 L356.0,119.6 L356.1,119.5 L356.2,119.4 L356.4,119.3 L356.5,119.1 L356.6,119.0 L356.7,118.9 L356.9,118.8 L357.0,118.7 L357.1,118.5 L357.2,118.4 L357.4,118.3 L357.5,118.2 L357.6,118.0 L357.7,117.9 L357.8,117.8 L358.0,117.7 L358.1,117.6 L358.2,117.4 L358.3,117.3 L358.5,117.2 L358.6,117.1 L358.7,116.9 L358.8,116.8 L359.0,116.7 L359.1,116.6 L359.2,116.5 L359.3,116.3 L359.5,116.2 L359.6,116.1 L359.7,116.0 L359.8,115.8 L359.9,115.7 L360.1,115.6 L360.2,115.5 L360.3,115.4 L360.4,115.2 L360.6,115.1 L360.7,115.0 L360.8,114.9 L360.9,114.7 L361.1,114.6 L361.2,114.5 L361.3,114.4 L361.4,114.3 L361.6,114.1 L361.7,114.0 L361.8,113.9 L361.9,113.8 L362.0,113.6 L362.2,113.5 L362.3,113.4 L362.4,113.3 L362.5,113.2 L362.7,113.0 L362.8,112.9 L362.9,112.8 L363.0,112.7 L363.2,112.5 L363.3,112.4 L363.4,112.3 L363.5,112.2 L363.6,112.1 L363.8,111.9 L363.9,111.8 L364.0,111.7 L364.1,111.6 L364.3,111.4 L364.4,111.3 L364.5,111.2 L364.6,111.1 L364.8,111.0 L364.9,110.8 L365.0,110.7 L365.1,110.6 L365.2,110.5 L365.4,110.3 L365.5,110.2 L365.6,110.1 L365.7,110.0 L365.9,109.9 L366.0,109.7 L366.1,109.6 L366.2,109.5 L366.4,109.4 L366.5,109.2 L366.6,109.1 L366.7,109.0 L366.9,108.9 L367.0,108.8 L367.1,108.6 L367.2,108.5 L367.3,108.4 L367.5,108.3 L367.6,108.1 L367.7,108.0 L367.8,107.9 L368.0,107.8 L368.1,107.7 L368.2,107.5 L368.3,107.4 L368.5,107.3 L368.6,107.2 L368.7,107.0 L368.8,106.9 L368.9,106.8 L369.1,106.7 L369.2,106.6 L369.3,106.4 L369.4,106.3 L369.6,106.2 L369.7,106.1 L369.8,105.9 L369.9,105.8 L370.1,105.7 L370.2,105.6 L370.3,105.5 L370.4,105.3 L370.6,105.2 L370.7,105.1 L370.8,105.0 L370.9,104.8 L371.0,104.7 L371.2,104.6 L371.3,104.5 L371.4,104.4 L371.5,104.2 L371.7,104.1 L371.8,104.0 L371.9,103.9 L372.0,103.7 L372.2,103.6 L372.3,103.5 L372.4,103.4 L372.5,103.3 L372.7,103.1 L372.8,103.0 L372.9,102.9 L373.0,102.8 L373.1,102.6 L373.3,102.5 L373.4,102.4 L373.5,102.3 L373.6,102.2 L373.8,102.0 L373.9,101.9 L374.0,101.8 L374.1,101.7 L374.3,101.5 L374.4,101.4 L374.5,101.3 L374.6,101.2 L374.7,101.1 L374.9,100.9 L375.0,100.8 L375.1,100.7 L375.2,100.6 L375.4,100.4 L375.5,100.3 L375.6,100.2 L375.7,100.1 L375.9,100.0 L376.0,99.8 L376.1,99.7 L376.2,99.6 L376.4,99.5 L376.5,99.3 L376.6,99.2 L376.7,99.1 L376.8,99.0 L377.0,98.9 L377.1,98.7 L377.2,98.6 L377.3,98.5 L377.5,98.4 L377.6,98.2 L377.7,98.1 L377.8,98.0 L378.0,97.9 L378.1,97.8 L378.2,97.6 L378.3,97.5 L378.4,97.4 L378.6,97.3 L378.7,97.1 L378.8,97.0 L378.9,96.9 L379.1,96.8 L379.2,96.7 L379.3,96.5 L379.4,96.4 L379.6,96.3 L379.7,96.2 L379.8,96.0 L379.9,95.9 L380.1,95.8 L380.2,95.7 L380.3,95.6 L380.4,95.4 L380.5,95.3 L380.7,95.2 L380.8,95.1 L380.9,94.9 L381.0,94.8 L381.2,94.7 L381.3,94.6 L381.4,94.5 L381.5,94.3 L381.7,94.2 L381.8,94.1 L381.9,94.0 L382.0,93.8 L382.1,93.7 L382.3,93.6 L382.4,93.5 L382.5,93.4 L382.6,93.2 L382.8,93.1 L382.9,93.0 L383.0,92.9 L383.1,92.7 L383.3,92.6 L383.4,92.5 L383.5,92.4 L383.6,92.3 L383.8,92.1 L383.9,92.0 L384.0,91.9 L384.1,91.8 L384.2,91.6 L384.4,91.5 L384.5,91.4 L384.6,91.3 L384.7,91.2 L384.9,91.0 L385.0,90.9 L385.1,90.8 L385.2,90.7 L385.4,90.5 L385.5,90.4 L385.6,90.3 L385.7,90.2 L385.8,90.1 L386.0,89.9 L386.1,89.8 L386.2,89.7 L386.3,89.6 L386.5,89.4 L386.6,89.3 L386.7,89.2 L386.8,89.1 L387.0,89.0 L387.1,88.8 L387.2,88.7 L387.3,88.6 L387.5,88.5 L387.6,88.3 L387.7,88.2 L387.8,88.1 L387.9,88.0 L388.1,87.9 L388.2,87.7 L388.3,87.6 L388.4,87.5 L388.6,87.4 L388.7,87.2 L388.8,87.1 L388.9,87.0 L389.1,86.9 L389.2,86.8 L389.3,86.6 L389.4,86.5 L389.5,86.4 L389.7,86.3 L389.8,86.1 L389.9,86.0 L390.0,85.9 L390.2,85.8 L390.3,85.7 L390.4,85.5 L390.5,85.4 L390.7,85.3 L390.8,85.2 L390.9,85.0 L391.0,84.9 L391.2,84.8 L391.3,84.7 L391.4,84.6 L391.5,84.4 L391.6,84.3 L391.8,84.2 L391.9,84.1 L392.0,83.9 L392.1,83.8 L392.3,83.7 L392.4,83.6 L392.5,83.5 L392.6,83.3 L392.8,83.2 L392.9,83.1 L393.0,83.0 L393.1,82.8 L393.2,82.7 L393.4,82.6 L393.5,82.5 L393.6,82.4 L393.7,82.2 L393.9,82.1 L394.0,82.0 L394.1,81.9 L394.2,81.7 L394.4,81.6 L394.5,81.5 L394.6,81.4 L394.7,81.3 L394.9,81.1 L395.0,81.0 L395.1,80.9 L395.2,80.8 L395.3,80.6 L395.5,80.5 L395.6,80.4 L395.7,80.3 L395.8,80.2 L396.0,80.0 L396.1,79.9 L396.2,79.8 L396.3,79.7 L396.5,79.5 L396.6,79.4 L396.7,79.3 L396.8,79.2 L396.9,79.1 L397.1,78.9 L397.2,78.8 L397.3,78.7 L397.4,78.6 L397.6,78.4 L397.7,78.3 L397.8,78.2 L397.9,78.1 L398.1,78.0 L398.2,77.8 L398.3,77.7 L398.4,77.6 L398.6,77.5 L398.7,77.3 L398.8,77.2 L398.9,77.1 L399.0,77.0 L399.2,76.9 L399.3,76.7 L399.4,76.6 L399.5,76.5 L399.7,76.4 L399.8,76.2 L399.9,76.1 L400.0,76.0 L400.2,75.9 L400.3,75.8 L400.4,75.6 L400.5,75.5 L400.6,75.4 L400.8,75.3 L400.9,75.1 L401.0,75.0 L401.1,74.9 L401.3,74.8 L401.4,74.7 L401.5,74.5 L401.6,74.4 L401.8,74.3 L401.9,74.2 L402.0,74.0 L402.1,73.9 L402.2,73.8 L402.4,73.7 L402.5,73.6 L402.6,73.4 L402.7,73.3 L402.9,73.2 L403.0,73.1 L403.1,72.9 L403.2,72.8 L403.4,72.7 L403.5,72.6 L403.6,72.5 L403.7,72.3 L403.9,72.2 L404.0,72.1 L404.1,72.0 L404.2,71.8 L404.3,71.7 L404.5,71.6 L404.6,71.5 L404.7,71.4 L404.8,71.2 L405.0,71.1 L405.1,71.0 L405.2,70.9 L405.3,152.2 L405.5,152.1 L405.6,152.0 L405.7,151.9 L405.8,151.7 L405.9,151.6 L406.1,151.5 L406.2,151.4 L406.3,151.2 L406.4,151.1 L406.6,151.0 L406.7,150.9 L406.8,150.8 L406.9,150.6 L407.1,150.5 L407.2,150.4 L407.3,150.3 L407.4,150.1 L407.6,150.0 L407.7,149.9 L407.8,149.8 L407.9,149.7 L408.0,149.5 L408.2,149.4 L408.3,149.3 L408.4,149.2 L408.5,149.0 L408.7,148.9 L408.8,148.8 L408.9,148.7 L409.0,148.6 L409.2,148.4 L409.3,148.3 L409.4,148.2 L409.5,148.1 L409.7,147.9 L409.8,147.8 L409.9,147.7 L410.0,147.6 L410.1,147.5 L410.3,147.3 L410.4,147.2 L410.5,147.1 L410.6,147.0 L410.8,146.8 L410.9,146.7 L411.0,146.6 L411.1,146.5 L411.3,146.4 L411.4,146.2 L411.5,146.1 L411.6,146.0 L411.7,145.9 L411.9,145.7 L412.0,145.6 L412.1,145.5 L412.2,145.4 L412.4,145.3 L412.5,145.1 L412.6,145.0 L412.7,144.9 L412.9,144.8 L413.0,144.6 L413.1,144.5 L413.2,144.4 L413.3,144.3 L413.5,144.2 L413.6,144.0 L413.7,143.9 L413.8,143.8 L414.0,143.7 L414.1,143.5 L414.2,143.4 L414.3,143.3 L414.5,143.2 L414.6,143.1 L414.7,142.9 L414.8,142.8 L415.0,142.7 L415.1,142.6 L415.2,142.4 L415.3,142.3 L415.4,142.2 L415.6,142.1 L415.7,142.0 L415.8,141.8 L415.9,141.7 L416.1,141.6 L416.2,141.5 L416.3,141.3 L416.4,141.2 L416.6,141.1 L416.7,141.0 L416.8,140.9 L416.9,140.7 L417.1,140.6 L417.2,140.5 L417.3,140.4 L417.4,140.2 L417.5,140.1 L417.7,140.0 L417.8,139.9 L417.9,139.8 L418.0,139.6 L418.2,139.5 L418.3,139.4 L418.4,139.3 L418.5,139.1 L418.7,139.0 L418.8,138.9 L418.9,138.8 L419.0,138.7 L419.1,138.5 L419.3,138.4 L419.4,138.3 L419.5,138.2 L419.6,138.0 L419.8,137.9 L419.9,137.8 L420.0,137.7 L420.1,137.6 L420.3,137.4 L420.4,137.3 L420.5,137.2 L420.6,137.1 L420.7,136.9 L420.9,136.8 L421.0,136.7 L421.1,136.6 L421.2,136.5 L421.4,136.3 L421.5,136.2 L421.6,136.1 L421.7,136.0 L421.9,135.8 L422.0,135.7 L422.1,135.6 L422.2,135.5 L422.4,135.4 L422.5,135.2 L422.6,135.1 L422.7,135.0 L422.8,134.9 L423.0,134.7 L423.1,134.6 L423.2,134.5 L423.3,134.4 L423.5,134.3 L423.6,134.1 L423.7,134.0 L423.8,133.9 L424.0,133.8 L424.1,133.6 L424.2,133.5 L424.3,133.4 L424.5,133.3 L424.6,133.2 L424.7,133.0 L424.8,132.9 L424.9,132.8 L425.1,132.7 L425.2,132.5 L425.3,132.4 L425.4,132.3 L425.6,132.2 L425.7,132.1 L425.8,131.9 L425.9,131.8 L426.1,131.7 L426.2,131.6 L426.3,131.4 L426.4,131.3 L426.5,131.2 L426.7,131.1 L426.8,131.0 L426.9,130.8 L427.0,130.7 L427.2,130.6 L427.3,130.5 L427.4,130.3 L427.5,130.2 L427.7,130.1 L427.8,130.0 L427.9,129.9 L428.0,129.7 L428.1,129.6 L428.3,129.5 L428.4,129.4 L428.5,129.2 L428.6,129.1 L428.8,129.0 L428.9,128.9 L429.0,128.8 L429.1,128.6 L429.3,128.5 L429.4,128.4 L429.5,128.3 L429.6,128.1 L429.8,128.0 L429.9,127.9 L430.0,127.8" fill="none" class="ln-accent" stroke-width="2"/>
+        <g class="fill-accent"><circle cx="60.0" cy="87.0" r="3"/><circle cx="84.7" cy="144.1" r="3"/><circle cx="109.3" cy="119.6" r="3"/><circle cx="134.0" cy="95.2" r="3"/><circle cx="158.7" cy="152.2" r="3"/><circle cx="183.3" cy="127.8" r="3"/><circle cx="208.0" cy="103.3" r="3"/><circle cx="232.7" cy="78.9" r="3"/><circle cx="257.3" cy="135.9" r="3"/><circle cx="282.0" cy="111.5" r="3"/><circle cx="306.7" cy="87.0" r="3"/><circle cx="331.3" cy="144.1" r="3"/><circle cx="356.0" cy="119.6" r="3"/><circle cx="380.7" cy="95.2" r="3"/><circle cx="405.3" cy="152.2" r="3"/></g>
+        <text x="438" y="66" class="t-muted" font-size="12">latencia</text>
+        <text x="438" y="80" class="t-muted" font-size="12">+ periodo:</text>
+        <text x="438" y="94" class="t-muted" font-size="12">73,3 ms</text>
+        <text x="438" y="120" class="t-tesis" font-size="12">media: 55 ms</text>
+        <text x="438" y="156" class="t-muted" font-size="12">latencia: 40 ms</text>
+        <text x="438" y="246" class="t-time" font-size="12">llegadas</text>
+        <text x="245" y="286" text-anchor="middle" class="t-muted" font-size="13">tiempo</text>
+      </svg>
+      <figcaption>Cámara a 30 Hz con 40 ms de la captura a la llegada (valor supuesto) y control a 100 Hz que usa la última imagen llegada. Línea: edad continua; puntos: la que ve cada paso de control. <code>figuras_b4.py</code>, sección 2.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Entre llegadas, la edad crece con pendiente 1; con cada imagen nueva vuelve a la latencia. Oscila entre 40 y 73 ms.</li>
+        <li>Para el control, la media es 55 ms. La teoría da latencia + \(T_\text{cám}/2 = 56{,}7\) ms; el resto lo quita el muestreo a 100 Hz.</li>
+      </ul>
+      <details class="deriv"><summary>Derivación: la edad media de una medida periódica</summary>
+        <p class="small">Si las medidas llegan cada \(T\) con latencia \(L\) y el control mira en un instante sin relación con esa fase, el tiempo desde la última llegada es uniforme en \([0, T)\). La edad es \(L + U\), con media \(L + T/2\) y desviación \(T/\sqrt{12}\): 9,6 ms a 30 Hz. Bajar la latencia y subir la frecuencia ayudan por igual.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Consecuencia</span>Aunque el retardo de transporte sea fijo, el retardo efectivo que ve el control no lo es. Una política que solo ve «la última imagen» recibe un retardo con dientes de sierra.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · modelos</p>
+  <h2>Cuatro defectos de tiempo que un simulador debería poder inyectar</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card"><span class="meta">1 · JITTER</span><h3>Retardo variable</h3><p>Cada medida con su retardo, \(d_j = \bar d + \sigma\varepsilon_j\). En orden de llegada (FIFO): \(a_j = \max(j + d_j,\ a_{j-1})\), de modo que el jitter solo retrasa. Si el canal permite adelantar (UDP), el consumidor debe descartar lo más viejo que lo que ya tiene.</p></div>
+    <div class="card"><span class="meta">2 · PÉRDIDAS</span><h3>Independientes o a ráfagas</h3><p>Bernoulli con probabilidad \(p\), o una cadena de dos estados (bueno y malo) con probabilidades de paso \(p_{gb}\) y \(p_{bg}\): pérdida media \(p_{gb}/(p_{gb}+p_{bg})\), ráfagas de \(1/p_{bg}\) pasos de media <a class="cite" data-ref="gilbert1960,elliott1963"></a>.</p></div>
+    <div class="card"><span class="meta">3 · RELOJES</span><h3>Desfase y deriva</h3><p>\(t_\text{ap} = (1+\varepsilon)\,t + b\) para cada aparato. Con desfase entre cámara e IMU, el VIO funde datos que no son del mismo instante; VINS-Mono sin calibrar el desfase solo tolera unos 6 ms <a class="cite" data-ref="qin2018"></a>.</p></div>
+    <div class="card"><span class="meta">4 · CÓMPUTO</span><h3>Latencia de inferencia</h3><p>Una distribución medida en el hardware de destino, aplicada a la acción. Cuando la inferencia supera el periodo de control, la política decide con datos de hace más de un paso y sus acciones se solapan <a class="cite" data-ref="xiao2020,zhu2026"></a>.</p></div>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Medido en un dron</span>Bouteiller et al. motivan su trabajo con un registro real de los retardos de comunicación por WiFi entre un ordenador y un robot volador <a class="cite" data-ref="bouteiller2021"></a>. Para tu simulador: mide la distribución en tu sistema y reprodúcela; no inventes una gaussiana.</div>
+    <div class="callout realidad"><span class="tag">El middleware también cuenta</span>En ROS 2, la latencia depende sobre todo del DDS que se use; la capa de ROS añade hasta un 50 % en mensajes pequeños. En una Raspberry Pi 4 se perdía cerca del 30 % de los mensajes de 500 KB <a class="cite" data-ref="kronauer2021"></a>.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · marcas de tiempo</p>
+  <h2>Con la marca de tiempo, el jitter y las pérdidas se vuelven información</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>80 ms de retardo nominal, más…</th><th>Edad media</th><th>Predice con 80 ms</th><th>Predice con la edad real</th></tr></thead>
+          <tbody>
+            <tr><td>nada</td><td class="n">80 ms</td><td class="n">2,26</td><td class="n">2,26</td></tr>
+            <tr><td>jitter de σ = 20 ms (FIFO)</td><td class="n">90 ms</td><td class="n">2,74</td><td class="n">2,64</td></tr>
+            <tr><td>jitter de σ = 40 ms (FIFO)</td><td class="n">112 ms</td><td class="n">4,14</td><td class="n">3,29</td></tr>
+            <tr><td>50 % de pérdidas independientes</td><td class="n">90 ms</td><td class="n">2,67</td><td class="n">2,58</td></tr>
+            <tr><td>80 % de pérdidas independientes</td><td class="n">119 ms</td><td class="n">6,11</td><td class="n">3,56</td></tr>
+            <tr><td>20 % a ráfagas de 50 ms de media</td><td class="n">90 ms</td><td class="n">2,93</td><td class="n">2,73</td></tr>
+            <tr><td>20 % a ráfagas de 200 ms de media</td><td class="n">114 ms</td><td class="n">487</td><td class="n">4,81</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Coste \(J/J_0\) del eje de la parte 2 con predictor. <code>figuras_b4.py</code>, sección 4.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>El mismo 20 % de pérdidas es inofensivo si son sueltas y desestabiliza el lazo si llegan en ráfagas de 200 ms y el predictor supone que la última medida tiene 80 ms.</li>
+        <li>Con la edad real, el predictor sigue estable: solo paga la información que de verdad falta.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">En PX4</span>Los mensajes internos llevan dos tiempos: <code>timestamp</code> (cuándo se publicó) y <code>timestamp_sample</code> (cuándo se midió el dato en que se basa). En <code>actuator_motors</code>, el segundo es el de la muestra del giróscopo que originó esa orden a los motores <a class="cite" data-ref="px4msg"></a>.</div>
+      <div class="callout clave"><span class="tag">Regla</span>Marca cada dato al medirlo y arrastra esa marca por todo el sistema: el estimador funde en el instante de la medida (A4a) y la política recibe la edad como una observación más.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Asincronía · medir</p>
+  <h2>Medir la latencia en los registros de vuelo, antes de inventarla</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Con las marcas internas:</strong> en un registro de PX4, <code>timestamp − timestamp_sample</code> de <code>actuator_motors</code> es el tiempo desde la muestra del giróscopo hasta la orden a los motores; el de <code>vehicle_angular_velocity</code>, el del filtrado. El registrador guarda <code>actuator_motors</code> cada 100 ms por defecto: suficiente para una distribución, no para cada paso <a class="cite" data-ref="px4msg,px4logger"></a>.</li>
+        <li><strong>Desde fuera:</strong> correlación cruzada entre una consigna y la respuesta medida (por ejemplo, la consigna de velocidad angular y el giróscopo) en maniobras con excitación. El máximo de la correlación da el retardo total, dinámica incluida.</li>
+        <li><strong>Con un estímulo:</strong> Tan et al. mandan un pulso de PWM de un paso y miden cuándo responde el motor <a class="cite" data-ref="tan2018"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Datos públicos</span>Flight Review, el visor de registros de PX4, publica la lista de registros públicos y permite descargarlos uno a uno (<code>dbinfo</code> y <code>download?log=</code> en su servidor) <a class="cite" data-ref="flightreview"></a>. Es tu fuente de latencias reales sin volar (laboratorio, paso 5).</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Medir la latencia con relojes de dos aparatos distintos sin sincronizarlos. La diferencia mezcla retardo y desfase de relojes; o usas un único reloj, o estimas el desfase (como la sincronización de PX4 o la calibración temporal del VIO) <a class="cite" data-ref="px4timesync,qin2018"></a>.</div>
+      <div class="callout clave"><span class="tag">Calibración en línea</span>Qin y Shen estiman el desfase cámara-IMU dentro del VIO: en simulación recuperan desfases de 5, 15 y 30 ms con un error cuadrático medio de 0,36, 0,61 y 0,68 ms <a class="cite" data-ref="qin2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Aprender con retardos">
+  <p class="num">Parte 4</p>
+  <h2>Aprender con retardos</h2>
+  <p>Un retardo rompe la propiedad de Markov. Qué hay que añadir a la observación para recuperarla, qué hacen los algoritmos y qué hacen los que vuelan de verdad.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · MDP con retardo</p>
+  <h2>Con retardo, el estado es la última observación más las acciones en vuelo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con retardo de observación \(d\), en \(t\) se observa \(s_{t-d}\). Pero \(s_t\) depende también de \(a_{t-d},\dots,a_{t-1}\), que la observación no lleva: el proceso visto por la política no es markoviano.</p>
+      \[ z_t = \big(s_{t-d},\ a_{t-d},\ a_{t-d+1},\ \dots,\ a_{t-1}\big) \]
+      <p class="small">sí lo es. Con retardos aleatorios hay que añadir las últimas \(K\) acciones, con \(K\) el retardo máximo combinado, y los propios retardos: el espacio es \(S\times A^K\times\mathbb N^2\) <a class="cite" data-ref="bouteiller2021"></a>. La discusión de los MDP con retardo se remonta a Katsikopoulos y Engelbrecht <a class="cite" data-ref="katsikopoulos2003,walsh2008"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: por qué \(z_t\) es markoviano y qué es su belief</summary>
+        <p class="small">\(z_{t+1} = (s_{t+1-d}, a_{t+1-d},\dots,a_t)\). Su primer elemento sigue \(p(s_{t+1-d}\mid s_{t-d}, a_{t-d})\), que solo usa componentes de \(z_t\); el resto es un desplazamiento del búfer más la nueva acción \(a_t\). Así que \(p(z_{t+1}\mid z_t, a_t)\) no depende de nada anterior.</p>
+        <p class="small">El belief sobre el estado actual es \(b_t(s_t) = p(s_t\mid z_t)\): \(d\) pasos de predicción desde \(s_{t-d}\) con las acciones del búfer. Con dinámica determinista es el predictor de la parte 2; con ruido, una distribución que se ensancha con \(d\).</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente</span>Apilar las últimas observaciones sin las acciones. La acción enviada y aún no reflejada es una parte no observada del estado <a class="cite" data-ref="bouteiller2021"></a>; con retardos aleatorios y desordenados, apilar observaciones tampoco basta <a class="cite" data-ref="karamzade2025"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>El coste: la dimensión crece con \(d\) por la frecuencia de control. A 100 Hz, 150 ms son 15 acciones. Un belief recurrente lo comprime, si se entrena con los retardos que habrá en vuelo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · algoritmos</p>
+  <h2>Tres respuestas del aprendizaje por refuerzo al retardo</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">TIEMPO REAL · 2019</span><h3>Un paso para decidir</h3><p>El agente tiene exactamente un paso de tiempo para elegir la acción; el estado aumentado incluye la acción en curso, \(S\times A\). Equivale a un MDP con un paso de retardo constante. Su actor-crítico supera a SAC sin restricciones de tiempo real en cuatro de seis entornos <a class="cite" data-ref="ramstedt2019"></a>.</p></div>
+    <div class="card"><span class="meta">CONCURRENTE · 2020</span><h3>Pensar mientras se mueve</h3><p>Formulación en tiempo continuo que se discretiza sabiendo los retardos del sistema, con la información mínima añadida al estado. En agarre con un robot real, éxito comparable y políticas un 49 % más rápidas que el modo bloqueante (ICLR 2020, según los autores) <a class="cite" data-ref="xiao2020"></a>.</p></div>
+    <div class="card"><span class="meta">RETARDOS ALEATORIOS · 2021</span><h3>DCAC</h3><p>Retardos de observación y acción aleatorios. Un actor-crítico que remuestrea parcialmente las trayectorias del búfer para corregir el valor fuera de política. Con retardos de WiFi reales de un robot volador, «domina claramente» a las alternativas <a class="cite" data-ref="bouteiller2021"></a>.</p></div>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Con un world model</span>Karamzade et al. tratan retardos aleatorios con observaciones desordenadas en un POMDP con un filtro de belief dentro de Dreamer, y dicen superar a los métodos para MDP con retardo y resistir cambios en la distribución de retardos (preprint) <a class="cite" data-ref="karamzade2025"></a>.</div>
+    <div class="callout realidad"><span class="tag">Con políticas grandes</span>Cuando la inferencia tarda varios pasos, Zhu et al. añaden al estado las acciones ya comprometidas y una observación tomada a mitad de la inferencia; dicen que el RL estándar falla por completo sin ello (preprint) <a class="cite" data-ref="zhu2026"></a>.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · práctica</p>
+  <h2>Qué hacen los que transfieren al robot real</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Qué hacen con el tiempo</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>Minitaur, RSS 2018 <a class="cite" data-ref="tan2018"></a></td><td>Miden la latencia (3 ms y 15–19 ms) y la simulan interpolando la historia de observaciones; aleatorizan el paso de control (3–20 ms) y la latencia (0–40 ms)</td><td>Sin modelarla, el controlador es estable en simulación en una región «mucho mayor» que en el robot</td></tr>
+        <tr><td>ANYmal, Sci. Robot. 2019 <a class="cite" data-ref="hwangbo2019"></a></td><td>Red de actuador con la historia de \(t-0{,}01\) y \(t-0{,}02\) s, que debe ser «suficientemente más larga» que la suma de retardos y la respuesta mecánica</td><td>Con un actuador ideal o analítico, el robot no daba un paso sin caerse</td></tr>
+        <tr><td>Learning to Fly in Seconds, RA-L 2024 <a class="cite" data-ref="eschmann2024"></a></td><td>Retardo de rotor de 0,15 s simulado; la acción afecta al estado 5–25 pasos después, así que el actor ve la historia de acciones (el crítico, el estado completo)</td><td>Sin simular el retardo, ninguna política usable; sin historia, menos fiabilidad y precisión</td></tr>
+        <tr><td>RL frente a control óptimo, Sci. Robot. 2023 <a class="cite" data-ref="song2023"></a></td><td>Retardo de sistema de 40 ms simulado en las pruebas; política a 100 Hz</td><td>En el real, con retardo variable y otros efectos, los dos métodos de control óptimo fallan</td></tr>
+        <tr><td>Swift, Nature 2023 <a class="cite" data-ref="kaufmann2023"></a></td><td>40 ms de la cámara a los motores; cámara a 30 Hz, VIO a 100 Hz</td><td>Gana a campeones humanos con 220 ms de media</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">El patrón</span>Medir, simular el retardo con su variabilidad, dar al actor la historia (de acciones u observaciones) y dejar el estado completo al crítico (A6b).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Aprender · receta</p>
+  <h2>Los retardos en tu simulador, como parte del entorno</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li><strong>Reloj</strong> con contador global y tareas sin deriva (parte 1).</li>
+        <li><strong>Búfer por canal</strong> (cada sensor y la acción), a la frecuencia del canal, inicializado con el estado inicial.</li>
+        <li><strong>Por episodio:</strong> sortea el retardo medio de cada canal en un rango que cubra con holgura el medido (parte 2: quedarse corto es lo caro).</li>
+        <li><strong>Por paso:</strong> jitter FIFO, pérdidas a ráfagas y el periodo irregular que toque.</li>
+        <li><strong>Observación del actor:</strong> cada medida con su edad, más la historia de acciones de al menos el retardo máximo.</li>
+        <li><strong>Crítico:</strong> estado verdadero y actual, sin retardo.</li>
+        <li><strong>Validación:</strong> la distribución de latencias del simulador frente a la de los registros reales.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Lo que ya traen los simuladores</span>Isaac Lab: el retardo de los actuadores se sortea por entorno al reiniciar, entero, entre <code>min_delay</code> y <code>max_delay</code> pasos de física <a class="cite" data-ref="isaaclab"></a>. MuJoCo, desde la 3.5 (febrero de 2026): <code>delay</code> y <code>nsample</code> en actuadores y sensores, e <code>interval</code> para sensores más lentos que el paso <a class="cite" data-ref="mujoco35"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Retrasar la observación pero no la acción, o al revés, cuando en el sistema real están las dos. Para el lazo, lo que cuenta es el retardo total; para el estimador, dónde está cada uno.</div>
+      <div class="callout tesis"><span class="tag">Para el hito H2</span>Tu simulador gana canales con reloj propio, retardo, jitter y pérdidas configurables, y una observación con la edad de cada medida. B6 lo vectoriza; A6b lo usa para entrenar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Del retardo fijo al mundo asíncrono</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Retardos de serie en los simuladores</h3><p>Búferes de retardo nativos en MuJoCo 3.5 y actuadores con retardo en Isaac Lab <a class="cite" data-ref="mujoco35,isaaclab"></a>. Ya no hay excusa para entrenar sin ellos.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Belief con observaciones desordenadas</h3><p>World models que actualizan el belief con cada observación según su instante, aunque llegue tarde o fuera de orden <a class="cite" data-ref="karamzade2025"></a>, y RL que cuenta con la latencia de políticas grandes <a class="cite" data-ref="zhu2026"></a>. Los dos, preprints.</p></div>
+    <div class="card"><span class="meta">PREVISIÓN</span><h3>Modelos en tiempo continuo</h3><p>Si cada sensor llega a su ritmo y con su edad, lo natural es un modelo latente que avance en tiempo continuo y se actualice cuando llega algo. Es una previsión: hoy lo dominante sigue siendo el paso fijo con búferes.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El tiempo es parte del modelo de observación</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Observación con marca:</strong> \(o = (y, t_\text{medida})\). Sin la marca, el belief no sabe a qué instante pertenece cada dato.</li>
+        <li><strong>Belief con acciones en vuelo:</strong> el estado de información incluye las acciones enviadas desde la última observación, y su incertidumbre crece con la edad.</li>
+        <li><strong>World model asíncrono:</strong> la predicción entre observaciones es justo lo que un world model sabe hacer; la actualización tiene que aceptar datos tardíos y desordenados.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cuánto mejora un belief aprendido que recibe la edad de cada observación frente a uno que solo ve la última, cuando el retardo y las pérdidas cambian entre el entrenamiento y el vuelo? El experimento de la parte 3 es su versión lineal.</div>
+      <div class="callout clave"><span class="tag">Observabilidad parcial</span>Retardo, jitter y pérdidas son observabilidad parcial en el tiempo, igual que la oclusión lo es en el espacio. Tratarlos con el mismo belief es más limpio que con parches separados.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de B4</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Tiempo simulado, de pared y de cada aparato. En el simulador solo existe el simulado, y cada dato lleva su marca.</li>
+    <li>Multifrecuencia sin deriva: acumula el instante programado. En JAX, contador común para que el render solo se ejecute cuando toca.</li>
+    <li>En lockstep el cómputo no cuesta: hay que cobrarlo como retardo, medido en el hardware de destino.</li>
+    <li>Presupuesto real: decenas de ms de la cámara a los motores en los mejores sistemas (Swift, 40 ms), 110 ms el GNSS en PX4.</li>
+    <li>Un predictor quita la inestabilidad, no la información perdida; quedarse corto con el retardo supuesto es mucho peor que pasarse.</li>
+    <li>Jitter FIFO y pérdidas a ráfagas cambian la edad de lo observado; con la marca de tiempo, el predictor sigue estable.</li>
+    <li>El estado markoviano con retardo es la última observación más las acciones en vuelo: dáselo al actor; el crítico ve el estado actual.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>El reloj</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Física a 1 kHz y una cámara a 30 Hz que se dispara cada 33 pasos. ¿Cuántas imágenes da en un minuto?</p>
+      <ol class="opts">
+        <li><button type="button">1800</button></li>
+        <li><button type="button">1782</button></li>
+        <li><button type="button">1818</button></li>
+        <li><button type="button">1980</button></li>
+      </ol>
+      <p class="explain">33 ms de periodo son 30,30 Hz: 60 × 30,30 ≈ 1818. Acumulando el instante exacto (33,33 ms), saldrían 1800 con intervalos de 33 y 34 ms.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. 4096 entornos con <code>vmap</code> y la fase de la cámara aleatoria en cada uno. ¿Qué pasa con el render?</p>
+      <ol class="opts">
+        <li><button type="button">Se renderiza solo en los entornos a los que les toca</button></li>
+        <li><button type="button">Con el predicado dependiente del lote, <code>lax.cond</code> pasa a <code>select</code> y se renderiza en todos los pasos</button></li>
+        <li><button type="button">JAX da un error</button></li>
+        <li><button type="button">Se renderiza una vez cada 33 pasos en todos</button></li>
+      </ol>
+      <p class="explain">Bajo <code>vmap</code>, un <code>cond</code> con predicado por lote ejecuta las dos ramas. Con un contador común, el predicado es escalar.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Retardos y marcas de tiempo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. Una cámara a 20 Hz con 30 ms de latencia y un control mucho más rápido que usa la última imagen. ¿Edad media de lo que ve?</p>
+      <ol class="opts">
+        <li><button type="button">55 ms</button></li>
+        <li><button type="button">30 ms</button></li>
+        <li><button type="button">80 ms</button></li>
+        <li><button type="button">50 ms</button></li>
+      </ol>
+      <p class="explain">Latencia más medio periodo: \(30 + 50/2 = 55\) ms, oscilando entre 30 y 80 ms.</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">4. El retardo real va de 50 a 120 ms. ¿Qué retardo supones en el predictor si no tienes marca de tiempo?</p>
+      <ol class="opts">
+        <li><button type="button">50 ms, el mínimo</button></li>
+        <li><button type="button">La media, 85 ms, siempre</button></li>
+        <li><button type="button">0 ms, para no arriesgar</button></li>
+        <li><button type="button">Cerca del máximo: quedarse corto es mucho más caro que pasarse</button></li>
+      </ol>
+      <p class="explain">En el experimento de la parte 2, suponer 100 ms con 0 reales cuesta ×1,58, y suponer 50 con 120 reales, ×17. Mejor aún: consigue la marca de tiempo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Aprender con retardos</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Retardo de observación de 3 pasos. ¿Qué le das al actor para que su problema sea markoviano?</p>
+      <ol class="opts">
+        <li><button type="button">Las tres últimas observaciones</button></li>
+        <li><button type="button">La última observación y las tres últimas acciones</button></li>
+        <li><button type="button">Solo la última observación, con más capas</button></li>
+        <li><button type="button">El estado verdadero</button></li>
+      </ol>
+      <p class="explain">\(z_t = (s_{t-3}, a_{t-3}, a_{t-2}, a_{t-1})\). El estado verdadero es para el crítico, no existe en vuelo.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu política de tesis usa una cámara a 30 Hz (inferencia de 25 ms en la Jetson), VIO a 100 Hz y GNSS a 10 Hz con 110 ms. Diseña los canales de tiempo del simulador y la observación del actor.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Física a 1 kHz con contador común. Canales: imagen (30 Hz, latencia de captura más 25 ms de inferencia, con su distribución medida, y jitter FIFO), VIO (100 Hz, unos ms y pérdidas a ráfagas cuando falla), GNSS (10 Hz, 110 ms, pérdidas y saltos) y acción (retardo de cómputo y la dinámica de los motores de B2). Por episodio, retardos medios sorteados por encima y por debajo de los medidos, con más margen hacia arriba. Observación del actor: cada medida con su edad y la historia de acciones de al menos 150 ms (15 acciones a 100 Hz) o un estado recurrente que la resuma. Crítico: estado verdadero. Validación: distribuciones de edad del simulador frente a las de un registro real.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN · ICLR</span>
+      <h3>RL con retardos aleatorios <a class="cite" data-ref="bouteiller2021"></a></h3>
+      <p><strong>Lee:</strong> §2 (el MDP con retardos aleatorios y por qué hay que guardar las acciones) y la figura con los retardos de WiFi.</p>
+      <p><strong>Busca:</strong> qué pasa con los métodos que ignoran el retardo cuando este es aleatorio.</p>
+      <p><strong>Responde:</strong> ¿qué parte de su estado aumentado sustituiría un belief recurrente?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 30 MIN · RSS</span>
+      <h3>Sim-to-real en Minitaur <a class="cite" data-ref="tan2018"></a></h3>
+      <p><strong>Lee:</strong> §V-A, «Latency», y la tabla de aleatorización.</p>
+      <p><strong>Busca:</strong> cómo midieron la latencia y cómo la simulan.</p>
+      <p><strong>Responde:</strong> ¿cómo medirías tú la de tu dron sin volarlo?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · PREPRINT</span>
+      <h3>World model con retardos aleatorios <a class="cite" data-ref="karamzade2025"></a></h3>
+      <p><strong>Lee:</strong> la formulación del POMDP con observaciones desordenadas y el filtro de belief.</p>
+      <p><strong>Busca:</strong> por qué apilar observaciones no basta.</p>
+      <p><strong>Responde:</strong> ¿qué cambiarías para llevarlo a varios sensores con frecuencias distintas?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> RL en tiempo real <a class="cite" data-ref="ramstedt2019"></a>; control concurrente <a class="cite" data-ref="xiao2020"></a>; Learning to Fly in Seconds <a class="cite" data-ref="eschmann2024"></a>; calibración temporal de VINS-Mono <a class="cite" data-ref="qin2018"></a>; latencia de ROS 2 <a class="cite" data-ref="kronauer2021"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Multifrecuencia, búferes de retardo y jitter en el simulador JAX</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Reloj multifrecuencia</strong> con contador común y sin deriva, vectorizado.</li>
+        <li><strong>Búferes de retardo</strong> por canal: retardo fraccionario, jitter FIFO, pérdidas a ráfagas.</li>
+        <li><strong>Retardo y predictor</strong> en tu cascada: margen de retardo medido frente al de A2 y la tabla de desajuste.</li>
+        <li><strong>Marcas de tiempo</strong> en el ESKF de A4a con jitter y pérdidas.</li>
+        <li><strong>Latencias reales</strong> en registros públicos de PX4.</li>
+        <li><strong>Entorno con retardos</strong> listo para A6a y A6b: observación con edades e historia de acciones.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>1818 frente a 1800 imágenes; edad media de 55 ms; inestabilidad sin predictor hacia 90 ms; la tabla de desajuste y la de marcas de tiempo.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Todo en CPU; con GPU, la vectorización del paso 1 se nota a partir de miles de entornos.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b4.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-eschmann2024">Eschmann, J., Albani, D., Loianno, G. (2024). Learning to fly in seconds. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(7), 6336–6343. <a href="https://doi.org/10.1109/LRA.2024.3396025">doi:10.1109/LRA.2024.3396025</a>. <a href="https://arxiv.org/abs/2311.13081">arXiv:2311.13081</a></li>
+    <li id="ref-kaufmann2023">Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Champion-level drone racing using deep reinforcement learning. <span class="venue">Nature</span>, 620(7976), 982–987. <a href="https://doi.org/10.1038/s41586-023-06419-4">doi:10.1038/s41586-023-06419-4</a></li>
+    <li id="ref-tan2018">Tan, J., Zhang, T., Coumans, E., Iscen, A., Bai, Y., Hafner, D., Bohez, S., Vanhoucke, V. (2018). Sim-to-real: Learning agile locomotion for quadruped robots. <span class="venue">Robotics: Science and Systems XIV</span>. <a href="https://doi.org/10.15607/RSS.2018.XIV.010">doi:10.15607/RSS.2018.XIV.010</a>. <a href="https://arxiv.org/abs/1804.10332">arXiv:1804.10332</a></li>
+    <li id="ref-gilbert1960">Gilbert, E. N. (1960). Capacity of a burst-noise channel. <span class="venue">Bell System Technical Journal</span>, 39(5), 1253–1265. <a href="https://doi.org/10.1002/j.1538-7305.1960.tb03959.x">doi:10.1002/j.1538-7305.1960.tb03959.x</a></li>
+    <li id="ref-elliott1963">Elliott, E. O. (1963). Estimates of error rates for codes on burst-noise channels. <span class="venue">Bell System Technical Journal</span>, 42(5), 1977–1997. <a href="https://doi.org/10.1002/j.1538-7305.1963.tb00955.x">doi:10.1002/j.1538-7305.1963.tb00955.x</a></li>
+    <li id="ref-katsikopoulos2003">Katsikopoulos, K. V., Engelbrecht, S. E. (2003). Markov decision processes with delays and asynchronous cost collection. <span class="venue">IEEE Transactions on Automatic Control</span>, 48(4), 568–574. <a href="https://doi.org/10.1109/TAC.2003.809799">doi:10.1109/TAC.2003.809799</a></li>
+    <li id="ref-walsh2008">Walsh, T. J., Nouri, A., Li, L., Littman, M. L. (2009). Learning and planning in environments with delayed feedback. <span class="venue">Autonomous Agents and Multi-Agent Systems</span>, 18(1), 83–105 (en línea en 2008). <a href="https://doi.org/10.1007/s10458-008-9056-7">doi:10.1007/s10458-008-9056-7</a></li>
+    <li id="ref-qin2018">Qin, T., Shen, S. (2018). Online temporal calibration for monocular visual-inertial systems. <span class="venue">IROS 2018</span>, 3662–3669. <a href="https://doi.org/10.1109/IROS.2018.8593603">doi:10.1109/IROS.2018.8593603</a>. <a href="https://arxiv.org/abs/1808.00692">arXiv:1808.00692</a></li>
+    <li id="ref-ramstedt2019">Ramstedt, S., Pal, C. (2019). Real-time reinforcement learning. <a href="https://arxiv.org/abs/1911.04448">arXiv:1911.04448</a> (NeurIPS 2019 según los autores)</li>
+    <li id="ref-xiao2020">Xiao, T., Jang, E., Kalashnikov, D., Levine, S., Ibarz, J., Hausman, K., Herzog, A. (2020). Thinking while moving: Deep reinforcement learning with concurrent control. <a href="https://arxiv.org/abs/2004.06089">arXiv:2004.06089</a> (ICLR 2020 según los autores)</li>
+    <li id="ref-bouteiller2021">Bouteiller, Y., Ramstedt, S., Beltrame, G., Pal, C., Binas, J. (2021). Reinforcement learning with random delays. <span class="venue">ICLR 2021</span> (orden de autores de OpenReview). <a href="https://arxiv.org/abs/2010.02966">arXiv:2010.02966</a></li>
+    <li id="ref-song2023">Song, Y., Romero, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Reaching the limit in autonomous racing: Optimal control versus reinforcement learning. <span class="venue">Science Robotics</span>, 8(82), eadg1462. <a href="https://doi.org/10.1126/scirobotics.adg1462">doi:10.1126/scirobotics.adg1462</a>. <a href="https://arxiv.org/abs/2310.10943">arXiv:2310.10943</a></li>
+    <li id="ref-mujoco35">Google DeepMind. MuJoCo: <code>doc/changelog.rst</code> (versión 3.5.0, 12 de febrero de 2026) y <code>doc/XMLreference.rst</code> (atributos <code>nsample</code>, <code>interp</code>, <code>delay</code> e <code>interval</code>), consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco">github.com/google-deepmind/mujoco</a></li>
+    <li id="ref-karamzade2025">Karamzade, A., Kim, K., Lanier, J. B., Corsi, D., Fox, R. (2025). Model-based reinforcement learning under random observation delays. <a href="https://arxiv.org/abs/2509.20869">arXiv:2509.20869</a> (preprint)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="15">
+    <li id="ref-zhu2026">Zhu, B., Khalil, M., Harrison, E., Poggi, E., Schmitt, P., Kast, B., Meister, P., Atreya, P., Li, Q., Ferchau, F., et al., Mees, O., Solowjow, E., Wagenmaker, A., Levine, S. (2026). Learning to act while waiting: RL finetuning of generalist robot policies under inference latency. <a href="https://arxiv.org/abs/2608.23831">arXiv:2608.23831</a> (preprint)</li>
+    <li id="ref-ros2time">Open Robotics. ROS 2 Design, <em>Clock and Time</em>, consultado el 7 de noviembre de 2026. <a href="https://design.ros2.org/articles/clock_and_time.html">design.ros2.org</a></li>
+    <li id="ref-px4timesync">PX4. <code>Timesync.hpp</code> (biblioteca de sincronización) y mensaje <code>TimesyncStatus</code>, rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-jaxcond">JAX. Documentación de <code>jax.lax.cond</code> (en <code>conditionals.py</code>): bajo <code>vmap</code> con predicado por lote se convierte en <code>select</code>, consultado el 7 de noviembre de 2026. <a href="https://github.com/jax-ml/jax">github.com/jax-ml/jax</a></li>
+    <li id="ref-isaaclab">NVIDIA. Isaac Lab: documentación de <code>isaaclab.envs</code> (<code>decimation</code>) y <code>isaaclab.actuators</code> (<code>DelayedPDActuator</code>), y su código en <code>actuator_pd.py</code>, consultado el 7 de noviembre de 2026. <a href="https://github.com/isaac-sim/IsaacLab">github.com/isaac-sim/IsaacLab</a></li>
+    <li id="ref-schubert2019">Schubert, D., Demmel, N., von Stumberg, L., Usenko, V., Cremers, D. (2019). Rolling-shutter modelling for direct visual-inertial odometry. <span class="venue">IROS 2019</span>, 2462–2469. <a href="https://doi.org/10.1109/IROS40897.2019.8968539">doi:10.1109/IROS40897.2019.8968539</a>. <a href="https://arxiv.org/abs/1911.01015">arXiv:1911.01015</a></li>
+    <li id="ref-px4gnssdelay">PX4. <code>vehicle_gps_position/module.yaml</code> (<code>SENS_GNSS${i}_DELAY</code>) y notas de la versión 1.18 (<code>EKF2_GPS_DELAY</code> pasa a cada receptor), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4ekf2">PX4. EKF2: <code>module.yaml</code> (<code>EKF2_DELAY_MAX</code>, <code>EKF2_PREDICT_US</code>) y parámetros de cada sensor (<code>EKF2_OF_DELAY</code>, <code>EKF2_RNG_DELAY</code>, <code>EKF2_EV_DELAY</code>…), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-kronauer2021">Kronauer, T., Pohlmann, J., Matthé, M., Smejkal, T., Fettweis, G. (2021). Latency analysis of ROS2 multi-node systems. <span class="venue">IEEE MFI 2021</span>, 1–7. <a href="https://doi.org/10.1109/MFI52462.2021.9591166">doi:10.1109/MFI52462.2021.9591166</a>. <a href="https://arxiv.org/abs/2101.02074">arXiv:2101.02074</a></li>
+    <li id="ref-px4msg">PX4. Mensajes uORB <code>SensorGyro</code>, <code>VehicleAngularVelocity</code>, <code>VehicleOdometry</code> y <code>ActuatorMotors</code> (campos <code>timestamp</code> y <code>timestamp_sample</code>), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4logger">PX4. <code>logger/logged_topics.cpp</code> (temas y frecuencias registrados por defecto), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-flightreview">PX4. Flight Review, el visor web de registros: rutas <code>/dbinfo</code> y <code>/download</code> en <code>serve.py</code> y sus manejadores, consultado el 7 de noviembre de 2026. <a href="https://github.com/PX4/flight_review">github.com/PX4/flight_review</a></li>
+    <li id="ref-hwangbo2019">Hwangbo, J., Lee, J., Dosovitskiy, A., Bellicoso, D., Tsounis, V., Koltun, V., Hutter, M. (2019). Learning agile and dynamic motor skills for legged robots. <span class="venue">Science Robotics</span>, 4(26), eaau5872. <a href="https://doi.org/10.1126/scirobotics.aau5872">doi:10.1126/scirobotics.aau5872</a>. <a href="https://arxiv.org/abs/1901.08652">arXiv:1901.08652</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
