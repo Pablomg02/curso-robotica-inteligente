@@ -1,0 +1,75 @@
+==============================================================================
+EJEMPLO 1. Dos drones, dos celdas: cada uno acaba con su propio belief
+  mapa previo (A, B) = [0.5 0.5]; el dron 1 mira A y no detecta: masa sin normalizar [0.15 0.5 ], suma 0.65
+  belief del dron 1: A = 0.231, B = 0.769  (0,15 / 0,65 y 0,5 / 0,65)
+  belief del dron 2 (no sabe nada de esa mirada): A = 0.500, B = 0.500
+  con comunicación instantánea, los dos tienen el del dron 1: un belief común
+==============================================================================
+EJEMPLO 2. Contar políticas deterministas: árboles de política
+  |A| = |Omega| = 2, n = 2, h = 1: nodos =  1; por agente 2^1 = 10^0.3; conjuntas 2^2 = 10^0.6
+  |A| = |Omega| = 2, n = 2, h = 2: nodos =  3; por agente 2^3 = 10^0.9; conjuntas 2^6 = 10^1.8
+  |A| = |Omega| = 2, n = 2, h = 3: nodos =  7; por agente 2^7 = 10^2.1; conjuntas 2^14 = 10^4.2
+  |A| = |Omega| = 2, n = 2, h = 4: nodos = 15; por agente 2^15 = 10^4.5; conjuntas 2^30 = 10^9.0
+  |A| = |Omega| = 2, n = 2, h = 5: nodos = 31; por agente 2^31 = 10^9.3; conjuntas 2^62 = 10^18.7
+  |A| = |Omega| = 2, n = 2, h = 6: nodos = 63; por agente 2^63 = 10^19.0; conjuntas 2^126 = 10^37.9
+  h = 2 por enumeración: 8 políticas por agente, 64 conjuntas; primeras: [(0, 0, 0), (0, 0, 1), (0, 1, 0)]
+  h = 3 a mano: 1 + 2 + 4 = 7 nodos; 2^7 = 128 por agente; 128 ^ 2 = 16384 conjuntas
+  búsqueda: 5 acciones, observación detecta/no (|Omega| = 2), h = 3, 3 drones: 5^7 = 78125 por dron; conjuntas 5^21 = 4.77e+14
+    h = 2: nodos 3; log10(conjuntas, 3 drones, 5 acciones) = 6.3
+    h = 3: nodos 7; log10(conjuntas, 3 drones, 5 acciones) = 14.7
+    h = 4: nodos 15; log10(conjuntas, 3 drones, 5 acciones) = 31.5
+==============================================================================
+EJEMPLO 3. No estacionariedad en el juego matricial: lo que vale una acción del agente 1 depende de pi_2
+  pi_2 = (0.333, 0.333, 0.333): Q_1(a_1) = sum_a2 pi_2(a_2) R(a_1, a_2) = [-5.3333 -4.     -4.    ]; mejor a_1 = 1
+  pi_2 = (0.375, 0.312, 0.312): Q_1(a_1) = sum_a2 pi_2(a_2) R(a_1, a_2) = [-4.5 -4.5 -4.5]; mejor a_1 = empate 0/1
+  pi_2 = (0.800, 0.100, 0.100): Q_1(a_1) = sum_a2 pi_2(a_2) R(a_1, a_2) = [ 4.  -9.6 -9.6]; mejor a_1 = 0
+  Q_1(0) = 8p - 12(1 - p) = 20p - 12;  Q_1(1) = -12p;  iguales en 32p = 12, p = 0,375
+  el crítico conjunto Q(a_1, a_2) = R(a_1, a_2) no cambia con pi_2: es la tabla de pagos
+==============================================================================
+EJEMPLO 4. COMA en el juego matricial: línea base contrafactual y varianza del gradiente
+  el otro agente juega 0: Q(u', 0) = [  8. -12. -12.]; b = 0,5·8 + 0,3·-12 + 0,2·-12 = -2.00; ventajas A = Q - b = [ 10. -10. -10.]
+    E[grad log pi · b] = [ 0.  0. -0.]  (cero);  gradiente medio sin línea base [ 5. -3. -2.], con ella [ 5. -3. -2.]
+    varianza total del estimador de una muestra: sin línea base 36.08, con ella 24.00
+  el otro agente juega 1: Q(u', 1) = [-12.   0.   0.]; b = 0,5·-12 + 0,3·0 + 0,2·0 = -6.00; ventajas A = Q - b = [-6.  6.  6.]
+    E[grad log pi · b] = [ 0. -0. -0.]  (cero);  gradiente medio sin línea base [-3.   1.8  1.2], con ella [-3.   1.8  1.2]
+    varianza total del estimador de una muestra: sin línea base 13.68, con ella 8.64
+==============================================================================
+EJEMPLO 5. Cuántas acciones conjuntas hay que comparar para elegir la mejor
+  5 acciones, n =  2: conjuntas 5^n = 25; con IGM basta n·5 = 10 evaluaciones
+  5 acciones, n =  3: conjuntas 5^n = 125; con IGM basta n·5 = 15 evaluaciones
+  5 acciones, n = 10: conjuntas 5^n = 9.77e+06; con IGM basta n·5 = 50 evaluaciones
+  5 acciones, n = 32: conjuntas 5^n = 2.33e+22; con IGM basta n·5 = 160 evaluaciones
+==============================================================================
+EJEMPLO 6. IGM con la suma (VDN) y con una mezcla monótona no lineal, f(x, y) = ln(e^x + e^y)
+  Q_1 = [1. 3.], Q_2 = [ 2. -1.]: argmax individuales (1, 0)
+  VDN, Q_tot = Q_1 + Q_2 = [[3.0, 0.0], [5.0, 2.0]]; máximo 5 en (1, 0) = max Q_1 + max Q_2 = 3 + 2
+  Q_tot = f(Q_1(a_1), Q_2(a_2)) = [[2.313, 1.127], [3.313, 3.018]]; máximo en (1, 0)
+  en cada columna, la fila 1 gana a la 0: [ True  True] (el orden de las filas no depende de a_2)
+==============================================================================
+EJEMPLO 7. VDN a mano en el juego matricial: mínimos cuadrados con datos uniformes
+  medias de fila [-5.333 -4.    -4.   ], de columna [-5.333 -4.    -4.   ], total -4.444  (-16/3, -4; -40/9)
+  ajuste aditivo Q_tot = fila + columna - total = [[-6.22, -4.89, -4.89], [-4.89, -3.56, -3.56], [-4.89, -3.56, -3.56]]
+  (figuras_a15a.py, entrenado con Adam: [[-6.2, -4.9, -4.9], [-4.9, -3.6, -3.6], [-4.9, -3.6, -3.6]])
+  error cuadrático medio de VDN: 50.57  (el script: 50,57)
+  error de la mezcla monótona aprendida [[-8,-8,-8],[-8,0,0],[-8,0,0]]: 35.56  (el script: 35,56)
+  a mano: (8 + 8)^2 = 256 en (0,0) y 4^2 = 16 en las cuatro casillas de -12: (256 + 64) / 9 = 35.56
+  q_1 = fila - c: la acción 0 vale -5,33 + c' y las otras -4 + c': 1 y 2 empatan; el entrenamiento eligió (1, 1)
+  ecuaciones normales: sum_a2 (Q_tot - R) por fila = [0. 0. 0.]
+==============================================================================
+EJEMPLO 8. MAPPO: el objetivo recortado con parámetros compartidos, tres drones en un paso
+  dron 1: r = 1.3, A = +1.0: r·A = +1.30, clip(r)·A = +1.20, min = +1.20
+  dron 2: r = 0.9, A = -2.0: r·A = -1.80, clip(r)·A = -1.80, min = -1.80
+  dron 3: r = 1.1, A = +0.5: r·A = +0.55, clip(r)·A = +0.55, min = +0.55
+  media sobre los tres drones: -0.0167; un único theta recibe el gradiente de los tres términos
+==============================================================================
+EJEMPLO 9. Mensajes con retraso: lo que cree un dron de una celda que otro ya miró
+  celda c con p_0(c) = 0.1; el dron 2 la miró en t-3 y t-2 sin detectar
+  mensajes al instante: el dron 1 cuenta n = 2 miradas: m = 0.1 · 0,3^2 = 0.009
+  mensajes de hace 10 pasos: aún no le han llegado: m = 0.100, 11.1 veces más
+==============================================================================
+EJEMPLO 10. La recompensa del belief-MDP a mano: dos celdas, dos pasos
+  paso 0: m_t = [0.6 0.4], k_t = [1 0]: r_t = sum m (1 - 0,3^k) = 0.420; m_t+1 = [0.18 0.4 ]
+  paso 1: m_t = [0.18 0.4 ], k_t = [0 2]: r_t = sum m (1 - 0,3^k) = 0.364; m_t+1 = [0.18  0.036]
+  suma de r_t = 0.784 = 1 - masa final 0.216;  pasos esperados = sum_t sum_c m_t(c) = 1.00 + 0.58 = 1.58
+  Monte Carlo con 200000 episodios: P(encontrarlo) = 0.7824; E[min(tau, 2)] = 1.5813
+  varianza del retorno realizado (0 o 1): 0.1703; del retorno del belief-MDP con estas acciones: 0

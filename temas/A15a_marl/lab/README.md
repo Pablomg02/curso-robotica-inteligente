@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Plantear la búsqueda con varios drones como un Dec-POMDP, entrenar políticas descentralizadas con parámetros compartidos y medir lo que aportan el crítico centralizado y la comunicación, y lo que cuesta un canal imperfecto. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a15a.py`, salida en `figuras/salida_gpu.txt`):
+Plantear la búsqueda con varios drones como un Dec-POMDP, entrenar políticas descentralizadas con parámetros compartidos y medir lo que aportan el crítico centralizado y la comunicación, y lo que cuesta un canal imperfecto. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a15a.py`, salida en `figuras/salida_gpu.txt`; las cuentas pequeñas de las hojas, como VDN a mano en el juego matricial o la recompensa del belief-MDP con dos celdas, están en `figuras/ejemplos_a15a.py` y `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación (determinista en la misma GPU) | Valor | Paso |
 |---|---|---|
