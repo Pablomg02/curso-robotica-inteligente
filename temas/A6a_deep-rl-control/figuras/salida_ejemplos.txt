@@ -1,0 +1,122 @@
+========================================================================
+EJEMPLO 1. TRUCO DEL LOGARITMO EN UN BANDIDO DE DOS ACCIONES, CON Y SIN LÍNEA BASE
+  π(der) = σ(0.0) = 0.5; R(der) = 10.0, R(izq) = 8.0
+  J(θ) = σ(θ)·10 + (1-σ(θ))·8; dJ/dθ = σ(1-σ)(10-8) = 0.5
+  score: d log π(der)/dθ = 1-σ = 0.5; d log π(izq)/dθ = -σ = -0.5
+  b = 0.0: muestra si sale der = +5.00, si sale izq = -4.00; media 0.500; desviación 4.500; error típico con 64 muestras 0.562
+  b = 9.0: muestra si sale der = +0.50, si sale izq = +0.50; media 0.500; desviación 0.000; error típico con 64 muestras 0.000
+  Monte Carlo, 2000 lotes de 64 tiradas, b = 0.0: media 0.500, desviación entre lotes 0.561
+  Monte Carlo, 2000 lotes de 64 tiradas, b = 9.0: media 0.500, desviación entre lotes 0.000
+  gaussiana: σ = 0.6, a - μ = σ·ξ = 0.30 (ξ = 0.5); ∂ log N/∂μ = (a-μ)/σ² = 0.833; ∂ log N/∂ log σ = (a-μ)²/σ² - 1 = -0.750
+========================================================================
+EJEMPLO 2. GAE A MANO EN UNA TRAYECTORIA DE 3 PASOS (TERMINA EN s3)
+  γ = 0.9, λ = 0.5, γλ = 0.45; r = [1. 0. 2.]; V(s0..s3) = [2.  1.5 1.  0. ]
+  δ0 = r0 + γV(s1) - V(s0) = 1.0 + 0.9·1.5 - 2.0 = +0.3500
+  δ1 = r1 + γV(s2) - V(s1) = 0.0 + 0.9·1.0 - 1.5 = -0.6000
+  δ2 = r2 + γV(s3) - V(s2) = 2.0 + 0.9·0.0 - 1.0 = +1.0000
+  recursión hacia atrás: Â2 = δ2 + γλ·Â3 = +1.0000
+  recursión hacia atrás: Â1 = δ1 + γλ·Â2 = -0.1500
+  recursión hacia atrás: Â0 = δ0 + γλ·Â1 = +0.2825
+  suma directa Â0 = δ0 + (γλ)δ1 + (γλ)²δ2 = 0.3500 + 0.45·(-0.60) + 0.2025·1.00 = 0.2825
+  ventajas a k pasos desde t = 0: Â(1) = 0.3500, Â(2) = -0.1900, Â(3) = 0.6200 (= retorno - V(s0))
+  retorno G0 = 1 + 0,9·0 + 0,81·2 = 2.6200; G0 - V(s0) = 0.6200
+  media exponencial: pesos (1-λ), (1-λ)λ y el resto λ² = [0.5, 0.25, 0.25]: 0.50·0.35 + 0.25·(-0.19) + 0.25·0.62 = 0.2825
+  λ = 0.0: Â0 = 0.3500
+  λ = 0.5: Â0 = 0.2825
+  λ = 0.9: Â0 = 0.5201
+  λ = 1.0: Â0 = 0.6200
+========================================================================
+EJEMPLO 3. HORIZONTE DE GAE Y REPARTO ENTORNOS x PASOS (γ = 0,99, λ = 0,95, 100 Hz)
+  γλ = 0.9405; horizonte efectivo de GAE 1/(1-γλ) = 16.8 pasos = 168 ms
+  horizonte del descuento 1/(1-γ) = 100 pasos = 1.0 s
+  peso del residuo δ a 17 pasos (170 ms): (γλ)^17 = 0.352
+  T =   8 pasos (80 ms): peso (γλ)^T de lo que queda tras el tramo = 0.612
+  T =  32 pasos (320 ms): peso (γλ)^T de lo que queda tras el tramo = 0.140
+  T = 128 pasos (1280 ms): peso (γλ)^T de lo que queda tras el tramo = 0.000
+  T = 512 pasos (5120 ms): peso (γλ)^T de lo que queda tras el tramo = 0.000
+  lote B = N·T = 4096·32 = 131072; minilote 32768; pasos de Adam por actualización 20; total 600 actualizaciones = 78643200 pasos de entorno y 12000 pasos de Adam
+========================================================================
+EJEMPLO 4. COCIENTE DE PROBABILIDADES Y ESTIMADOR DE LA KL
+  π_viejo(a) = 0.5, π_θ(a) = 0.6: r = 1.200; log r = +0.1823; (r-1) - log r = 0.0177
+  π_viejo(a) = 0.5, π_θ(a) = 0.4: r = 0.800; log r = -0.2231; (r-1) - log r = 0.0231
+  π_viejo(a) = 0.5, π_θ(a) = 0.75: r = 1.500; log r = +0.4055; (r-1) - log r = 0.0945
+  gaussiana σ = 0.6: a = 0.3, μ_viejo = 0.0, μ = 0.1: r = exp(0.0694) = 1.0719
+  en θ = θ_viejo, ∇_μ r = r·∂log π/∂μ = 1·(a-μ)/σ² = 0.8333
+========================================================================
+EJEMPLO 5. LOS SEIS CASOS DEL OBJETIVO RECORTADO (ε = 0,2)
+  A = +2, r = 0.7: r·A = +1.40; clip(r)·A = +1.60; min = +1.40; d(min)/dr = +2; solo con el recorte (sin min) d/dr = +0
+  A = +2, r = 1.0: r·A = +2.00; clip(r)·A = +2.00; min = +2.00; d(min)/dr = +2; solo con el recorte (sin min) d/dr = +2
+  A = +2, r = 1.5: r·A = +3.00; clip(r)·A = +2.40; min = +2.40; d(min)/dr = +0; solo con el recorte (sin min) d/dr = +0
+  A = -2, r = 0.7: r·A = -1.40; clip(r)·A = -1.60; min = -1.60; d(min)/dr = +0; solo con el recorte (sin min) d/dr = +0
+  A = -2, r = 1.0: r·A = -2.00; clip(r)·A = -2.00; min = -2.00; d(min)/dr = -2; solo con el recorte (sin min) d/dr = -2
+  A = -2, r = 1.5: r·A = -3.00; clip(r)·A = -2.40; min = -3.00; d(min)/dr = -2; solo con el recorte (sin min) d/dr = +0
+  panel A>0: path min: M40.0,91.1 L111.4,72.1 L147.1,62.6 L182.9,53.2 L290.0,53.2
+  panel A>0: path rA: M40.0,91.1 L111.4,72.1 L147.1,62.6 L182.9,53.2 L290.0,24.7
+  panel A>0: x(0,7)=93.6 x(0,8)=111.4 x(1)=147.1 x(1,2)=182.9 x(1,5)=236.4; y(0)=110.0; y(0,7A)=76.8; y(0,8A)=72.1; y(1,2A)=53.2; y(1,5A)=38.9
+  panel A<0: path min: M40.0,147.9 L111.4,147.9 L147.1,157.4 L182.9,166.8 L290.0,195.3
+  panel A<0: path rA: M40.0,128.9 L111.4,147.9 L147.1,157.4 L182.9,166.8 L290.0,195.3
+  panel A<0: x(0,7)=93.6 x(0,8)=111.4 x(1)=147.1 x(1,2)=182.9 x(1,5)=236.4; y(0)=110.0; y(0,7A)=143.2; y(0,8A)=147.9; y(1,2A)=166.8; y(1,5A)=181.1
+========================================================================
+EJEMPLO 6. NORMALIZACIÓN DE VENTAJAS EN UN MINILOTE
+  Â = [ 0.2825 -0.15    1.      0.35  ]; media 0.3706; desviación 0.4109; normalizadas [-0.2145 -1.267   1.5317 -0.0502]
+  (multiplicar todas las ventajas por k > 0 no cambia el resultado: la escala de la recompensa deja de importar para la política)
+========================================================================
+EJEMPLO 7. DISTRIBUCIÓN INICIAL DE LA ACCIÓN DEL x500: GANANCIA 0,01 FRENTE A √2 EN LA ÚLTIMA CAPA
+  observaciones de arranque: 22 = 3 (error de posición) + 3 (velocidad) + 9 (rotación) + 3 (vel. angular) + 4 (acción anterior)
+  ganancia 0.010: |media de la acción| media 0.004; |media del empuje a0| 0.003; fracción de arranques con |a0| > 1 (empuje saturado) 0.0 %  (media de 5 inicializaciones)
+  ganancia 1.414: |media de la acción| media 0.466; |media del empuje a0| 0.481; fracción de arranques con |a0| > 1 (empuje saturado) 10.6 %  (media de 5 inicializaciones)
+  σ inicial = exp(-0,5) = 0.6065; empuje T = m g (1 + 0,8 a0): una σ son ±49 % del peso; velocidad angular deseada (4, 4, 2)·a: una σ son ±2.43, ±2.43 y ±1.21 rad/s
+========================================================================
+EJEMPLO 8. SAC: POLÍTICA DE BOLTZMANN, TEMPERATURA Y ESCALA DE LA RECOMPENSA
+  Q = (1, 0), α =   0.1: π = (1.0000, 0.0000); entropía 0.0005 nats (máx ln 2 = 0.6931); valor suave α log Σ exp(Q/α) = 1.0000
+  Q = (1, 0), α =   1.0: π = (0.7311, 0.2689); entropía 0.5822 nats (máx ln 2 = 0.6931); valor suave α log Σ exp(Q/α) = 1.3133
+  Q = (1, 0), α =  10.0: π = (0.5250, 0.4750); entropía 0.6919 nats (máx ln 2 = 0.6931); valor suave α log Σ exp(Q/α) = 7.4440
+  recompensa ×5 con α = 1 (Q = (5, 0)): π = [0.9933 0.0067]; recompensa ×1 con α = 0,2: π = [0.9933 0.0067] (idénticas)
+  entropía de una gaussiana σ = 0.6: ½ ln(2πe σ²) = 0.9081 nats por dimensión; 4 dimensiones: 3.632
+  entropía de una gaussiana σ = 0.1: ½ ln(2πe σ²) = -0.8836 nats por dimensión; 4 dimensiones: -3.535
+  entropía de una gaussiana σ = 0.089: ½ ln(2πe σ²) = -1.0002 nats por dimensión; 4 dimensiones: -4.001
+  entropía objetivo -dim(A) = -4 con 4 dimensiones ⇔ σ = 0.0890 por dimensión (antes de la tanh)
+  ∂J(α)/∂α = H(π) - H̄ = 3.632 - (-4.0) = 7.632 > 0: el descenso por gradiente baja α
+  tanh: u = 0.0: a = 0.0000; 1 - tanh² u = 1.00000; corrección -log(1 - tanh² u) = -0.0000
+  tanh: u = 1.0: a = 0.7616; 1 - tanh² u = 0.41997; corrección -log(1 - tanh² u) = 0.8676
+  tanh: u = 2.0: a = 0.9640; 1 - tanh² u = 0.07065; corrección -log(1 - tanh² u) = 2.6500
+  tanh: u = 3.0: a = 0.9951; 1 - tanh² u = 0.00987; corrección -log(1 - tanh² u) = 4.6187
+========================================================================
+EJEMPLO 9. TD3: SOBRESTIMACIÓN AL MAXIMIZAR UN CRÍTICO CON RUIDO, Y EL DOBLE CRÍTICO RECORTADO
+  todas las acciones valen de verdad Q = 0; cada crítico se equivoca con ruido N(0, 1) independiente
+  E[max de 2 gaussianas N(0,1)] analítico = 1/√π = 0.5642
+  K =  2 acciones: un crítico, max Q1 = +0.567; segundo crítico en esa acción Q2(a*) = -0.000; mínimo de los dos min(Q1, Q2)(a*) = -0.281
+  K = 10 acciones: un crítico, max Q1 = +1.541; segundo crítico en esa acción Q2(a*) = +0.004; mínimo de los dos min(Q1, Q2)(a*) = -0.044
+  suavizado: π_φ'(s') = 0.9, ξ = 0.6 → recortado a 0.5 → 1.4 → recortado a la cota de la acción 1,0
+  redes objetivo con τ = 0.005: peso de los parámetros de hace n pasos (1-τ)^n: n = 200 → 0.367; n = 1000 → 0.0067; memoria media 1/τ = 200 pasos
+========================================================================
+EJEMPLO 10. COSTE DEL x500 Y LAS DOS RECOMPENSAS
+  arranque típico     : ‖e_p‖ = 1.500, ‖v‖ = 1.000, ‖ω‖ = 0.500, ‖Δa‖² = 0.00 → c = 1.6250; ingenua 1 - c = -0.6250; acotada 1 - tanh c = 0.0747
+  casi en la consigna : ‖e_p‖ = 0.050, ‖v‖ = 0.050, ‖ω‖ = 0.050, ‖Δa‖² = 0.00 → c = 0.0575; ingenua 1 - c = +0.9425; acotada 1 - tanh c = 0.9426
+  mando brusco        : ‖e_p‖ = 0.050, ‖v‖ = 0.050, ‖ω‖ = 0.050, ‖Δa‖² = 0.50 → c = 0.1075; ingenua 1 - c = +0.8925; acotada 1 - tanh c = 0.8929
+  figura: path ingenua: M50.0,32.4 L59.3,38.5 L68.7,44.7 L78.0,50.9 L87.3,57.1 L96.7,63.2 L106.0,69.4 L115.3,75.6 L124.7,81.8 L134.0,87.9 L143.3,94.1 L152.7,100.3 L162.0,106.5 L171.3,112.6 L180.7,118.8 L190.0,125.0 L199.3,131.2 L208.7,137.4 L218.0,143.5 L227.3,149.7 L236.7,155.9 L246.0,162.1 L255.3,168.2 L264.7,174.4 L274.0,180.6 L283.3,186.8 L292.7,192.9 L302.0,199.1 L311.3,205.3 L320.7,211.5 L330.0,217.6
+  figura: path acotada: M50.0,32.4 L59.3,38.5 L68.7,44.5 L78.0,50.3 L87.3,55.8 L96.7,60.9 L106.0,65.5 L115.3,69.7 L124.7,73.4 L134.0,76.6 L143.3,79.4 L152.7,81.8 L162.0,83.8 L171.3,85.6 L180.7,87.0 L190.0,88.3 L199.3,89.3 L208.7,90.1 L218.0,90.8 L227.3,91.4 L236.7,91.9 L246.0,92.3 L255.3,92.6 L264.7,92.9 L274.0,93.1 L283.3,93.3 L292.7,93.4 L302.0,93.6 L311.3,93.7 L320.7,93.7 L330.0,93.8
+  ejes: x(0)=50.0 x(1)=143.3 x(1,1)=152.7 x(1,625)=201.7 x(2)=236.7 x(3)=330.0; y(1)=32.4 y(0)=94.1 y(-0,1)=100.3 y(-1)=155.9 y(-2)=217.6; y(1-1,625)=132.7 y(1-tanh 1,625)=89.5
+========================================================================
+EJEMPLO 11. CUÁNDO COMPENSA TERMINAR: γ = 0,99, P = 10
+  umbral: r̄ < -P(1-γ) = -0.100
+  ingenua al principio  : r̄ = -0.6250; seguir vale r̄/(1-γ) = -62.50; estrellarse vale -P = -10 → estrellarse
+  acotada al principio  : r̄ = +0.0747; seguir vale r̄/(1-γ) = +7.47; estrellarse vale -P = -10 → seguir
+  acotada en régimen    : r̄ = +0.9400; seguir vale r̄/(1-γ) = +94.00; estrellarse vale -P = -10 → seguir
+  con H = 100 pasos restantes y sin arranque del valor: seguir vale r̄(1-γ^H)/(1-γ); factor 1-γ^H = 0.6340
+  con H = 500 pasos restantes y sin arranque del valor: seguir vale r̄(1-γ^H)/(1-γ); factor 1-γ^H = 0.9934
+  ingenua, valor de seguir con H = 500: -62.09
+========================================================================
+EJEMPLO 12. MOLDEADO POR POTENCIAL: LA SUMA TELESCÓPICA EN DOS CAMINOS
+  directo  : distancias [3, 2, 1, 0]; F_t = γΦ(s_t+1) - Φ(s_t) = [1.1, 1.05, 1.0]; Σ γ^t F_t = 3.0000 (= -Φ(s0) = 3)
+             retorno escaso G = γ^2·10 = 9.0250; moldeado G̃ = G + 3 = 12.0250
+  con rodeo: distancias [3, 4, 3, 2, 1, 0]; F_t = γΦ(s_t+1) - Φ(s_t) = [-0.8, 1.15, 1.1, 1.05, 1.0]; Σ γ^t F_t = 3.0000 (= -Φ(s0) = 3)
+             retorno escaso G = γ^4·10 = 8.1451; moldeado G̃ = G + 3 = 11.1451
+  la diferencia entre caminos es la misma con y sin moldeado: el orden de las políticas no cambia
+  bonificación ingenua: quedarse junto a la meta vale Σ γ^t·1 = 1/(1-γ) = 20 > 10 de llegar
+  si se dejara Φ(meta) = -5 en vez de 0: queda el término γ^T Φ(s_T) = -4.287 (directo, T = 3) frente a -3.869 (rodeo, T = 5): ya no es igual para todos los caminos
+========================================================================
+EJEMPLO 13. OBSERVACIÓN Y ACCIÓN DEL x500
+  peso m g = 2.0·9.81 = 19.62 N; a0 ∈ [-1, 1] → T = m g (1 + 0,8 a0) ∈ [3.92, 35.32] N; a0 = 0 → estacionario
+  periodo de control 1/100 Hz = 10 ms; física 500 Hz = 2 ms → 5 subpasos por acción; retardo de primer orden τ = 30 ms = 3 pasos de control
+  episodio 5 s = 500 pasos; γ = 0,99 → horizonte 100 pasos = 1 s

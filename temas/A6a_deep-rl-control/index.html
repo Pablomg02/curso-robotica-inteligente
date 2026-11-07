@@ -48,14 +48,14 @@
   <h2>De diez minutos en 2017 a diez segundos en 2026</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>2017:</strong> una red de dos capas de 64 neuronas pasa del estado a los empujes de los rotores; vuela un Hummingbird real y se recupera de lanzamientos boca abajo a 5 m/s. Diez minutos de entrenamiento para una política «visualmente buena», 7 µs por paso de inferencia <a class="cite" data-ref="hwangbo2017"></a>.</li>
         <li><strong>2023:</strong> Swift gana a campeones de carreras con PPO: \(10^8\) interacciones en 50 min en una estación con una RTX 3090 <a class="cite" data-ref="kaufmann2023"></a>.</li>
         <li><strong>2024:</strong> con TD3 y un simulador muy rápido, una política que manda RPM vuela un Crazyflie tras 18 s de entrenamiento en un portátil <a class="cite" data-ref="eschmann2024"></a>.</li>
       </ul>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Este tema, medido</span>El PPO en JAX de <code>figuras_a6a.py</code> entrena 78,6 millones de pasos del x500 en 10,2 s en una RTX 4060 Ti y lo mantiene en el aire desde arranques aleatorios con 2–5 cm de error según la semilla (parte 5).</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>El PPO en JAX de <code>figuras_a6a.py</code> entrena 78,6 millones de pasos del x500 en 10,3 s en una RTX 4060 Ti y lo mantiene en el aire desde arranques aleatorios con 2–5 cm de error según la semilla (parte 5).</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>La política con belief de tu tesis se entrenará con estas herramientas. Antes de añadir memoria (A7b) o un world model (A8a), conviene dominar el caso con estado completo: si aquí no funciona, allí tampoco.</div>
     </div>
   </div>
@@ -81,37 +81,273 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Gradiente · teorema</p>
-  <h2>Subir la probabilidad de lo que salió mejor de lo esperado</h2>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra del gradiente de la política</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:33%">En el x500 del tema</th></tr>
+      <tr><td>\(s_t\), \(a_t\), \(r_t\)</td><td>Estado, acción y recompensa en el paso \(t\); un paso es un periodo de control</td><td>4 mandos a 100 Hz; \(r_t = 1-\tanh c_t\) (parte 4)</td></tr>
+      <tr><td>\(\gamma\)</td><td>Descuento: una recompensa a \(l\) pasos vale \(\gamma^l\) veces lo que vale ahora. Horizonte efectivo: \(1/(1-\gamma)\) pasos</td><td>0,99: 100 pasos, 1 s</td></tr>
+      <tr><td>\(\tau\)</td><td>Trayectoria \((s_0,a_0,r_0,s_1,a_1,r_1,\dots)\)</td><td>Un episodio de 5 s: 500 pasos</td></tr>
+      <tr><td>\(\pi_\theta(a\mid s)\), \(\theta\)</td><td>Política estocástica: densidad de la acción dado el estado; \(\theta\), los pesos de la red</td><td>Gaussiana: la red da la media, y \(\sigma\) es un parámetro aparte</td></tr>
+      <tr><td>\(R(\tau)\), \(J(\theta)\)</td><td>Retorno de una trayectoria, \(R(\tau) = \sum_t\gamma^t r_t\), y su media bajo \(\pi_\theta\), que es lo que se maximiza</td><td>—</td></tr>
+      <tr><td>\(G_t\)</td><td>Retorno desde el paso \(t\): \(G_t = \sum_{l\ge0}\gamma^l r_{t+l}\)</td><td>—</td></tr>
+      <tr><td>\(V^\pi(s)\), \(Q^\pi(s,a)\)</td><td>Retorno esperado desde \(s\) siguiendo \(\pi\); lo mismo, pero tomando primero la acción \(a\)</td><td>—</td></tr>
+      <tr><td>\(A^\pi(s,a)\)</td><td>Ventaja, \(Q^\pi - V^\pi\): cuánto mejor que la media de \(\pi\) es la acción \(a\) en \(s\)</td><td>Signo + : subir su probabilidad</td></tr>
+      <tr><td>\(b(s)\), \(V(s)\)</td><td>Línea base (cualquier función del estado) y crítico: una red que aproxima \(V^\pi\)</td><td>2 × 64 tanh, aparte de la política</td></tr>
+      <tr><td>\(p_\theta(\tau)\), \(p(s'\mid s,a)\)</td><td>Probabilidad de una trayectoria; dinámica del entorno (el simulador)</td><td>El simulador de B6</td></tr>
+      <tr><td>\(\nabla_\theta\log\pi_\theta(a\mid s)\)</td><td>«Score»: hacia dónde mover \(\theta\) para que la acción \(a\) sea más probable en \(s\)</td><td>Hoja «Con números»</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · qué problema resolvemos</p>
+  <h2>Mejorar la política sin derivar el simulador</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1060 150" role="img" aria-label="Una trayectoria: estados, cajas de la política que dependen de theta y cajas del simulador que no dependen de theta">
+      <defs><marker id="a6g1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="15">
+        <rect class="box-soft" x="20" y="44" width="60" height="44" rx="6"/><text x="50" y="72" text-anchor="middle" class="t-mono">s₀</text>
+        <rect class="box-accent" x="110" y="44" width="70" height="44" rx="6"/><text x="145" y="72" text-anchor="middle" class="t-accent">π<tspan baseline-shift="sub" font-size="75%">θ</tspan></text>
+        <rect class="box" x="220" y="44" width="90" height="44" rx="6"/><text x="265" y="72" text-anchor="middle" class="t-muted">p(s′|s,a)</text>
+        <rect class="box-soft" x="340" y="44" width="60" height="44" rx="6"/><text x="370" y="72" text-anchor="middle" class="t-mono">s₁</text>
+        <rect class="box-accent" x="430" y="44" width="70" height="44" rx="6"/><text x="465" y="72" text-anchor="middle" class="t-accent">π<tspan baseline-shift="sub" font-size="75%">θ</tspan></text>
+        <rect class="box" x="540" y="44" width="90" height="44" rx="6"/><text x="585" y="72" text-anchor="middle" class="t-muted">p(s′|s,a)</text>
+        <rect class="box-soft" x="660" y="44" width="60" height="44" rx="6"/><text x="690" y="72" text-anchor="middle" class="t-mono">s₂</text>
+        <rect class="box-accent" x="750" y="44" width="70" height="44" rx="6"/><text x="785" y="72" text-anchor="middle" class="t-accent">π<tspan baseline-shift="sub" font-size="75%">θ</tspan></text>
+        <rect class="box" x="860" y="44" width="90" height="44" rx="6"/><text x="905" y="72" text-anchor="middle" class="t-muted">p(s′|s,a)</text>
+        <text x="1010" y="72" text-anchor="middle" class="t-muted">…</text>
+      </g>
+      <g class="ln">
+        <path d="M80 66 H108" marker-end="url(#a6g1)"/><path d="M180 66 H218" marker-end="url(#a6g1)"/><path d="M310 66 H338" marker-end="url(#a6g1)"/>
+        <path d="M400 66 H428" marker-end="url(#a6g1)"/><path d="M500 66 H538" marker-end="url(#a6g1)"/><path d="M630 66 H658" marker-end="url(#a6g1)"/>
+        <path d="M720 66 H748" marker-end="url(#a6g1)"/><path d="M820 66 H858" marker-end="url(#a6g1)"/><path d="M950 66 H990" marker-end="url(#a6g1)"/>
+        <path d="M265 88 V114" marker-end="url(#a6g1)"/><path d="M585 88 V114" marker-end="url(#a6g1)"/><path d="M905 88 V114" marker-end="url(#a6g1)"/>
+      </g>
+      <g font-size="14" class="t-mono">
+        <text x="199" y="58" text-anchor="middle">a₀</text><text x="519" y="58" text-anchor="middle">a₁</text><text x="839" y="58" text-anchor="middle">a₂</text>
+        <text x="265" y="134" text-anchor="middle" class="t-time">r₀</text><text x="585" y="134" text-anchor="middle" class="t-time">r₁</text><text x="905" y="134" text-anchor="middle" class="t-time">r₂</text>
+      </g>
+      <g font-size="13">
+        <text x="145" y="30" text-anchor="middle" class="t-accent">depende de θ</text><text x="465" y="30" text-anchor="middle" class="t-accent">depende de θ</text><text x="785" y="30" text-anchor="middle" class="t-accent">depende de θ</text>
+        <text x="265" y="30" text-anchor="middle" class="t-muted">simulador: sin θ</text><text x="585" y="30" text-anchor="middle" class="t-muted">simulador: sin θ</text><text x="905" y="30" text-anchor="middle" class="t-muted">simulador: sin θ</text>
+      </g>
+    </svg>
+  </figure>
+  <p>La probabilidad de la trayectoria es un producto, y su logaritmo, una suma:</p>
+  \[ \log p_\theta(\tau) = \underbrace{\log p(s_0)}_{\text{sin }\theta} + \sum_t\underbrace{\log\pi_\theta(a_t\mid s_t)}_{\text{depende de }\theta} + \sum_t\underbrace{\log p(s_{t+1}\mid s_t,a_t)}_{\text{sin }\theta} \]
   <div class="cols">
+    <p><strong>Entra</strong> un lote de trayectorias generadas con \(\pi_\theta\). <strong>Sale</strong> una estimación \(\hat g\) de \(\nabla_\theta J\) para dar un paso de ascenso. El simulador es una caja negra: solo hay que poder evaluar \(\log\pi_\theta\) y su gradiente.</p>
+    <div class="callout clave"><span class="tag">Idea</span>Al derivar respecto a \(\theta\), los términos del simulador desaparecen. Es el estimador de orden cero de B6 aplicado a la política: no necesita derivar la dinámica.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · teorema · 1</p>
+  <h2>El truco del logaritmo: el gradiente como una media</h2>
+  <p>\(J\) es una integral sobre trayectorias cuya densidad depende de \(\theta\). La derivada de la densidad se reescribe como «densidad por algo», y eso vuelve a ser una media que se estima con muestras.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(J(\theta) = \int p_\theta(\tau)\,R(\tau)\,d\tau\)</td><td>Definición de la media; \(R(\tau)\) es la suma de las recompensas de esa \(\tau\) y no depende de \(\theta\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\nabla_\theta J = \int \nabla_\theta p_\theta(\tau)\,R(\tau)\,d\tau\)</td><td>Derivar bajo la integral</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\nabla_\theta p_\theta = p_\theta\,\nabla_\theta\log p_\theta\)</td><td>Regla de la cadena: \(\nabla\log p = \nabla p/p\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\nabla_\theta J = \mathbb E_{\tau\sim\pi_\theta}\big[\nabla_\theta\log p_\theta(\tau)\,R(\tau)\big]\)</td><td>Sustituir 3 en 2: vuelve a haber \(p_\theta\) delante, así que es una media sobre trayectorias</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\nabla_\theta\log p_\theta(\tau) = \sum_t\nabla_\theta\log\pi_\theta(a_t\mid s_t)\)</td><td>Hoja anterior: \(\log p(s_0)\) y la dinámica no dependen de \(\theta\)</td></tr>
+      <tr><td><strong>6</strong></td><td>\(\displaystyle\nabla_\theta J = \mathbb E_{\tau}\Big[\sum_t\nabla_\theta\log\pi_\theta(a_t\mid s_t)\;R(\tau)\Big]\)</td><td>Es REINFORCE. Con \(M\) trayectorias, \(\hat g\) es la media de la expresión entre corchetes</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Por qué no basta</span>Cada acción se refuerza con el retorno de <em>toda</em> su trayectoria, incluidas las recompensas que llegaron antes de elegirla. El estimador no tiene sesgo, pero sí mucha varianza. La hoja siguiente la recorta en dos pasos.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · teorema · 2</p>
+  <h2>De \(R(\tau)\) a la ventaja: causalidad y línea base</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:53%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathbb E\big[\nabla_\theta\log\pi_\theta(a_t\mid s_t)\;r_{t'}\big] = 0\) si \(t' \lt t\)</td><td>Esa recompensa ya está fijada cuando se elige \(a_t\): sale de la media sobre \(a_t\), y queda \(\mathbb E_{a_t}[\nabla\log\pi] = 0\) (recuadro)</td></tr>
+      <tr><td><strong>2</strong></td><td>En el término \(t\), \(R(\tau)\to\sum_{t'\ge t}\gamma^{t'}r_{t'} = \gamma^t G_t\)</td><td>Solo sobreviven las recompensas desde \(t\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(G_t\to Q^\pi(s_t,a_t)\)</td><td>Media condicionada a \((s_t,a_t)\): \(\mathbb E[G_t\mid s_t,a_t] = Q^\pi(s_t,a_t)\) por definición</td></tr>
+      <tr><td><strong>4</strong></td><td>\(Q^\pi(s_t,a_t)\to Q^\pi(s_t,a_t) - b(s_t)\)</td><td>Restar algo que no depende de \(a_t\) no cambia la media (recuadro)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\displaystyle\nabla_\theta J = \mathbb E_{\tau}\Big[\sum_t\gamma^t\,\nabla_\theta\log\pi_\theta(a_t\mid s_t)\,A^\pi(s_t,a_t)\Big]\)</td><td>Con \(b = V^\pi\), \(Q^\pi - V^\pi = A^\pi\). Es la fórmula que usa todo el tema</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué la línea base no sesga</span>
+    \[ \mathbb E_{a\sim\pi}\big[\nabla_\theta\log\pi_\theta(a\mid s)\,b(s)\big] = b(s)\int\nabla_\theta\pi_\theta(a\mid s)\,da = b(s)\,\nabla_\theta\!\int\pi_\theta(a\mid s)\,da = b(s)\,\nabla_\theta 1 = 0 \]
+    <p>El mismo argumento, con una recompensa pasada en lugar de \(b\), da el paso 1.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · teorema · 3</p>
+  <h2>Con números: la línea base no mueve la media y quita varianza</h2>
+  <div class="cols w60">
     <div class="stack">
-      <p class="small">Con una política estocástica \(\pi_\theta(a\mid s)\) y el retorno descontado \(J(\theta) = \mathbb E_{\tau\sim\pi_\theta}\big[\sum_t \gamma^t r_t\big]\),</p>
-      \[ \nabla_\theta J = \mathbb E_{\tau}\Big[\sum_t \gamma^t\,\nabla_\theta\log\pi_\theta(a_t\mid s_t)\,A^\pi(s_t,a_t)\Big], \]
-      <p class="small">con la ventaja \(A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s)\): cuánto mejor fue esa acción que la media de la política en ese estado. Es el estimador de orden cero de B6 aplicado a la política, que no necesita derivar la dinámica.</p>
-      <div class="callout clave"><span class="tag">Por qué una línea base</span>Restar \(V(s_t)\) no cambia la esperanza (no depende de la acción) y reduce mucho la varianza. Un error en \(V\) usado solo como línea base no sesga el gradiente; usado para predecir el futuro, sí (siguiente hoja).</div>
+      <p>Un bandido: un estado y dos acciones, con \(\pi_\theta(\text{der}) = \sigma(\theta)\) (la sigmoide) y \(\theta = 0\), así que las dos salen al 50 %. \(R(\text{der}) = 10\) y \(R(\text{izq}) = 8\). El gradiente exacto: \(J = 10\,\sigma + 8\,(1-\sigma)\), \(dJ/d\theta = \sigma(1-\sigma)\cdot 2 = 0{,}5\).</p>
+      <p>Score: \(\partial_\theta\log\sigma(\theta) = 1-\sigma = 0{,}5\) si sale der; \(\partial_\theta\log(1-\sigma(\theta)) = -\sigma = -0{,}5\) si sale izq. Cada tirada da una muestra \(\text{score}\cdot(R - b)\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Línea base</th><th>der: \(0{,}5\,(10-b)\)</th><th>izq: \(-0{,}5\,(8-b)\)</th><th>Media</th><th>Desviación</th><th>Error con 64 tiradas</th></tr>
+          <tr><td>\(b = 0\)</td><td class="n">+5</td><td class="n">−4</td><td class="n">0,5</td><td class="n">4,5</td><td class="n">0,56</td></tr>
+          <tr><td>\(b = 9 = V\)</td><td class="n">+0,5</td><td class="n">+0,5</td><td class="n">0,5</td><td class="n">0</td><td class="n">0</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted"><code>figuras/ejemplos_a6a.py</code>, ejemplo 1 (también con 2000 lotes de Monte Carlo: desviación entre lotes 0,561 frente a 0).</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>Las implementaciones habituales omiten el factor \(\gamma^t\) delante de cada término de la fórmula de la hoja anterior. Es una aproximación con sesgo, aceptada en la práctica; conviene saber que existe cuando se compara con la teoría.</div>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: el truco del logaritmo y la línea base</summary>
-        <p class="small">\(J = \int p_\theta(\tau)R(\tau)\,d\tau\) y \(\nabla_\theta p_\theta = p_\theta\nabla_\theta\log p_\theta\). En \(\log p_\theta(\tau) = \log p(s_0) + \sum_t[\log\pi_\theta(a_t\mid s_t) + \log p(s_{t+1}\mid s_t,a_t)]\), la dinámica no depende de \(\theta\): solo queda \(\sum_t\nabla\log\pi_\theta\). La causalidad permite sustituir \(R\) por el retorno desde \(t\), y su esperanza condicionada por \(Q^\pi\).</p>
-        <p class="small">Línea base: \(\mathbb E_{a\sim\pi}[\nabla_\theta\log\pi_\theta(a\mid s)\,b(s)] = b(s)\nabla_\theta\int\pi_\theta(a\mid s)\,da = b(s)\nabla_\theta 1 = 0\).</p>
-      </details>
-      <div class="callout error"><span class="tag">Error frecuente</span>Las implementaciones habituales omiten el factor \(\gamma^t\) delante de cada término. Es una aproximación con sesgo, aceptada en la práctica; conviene saber que existe cuando se compara con la teoría.</div>
+      <div class="callout clave"><span class="tag">Por qué una línea base</span>Restar \(V(s_t)\) no cambia la media (no depende de la acción) y reduce mucho la varianza: sin ella, cada muestra lleva el «+9» común a las dos acciones. Un error en \(V\) usado solo como línea base no sesga el gradiente; usado para predecir el futuro, sí (GAE, hojas siguientes).</div>
+      <div class="aparte"><span class="rotulo">La política gaussiana del x500</span>
+        <p>\(\log\mathcal N(a;\mu,\sigma^2) = -\frac{(a-\mu)^2}{2\sigma^2} - \log\sigma - \tfrac12\log 2\pi\): \(\partial_\mu\log\pi = (a-\mu)/\sigma^2\) y \(\partial_{\log\sigma}\log\pi = (a-\mu)^2/\sigma^2 - 1\). Con \(\sigma = 0{,}6\) y una acción 0,3 por encima de la media: 0,83 (acerca la media a esa acción si \(A>0\)) y −0,75 (estrecha \(\sigma\): la acción cayó a menos de una \(\sigma\)).</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Gradiente · GAE</p>
-  <h2>GAE: una media exponencial de ventajas a varios pasos</h2>
+  <p class="kicker">Gradiente · GAE · 1</p>
+  <h2>Estimar la ventaja: \(k\) recompensas reales y el crítico para el resto</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con el error de diferencia temporal \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\) <a class="cite" data-ref="schulman2016"></a>:</p>
-      \[ \hat A_t^{\mathrm{GAE}(\gamma,\lambda)} = \sum_{l=0}^{\infty}(\gamma\lambda)^l\,\delta_{t+l}. \]
-      <ul class="small">
-        <li>\(\lambda = 0\): \(\hat A_t = \delta_t\), poca varianza, sesgada si \(V\) es inexacta.</li>
-        <li>\(\lambda = 1\): \(\hat A_t = \sum_l\gamma^l r_{t+l} - V(s_t)\), sin sesgo sea cual sea \(V\), con mucha varianza.</li>
-        <li>«\(\lambda&lt;1\) introduce sesgo solo cuando la función de valor es inexacta»; \(\gamma&lt;1\), siempre. Mejor \(\lambda\) en sus tareas: entre 0,92 y 0,99 <a class="cite" data-ref="schulman2016"></a>.</li>
-      </ul>
+      <p>No conocemos \(A^\pi\). Con el crítico \(V\), el <strong>error de diferencia temporal</strong> (TD)</p>
+      \[ \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t) \]
+      <p>ya es una estimación de la ventaja: si \(V = V^\pi\), \(\mathbb E[\delta_t\mid s_t,a_t] = Q^\pi(s_t,a_t) - V^\pi(s_t) = A^\pi\). Mirando \(k\) pasos:</p>
+      \[ \hat A_t^{(k)} = \sum_{l=0}^{k-1}\gamma^l r_{t+l} + \gamma^k V(s_{t+k}) - V(s_t) = \sum_{l=0}^{k-1}\gamma^l\,\delta_{t+l}. \]
+      <p>La segunda igualdad es telescópica: en \(\delta_t + \gamma\,\delta_{t+1}\), el \(+\gamma V(s_{t+1})\) del primero se cancela con el \(-\gamma V(s_{t+1})\) del segundo.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 540 250" role="img" aria-label="Ventajas a k pasos: k recompensas reales seguidas del valor del crítico en el estado k">
+          <g font-size="13" class="t-mono t-faint">
+            <text x="80" y="236" text-anchor="middle">t</text><text x="170" y="236" text-anchor="middle">t+1</text><text x="260" y="236" text-anchor="middle">t+2</text><text x="350" y="236" text-anchor="middle">t+3</text><text x="460" y="236" text-anchor="middle">…</text>
+          </g>
+          <path d="M60 218 H520" class="ln-rule"/>
+          <g font-size="14">
+            <text x="10" y="48" class="t-mono">k = 1</text>
+            <rect class="box-accent" x="70" y="32" width="80" height="24" rx="4"/><text x="110" y="49" text-anchor="middle" class="t-accent">r<tspan baseline-shift="sub" font-size="75%">t</tspan></text>
+            <circle cx="170" cy="44" r="8" class="fill-time"/><text x="186" y="49" class="t-time">V(s<tspan baseline-shift="sub" font-size="75%">t+1</tspan>)</text>
+            <text x="10" y="98" class="t-mono">k = 2</text>
+            <rect class="box-accent" x="70" y="82" width="170" height="24" rx="4"/><text x="155" y="99" text-anchor="middle" class="t-accent">r<tspan baseline-shift="sub" font-size="75%">t</tspan>, r<tspan baseline-shift="sub" font-size="75%">t+1</tspan></text>
+            <circle cx="260" cy="94" r="8" class="fill-time"/><text x="276" y="99" class="t-time">V(s<tspan baseline-shift="sub" font-size="75%">t+2</tspan>)</text>
+            <text x="10" y="148" class="t-mono">k = 3</text>
+            <rect class="box-accent" x="70" y="132" width="260" height="24" rx="4"/><text x="200" y="149" text-anchor="middle" class="t-accent">r<tspan baseline-shift="sub" font-size="75%">t</tspan>, r<tspan baseline-shift="sub" font-size="75%">t+1</tspan>, r<tspan baseline-shift="sub" font-size="75%">t+2</tspan></text>
+            <circle cx="350" cy="144" r="8" class="fill-time"/><text x="366" y="149" class="t-time">V(s<tspan baseline-shift="sub" font-size="75%">t+3</tspan>)</text>
+            <text x="10" y="198" class="t-mono">k = ∞</text>
+            <rect class="box-accent" x="70" y="182" width="440" height="24" rx="4"/><text x="290" y="199" text-anchor="middle" class="t-accent">todas las recompensas: G<tspan baseline-shift="sub" font-size="75%">t</tspan> − V(s<tspan baseline-shift="sub" font-size="75%">t</tspan>)</text>
+          </g>
+          <text x="520" y="22" text-anchor="end" font-size="12" class="t-muted">naranja: lo que se fía del crítico</text>
+        </svg>
+      </figure>
+      <div class="callout clave"><span class="tag">El compromiso</span>Cada paso más con recompensas reales cambia una predicción del crítico (sesgo, si \(V\) es inexacto) por una recompensa aleatoria más (varianza). \(k = 1\): mucho sesgo y poca varianza; \(k = \infty\): sin sesgo y con mucha varianza.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · GAE · 2</p>
+  <h2>GAE: la media exponencial de las ventajas a \(k\) pasos</h2>
+  <p>En lugar de elegir un \(k\), GAE las promedia con pesos \((1-\lambda)\lambda^{k-1}\), que decaen y suman 1 <a class="cite" data-ref="schulman2016"></a>. \(\lambda\in[0,1]\) es el único parámetro nuevo:</p>
+  \[ \hat A_t^{\mathrm{GAE}(\gamma,\lambda)} = (1-\lambda)\big(\hat A_t^{(1)} + \lambda\,\hat A_t^{(2)} + \lambda^2\hat A_t^{(3)} + \cdots\big) \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:60%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(= (1-\lambda)\big(\delta_t + \lambda(\delta_t + \gamma\delta_{t+1}) + \lambda^2(\delta_t+\gamma\delta_{t+1}+\gamma^2\delta_{t+2}) + \cdots\big)\)</td><td>Cada \(\hat A^{(k)}\) como suma de \(\delta\) (hoja anterior)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(= (1-\lambda)\big(\delta_t(1+\lambda+\lambda^2+\cdots) + \gamma\delta_{t+1}(\lambda+\lambda^2+\cdots) + \cdots\big)\)</td><td>Agrupar: \(\delta_{t+l}\) aparece en todas las \(\hat A^{(k)}\) con \(k>l\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= (1-\lambda)\Big(\frac{\delta_t}{1-\lambda} + \gamma\delta_{t+1}\frac{\lambda}{1-\lambda} + \gamma^2\delta_{t+2}\frac{\lambda^2}{1-\lambda}+\cdots\Big)\)</td><td>Series geométricas: \(\sum_{k\ge l}\lambda^k = \lambda^l/(1-\lambda)\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\displaystyle = \sum_{l=0}^{\infty}(\gamma\lambda)^l\,\delta_{t+l}\)</td><td>El \(1-\lambda\) se cancela</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\hat A_t = \delta_t + \gamma\lambda\,\hat A_{t+1}\)</td><td>La misma suma escrita hacia atrás: así se calcula, de \(t = T-1\) a \(t = 0\)</td></tr>
+    </table>
+  </div>
+  <p class="small muted">La recursión del paso 5, los finales de episodio y los dos extremos, en la hoja siguiente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · GAE · 3</p>
+  <h2>Los dos extremos de \(\lambda\) y el cálculo hacia atrás</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>\(\lambda = 0\)</strong>: solo sobrevive \(l = 0\), \(\hat A_t = \delta_t\). Poca varianza, sesgada si \(V\) es inexacta.</p>
+      <p><strong>\(\lambda = 1\)</strong>: \(\hat A_t = \sum_l\gamma^l\delta_{t+l} = G_t - V(s_t)\), porque la suma telescópica deja solo las recompensas y \(-V(s_t)\). Sin sesgo sea cual sea \(V\), con mucha varianza.</p>
+      <p><strong>Intermedio</strong>: \(\delta_{t+l}\) pesa \((\gamma\lambda)^l\). Con \(\gamma\lambda = 0{,}99\cdot0{,}95 = 0{,}9405\), el residuo de 17 pasos más allá (170 ms) pesa 0,35, y GAE apenas mira más lejos de \(1/(1-\gamma\lambda)\approx 17\) pasos. Ejemplo 3.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 190" role="img" aria-label="Cálculo de GAE de derecha a izquierda: cada ventaja recibe la siguiente multiplicada por gamma lambda, salvo donde el episodio acaba">
+          <defs><marker id="a6g6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+          <path d="M485 22 H34" class="ln-time" marker-end="url(#a6g6)"/>
+          <text x="260" y="16" text-anchor="middle" font-size="12" class="t-time">orden de cálculo: de t = T − 1 hacia t = 0</text>
+          <g font-size="16">
+            <rect x="30" y="60" width="80" height="44" rx="6" class="box-accent"/><text x="70" y="88" text-anchor="middle">Â<tspan font-size="11" dy="4">0</tspan></text>
+            <rect x="155" y="60" width="80" height="44" rx="6" class="box-accent"/><text x="195" y="88" text-anchor="middle">Â<tspan font-size="11" dy="4">1</tspan></text>
+            <rect x="280" y="60" width="80" height="44" rx="6" class="box-accent"/><text x="320" y="88" text-anchor="middle">Â<tspan font-size="11" dy="4">2</tspan></text>
+            <rect x="405" y="60" width="80" height="44" rx="6" class="box-accent"/><text x="445" y="88" text-anchor="middle">Â<tspan font-size="11" dy="4">3</tspan></text>
+          </g>
+          <path d="M153 82 H112" class="ln-time" marker-end="url(#a6g6)"/>
+          <path d="M403 82 H362" class="ln-time" marker-end="url(#a6g6)"/>
+          <path d="M278 82 H237" class="ln ln-dash"/>
+          <path d="M251 76 L263 88 M263 76 L251 88" class="ln-tesis" stroke-width="2.2"/>
+          <g font-size="12">
+            <text x="132" y="74" text-anchor="middle" class="t-time">×γλ</text>
+            <text x="382" y="74" text-anchor="middle" class="t-time">×γλ</text>
+            <text x="257" y="54" text-anchor="middle" class="t-tesis">fin₁ = 1: no pasa</text>
+            <text x="70" y="124" text-anchor="middle" class="t-muted">+ δ₀</text>
+            <text x="195" y="124" text-anchor="middle" class="t-muted">+ δ₁</text>
+            <text x="320" y="124" text-anchor="middle" class="t-muted">+ δ₂</text>
+            <text x="445" y="124" text-anchor="middle" class="t-muted">+ δ₃</text>
+            <text x="445" y="152" text-anchor="middle" class="t-muted">δ₃ usa γV(s₄):</text>
+            <text x="445" y="168" text-anchor="middle" class="t-muted">el crítico cierra el tramo</text>
+            <text x="195" y="152" text-anchor="middle" class="t-muted">acaba en t = 1:</text>
+            <text x="195" y="168" text-anchor="middle" class="t-muted">Â₁ = δ₁, con V(s₂) = 0</text>
+          </g>
+        </svg>
+      </figure>
+      <p>En el código: \(\delta_t = r_t + \gamma V(s_{t+1})(1-\mathrm{fin}_t) - V(s_t)\) y \(\hat A_t = \delta_t + \gamma\lambda(1-\mathrm{fin}_t)\hat A_{t+1}\), con \(\mathrm{fin}_t = 1\) si el episodio acaba en \(t\). En un corte por tiempo se suma antes \(\gamma V(s_\text{final})\) a \(r_t\) (B6).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · GAE · 4</p>
+  <h2>GAE a mano: tres pasos hasta un final</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>\(\gamma = 0{,}9\) y \(\lambda = 0{,}5\), así que \(\gamma\lambda = 0{,}45\). El episodio acaba en \(s_3\): \(V(s_3) = 0\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(t\)</th><th>\(r_t\)</th><th>\(V(s_t)\)</th><th>\(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</th></tr>
+          <tr><td>0</td><td class="n">1</td><td class="n">2</td><td class="n">1 + 0,9 · 1,5 − 2 = 0,35</td></tr>
+          <tr><td>1</td><td class="n">0</td><td class="n">1,5</td><td class="n">0 + 0,9 · 1 − 1,5 = −0,60</td></tr>
+          <tr><td>2</td><td class="n">2</td><td class="n">1</td><td class="n">2 + 0,9 · 0 − 1 = 1,00</td></tr>
+        </table>
+      </div>
+      <p><strong>Hacia atrás</strong> (paso 5): \(\hat A_2 = \delta_2 = 1{,}00\); \(\hat A_1 = -0{,}60 + 0{,}45\cdot1{,}00 = -0{,}15\); \(\hat A_0 = 0{,}35 + 0{,}45\cdot(-0{,}15) = 0{,}2825\).</p>
+      <p><strong>Con la suma</strong> (paso 4):</p>
+      \[ \begin{aligned}\hat A_0 &= 0{,}35 + 0{,}45\cdot(-0{,}60) + 0{,}45^2\cdot 1{,}00\\ &= 0{,}35 - 0{,}27 + 0{,}2025 = 0{,}2825\end{aligned} \]
+    </div>
+    <div class="stack">
+      <p><strong>Como media de las \(\hat A^{(k)}\)</strong>: \(\hat A^{(1)} = 0{,}35\), \(\hat A^{(2)} = 0{,}35 - 0{,}54 = -0{,}19\) y \(\hat A^{(3)} = 0{,}62\), que ya es el retorno \(G_0 = 1 + 0 + 0{,}81\cdot 2 = 2{,}62\) menos \(V(s_0) = 2\). Pesos 0,5 y 0,25, y el 0,25 restante va a \(\hat A^{(3)}\), porque tras el final todas las \(\hat A^{(k)}\) son iguales: \(0{,}175 - 0{,}0475 + 0{,}155 = 0{,}2825\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\lambda\)</th><th>0</th><th>0,5</th><th>0,9</th><th>1</th></tr>
+          <tr><td>\(\hat A_0\)</td><td class="n">0,35</td><td class="n">0,28</td><td class="n">0,52</td><td class="n">0,62</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Lectura</span>Con \(\lambda = 0\), la ventaja se fía por completo de \(V(s_1) = 1{,}5\): si el crítico se equivocara ahí, el error pasaría entero. Con \(\lambda = 1\), \(V(s_1)\) y \(V(s_2)\) desaparecen y solo queda \(V(s_0)\) como línea base.</div>
+      <p class="xsmall muted"><code>figuras/ejemplos_a6a.py</code>, ejemplo 2.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · GAE · 5</p>
+  <h2>Sesgo y varianza, medidos en una cadena de 19 estados</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Cadena de 19 estados en la que la acción cambia la probabilidad de avanzar, con un crítico de error conocido. Para cada \(\lambda\) se estima el gradiente de la política en 20 000 episodios y se compara con el exacto (0,083).</p>
+      <p>«\(\lambda&lt;1\) introduce sesgo solo cuando la función de valor es inexacta»; \(\gamma&lt;1\), siempre. El mejor \(\lambda\) en sus tareas: entre 0,92 y 0,99 <a class="cite" data-ref="schulman2016"></a>.</p>
+      <div class="callout clave"><span class="tag">Lectura</span>El sesgo cae al subir \(\lambda\) y la varianza sube. Con pocos episodios gana un \(\lambda\) intermedio; con muchos entornos en paralelo (B6), el óptimo se desplaza hacia \(\lambda\) alto.</div>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -127,14 +363,37 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">Gradiente de la política estimado con un crítico imperfecto en una cadena de 19 estados (la acción cambia la probabilidad de avanzar), frente al exacto (0,083). 20 000 episodios; entre paréntesis, dos errores típicos. <code>figuras_a6a.py</code>, sección 2.</p>
-      <div class="callout clave"><span class="tag">Lectura</span>El sesgo cae al subir \(\lambda\) y la varianza sube. Con pocos episodios gana un \(\lambda\) intermedio; con muchos entornos en paralelo (B6), el óptimo se desplaza hacia \(\lambda\) alto.</div>
+      <p class="xsmall muted">Error con 64 episodios: \(\sqrt{\text{sesgo}^2 + \text{desviación}^2/64}\), el error cuadrático medio de promediar 64 episodios. Entre paréntesis, dos errores típicos del sesgo. \(\gamma = 0{,}97\). <code>figuras_a6a.py</code>, sección 2.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Gradiente · PPO</p>
+  <p class="kicker">Gradiente · PPO · 1</p>
+  <h2>Reutilizar el lote: el cociente de probabilidades</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Recoger un lote cuesta, y queremos dar varios pasos de gradiente con él. Tras el primero, la política ya no es la que recogió los datos, \(\pi_{\theta_\text{viejo}}\). Se pesa cada muestra por cuánto ha cambiado su probabilidad:</p>
+      \[ r_t(\theta) = \frac{\pi_\theta(a_t\mid s_t)}{\pi_{\theta_\text{viejo}}(a_t\mid s_t)},\qquad L^{\text{IS}}(\theta) = \hat{\mathbb E}_t\big[r_t(\theta)\,\hat A_t\big], \]
+      <p>con \(\hat{\mathbb E}_t\) la media sobre las muestras del lote. <strong>Aviso:</strong> desde aquí \(r_t\) es el cociente, no la recompensa (es la notación de los artículos).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\nabla_\theta r_t = r_t\,\nabla_\theta\log\pi_\theta(a_t\mid s_t)\)</td><td>El denominador no depende de \(\theta\); truco del logaritmo</td></tr>
+          <tr><td><strong>2</strong></td><td>En \(\theta = \theta_\text{viejo}\): \(r_t = 1\) y \(\nabla_\theta L^{\text{IS}} = \hat{\mathbb E}_t[\nabla_\theta\log\pi_\theta\,\hat A_t]\)</td><td>Es el gradiente de la política (teorema · 2)</td></tr>
+          <tr><td><strong>3</strong></td><td>Lejos de \(\theta_\text{viejo}\), \(L^{\text{IS}}\) deja de valer</td><td>Los estados y las \(\hat A_t\) son de la política vieja</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Ejemplo</span>Si la acción tenía probabilidad 0,5 y ahora 0,6, \(r = 1{,}2\): esa muestra cuenta un 20 % más. En la gaussiana del x500, con \(\sigma = 0{,}6\), \(a = 0{,}3\) y la media movida de 0 a 0,1, \(r = e^{0{,}069} = 1{,}07\). Ejemplo 4.</div>
+      <p>¿Cuánto se puede alejar? TRPO maximiza \(L^{\text{IS}}\) con la divergencia KL media entre política vieja y nueva acotada por \(\delta = 0{,}01\) <a class="cite" data-ref="schulman2015"></a> (este \(\delta\) no es el error TD). PPO cambia la restricción por un recorte <a class="cite" data-ref="schulman2017"></a>: hoja siguiente.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · PPO · 2</p>
   <h2>PPO: no te alejes demasiado de la política que recogió los datos</h2>
   <div class="cols w60">
     <figure class="fig">
@@ -155,35 +414,167 @@
         <text x="440" y="60" class="t-muted" font-size="12">r·A sin recortar</text>
         <text x="350" y="96" class="t-accent" font-size="13">A &gt; 0: plano desde 1+ε</text>
         <text x="380" y="216" class="t-time" font-size="13">A &lt; 0: plano hasta 1−ε</text>
-        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">cociente r = π_θ / π_viejo</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">cociente r = π<tspan baseline-shift="sub" font-size="75%">θ</tspan> / π<tspan baseline-shift="sub" font-size="75%">viejo</tspan></text>
       </svg>
       <figcaption>\(L^{\text{CLIP}}\) para una muestra con ventaja positiva y negativa, \(\varepsilon = 0{,}2\). <code>figuras_a6a.py</code>, sección 1.</figcaption>
     </figure>
     <div class="stack">
-      <p class="small">TRPO maximiza el objetivo sustituto con la divergencia KL media acotada por \(\delta = 0{,}01\) <a class="cite" data-ref="schulman2015"></a>. PPO cambia la restricción por un recorte <a class="cite" data-ref="schulman2017"></a>:</p>
+      <p>PPO recorta el cociente al intervalo \([1-\varepsilon,\ 1+\varepsilon]\) y se queda con el mínimo entre el término recortado y el que no lo está <a class="cite" data-ref="schulman2017"></a>:</p>
       \[ L^{\text{CLIP}} = \hat{\mathbb E}_t\big[\min\big(r_t\hat A_t,\ \bar r_t\hat A_t\big)\big], \]
       \[ \bar r_t = \mathrm{clip}(r_t,\ 1-\varepsilon,\ 1+\varepsilon). \]
-      <ul class="small">
-        <li>El mínimo hace que el objetivo sea una cota pesimista: no premia alejarse más allá de \(1\pm\varepsilon\), pero sí castiga empeorar.</li>
-        <li>En su comparación, sin recorte ni penalización la puntuación media fue −0,39; con \(\varepsilon = 0{,}2\), 0,82, la mejor <a class="cite" data-ref="schulman2017"></a>.</li>
-      </ul>
+      <p>\(\varepsilon\) es la anchura del recorte (0,2 en el tema) y \(\mathrm{clip}(x, l, u)\) lleva \(x\) al intervalo \([l, u]\). Se maximiza \(L^{\text{CLIP}}\) con varios pasos de gradiente sobre el mismo lote.</p>
+      <div class="callout clave"><span class="tag">En una frase</span>El mínimo hace que el objetivo sea una cota pesimista: no premia alejarse más allá de \(1\pm\varepsilon\), pero sí castiga empeorar. La hoja siguiente lo desmonta caso por caso.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Gradiente · algoritmo</p>
-  <h2>PPO completo, en cinco líneas y tres tablas de hiperparámetros</h2>
+  <p class="kicker">Gradiente · PPO · 3</p>
+  <h2>Los casos del recorte, según el signo de la ventaja</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
+      <figure class="fig">
+        <svg viewBox="0 0 640 240" role="img" aria-label="Objetivo recortado de PPO en dos paneles, ventaja positiva y negativa, con las zonas sin gradiente sombreadas">
+          <g>
+            <rect x="182.9" y="20" width="107.1" height="180" class="box-soft" style="stroke:none"/>
+            <path d="M40 110 H290 M40 20 V200" class="ln-rule"/>
+            <path d="M111.4 20 V200 M182.9 20 V200" class="ln-dash"/>
+            <path d="M40.0,91.1 L290.0,24.7" class="ln ln-dash"/>
+            <path d="M40.0,91.1 L111.4,72.1 L147.1,62.6 L182.9,53.2 L290.0,53.2" class="ln-accent" stroke-width="3"/>
+            <circle cx="93.6" cy="76.8" r="5" class="fill-time"/>
+            <circle cx="236.4" cy="53.2" r="5" class="fill-time"/>
+            <text x="165" y="14" text-anchor="middle" font-size="14" class="t-bold">A &gt; 0</text>
+            <text x="236" y="150" text-anchor="middle" font-size="13" class="t-muted">∇ = 0</text>
+            <text x="98" y="100" font-size="12" class="t-time">0,7: aún sube</text>
+            <text x="236" y="76" text-anchor="middle" font-size="12" class="t-time">1,5: plano</text>
+            <text x="286" y="40" text-anchor="end" font-size="12" class="t-muted">r·A</text>
+            <g font-size="12" class="t-mono t-faint">
+              <text x="111.4" y="216" text-anchor="middle">0,8</text><text x="147.1" y="216" text-anchor="middle">1</text><text x="182.9" y="216" text-anchor="middle">1,2</text><text x="290" y="216" text-anchor="middle">r</text>
+              <text x="34" y="114" text-anchor="end">0</text>
+            </g>
+          </g>
+          <g transform="translate(330,0)">
+            <rect x="40" y="20" width="71.4" height="180" class="box-soft" style="stroke:none"/>
+            <path d="M40 110 H290 M40 20 V200" class="ln-rule"/>
+            <path d="M111.4 20 V200 M182.9 20 V200" class="ln-dash"/>
+            <path d="M40.0,128.9 L290.0,195.3" class="ln ln-dash"/>
+            <path d="M40.0,147.9 L111.4,147.9 L147.1,157.4 L182.9,166.8 L290.0,195.3" class="ln-time" stroke-width="3"/>
+            <circle cx="93.6" cy="147.9" r="5" class="fill-accent"/>
+            <circle cx="236.4" cy="181.1" r="5" class="fill-accent"/>
+            <text x="165" y="14" text-anchor="middle" font-size="14" class="t-bold">A &lt; 0</text>
+            <text x="75" y="70" text-anchor="middle" font-size="13" class="t-muted">∇ = 0</text>
+            <text x="76" y="170" text-anchor="middle" font-size="12" class="t-accent">0,7: plano</text>
+            <text x="236" y="164" text-anchor="middle" font-size="12" class="t-accent">1,5: aún baja</text>
+            <g font-size="12" class="t-mono t-faint">
+              <text x="111.4" y="216" text-anchor="middle">0,8</text><text x="147.1" y="216" text-anchor="middle">1</text><text x="182.9" y="216" text-anchor="middle">1,2</text><text x="290" y="216" text-anchor="middle">r</text>
+              <text x="34" y="114" text-anchor="end">0</text>
+            </g>
+          </g>
+          <text x="320" y="236" text-anchor="middle" font-size="13" class="t-muted">trazo grueso: min(r·A, clip(r)·A) con |A| = 1; discontinuo: r·A; sombreado: sin gradiente</text>
+        </svg>
+        <figcaption>\(\varepsilon = 0{,}2\): el recorte actúa fuera de \([0{,}8;\ 1{,}2]\). Los puntos son \(r = 0{,}7\) y \(r = 1{,}5\) de la tabla. <code>ejemplos_a6a.py</code>, ejemplo 5.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Medido en PPO</span>En su comparación, sin recorte ni penalización la puntuación media fue −0,39; con \(\varepsilon = 0{,}2\), 0,82, la mejor <a class="cite" data-ref="schulman2017"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th></th><th>\(r = 0{,}7\)</th><th>\(r = 1\)</th><th>\(r = 1{,}5\)</th></tr>
+          <tr><td>\(A = +2\)</td><td>min(1,4; 1,6) = 1,4<br><strong>empuja a subir</strong></td><td>2,0<br>empuja a subir</td><td>min(3,0; 2,4) = 2,4<br>sin gradiente</td></tr>
+          <tr><td>\(A = -2\)</td><td>min(−1,4; −1,6) = −1,6<br>sin gradiente</td><td>−2,0<br>empuja a bajar</td><td>min(−3,0; −2,4) = −3,0<br><strong>empuja a bajar</strong></td></tr>
+        </table>
+      </div>
+      <p><strong>El recorte</strong> deja de empujar cuando la política ya se movió más de un 20 % en la buena dirección: probabilidad subida (\(r = 1{,}5\)) con \(A>0\), o bajada (\(r = 0{,}7\)) con \(A&lt;0\). Así no se aleja más del lote.</p>
+      <p><strong>El mínimo</strong> actúa en las casillas en negrita, donde la política se movió en la <em>mala</em> dirección. Solo con el recorte, \(\mathrm{clip}(1{,}5)\cdot(-2) = -2{,}4\) sería constante y nada corregiría el error; con el mínimo queda \(r\,A = -3\) y el gradiente empuja a bajar. Por eso es una cota pesimista.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · PPO · 4</p>
+  <h2>El bucle de PPO en la GPU: entornos × pasos</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 262" role="img" aria-label="Bucle de PPO: despliegue de N entornos por T pasos, GAE hacia atrás, lote aplanado, minilotes, épocas y actualización de la política vieja">
+      <defs><marker id="a6g2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        <marker id="a6g2t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+      <text x="40" y="24" font-size="14" class="t-bold">Despliegue con π<tspan baseline-shift="sub" font-size="75%">θviejo</tspan></text>
+      <text x="40" y="44" font-size="13" class="t-muted">filas: N = 4096 entornos (vmap) · columnas: T = 32 pasos (lax.scan)</text>
+      <g class="box-soft">
+        <rect x="40" y="60" width="22" height="16"/><rect x="62" y="60" width="22" height="16"/><rect x="84" y="60" width="22" height="16"/><rect x="106" y="60" width="22" height="16"/><rect x="128" y="60" width="22" height="16"/><rect x="150" y="60" width="22" height="16"/><rect x="172" y="60" width="22" height="16"/><rect x="194" y="60" width="22" height="16"/>
+        <rect x="40" y="76" width="22" height="16"/><rect x="62" y="76" width="22" height="16"/><rect x="84" y="76" width="22" height="16"/><rect x="106" y="76" width="22" height="16"/><rect x="128" y="76" width="22" height="16"/><rect x="150" y="76" width="22" height="16"/><rect x="172" y="76" width="22" height="16"/><rect x="194" y="76" width="22" height="16"/>
+        <rect x="40" y="92" width="22" height="16"/><rect x="62" y="92" width="22" height="16"/><rect x="84" y="92" width="22" height="16"/><rect x="106" y="92" width="22" height="16"/><rect x="128" y="92" width="22" height="16"/><rect x="150" y="92" width="22" height="16"/><rect x="172" y="92" width="22" height="16"/><rect x="194" y="92" width="22" height="16"/>
+        <rect x="40" y="108" width="22" height="16"/><rect x="62" y="108" width="22" height="16"/><rect x="84" y="108" width="22" height="16"/><rect x="106" y="108" width="22" height="16"/><rect x="128" y="108" width="22" height="16"/><rect x="150" y="108" width="22" height="16"/><rect x="172" y="108" width="22" height="16"/><rect x="194" y="108" width="22" height="16"/>
+        <rect x="40" y="124" width="22" height="16"/><rect x="62" y="124" width="22" height="16"/><rect x="84" y="124" width="22" height="16"/><rect x="106" y="124" width="22" height="16"/><rect x="128" y="124" width="22" height="16"/><rect x="150" y="124" width="22" height="16"/><rect x="172" y="124" width="22" height="16"/><rect x="194" y="124" width="22" height="16"/>
+        <rect x="40" y="140" width="22" height="16"/><rect x="62" y="140" width="22" height="16"/><rect x="84" y="140" width="22" height="16"/><rect x="106" y="140" width="22" height="16"/><rect x="128" y="140" width="22" height="16"/><rect x="150" y="140" width="22" height="16"/><rect x="172" y="140" width="22" height="16"/><rect x="194" y="140" width="22" height="16"/>
+      </g>
+      <rect x="128" y="92" width="22" height="16" class="box-accent"/>
+      <path d="M216 174 H44" class="ln-time" marker-end="url(#a6g2t)"/>
+      <text x="40" y="196" font-size="13" class="t-time">GAE hacia atrás: Â y objetivo V̂ = Â + V</text>
+      <g font-size="14">
+        <rect x="280" y="64" width="190" height="88" rx="6" class="box"/>
+        <text x="375" y="90" text-anchor="middle" class="t-bold">Aplanar el lote</text>
+        <text x="375" y="112" text-anchor="middle" class="t-mono">B = N·T = 131 072</text>
+        <text x="375" y="134" text-anchor="middle" class="t-muted" font-size="13">o, a, log π<tspan baseline-shift="sub" font-size="75%">viejo</tspan>, Â, V̂</text>
+        <rect x="520" y="64" width="200" height="88" rx="6" class="box"/>
+        <text x="620" y="90" text-anchor="middle" class="t-bold">Barajar y partir</text>
+        <text x="620" y="112" text-anchor="middle" class="t-mono">4 minilotes</text>
+        <text x="620" y="134" text-anchor="middle" class="t-mono">de 32 768</text>
+        <rect x="770" y="64" width="220" height="88" rx="6" class="box-accent"/>
+        <text x="880" y="90" text-anchor="middle" class="t-bold">5 épocas × 4 minilotes</text>
+        <text x="880" y="112" text-anchor="middle" class="t-mono">= 20 pasos de Adam</text>
+        <text x="880" y="134" text-anchor="middle" class="t-muted" font-size="13">sobre L<tspan baseline-shift="super" font-size="70%">CLIP</tspan> y L<tspan baseline-shift="super" font-size="70%">VF</tspan></text>
+        <rect x="1030" y="64" width="130" height="88" rx="6" class="box-tesis"/>
+        <text x="1095" y="104" text-anchor="middle" class="t-tesis t-bold">θ<tspan baseline-shift="sub" font-size="75%">viejo</tspan> ← θ</text>
+        <text x="1095" y="126" text-anchor="middle" class="t-muted" font-size="13">nuevo lote</text>
+      </g>
+      <g class="ln">
+        <path d="M216 108 H278" marker-end="url(#a6g2)"/><path d="M470 108 H518" marker-end="url(#a6g2)"/>
+        <path d="M720 108 H768" marker-end="url(#a6g2)"/><path d="M990 108 H1028" marker-end="url(#a6g2)"/>
+        <path d="M1095 152 V242 H20 V100 H36" marker-end="url(#a6g2)"/>
+      </g>
+      <text x="600" y="234" text-anchor="middle" font-size="13" class="t-muted">600 veces: 78,6 M pasos de entorno y 12 000 pasos de Adam (≈ 10 s en una RTX 4060 Ti)</text>
+    </svg>
+  </figure>
+  <div class="cols c3">
+    <p><strong>Despliegue.</strong> Los \(N\) entornos avanzan a la vez; cada columna es un paso de control (10 ms, 5 subpasos de física). Se guarda \(o\), \(a\), \(\log\pi_\text{viejo}\), \(V\), \(r\) y \(\mathrm{fin}\).</p>
+    <p><strong>Horizonte.</strong> \(T = 32\) son 320 ms. GAE pesa \(\delta_{t+l}\) con \((\gamma\lambda)^l\) y apenas mira más allá de \(1/(1-\gamma\lambda)\approx 17\) pasos: el tramo los cubre. Lo que cae fuera lo pone el crítico: \((\gamma\lambda)^T\) del peso del primer paso, 0,14 con \(T = 32\) y 0,61 con \(T = 8\).</p>
+    <p><strong>Actualización.</strong> Cada muestra entra en 5 pasos de Adam, uno por época, y se tira. Con el mismo número de muestras, 16 384 × 8 ve tramos de 80 ms (parte 5; la relación con \((\gamma\lambda)^T\) es lectura nuestra).</p>
+  </div>
+  <p class="xsmall muted">Cuentas con \(\gamma = 0{,}99\), \(\lambda = 0{,}95\): <code>ejemplos_a6a.py</code>, ejemplo 3. El tiempo, de <code>figuras_a6a.py</code>, sección 4.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · PPO · 5</p>
+  <h2>PPO completo, en cinco pasos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol>
         <li>Desplegar \(N\) entornos durante \(T\) pasos con \(\pi_{\theta_\text{viejo}}\); guardar \(\log\pi\), \(V\), \(r\) y finales.</li>
-        <li>Calcular \(\hat A_t\) con GAE y los objetivos del valor \(\hat A_t + V(s_t)\); arrancar el valor en los cortes por tiempo (B6).</li>
+        <li>Calcular \(\hat A_t\) con GAE y los objetivos del valor \(\hat V_t = \hat A_t + V(s_t)\); arrancar el valor en los cortes por tiempo (B6).</li>
         <li>Durante \(K\) épocas, en minilotes: maximizar \(L^{\text{CLIP}} - c_1 L^{\text{VF}} + c_2 S[\pi_\theta]\) <a class="cite" data-ref="schulman2017"></a>.</li>
         <li>Normalizar las ventajas en cada minilote; recortar la norma del gradiente.</li>
         <li>Repetir. Vigilar la KL entre política nueva y vieja, la fracción de muestras recortadas y la desviación de la acción.</li>
       </ol>
     </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:22%">Término</th><th>Qué es</th><th style="width:26%">En el x500</th></tr>
+          <tr><td>\(L^{\text{CLIP}}\)</td><td>Objetivo recortado de la política (hojas anteriores)</td><td>\(\varepsilon = 0{,}2\)</td></tr>
+          <tr><td>\(L^{\text{VF}}\)</td><td>Pérdida del crítico: \(\tfrac12\hat{\mathbb E}_t\big[(V_\theta(s_t) - \hat V_t)^2\big]\), con \(\hat V_t\) calculado con el crítico del despliegue</td><td>\(c_1 = 0{,}5\); crítico en una red aparte</td></tr>
+          <tr><td>\(S[\pi_\theta]\)</td><td>Entropía de la política: premia explorar</td><td>\(c_2 = 0\): sin bonificación</td></tr>
+          <tr><td>\(K\), minilotes</td><td>Pasadas por el lote y trozos por pasada</td><td>5 y 4</td></tr>
+        </table>
+      </div>
+      <p>En el código se <em>minimiza</em> \(-L^{\text{CLIP}} + c_1L^{\text{VF}} - c_2S\) con Adam. Con política y crítico en redes separadas, \(c_1\) solo cambia el tamaño del paso del crítico.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · PPO · 6</p>
+  <h2>Hiperparámetros de referencia y qué vigilar</h2>
+  <div class="cols">
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
@@ -197,7 +588,12 @@
         </table>
       </div>
       <p class="xsmall muted">Tabla 3 de PPO <a class="cite" data-ref="schulman2017"></a>; apéndice de Rudin et al. <a class="cite" data-ref="rudin2022"></a>; <code>figuras_a6a.py</code>.</p>
-      <div class="callout clave"><span class="tag">Qué vigilar</span>En el entrenamiento del x500, la KL media por actualización se mantiene entre 0,002 y 0,005 y la fracción recortada por debajo del 6 %: si la KL se dispara o la fracción pasa del 20–30 %, la tasa de aprendizaje es demasiado alta.</div>
+      <div class="callout clave"><span class="tag">Qué vigilar</span>En el entrenamiento del x500, la KL media por actualización se mantiene entre 0,001 y 0,005 y la fracción recortada por debajo del 6 %; \(\sigma\) baja de 0,60 a 0,05. Si la KL se dispara o la fracción pasa del 20–30 %, la tasa de aprendizaje es demasiado alta.</div>
+    </div>
+    <div class="stack">
+      <p><strong>KL.</strong> Se estima con las mismas muestras: \(\widehat{\mathrm{KL}} = \hat{\mathbb E}_t\big[(r_t - 1) - \log r_t\big]\). Cada término es \(\ge 0\), porque \(\log x \le x - 1\). Con \(r = 1{,}2\) da 0,018; con \(r = 0{,}8\), 0,023; con \(r = 1{,}5\), 0,095 (ejemplo 4).</p>
+      <p><strong>Fracción recortada.</strong> La de muestras con \(|r_t - 1| > \varepsilon\): las que ya no aportan gradiente (o lo aportan solo por el mínimo).</p>
+      <p><strong>\(\sigma\).</strong> La desviación de la acción: baja según la política se vuelve segura. Si cae a casi 0 muy pronto, la exploración se ha acabado antes de tiempo.</p>
     </div>
   </div>
 </section>
@@ -214,7 +610,7 @@
   <h2>Las optimizaciones de código explican la mayor parte de la ventaja de PPO</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Engstrom et al. aíslan las optimizaciones «de nivel de código» de las implementaciones de PPO: son responsables de la mayor parte de su ventaja sobre TRPO y «cambian fundamentalmente cómo funcionan» los métodos <a class="cite" data-ref="engstrom2020"></a>.</p>
+      <p>Engstrom et al. aíslan las optimizaciones «de nivel de código» de las implementaciones de PPO: son responsables de la mayor parte de su ventaja sobre TRPO y «cambian fundamentalmente cómo funcionan» los métodos <a class="cite" data-ref="engstrom2020"></a>.</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Detalle</th><th>Valor típico</th></tr></thead>
@@ -238,24 +634,70 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Implementación · normalizar</p>
+  <h2>Tres normalizaciones de la tabla, en fórmulas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:15%">Qué</th><th style="width:44%">Fórmula</th><th>Para qué</th></tr>
+      <tr><td>Ventajas, en cada minilote</td><td>\(\hat A \leftarrow (\hat A - \mu_A)/(\sigma_A + 10^{-8})\), con \(\mu_A\) y \(\sigma_A\) la media y la desviación de las ventajas del minilote</td><td>El paso de la política tiene la misma escala sea cual sea la de la recompensa; en cada minilote, unas muestras suben y otras bajan</td></tr>
+      <tr><td>Observaciones</td><td>\(o \leftarrow \mathrm{clip}\big((o - \hat\mu_o)/\hat\sigma_o,\ -10,\ 10\big)\), con media \(\hat\mu_o\) y desviación \(\hat\sigma_o\) móviles</td><td>Entradas de la red con escalas parecidas (metros, m/s, rad/s); la cota frena los valores raros</td></tr>
+      <tr><td>Recompensa</td><td>\(r \leftarrow r/\hat\sigma_G\), con \(\hat\sigma_G\) la desviación de un retorno descontado móvil</td><td>Objetivos del crítico de tamaño razonable, sin cambiar el signo de nada</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Ejemplo</span>Ventajas de un minilote \((0{,}28;\ -0{,}15;\ 1{,}00;\ 0{,}35)\): media 0,371, desviación 0,411, normalizadas \((-0{,}21;\ -1{,}27;\ 1{,}53;\ -0{,}05)\). Multiplicar todas por 10 da lo mismo: la escala desaparece. Ejemplo 6.</div>
+    <div class="aparte"><span class="rotulo">En el x500 del tema</span>
+      <p>Solo se normalizan las ventajas. Las observaciones entran con su escala física (son del orden de 1 en los arranques) y la recompensa acotada ya vive en \([0, 1]\) mientras vuela. El laboratorio (paso 5) compara con la normalización de observaciones.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Implementación · estudio a escala</p>
   <h2>250 000 agentes después: lo que recomiendan</h2>
-  <div class="cols">
+  <div class="cols w60">
     <div class="stack">
-      <p class="small">Andrychowicz et al. implementan más de 50 «elecciones» en un mismo marco y entrenan más de 250 000 agentes en cinco entornos de MuJoCo <a class="cite" data-ref="andrychowicz2020"></a>. Sus recomendaciones, resumidas:</p>
-      <ul class="small">
-        <li><strong>Pérdida:</strong> la de PPO, con recorte de 0,25 para empezar.</li>
-        <li><strong>Red:</strong> última capa de la política con pesos 100 veces más pequeños; valor y política separados.</li>
-        <li><strong>Normalización:</strong> siempre las observaciones; el recorte del gradiente, secundario.</li>
-        <li><strong>Ventajas:</strong> GAE con \(\lambda = 0{,}9\), sin pérdida de Huber ni recorte del valor.</li>
-        <li><strong>Entrenamiento:</strong> varias pasadas por los datos; muchos entornos y lotes grandes para el tiempo de reloj, aunque pueden empeorar la eficiencia en muestras.</li>
-        <li><strong>\(\gamma\):</strong> de los hiperparámetros más importantes, a ajustar por entorno (empezar con 0,99). Adam con 3·10⁻⁴.</li>
-      </ul>
+      <p>Andrychowicz et al. implementan más de 50 «elecciones» en un mismo marco y entrenan más de 250 000 agentes en cinco entornos de MuJoCo <a class="cite" data-ref="andrychowicz2020"></a>. Sus recomendaciones, resumidas:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:20%">Elección</th><th>Recomendación</th></tr>
+          <tr><td>Pérdida</td><td>La de PPO, con recorte de 0,25 para empezar</td></tr>
+          <tr><td>Red</td><td>Última capa de la política con pesos 100 veces más pequeños; valor y política separados</td></tr>
+          <tr><td>Normalización</td><td>Siempre las observaciones; el recorte del gradiente, secundario</td></tr>
+          <tr><td>Ventajas</td><td>GAE con \(\lambda = 0{,}9\), sin pérdida de Huber ni recorte del valor</td></tr>
+          <tr><td>Entrenamiento</td><td>Varias pasadas por los datos; muchos entornos y lotes grandes para el tiempo de reloj, aunque pueden empeorar la eficiencia en muestras</td></tr>
+          <tr><td>\(\gamma\)</td><td>De los hiperparámetros más importantes, a ajustar por entorno (empezar con 0,99). Adam con 3·10⁻⁴</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Una sorpresa</span>«La distribución inicial de las acciones tiene un papel importante» en el rendimiento <a class="cite" data-ref="andrychowicz2020"></a>. En el x500: ganancia de 0,01 en la última capa de la política y σ inicial de 0,6, para empezar cerca del empuje de estacionario con exploración moderada.</div>
+      <div class="callout realidad"><span class="tag">Una sorpresa</span>«La distribución inicial de las acciones tiene un papel importante» en el rendimiento <a class="cite" data-ref="andrychowicz2020"></a>. En el x500: ganancia de 0,01 en la última capa de la política y σ inicial de 0,6, para empezar cerca del empuje de estacionario con exploración moderada (hoja siguiente).</div>
       <div class="callout error"><span class="tag">Matiz</span>Las cifras son de cinco entornos de locomoción. Un dron con dinámica rápida e inestable puede pedir otros valores: úsalas como punto de partida, no como verdad.</div>
       <p class="xsmall muted">Citas de la versión de arXiv (v1).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Implementación · distribución inicial</p>
+  <h2>La distribución inicial de la acción, en el x500</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La acción \(a\in[-1,1]^4\) está escalada para que \(a = 0\) sea el estacionario:</p>
+      \[ \begin{aligned} T &= mg\,(1 + 0{,}8\,a_0),\\ \boldsymbol\omega_\text{des} &= (4,\ 4,\ 2)\odot(a_1, a_2, a_3)\ \text{rad/s}, \end{aligned} \]
+      <p>con \(T\) el empuje colectivo (aquí \(T\) no es el número de pasos del tramo), \(mg = 19{,}6\) N el peso (2 kg en el script), \(\boldsymbol\omega_\text{des}\) la velocidad angular pedida al lazo interno y \(\odot\) el producto componente a componente.</p>
+      <p>Con ganancia 0,01, la última capa da salidas casi nulas: la media de la política empieza en «flotar sin girar». La exploración la pone \(\sigma = e^{-0{,}5} = 0{,}61\) (el \(\log\sigma\) inicial es −0,5): una \(\sigma\) son ±49 % del peso en empuje y ±2,4 rad/s en alabeo y cabeceo.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Ganancia de la última capa</th><th>\(|\text{media de } a|\)</th><th>Arranques con el empuje medio saturado (\(|a_0|>1\))</th></tr>
+          <tr><td>0,01 (el tema)</td><td class="n">0,004</td><td class="n">0 %</td></tr>
+          <tr><td>\(\sqrt2\) (la de las capas ocultas)</td><td class="n">0,47</td><td class="n">10,6 %</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Red sin entrenar (22 → 64 → 64 → 4, tanh, inicialización ortogonal) evaluada en 4096 arranques aleatorios como los del entrenamiento; media de 5 inicializaciones. <code>ejemplos_a6a.py</code>, ejemplo 7.</p>
+      <div class="callout clave"><span class="tag">Lectura</span>Con \(\sqrt2\), la política empieza mandando empujes y giros distintos en cada estado, sin relación con la tarea, y uno de cada diez arranques pide un empuje fuera de rango, que se recorta. Con 0,01 empieza sin sesgo y aprende qué corregir. El laboratorio (paso 5.2) mide qué cuesta en aprendizaje.</div>
     </div>
   </div>
 </section>
@@ -280,7 +722,7 @@
       <p class="xsmall muted">PPO con 78,6 M pasos por semilla; evaluación desde 200 arranques aleatorios durante 10 s. <code>figuras_a6a.py</code>, sección 4.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Entre semillas:</strong> el error final va de 2,3 a 5,0 cm. Con la recompensa ingenua de la parte 4, las semillas no solo difieren: unas aprenden a estrellarse y otras no.</li>
         <li><strong>Entre ejecuciones:</strong> con la misma semilla, dentro de un proceso el resultado es idéntico; entre ejecuciones del script en la GPU, no: la semilla 0 dio 2,8, 5,3, 3,0 y 5,0 cm en cuatro ejecuciones (las cifras de esta presentación son de la última). Es el no determinismo de B6.</li>
       </ul>
@@ -297,56 +739,209 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Fuera de política · SAC</p>
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Qué es cada letra en SAC y TD3</h2>
+  <div class="callout error"><span class="tag">Cambian de significado</span>Aquí \(\theta\) es el <strong>crítico</strong> y \(\phi\) el <strong>actor</strong> (como en los artículos); \(\tau\) no es una trayectoria.</div>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(\mathcal D\)</td><td>Búfer de repetición: transiciones \((s, a, r, s', \mathrm{fin})\) de políticas pasadas</td><td>\(10^6\) transiciones a 100 Hz: 2,8 h de vuelo</td></tr>
+      <tr><td>\(Q_{\theta_1}\), \(Q_{\theta_2}\)</td><td>Dos críticos de acción: retorno esperado si en \(s\) se toma \(a\)</td><td>Redes de \((s, a)\) a un número</td></tr>
+      <tr><td>\(\theta'_i\), \(\phi'\)</td><td>Redes objetivo: copias lentas de críticos y actor, solo para calcular objetivos</td><td>—</td></tr>
+      <tr><td>\(\tau\)</td><td>Tasa de las redes objetivo: \(\theta' \leftarrow \tau\,\theta + (1-\tau)\,\theta'\) en cada paso</td><td>0,005: memoria de unos \(1/\tau = 200\) pasos</td></tr>
+      <tr><td>\(\pi_\phi\)</td><td>Actor. En SAC, estocástico (gaussiana y tanh); en TD3, determinista: \(a = \pi_\phi(s)\)</td><td>—</td></tr>
+      <tr><td>\(\alpha\), \(\mathcal H\), \(\bar{\mathcal H}\)</td><td>Temperatura; entropía \(\mathcal H(\pi(\cdot\mid s)) = -\mathbb E_{a\sim\pi}[\log\pi(a\mid s)]\); entropía objetivo</td><td>\(\bar{\mathcal H} = -4\) con 4 mandos</td></tr>
+      <tr><td>\(\rho_\pi\)</td><td>Distribución de los pares \((s, a)\) que visita la política \(\pi\)</td><td>—</td></tr>
+      <tr><td>\(u\), \(\mu(u\mid s)\)</td><td>Acción gaussiana antes de la tanh, y su densidad</td><td>\(a = \tanh u\)</td></tr>
+      <tr><td>\(\xi\)</td><td>Ruido gaussiano de la reparametrización (SAC) y del suavizado (TD3); \(\epsilon\) en los artículos, no el \(\varepsilon\) de PPO</td><td>—</td></tr>
+      <tr><td>\(y\), \(d\)</td><td>Objetivo del crítico; en TD3, cada cuántos pasos del crítico se mueve el actor</td><td>\(d = 2\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · qué cambia</p>
+  <h2>Aprender de un búfer, no del lote recién recogido</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 232" role="img" aria-label="Bucle fuera de política: entornos, búfer de repetición, críticos, actor y redes objetivo">
+      <defs><marker id="a6g3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="15">
+        <rect x="30" y="80" width="160" height="70" rx="6" class="box"/>
+        <text x="110" y="108" text-anchor="middle" class="t-bold">Entornos</text>
+        <text x="110" y="130" text-anchor="middle" class="t-muted" font-size="13">actúan con π<tspan baseline-shift="sub" font-size="75%">φ</tspan> (y ruido)</text>
+        <rect x="330" y="80" width="160" height="70" rx="6" class="box-time"/>
+        <text x="410" y="108" text-anchor="middle" class="t-bold">Búfer 𝒟</text>
+        <text x="410" y="130" text-anchor="middle" class="t-time" font-size="13">10⁶ transiciones</text>
+        <rect x="580" y="80" width="220" height="70" rx="6" class="box-accent"/>
+        <text x="690" y="108" text-anchor="middle" class="t-bold">Críticos Q<tspan baseline-shift="sub" font-size="75%">θ1</tspan>, Q<tspan baseline-shift="sub" font-size="75%">θ2</tspan></text>
+        <text x="690" y="130" text-anchor="middle" class="t-muted" font-size="13">ajustar a y</text>
+        <rect x="900" y="80" width="230" height="70" rx="6" class="box-accent"/>
+        <text x="1015" y="108" text-anchor="middle" class="t-bold">Actor π<tspan baseline-shift="sub" font-size="75%">φ</tspan></text>
+        <text x="1015" y="130" text-anchor="middle" class="t-muted" font-size="13">subir Q (más entropía, en SAC)</text>
+        <rect x="580" y="8" width="550" height="44" rx="6" class="box-soft"/>
+        <text x="855" y="35" text-anchor="middle" font-size="14">Redes objetivo θ′ (y φ′): copias lentas, θ′ ← τθ + (1 − τ)θ′</text>
+      </g>
+      <g class="ln">
+        <path d="M190 115 H328" marker-end="url(#a6g3)"/><path d="M490 115 H578" marker-end="url(#a6g3)"/><path d="M800 115 H898" marker-end="url(#a6g3)"/>
+        <path d="M1015 150 V198 H110 V152" marker-end="url(#a6g3)"/>
+      </g>
+      <path d="M650 52 V78" class="ln ln-dash" marker-end="url(#a6g3)"/>
+      <path d="M1015 80 V54" class="ln ln-dash" marker-end="url(#a6g3)"/>
+      <g font-size="13" class="t-muted">
+        <text x="259" y="106" text-anchor="middle" class="t-mono" font-size="12">(s, a, r, s′, fin)</text>
+        <text x="534" y="106" text-anchor="middle">minilote</text>
+        <text x="849" y="106" text-anchor="middle">gradiente</text>
+        <text x="660" y="70">y = r + γ(…)</text>
+        <text x="1024" y="70">τ</text>
+        <text x="565" y="218" text-anchor="middle">la política nueva vuelve a actuar: un paso de gradiente (o varios) por cada paso de entorno</text>
+      </g>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p><strong>En política (PPO).</strong> El lote se usa en \(K = 5\) épocas y se tira: el gradiente de la parte 1 necesita muestras de la política actual (o cercana, con el cociente).</p>
+    <p><strong>Fuera de política (SAC, TD3).</strong> Cada transición se queda en el búfer y se reutiliza en muchos minilotes, aunque la política que la generó ya sea otra. Por eso se aprende \(Q(s,a)\), que vale para cualquier acción, y no una ventaja hecha con trayectorias de la política actual.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · SAC · 1</p>
   <h2>SAC: maximizar la recompensa y la entropía a la vez</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Objetivo de máxima entropía, con temperatura \(\alpha\) <a class="cite" data-ref="haarnoja2018"></a>:</p>
+      <p>Objetivo de máxima entropía, con temperatura \(\alpha\) <a class="cite" data-ref="haarnoja2018"></a>:</p>
       \[ J(\pi) = \sum_{t}\mathbb E_{(s_t,a_t)\sim\rho_\pi}\big[r(s_t,a_t) + \alpha\,\mathcal H(\pi(\cdot\mid s_t))\big]. \]
-      <ul class="small">
-        <li>Un crítico \(Q\) aprendido con el búfer y un actor que minimiza \(\mathbb E[\alpha\log\pi(a\mid s) - Q(s,a)]\) con la reparametrización: gradiente de primer orden a través del crítico, no del simulador.</li>
-        <li>Temperatura automática: entropía mínima \(\bar{\mathcal H}\) como restricción y \(\alpha\) ajustada por su propio gradiente; objetivo \(-\dim(A)\) <a class="cite" data-ref="haarnoja2019"></a>.</li>
-        <li>Valores de referencia: 2 × 256 neuronas, búfer de \(10^6\), Adam 3·10⁻⁴, \(\tau = 0{,}005\) <a class="cite" data-ref="haarnoja2018"></a>.</li>
-      </ul>
+      <p>Al premiar \(\mathcal H\), la política no se queda con una sola acción mientras haya otras casi igual de buenas: explora por objetivo, no por un ruido añadido.</p>
+      <p>Valores de referencia: 2 × 256 neuronas, búfer de \(10^6\), Adam 3·10⁻⁴, \(\tau = 0{,}005\) <a class="cite" data-ref="haarnoja2018"></a>.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: la corrección de la tangente hiperbólica</summary>
-        <p class="small">Para acotar la acción se muestrea \(u\sim\mu(u\mid s)\) gaussiana y se aplica \(a = \tanh(u)\). Como el jacobiano \(\partial a/\partial u = \mathrm{diag}(1-\tanh^2 u)\) es diagonal, el cambio de variable da <a class="cite" data-ref="haarnoja2018"></a></p>
-        \[ \log\pi(a\mid s) = \log\mu(u\mid s) - \sum_{i}\log\big(1-\tanh^2 u_i\big). \]
-        <p class="small">Olvidarla sobrestima la entropía de las acciones cerca de los límites, justo donde un dron satura sus motores.</p>
-      </details>
-      <div class="callout error"><span class="tag">Error frecuente</span>La escala de la recompensa: en SAC actúa como la inversa de la temperatura y sus autores la ajustaban por tarea (de 5 a 20) <a class="cite" data-ref="haarnoja2018"></a>. Con temperatura automática pesa menos, pero cambiar la escala de la recompensa sigue cambiando el problema.</div>
+      <p>El crítico aprende el valor de <em>ese</em> objetivo. El valor de un estado incluye la entropía que se cobrará en él <a class="cite" data-ref="haarnoja2019"></a>:</p>
+      \[ V(s) = \mathbb E_{a\sim\pi}\big[Q(s,a) - \alpha\log\pi(a\mid s)\big], \]
+      <p>y cada crítico minimiza \(\big(Q_{\theta_i}(s,a) - y\big)^2\) en minilotes de \(\mathcal D\), con</p>
+      \[ y = r + \gamma(1-\mathrm{fin})\Big(\min_{i=1,2}Q_{\theta'_i}(s',a') - \alpha\log\pi_\phi(a'\mid s')\Big), \]
+      <p>con \(a'\sim\pi_\phi(\cdot\mid s')\) una acción nueva de la política actual (no la del búfer). \(-\log\pi\) es la entropía «de una muestra»: su media es \(\mathcal H\). El mínimo de dos críticos es el mismo remedio que TD3 (tres hojas más adelante).</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Fuera de política · TD3 y cuándo</p>
-  <h2>TD3, y cuándo compensa salirse de la política</h2>
-  <div class="cols">
+  <p class="kicker">Fuera de política · SAC · 2</p>
+  <h2>Qué política maximiza recompensa más entropía: la de Boltzmann</h2>
+  <div class="cols w60">
     <div class="stack">
-      <p class="small">TD3: actor determinista con tres remedios contra la sobrestimación del valor <a class="cite" data-ref="fujimoto2018"></a>:</p>
-      <ol class="small">
-        <li><strong>Doble Q recortado:</strong> \(y = r + \gamma\min_{i=1,2}Q_{\theta'_i}(s', \pi_{\phi'}(s'))\).</li>
-        <li><strong>Actualizaciones retrasadas:</strong> actor y redes objetivo cada \(d = 2\) pasos del crítico.</li>
-        <li><strong>Suavizado de la política objetivo:</strong> ruido \(\mathcal N(0, 0{,}2)\) recortado a \(\pm0{,}5\) en la acción del objetivo.</li>
-      </ol>
-      <div class="callout realidad"><span class="tag">En un dron</span>Eschmann et al. eligen TD3 frente a PPO por su eficiencia en muestras: unos 300 000 pasos, 18 s en un MacBook Pro de 2020, para una política que manda RPM y transfiere a un Crazyflie <a class="cite" data-ref="eschmann2024"></a>.</div>
+      <p>En un estado y con \(Q\) fijo, busquemos la distribución \(\pi\) sobre acciones (discretas, para ver la cuenta) que maximiza \(\sum_a\pi(a)Q(a) + \alpha\,\mathcal H(\pi)\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\max_\pi\sum_a\pi(a)\big(Q(a) - \alpha\log\pi(a)\big)\) con \(\sum_a\pi(a) = 1\)</td><td>\(\mathcal H = -\sum_a\pi\log\pi\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathcal L = \sum_a\pi(a)\big(Q(a) - \alpha\log\pi(a)\big) - \eta\big(\sum_a\pi(a) - 1\big)\)</td><td>Multiplicador de Lagrange \(\eta\) para la suma</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\partial\mathcal L/\partial\pi(a) = Q(a) - \alpha\log\pi(a) - \alpha - \eta = 0\)</td><td>\(\tfrac{d}{dp}(p\log p) = \log p + 1\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\pi(a) = e^{Q(a)/\alpha}/Z\), con \(Z = \sum_b e^{Q(b)/\alpha}\)</td><td>Despejar; \(\eta\) solo fija la normalización</td></tr>
+          <tr><td><strong>5</strong></td><td>Valor del óptimo: \(\alpha\log Z\)</td><td>Sustituir 4 en 1: un «máximo suave» de los \(Q\)</td></tr>
+        </table>
+      </div>
+      <p>SAC hace este paso con una gaussiana: proyecta \(e^{Q/\alpha}/Z\) sobre la familia de su actor minimizando una divergencia KL <a class="cite" data-ref="haarnoja2018"></a>.</p>
     </div>
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Si…</th><th>Suele convenir</th></tr></thead>
-          <tbody>
-            <tr><td>el simulador es barato y masivo (B6)</td><td>PPO: estable, fácil de escalar a miles de entornos</td></tr>
-            <tr><td>cada paso cuesta (render, datos reales)</td><td>SAC o TD3: reutilizan cada transición</td></tr>
-            <tr><td>quieres afinar con datos reales</td><td>fuera de política, o PPO con pocos datos y cuidado</td></tr>
-            <tr><td>hay memoria (A7b)</td><td>PPO recurrente es lo más probado; los búferes con secuencias complican SAC</td></tr>
-          </tbody>
+          <tr><th>\(Q = (1, 0)\)</th><th>\(\pi\)</th><th>\(\mathcal H\) (nats)</th></tr>
+          <tr><td>\(\alpha = 0{,}1\)</td><td class="n">(1,00; 0,00)</td><td class="n">0,00</td></tr>
+          <tr><td>\(\alpha = 1\)</td><td class="n">(0,73; 0,27)</td><td class="n">0,58</td></tr>
+          <tr><td>\(\alpha = 10\)</td><td class="n">(0,525; 0,475)</td><td class="n">0,69 ≈ ln 2</td></tr>
         </table>
       </div>
-      <div class="callout realidad"><span class="tag">2024–2025</span>La frontera se difumina: PPO «se satura» con muchos entornos y SAPG lo reparte en varias políticas <a class="cite" data-ref="singla2024"></a>; PQN entrena Q-learning sin búfer ni red objetivo con entornos vectorizados <a class="cite" data-ref="gallici2025"></a>; FastTD3 resuelve tareas de humanoide en menos de 3 h en una A100 (preprint) <a class="cite" data-ref="seo2025"></a>.</div>
+      <p class="xsmall muted"><code>ejemplos_a6a.py</code>, ejemplo 8.</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>La escala de la recompensa: en SAC actúa como la inversa de la temperatura y sus autores la ajustaban por tarea (de 5 a 20) <a class="cite" data-ref="haarnoja2018"></a>. Se ve en el paso 4: \(Q = (5, 0)\) con \(\alpha = 1\) y \(Q = (1, 0)\) con \(\alpha = 0{,}2\) dan la misma \(\pi = (0{,}993;\ 0{,}007)\). Con temperatura automática pesa menos, pero cambiar la escala de la recompensa sigue cambiando el problema.</div>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · SAC · 3</p>
+  <h2>El actor, la temperatura automática y la corrección de la tanh</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Actor.</strong> Con la reparametrización, la acción es una función derivable del ruido, \(a = \tanh\big(\mu_\phi(s) + \sigma_\phi(s)\,\xi\big)\), \(\xi\sim\mathcal N(0, I)\), y el actor minimiza</p>
+      \[ J_\pi(\phi) = \mathbb E_{s\sim\mathcal D,\ \xi}\big[\alpha\log\pi_\phi(a\mid s) - Q_\theta(s,a)\big]. \]
+      <p>El gradiente pasa por \(a\) hasta el crítico: es de primer orden a través del crítico, no del simulador.</p>
+      <p><strong>Temperatura automática</strong> <a class="cite" data-ref="haarnoja2019"></a>: \(\alpha\) minimiza \(J(\alpha) = \mathbb E_{a\sim\pi}\big[-\alpha\log\pi(a\mid s) - \alpha\bar{\mathcal H}\big]\), y \(\partial J/\partial\alpha = \mathcal H(\pi) - \bar{\mathcal H}\): si la política tiene más entropía que el objetivo, \(\alpha\) baja; si menos, sube. Objetivo habitual: \(\bar{\mathcal H} = -\dim(A)\), la dimensión de la acción.</p>
+      <p>Con 4 mandos, \(\bar{\mathcal H} = -4\) equivale a \(\sigma\approx 0{,}089\) por dimensión antes de la tanh, porque una gaussiana tiene \(\tfrac12\ln(2\pi e\sigma^2)\) nats por dimensión. Con \(\sigma = 0{,}6\), \(\mathcal H = 3{,}63\): \(\partial J/\partial\alpha = 7{,}6 > 0\), y \(\alpha\) baja.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Corrección de la tanh.</strong> Para acotar la acción se muestrea \(u\sim\mu(u\mid s)\) gaussiana y se aplica \(a = \tanh(u)\). Como el jacobiano \(\partial a/\partial u = \mathrm{diag}(1-\tanh^2 u)\) es diagonal, el cambio de variable da <a class="cite" data-ref="haarnoja2018"></a></p>
+      \[ \log\pi(a\mid s) = \log\mu(u\mid s) - \sum_{i}\log\big(1-\tanh^2 u_i\big). \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(u\)</th><th>0</th><th>1</th><th>2</th><th>3</th></tr>
+          <tr><td>\(a = \tanh u\)</td><td class="n">0</td><td class="n">0,76</td><td class="n">0,96</td><td class="n">0,995</td></tr>
+          <tr><td>\(-\log(1-\tanh^2u)\)</td><td class="n">0</td><td class="n">0,87</td><td class="n">2,65</td><td class="n">4,62</td></tr>
+        </table>
+      </div>
+      <div class="callout error"><span class="tag">Si se olvida</span>La corrección crece al acercarse a la cota. Olvidarla sobrestima la entropía de las acciones cerca de los límites, justo donde un dron satura sus motores. Ejemplo 8.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · TD3 · 1</p>
+  <h2>Por qué un crítico con ruido sobrestima</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El actor busca la acción que maximiza \(Q_\theta\). Si \(Q_\theta\) es el valor verdadero más un error, el actor prefiere las acciones cuyo error es positivo, y el objetivo \(y = r + \gamma\,Q_{\theta'}(s', \pi_{\phi'}(s'))\) hereda ese sesgo. El aprendizaje por diferencias temporales lo propaga de estado en estado <a class="cite" data-ref="fujimoto2018"></a>.</p>
+      <p><strong>Con números.</strong> \(n_a\) acciones que valen 0 de verdad; cada crítico se equivoca con un error \(\mathcal N(0, 1)\) independiente en cada acción. Se elige \(a^\ast = \arg\max_a Q_1(a)\).</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(n_a\)</th><th>\(Q_1(a^\ast)\), un crítico</th><th>\(Q_2(a^\ast)\)</th><th>\(\min(Q_1, Q_2)(a^\ast)\)</th></tr>
+          <tr><td>2</td><td class="n">+0,57 (= 1/√π)</td><td class="n">0,00</td><td class="n">−0,28</td></tr>
+          <tr><td>10</td><td class="n">+1,54</td><td class="n">0,00</td><td class="n">−0,04</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">200 000 repeticiones de Monte Carlo. <code>ejemplos_a6a.py</code>, ejemplo 9.</p>
+      <p>Un segundo crítico independiente, evaluado en la acción que eligió el primero, no tiene sesgo; el mínimo de los dos queda algo por debajo. TD3 prefiere un sesgo pesimista a uno optimista, porque las acciones infravaloradas no se refuerzan en la actualización del actor <a class="cite" data-ref="fujimoto2018"></a>.</p>
+      <div class="callout clave"><span class="tag">Lectura</span>El sesgo optimista crece con el número de acciones entre las que se elige: con acciones continuas, el actor siempre tiene «muchas» donde buscar errores.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · TD3 · 2</p>
+  <h2>TD3: tres remedios contra la sobrestimación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Actor determinista \(a = \pi_\phi(s)\) que sube \(Q_{\theta_1}(s, \pi_\phi(s))\) por la regla de la cadena, con tres remedios <a class="cite" data-ref="fujimoto2018"></a>:</p>
+      <ol>
+        <li><strong>Doble Q recortado:</strong> \(y = r + \gamma\min_{i=1,2}Q_{\theta'_i}(s', \tilde a)\), el mínimo de la hoja anterior.</li>
+        <li><strong>Actualizaciones retrasadas:</strong> actor y redes objetivo cada \(d = 2\) pasos del crítico, para que el actor persiga un crítico algo más asentado.</li>
+        <li><strong>Suavizado de la política objetivo:</strong> \(\tilde a = \mathrm{clip}\big(\pi_{\phi'}(s') + \bar\xi,\ a_\text{mín},\ a_\text{máx}\big)\), con \(\bar\xi = \mathrm{clip}(\xi, -0{,}5, 0{,}5)\), \(\xi\sim\mathcal N(0, \tilde\sigma^2)\) y \(\tilde\sigma = 0{,}2\): el objetivo promedia \(Q\) alrededor de la acción y no se apoya en un pico estrecho del crítico.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">Con números</span>
+        <p>Suavizado: \(\pi_{\phi'}(s') = 0{,}9\) y \(\xi = 0{,}6\); el ruido se recorta a 0,5, la acción sería 1,4 y se recorta a la cota, 1,0. Redes objetivo con \(\tau = 0{,}005\): el peso de los parámetros de hace \(n\) pasos es \((1-\tau)^n\), 0,37 a los 200 y 0,007 a los 1000. Ejemplo 9.</p>
+      </div>
+      <div class="callout realidad"><span class="tag">En un dron</span>Eschmann et al. eligen TD3 frente a PPO por su eficiencia en muestras: unos 300 000 pasos, 18 s en un MacBook Pro de 2020, para una política que manda RPM y transfiere a un Crazyflie <a class="cite" data-ref="eschmann2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · cuándo</p>
+  <h2>Cuándo compensa salirse de la política</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Si…</th><th>Suele convenir</th></tr></thead>
+        <tbody>
+          <tr><td>el simulador es barato y masivo (B6)</td><td>PPO: estable, fácil de escalar a miles de entornos</td></tr>
+          <tr><td>cada paso cuesta (render, datos reales)</td><td>SAC o TD3: reutilizan cada transición</td></tr>
+          <tr><td>quieres afinar con datos reales</td><td>fuera de política, o PPO con pocos datos y cuidado</td></tr>
+          <tr><td>hay memoria (A7b)</td><td>PPO recurrente es lo más probado; los búferes con secuencias complican SAC</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout realidad"><span class="tag">2024–2025</span>La frontera se difumina: PPO «se satura» con muchos entornos y SAPG lo reparte en varias políticas <a class="cite" data-ref="singla2024"></a>; PQN entrena Q-learning sin búfer ni red objetivo con entornos vectorizados <a class="cite" data-ref="gallici2025"></a>; FastTD3 resuelve tareas de humanoide en menos de 3 h en una A100 (preprint) <a class="cite" data-ref="seo2025"></a>.</div>
   </div>
 </section>
 
@@ -360,6 +955,7 @@
 <section class="slide">
   <p class="kicker">Recompensa · anatomía</p>
   <h2>Cinco recompensas de drones que transfirieron</h2>
+  <p>\(p\), \(v\), \(\omega\): posición, velocidad y velocidad angular; \(e_\bullet\), su error respecto a la consigna; \(a\), la acción; \(\angle R\), el ángulo de la rotación que lleva la actitud a la deseada; \(dt\), el paso de tiempo; \(\alpha_\bullet\), \(b\) y \(C_{rs}\), pesos de cada artículo.</p>
   <div class="table-wrap">
     <table class="t">
       <thead><tr><th>Trabajo</th><th>Recompensa (o coste)</th><th>Qué enseña</th></tr></thead>
@@ -376,7 +972,77 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Recompensa · terminación</p>
+  <p class="kicker">Recompensa · el coste del x500</p>
+  <h2>El coste del x500, término a término</h2>
+  <div class="cols w60">
+    <div class="stack">
+      \[ c = \|e_p\| + 0{,}1\,\|v\| + 0{,}05\,\|\omega\| + 0{,}1\,\|\Delta a\|^2 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Término</th><th>Qué mide</th><th>Arranque típico</th><th>Casi en la consigna</th></tr>
+          <tr><td>\(\|e_p\|\)</td><td>distancia a la consigna (m)</td><td class="n">1,5</td><td class="n">0,05</td></tr>
+          <tr><td>\(0{,}1\,\|v\|\)</td><td>velocidad (m/s)</td><td class="n">0,1</td><td class="n">0,005</td></tr>
+          <tr><td>\(0{,}05\,\|\omega\|\)</td><td>velocidad angular (rad/s)</td><td class="n">0,025</td><td class="n">0,0025</td></tr>
+          <tr><td>\(0{,}1\,\|\Delta a\|^2\)</td><td>cambio del mando, \(\Delta a = a_t - a_{t-1}\)</td><td class="n">0</td><td class="n">0</td></tr>
+          <tr><td>\(c\)</td><td></td><td class="n">1,625</td><td class="n">0,058</td></tr>
+        </table>
+      </div>
+      <p>Dos recompensas con el mismo coste: <strong>ingenua</strong>, \(1 - c - 10\cdot\text{choque}\), y <strong>acotada</strong>, \(1 - \tanh c - 10\cdot\text{choque}\). «Choque» vale 1 en el paso en que el dron se aleja 4 m o se inclina más de 80°, y el episodio termina ahí.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 360 270" role="img" aria-label="Recompensa por paso frente al coste: la ingenua cae sin límite y la acotada se queda entre 0 y 1">
+          <path d="M50 94.1 H330 M50 20 V230" class="ln-rule"/>
+          <path d="M50 100.3 H330" class="ln-dash"/>
+          <path d="M50.0,32.4 L330.0,217.6" class="ln-tesis" stroke-width="2.4"/>
+          <path d="M50.0,32.4 L59.3,38.5 L68.7,44.5 L78.0,50.3 L87.3,55.8 L96.7,60.9 L106.0,65.5 L115.3,69.7 L124.7,73.4 L134.0,76.6 L143.3,79.4 L152.7,81.8 L162.0,83.8 L171.3,85.6 L180.7,87.0 L190.0,88.3 L199.3,89.3 L208.7,90.1 L218.0,90.8 L227.3,91.4 L236.7,91.9 L246.0,92.3 L255.3,92.6 L264.7,92.9 L274.0,93.1 L283.3,93.3 L292.7,93.4 L302.0,93.6 L311.3,93.7 L320.7,93.7 L330.0,93.8" class="ln-accent" stroke-width="2.4"/>
+          <path d="M201.7 30 V230" class="ln-rule"/>
+          <circle cx="201.7" cy="132.7" r="5" class="fill-tesis"/>
+          <circle cx="201.7" cy="89.5" r="5" class="fill-accent"/>
+          <g font-size="13">
+            <text x="210" y="70" class="t-accent">acotada: 0,075</text>
+            <text x="194" y="152" text-anchor="end" class="t-tesis">ingenua: −0,625</text>
+            <text x="240" y="150" class="t-tesis">1 − c</text>
+            <text x="300" y="84" text-anchor="end" class="t-accent">1 − tanh c</text>
+            <text x="328" y="116" text-anchor="end" class="t-muted" font-size="12">umbral −0,1</text>
+          </g>
+          <g font-size="12" class="t-mono t-faint">
+            <text x="50" y="248" text-anchor="middle">0</text><text x="143.3" y="248" text-anchor="middle">1</text><text x="236.7" y="248" text-anchor="middle">2</text><text x="330" y="248" text-anchor="middle">3</text>
+            <text x="44" y="36" text-anchor="end">1</text><text x="44" y="98" text-anchor="end">0</text><text x="44" y="160" text-anchor="end">−1</text><text x="44" y="222" text-anchor="end">−2</text>
+          </g>
+          <text x="190" y="266" text-anchor="middle" font-size="13" class="t-muted">coste c (línea vertical: arranque típico, 1,625)</text>
+        </svg>
+        <figcaption>Recompensa por paso en el aire (sin choque). El umbral es el de la hoja siguiente. <code>ejemplos_a6a.py</code>, ejemplo 10.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · terminación · 1</p>
+  <h2>Cuándo compensa terminar: la cuenta</h2>
+  <p>Un episodio que termina por choque deja de cobrar recompensas. Si lo que se cobra al seguir es negativo, terminar es una forma de dejar de pagar. Se comparan los dos futuros desde un paso cualquiera, con \(\bar r\) la recompensa media por paso si sigue volando y \(P\) el castigo único por estrellarse:</p>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>Seguir: \(\bar r + \gamma\bar r + \gamma^2\bar r + \cdots\)</td><td>\(\bar r\) en cada paso futuro, descontado</td></tr>
+        <tr><td><strong>2</strong></td><td>\(= \bar r/(1-\gamma)\)</td><td>Serie geométrica, \(\sum_{l\ge0}\gamma^l = 1/(1-\gamma)\)</td></tr>
+        <tr><td><strong>3</strong></td><td>Estrellarse ya: \(-P\)</td><td>Un castigo y nada más: tras el final, \(V = 0\)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(\dfrac{\bar r}{1-\gamma} \lt -P \iff \bar r \lt -P\,(1-\gamma)\)</td><td>Terminar compensa si vale más que seguir; multiplicar por \(1-\gamma>0\) no cambia el sentido</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con el x500</span>\(\gamma = 0{,}99\) y \(P = 10\): basta \(\bar r \lt -0{,}1\). Al principio, con el dron a 1–2 m de la consigna, \(1 - c\) es del orden de −1 (−0,625 en el arranque típico de la hoja anterior): seguir vale −62,5 y estrellarse −10, así que estrellarse es lo racional. Con \(1-\tanh c \in (0,1]\), cada paso en el aire suma (+7,5 frente a −10 en el mismo arranque) y estrellarse siempre pierde. Ejemplo 11.</div>
+    </div>
+  </div>
+  <div class="aparte"><span class="rotulo">¿Y el horizonte finito?</span>
+    <p>Los episodios duran 500 pasos, pero los cortes por tiempo arrancan del valor (B6): el agente ve un futuro sin fin y la cuenta de arriba es la que aplica. Sin ese arranque, con \(H\) pasos restantes, seguir vale \(\bar r\,(1-\gamma^H)/(1-\gamma)\): con \(H = 500\) el factor es 0,993 y nada cambia; con \(H = 100\), 0,63.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · terminación · 2</p>
   <h2>Si cada paso cuesta, estrellarse sale a cuenta</h2>
   <div class="cols">
     <div class="stack">
@@ -393,25 +1059,21 @@
           </tbody>
         </table>
       </div>
-      <p class="xsmall muted">Mismo PPO, mismas 78,6 M muestras; solo cambia la recompensa. \(c = \|e_p\| + 0{,}1\|v\| + 0{,}05\|\omega\| + 0{,}1\|\Delta a\|^2\). Evaluación: 200 arranques aleatorios, 10 s. <code>figuras_a6a.py</code>, sección 4.</p>
+      <p class="xsmall muted">Mismo PPO, mismas 78,6 M muestras; solo cambia la recompensa. \(c\) es el de dos hojas antes. Evaluación: 200 arranques aleatorios, 10 s. <code>figuras_a6a.py</code>, sección 4.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: cuándo compensa terminar</summary>
-        <p class="small">Si al seguir volando la recompensa media por paso es \(\bar r\) y estrellarse cuesta \(P\) una vez, terminar ya es mejor cuando</p>
-        \[ \frac{\bar r}{1-\gamma} &lt; -P \iff \bar r &lt; -P\,(1-\gamma). \]
-        <p class="small">Con \(\gamma = 0{,}99\) y \(P = 10\): basta \(\bar r &lt; -0{,}1\). Al principio, con el dron a 1–2 m de la consigna, \(1 - c\) ronda −1: estrellarse es lo racional. Con \(1-\tanh c \in (0,1]\), cada paso en el aire suma, y estrellarse siempre pierde.</p>
-      </details>
+      <p>Lo predicho, medido: con la ingenua, dos semillas se estrellan en todos los arranques y ninguna vuela sin choques con error por debajo de 20 cm. Con la acotada, las cinco.</p>
       <div class="callout clave"><span class="tag">Regla</span>Si el episodio puede terminar por un fallo, la recompensa de seguir debe ser positiva (o el castigo mayor que \(|\bar r|/(1-\gamma)\)). Eschmann et al. lo resuelven con una constante de supervivencia <a class="cite" data-ref="eschmann2024"></a>.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Recompensa · moldeado</p>
+  <p class="kicker">Recompensa · moldeado · 1</p>
   <h2>Premiar «estar cerca» crea un óptimo que no llega nunca</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Rejilla de 9 × 9, meta en una esquina, \(\gamma = 0{,}95\), política óptima por iteración de valor (<code>figuras_a6a.py</code>, sección 3):</p>
+      <p>Rejilla de 9 × 9, cuatro movimientos, meta en una esquina, \(\gamma = 0{,}95\); política óptima por iteración de valor (<code>figuras_a6a.py</code>, sección 3):</p>
       <div class="table-wrap">
         <table class="t">
           <thead><tr><th>Recompensa</th><th>¿Llega?</th><th>Pasos</th></tr></thead>
@@ -422,12 +1084,72 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Quedarse junto a la meta cobrando +1 por paso vale \(1/(1-\gamma) = 20\), más que los 10 de llegar.</p>
+      <p>\(\Phi(s)\) es el <strong>potencial</strong>: una función del estado que se elige a mano. Quedarse junto a la meta cobrando +1 por paso vale \(1/(1-\gamma) = 20\), más que los 10 de llegar.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 430 280" role="img" aria-label="Rejilla de 9 por 9 con la meta en la esquina, el camino óptimo y la casilla donde la bonificación ingenua atrapa al agente">
+        <defs><marker id="a6g4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <g class="ln-rule">
+          <path d="M30 20 V254 M56 20 V254 M82 20 V254 M108 20 V254 M134 20 V254 M160 20 V254 M186 20 V254 M212 20 V254 M238 20 V254 M264 20 V254"/>
+          <path d="M30 20 H264 M30 46 H264 M30 72 H264 M30 98 H264 M30 124 H264 M30 150 H264 M30 176 H264 M30 202 H264 M30 228 H264 M30 254 H264"/>
+        </g>
+        <rect x="238" y="20" width="26" height="26" class="box-accent"/>
+        <rect x="238" y="46" width="26" height="26" class="box-time"/>
+        <rect x="212" y="20" width="26" height="26" class="box-time"/>
+        <rect x="30" y="228" width="26" height="26" class="box-soft"/>
+        <path d="M43 241 H251 V40" class="ln-accent" stroke-width="2.4" marker-end="url(#a6g4)"/>
+        <circle cx="251" cy="59" r="7" class="ln-time" stroke-width="2.2"/>
+        <g font-size="13">
+          <text x="274" y="37" class="t-accent">meta: +10</text>
+          <text x="274" y="64" class="t-time">+1 por paso en las</text>
+          <text x="274" y="80" class="t-time">dos casillas naranjas</text>
+          <text x="274" y="110" class="t-time">ingenua: se queda,</text>
+          <text x="274" y="126" class="t-time">vale 20 &gt; 10</text>
+          <text x="274" y="236" class="t-accent">camino óptimo:</text>
+          <text x="274" y="252" class="t-accent">16 pasos</text>
+          <text x="30" y="272" class="t-muted">inicio (0, 0)</text>
+        </g>
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · moldeado · 2</p>
+  <h2>Por qué el potencial no cambia la política óptima</h2>
+  <p>Moldear por potencial es sumar a cada recompensa \(F_t = \gamma\Phi(s_{t+1}) - \Phi(s_t)\): \(\tilde r_t = r_t + F_t\). Es el resultado de Ng, Harada y Russell (1999), que GAE reformula <a class="cite" data-ref="schulman2016"></a> (nombrado aquí sin cita propia: no pudimos leer su texto). En un episodio de \(T\) pasos:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\tilde G_0 = \sum_{t=0}^{T-1}\gamma^t\big(r_t + \gamma\Phi(s_{t+1}) - \Phi(s_t)\big)\)</td><td>Retorno con la recompensa moldeada</td></tr>
+      <tr><td><strong>2</strong></td><td>\(= G_0 + \sum_{t=1}^{T}\gamma^{t}\Phi(s_{t}) - \sum_{t=0}^{T-1}\gamma^t\Phi(s_t)\)</td><td>Separar las sumas; en la del medio, renombrar \(t+1\to t\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= G_0 + \gamma^T\Phi(s_T) - \Phi(s_0)\)</td><td>Telescópica: los términos de \(t = 1\) a \(T-1\) aparecen en las dos sumas con signo opuesto</td></tr>
+      <tr><td><strong>4</strong></td><td>\(= G_0 - \Phi(s_0)\)</td><td>Con \(\Phi = 0\) en los estados terminales (o \(\gamma^T\to0\) si el episodio no acaba)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\tilde Q(s,a) = Q(s,a) - \Phi(s)\), \(\tilde V(s) = V(s) - \Phi(s)\)</td><td>Media de 4 empezando en \(s\) (con \(a\)): \(\Phi(s)\) está fijo</td></tr>
+      <tr><td><strong>6</strong></td><td>\(\tilde A = A\) y \(\arg\max_a\tilde Q(s,a) = \arg\max_a Q(s,a)\)</td><td>\(\Phi(s)\) no depende de la acción: se resta igual a todas</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué \(\Phi\) vale 0 en los estados terminales</span>
+    <p>Si no, queda \(\gamma^T\Phi(s_T)\), que depende de cuándo y dónde acaba el episodio y puede cambiar qué camino es mejor. Con \(\Phi(\text{meta}) = -5\) en lugar de 0, sobrarían −4,29 en un camino de 3 pasos y −3,87 en uno de 5 (ejemplo 12). En la rejilla del script, \(\Phi(\text{meta}) = 0\).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · moldeado · 3</p>
+  <h2>La suma telescópica con números, y qué hacer en un dron</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Dos caminos hasta la meta desde una casilla a distancia 3, con \(\gamma = 0{,}95\), \(\Phi = -\)distancia, \(\Phi(\text{meta}) = 0\) y 10 al llegar:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Camino (distancias)</th><th>\(F_t\)</th><th>\(\sum\gamma^tF_t\)</th><th>\(G_0\)</th><th>\(\tilde G_0\)</th></tr>
+          <tr><td>Directo<br><span class="xsmall muted">3, 2, 1, 0</span></td><td class="n">1,10; 1,05; 1,00</td><td class="n">3,00</td><td class="n">9,03</td><td class="n">12,03</td></tr>
+          <tr><td>Con rodeo<br><span class="xsmall muted">3, 4, 3, 2, 1, 0</span></td><td class="n">−0,80; 1,15; 1,10; 1,05; 1,00</td><td class="n">3,00</td><td class="n">8,15</td><td class="n">11,15</td></tr>
+        </table>
+      </div>
+      <p>Los dos suman \(-\Phi(s_0) = 3\): el moldeado desplaza todos los retornos lo mismo y el directo sigue ganando por 0,88. Lo que cambia es <em>cuándo</em> llega la señal: +1,1 al acercarse y −0,8 al alejarse en cada paso, en lugar de un 10 al final. Ejemplo 12.</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Derivación: por qué el potencial no cambia la política óptima</summary>
-        <p class="small">Con \(\tilde r = r + \gamma\Phi(s') - \Phi(s)\), la suma descontada telescópica da \(\tilde Q(s,a) = Q(s,a) - \Phi(s)\) y \(\tilde V(s) = V(s) - \Phi(s)\): la ventaja no cambia, \(\tilde A = A\), y el argmax tampoco <a class="cite" data-ref="schulman2016"></a>. Es el resultado de Ng, Harada y Russell (1999), que GAE reformula (nombrado aquí sin cita propia: no pudimos leer su texto).</p>
-      </details>
       <div class="callout clave"><span class="tag">Para drones</span>Una distancia a la consigna como potencial acelera el aprendizaje sin cambiar el óptimo; un premio por «estar en la zona» puede crear un dron que orbita la meta. Song et al. y Swift premian el <em>progreso</em> (diferencia de distancias), que es un potencial con \(\gamma\approx1\) <a class="cite" data-ref="song2021,kaufmann2023"></a>.</div>
       <div class="callout error"><span class="tag">Error frecuente</span>Arreglar un comportamiento raro añadiendo otro término. Cada término es una especificación nueva que el agente puede explotar; primero pregúntate qué incentivo creó el problema.</div>
     </div>
@@ -442,23 +1164,66 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">PPO en JAX · diseño</p>
-  <h2>Qué ve, qué manda y qué cobra el dron</h2>
+  <p class="kicker">PPO en JAX · diseño · 1</p>
+  <h2>Qué ve y qué manda el dron</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 190" role="img" aria-label="Lazo de la política del x500: política, lazo interno de velocidad angular, retardo, física y observación">
+      <defs><marker id="a6g5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <g font-size="15">
+        <rect x="20" y="40" width="170" height="70" rx="6" class="box-accent"/>
+        <text x="105" y="68" text-anchor="middle" class="t-bold">Política π<tspan baseline-shift="sub" font-size="75%">θ</tspan></text>
+        <text x="105" y="90" text-anchor="middle" class="t-mono" font-size="13">22 → 64 → 64 → 4</text>
+        <rect x="300" y="40" width="170" height="70" rx="6" class="box"/>
+        <text x="385" y="68" text-anchor="middle" class="t-bold">Lazo P de ω (A2)</text>
+        <text x="385" y="90" text-anchor="middle" class="t-muted" font-size="13">par para seguir ω<tspan baseline-shift="sub" font-size="75%">des</tspan></text>
+        <rect x="520" y="40" width="180" height="70" rx="6" class="box-time"/>
+        <text x="610" y="68" text-anchor="middle" class="t-bold">Retardo 30 ms</text>
+        <text x="610" y="90" text-anchor="middle" class="t-time" font-size="13">1.er orden: empuje y par</text>
+        <rect x="750" y="40" width="170" height="70" rx="6" class="box"/>
+        <text x="835" y="68" text-anchor="middle" class="t-bold">Física 500 Hz</text>
+        <text x="835" y="90" text-anchor="middle" class="t-muted" font-size="13">5 subpasos por acción</text>
+        <rect x="970" y="40" width="190" height="70" rx="6" class="box-soft"/>
+        <text x="1065" y="68" text-anchor="middle" class="t-bold">Observación (22)</text>
+        <text x="1065" y="90" text-anchor="middle" class="t-muted" font-size="13">e<tspan baseline-shift="sub" font-size="75%">p</tspan>, v, R, ω, a anterior</text>
+      </g>
+      <g class="ln">
+        <path d="M190 75 H298" marker-end="url(#a6g5)"/><path d="M470 75 H518" marker-end="url(#a6g5)"/>
+        <path d="M700 75 H748" marker-end="url(#a6g5)"/><path d="M920 75 H968" marker-end="url(#a6g5)"/>
+        <path d="M1065 110 V160 H105 V112" marker-end="url(#a6g5)"/>
+      </g>
+      <g font-size="13">
+        <text x="244" y="66" text-anchor="middle" class="t-mono">T, ω<tspan baseline-shift="sub" font-size="75%">des</tspan></text>
+        <text x="244" y="96" text-anchor="middle" class="t-time">100 Hz</text>
+        <text x="944" y="66" text-anchor="middle" class="t-mono">s</text>
+        <text x="945" y="26" text-anchor="middle" class="t-muted">del estado sale también r = 1 − tanh c − 10·choque</text>
+        <text x="585" y="180" text-anchor="middle" class="t-muted">cada 10 ms, la política ve la observación nueva</text>
+      </g>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Acción (4):</strong> empuje colectivo (de 0,2 a 1,8 veces el peso) y velocidades angulares deseadas (hasta 4, 4 y 2 rad/s), a 100 Hz. Un lazo P interno de velocidad angular (A2) y un retardo de 30 ms en empuje y par; física a 500 Hz.</li>
-        <li><strong>Observación (22):</strong> error de posición, velocidad, matriz de rotación (9), velocidad angular y la acción anterior.</li>
-        <li><strong>Recompensa:</strong> \(1 - \tanh c - 10\cdot\)choque, con \(c\) de la hoja anterior; choque si se aleja 4 m o se inclina más de 80°.</li>
+      <p><strong>Acción (4):</strong> empuje colectivo (de 0,2 a 1,8 veces el peso) y velocidades angulares deseadas (hasta 4, 4 y 2 rad/s), a 100 Hz. Un lazo P interno de velocidad angular (A2) y un retardo de 30 ms en empuje y par; física a 500 Hz.</p>
+      <p><strong>Observación (22):</strong> error de posición (3), velocidad (3), matriz de rotación (9), velocidad angular (3) y la acción anterior (4).</p>
+    </div>
+    <div class="callout clave"><span class="tag">Por qué la matriz de rotación</span>Un cuaternión tiene doble cobertura (\(q\) y \(-q\) son la misma actitud) y los ángulos de Euler tienen singularidades: la red tendría que aprender discontinuidades que no están en la física.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO en JAX · diseño · 2</p>
+  <h2>Qué cobra y cómo se entrena</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Recompensa:</strong> \(1 - \tanh c - 10\cdot\)choque, con el \(c\) de la parte 4; choque si se aleja 4 m o se inclina más de 80°.</li>
         <li><strong>Episodios:</strong> 5 s desde un estado aleatorio (±1,5 m, ±1 m/s, hasta 30° de inclinación); arranque del valor en los cortes por tiempo y episodios escalonados (B6).</li>
+        <li><strong>Redes:</strong> política y valor separadas, 2 × 64 tanh, inicialización ortogonal; ganancia 0,01 en la última capa de la política; log σ independiente del estado, desde σ = 0,6 <a class="cite" data-ref="andrychowicz2020,huang2022"></a>.</li>
       </ul>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Redes:</strong> política y valor separadas, 2 × 64 tanh, inicialización ortogonal; ganancia 0,01 en la última capa de la política; log σ independiente del estado, desde σ = 0,6 <a class="cite" data-ref="andrychowicz2020,huang2022"></a>.</li>
+      <ul>
         <li><strong>PPO:</strong> 4096 × 32 pasos, 5 épocas, 4 minilotes, \(\varepsilon = 0{,}2\), \(\gamma = 0{,}99\), \(\lambda = 0{,}95\), Adam 3·10⁻⁴, norma del gradiente ≤ 0,5, sin bonificación de entropía.</li>
       </ul>
-      <div class="callout clave"><span class="tag">Por qué la matriz de rotación</span>Un cuaternión tiene doble cobertura (\(q\) y \(-q\) son la misma actitud) y los ángulos de Euler tienen singularidades: la red tendría que aprender discontinuidades que no están en la física.</div>
       <div class="callout error"><span class="tag">Lo que no hace</span>Sin aleatorizar masa, motor, retardos ni ruido de sensores (B2–B4): es la base de A6b y B7, no una política para volar.</div>
     </div>
   </div>
@@ -489,10 +1254,10 @@
       <figcaption>Recompensa media por paso en el entrenamiento. Azul: 4096 × 32 (10 s). Morado: 256 × 512 (35 s). Gris: 1024 × 128 (15 s). Naranja: 16 384 × 8 (9 s). RTX 4060 Ti. <code>figuras_a6a.py</code>, sección 4.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Coste:</strong> 78,6 M pasos en 10,2 s: 7,7 M pasos/s con el aprendizaje incluido.</li>
+      <ul>
+        <li><strong>Coste:</strong> 78,6 M pasos en 10,3 s: 7,6 M pasos/s con el aprendizaje incluido.</li>
         <li><strong>Estacionario:</strong> desde 200 arranques aleatorios, ningún choque; error medio de 21 cm a 1 s y de 5 cm en régimen.</li>
-        <li><strong>Reparto:</strong> con el mismo número de muestras, 16 384 × 8 aprende peor (0,69 de recompensa media al final frente a 0,78–0,83): 8 pasos son 80 ms de horizonte, el problema que describen Rudin et al. (B6). 256 × 512 aprende igual pero tarda 3,4 veces más.</li>
+        <li><strong>Reparto:</strong> con el mismo número de muestras, 16 384 × 8 aprende peor (0,69 de recompensa media al final frente a 0,78–0,83): 8 pasos son 80 ms de horizonte, el problema que describen Rudin et al. (B6) y la hoja «El bucle de PPO en la GPU». 256 × 512 aprende igual pero tarda 3,4 veces más.</li>
         <li><strong>Generaliza poco:</strong> seguir un círculo de 1 m de radio a 1 m/s, que no vio al entrenar, da 65 cm de error: la política aprendió a ir a un punto, no a seguir una trayectoria (laboratorio, paso 4).</li>
       </ul>
     </div>
@@ -516,7 +1281,7 @@
   <h2>El RL de estado completo es el punto de partida, no el destino</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Observabilidad parcial:</strong> aquí la política ve el estado verdadero. Con observaciones ruidosas, retrasadas o incompletas, \(\pi(a\mid s)\) deja de bastar: hace falta memoria o un belief (A7b), y el crítico puede seguir viendo el estado (A6b).</li>
         <li><strong>Latencia:</strong> la acción anterior en la observación ya es una historia mínima; con los retardos de B4, la historia necesaria crece.</li>
         <li><strong>World models:</strong> el actor de Dreamer usa GAE y un crítico igual que aquí, pero sobre trayectorias imaginadas (A8a).</li>
@@ -654,8 +1419,8 @@
   <h2>PPO en JAX: estacionario y seguimiento</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>PPO desde cero</strong> sobre tu simulador vectorizado de B6, con tests de GAE.</li>
         <li><strong>Estacionario:</strong> reproducir los resultados con 5 semillas.</li>
         <li><strong>Recompensas:</strong> ingenua, acotada y con potencial.</li>
@@ -708,125 +1473,166 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\), \(Q\), \(A\) valor, valor de acción y ventaja. Sombrero: estimación a partir de muestras; asterisco: óptimo o maestro.</p>
+<p>Notación de RL común a A6a, A6b y A7b: \(s\) estado, \(a\) acción, \(r\) recompensa, \(\gamma\) descuento, \(\pi_\theta\) política con parámetros \(\theta\), \(V\), \(Q\), \(A\) valor, valor de acción y ventaja. Sombrero: estimación a partir de muestras; asterisco: óptimo o maestro. Avisos: \(r_t\) es la recompensa en las hojas 6–15 y el cociente de PPO desde la 16; en la parte 3, \(\theta\) son los pesos del crítico y \(\tau\) la tasa de las redes objetivo.</p>
 <dl>
-<dt>\(\mathbb E\)</dt><dd data-hojas="6">Esperanza (media) de una variable aleatoria. El subíndice indica la distribución, p. ej. \(\mathbb E_{\tau\sim\pi_\theta}\): media sobre trayectorias generadas por la política.</dd>
-<dt>\(\hat{\mathbb E}_t\)</dt><dd data-hojas="8">Media empírica sobre las muestras (pasos) de un lote, que sustituye a la esperanza en el objetivo de PPO.</dd>
-<dt>\(\sim\)</dt><dd data-hojas="6">«Se distribuye según», p. ej. \(\tau\sim\pi_\theta\).</dd>
-<dt>\(\nabla_\theta\)</dt><dd data-hojas="6">Gradiente respecto a los parámetros \(\theta\) de la política.</dd>
-<dt>\(\hat{\ }\)</dt><dd data-hojas="7">Sombrero: valor estimado con muestras, p. ej. \(\hat A_t\) es la ventaja estimada con GAE.</dd>
-<dt>\(\bar{\ }\)</dt><dd data-hojas="8">Barra: valor modificado o promedio, p. ej. \(\bar r_t\) (cociente recortado) o \(\bar r\) (recompensa media por paso).</dd>
-<dt>\(\iff\)</dt><dd data-hojas="19">«Si y solo si»; equivalencia entre dos condiciones.</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="18">Norma euclídea de un vector (su longitud), usada en los costes de recompensa.</dd>
-<dt>\(\mathcal N\)</dt><dd data-hojas="16">Distribución gaussiana (normal). En TD3, ruido gaussiano de media 0 que se suma a la acción del objetivo.</dd>
-<dt>\(\mathrm{clip}\)</dt><dd data-hojas="8">Recorte: \(\mathrm{clip}(x,l,u)\) fija \(x\) al intervalo \([l,u]\).</dd>
-<dt>\(\tanh\)</dt><dd data-hojas="15">Tangente hiperbólica, con valores en \((-1,1)\). Acota la acción en SAC y acota el coste en la recompensa del x500.</dd>
-<dt>\(\min\)</dt><dd data-hojas="8">Mínimo o máximo de dos o más valores (PPO toma el mínimo de dos términos; TD3, el mínimo de dos críticos).</dd>
-<dt>\(\int\)</dt><dd data-hojas="6">Integral sobre trayectorias o sobre acciones.</dd>
-<dt>\(\sum\)</dt><dd data-hojas="6">Suma, normalmente sobre los pasos de tiempo \(t\).</dd>
-<dt>\(\mathrm{diag}\)</dt><dd data-hojas="15">Matriz diagonal con los elementos dados; aparece en el jacobiano de la tangente hiperbólica.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="8,9">Esperanza (media) de una variable aleatoria. El subíndice indica la distribución, p. ej. \(\mathbb E_{\tau\sim\pi_\theta}\): media sobre trayectorias generadas por la política.</dd>
+<dt>\(\hat{\mathbb E}_t\)</dt><dd data-hojas="16,17">Media empírica sobre las muestras (pasos) de un lote, que sustituye a la esperanza en los objetivos de PPO.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="8">«Se distribuye según», p. ej. \(\tau\sim\pi_\theta\).</dd>
+<dt>\(\nabla_\theta\)</dt><dd data-hojas="8">Gradiente respecto a los parámetros \(\theta\) de la política.</dd>
+<dt>\(\hat{\ }\)</dt><dd data-hojas="11">Sombrero: valor estimado con muestras, p. ej. \(\hat A_t\) es la ventaja estimada con GAE y \(\hat g\) el gradiente estimado.</dd>
+<dt>\(\bar{\ }\)</dt><dd data-hojas="17,40">Barra: valor modificado o promedio, p. ej. \(\bar r_t\) (cociente recortado), \(\bar r\) (recompensa media por paso) o \(\bar{\mathcal H}\) (entropía objetivo).</dd>
+<dt>\(\iff\)</dt><dd data-hojas="40">«Si y solo si»; equivalencia entre dos condiciones.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="38,39">Norma euclídea de un vector (su longitud), usada en los costes de recompensa.</dd>
+<dt>\(\mathcal N\)</dt><dd data-hojas="10,35">Distribución gaussiana (normal). \(\mathcal N(a;\mu,\sigma^2)\) es su densidad en \(a\); en TD3, ruido gaussiano de media 0 que se suma a la acción del objetivo.</dd>
+<dt>\(\mathrm{clip}\)</dt><dd data-hojas="17,35">Recorte: \(\mathrm{clip}(x,l,u)\) lleva \(x\) al intervalo \([l,u]\).</dd>
+<dt>\(\tanh\)</dt><dd data-hojas="33,39">Tangente hiperbólica, con valores en \((-1,1)\). Acota la acción en SAC y acota el coste en la recompensa del x500.</dd>
+<dt>\(\min\)</dt><dd data-hojas="17,35">Mínimo de dos o más valores (PPO toma el mínimo de dos términos; SAC y TD3, el mínimo de dos críticos).</dd>
+<dt>\(\arg\max\)</dt><dd data-hojas="34,43">El argumento (la acción) que hace máxima una función.</dd>
+<dt>\(\int\)</dt><dd data-hojas="8">Integral sobre trayectorias o sobre acciones.</dd>
+<dt>\(\sum\)</dt><dd data-hojas="8">Suma, normalmente sobre los pasos de tiempo \(t\).</dd>
+<dt>\(\mathrm{diag}\)</dt><dd data-hojas="33">Matriz diagonal con los elementos dados; aparece en el jacobiano de la tangente hiperbólica.</dd>
+<dt>\(\odot\)</dt><dd data-hojas="26">Producto componente a componente de dos vectores.</dd>
+<dt>\(\sigma(\theta)\)</dt><dd data-hojas="10">Sigmoide \(1/(1+e^{-\theta})\): probabilidad de «der» en el bandido del ejemplo. No es la desviación \(\sigma\) de la política gaussiana.</dd>
 </dl>
 <h3>Gradiente de la política (parte 1)</h3>
 <dl>
-<dt>\(\pi_\theta(a\mid s)\)</dt><dd data-hojas="6">Política estocástica: probabilidad de la acción \(a\) en el estado \(s\), con parámetros \(\theta\) (los pesos de la red).</dd>
-<dt>\(\theta\)</dt><dd data-hojas="6">Parámetros de la política (vector de pesos de la red).</dd>
+<dt>\(\pi_\theta(a\mid s)\)</dt><dd data-hojas="6,8">Política estocástica: probabilidad (o densidad) de la acción \(a\) en el estado \(s\), con parámetros \(\theta\) (los pesos de la red).</dd>
+<dt>\(\theta\)</dt><dd data-hojas="6">Parámetros de la política (vector de pesos de la red). En la parte 3, pesos del crítico.</dd>
 <dt>\(s\), \(s_t\)</dt><dd data-hojas="6">Estado en el instante \(t\).</dd>
-<dt>\(s'\)</dt><dd data-hojas="16">Estado siguiente.</dd>
-<dt>\(a\), \(a_t\)</dt><dd data-hojas="6">Acción tomada por la política en el instante \(t\).</dd>
-<dt>\(r\), \(r_t\)</dt><dd data-hojas="6">Recompensa escalar recibida en el paso \(t\).</dd>
-<dt>\(t\)</dt><dd data-hojas="6">Índice del paso de tiempo.</dd>
-<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento, en \([0,1)\). En las tareas del tema, 0,99. Pondera \(\gamma^t\) las recompensas futuras y fija el horizonte efectivo \(1/(1-\gamma)\).</dd>
-<dt>\(\tau\)</dt><dd data-hojas="6">Trayectoria \((s_0,a_0,r_0,s_1,\dots)\) generada por la política y la dinámica. (En SAC, \(\tau\) es otra cosa: la tasa de actualización de las redes objetivo.)</dd>
-<dt>\(J(\theta)\)</dt><dd data-hojas="6">Objetivo de la política: retorno descontado esperado \(\mathbb E_{\tau\sim\pi_\theta}[\sum_t\gamma^t r_t]\), que se quiere maximizar.</dd>
-<dt>\(R(\tau)\)</dt><dd data-hojas="6">Retorno de una trayectoria completa.</dd>
-<dt>\(p_\theta(\tau)\)</dt><dd data-hojas="6">Probabilidad de la trayectoria \(\tau\) bajo la política \(\pi_\theta\) y la dinámica; solo la parte de la política depende de \(\theta\).</dd>
-<dt>\(p(s_{t+1}\mid s_t,a_t)\)</dt><dd data-hojas="6">Dinámica del entorno: no depende de \(\theta\), por eso desaparece del gradiente.</dd>
-<dt>\(Q^\pi(s,a)\)</dt><dd data-hojas="6">Valor de acción: retorno esperado si se toma \(a\) en \(s\) y después se sigue \(\pi\).</dd>
-<dt>\(V^\pi(s)\)</dt><dd data-hojas="6">Función de valor: retorno esperado desde \(s\) siguiendo \(\pi\). Es la línea base del gradiente.</dd>
-<dt>\(V(s_t)\)</dt><dd data-hojas="6">Función de valor aprendida (crítico) en el estado \(s\), con una red aparte de la política.</dd>
-<dt>\(A^\pi(s,a)\)</dt><dd data-hojas="6">Ventaja: \(Q^\pi(s,a)-V^\pi(s)\), cuánto mejor es la acción \(a\) que la media de la política en \(s\).</dd>
-<dt>\(b(s)\)</dt><dd data-hojas="6">Línea base: cualquier función que no dependa de la acción; restarla no cambia la esperanza del gradiente y reduce la varianza.</dd>
-<dt>\(\nabla_\theta\log\pi_\theta\)</dt><dd data-hojas="6">Gradiente del logaritmo de la política («score»). Sube la probabilidad de la acción tomada.</dd>
+<dt>\(s'\)</dt><dd data-hojas="29,31">Estado siguiente.</dd>
+<dt>\(a\), \(a_t\)</dt><dd data-hojas="6">Acción tomada por la política en el instante \(t\); en el x500, 4 mandos en \([-1,1]\).</dd>
+<dt>\(r\), \(r_t\)</dt><dd data-hojas="6">Recompensa escalar recibida en el paso \(t\). Desde la hoja 16, \(r_t\) es el cociente de PPO.</dd>
+<dt>\(t\)</dt><dd data-hojas="6">Índice del paso de tiempo (un periodo de control, 10 ms en el x500).</dd>
+<dt>\(\gamma\)</dt><dd data-hojas="6">Factor de descuento, en \([0,1)\). En las tareas del tema, 0,99. Pondera \(\gamma^l\) una recompensa a \(l\) pasos y fija el horizonte efectivo \(1/(1-\gamma)\): 100 pasos, 1 s.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="6">Trayectoria \((s_0,a_0,r_0,s_1,\dots)\) generada por la política y la dinámica. (En la parte 3, \(\tau\) es otra cosa: la tasa de las redes objetivo.)</dd>
+<dt>\(J(\theta)\)</dt><dd data-hojas="6,8">Objetivo de la política: retorno descontado esperado \(\mathbb E_{\tau\sim\pi_\theta}[\sum_t\gamma^t r_t]\), que se quiere maximizar.</dd>
+<dt>\(R(\tau)\)</dt><dd data-hojas="6,8">Retorno de una trayectoria completa, \(\sum_t\gamma^t r_t\).</dd>
+<dt>\(G_t\)</dt><dd data-hojas="6,9">Retorno desde el paso \(t\): \(\sum_{l\ge0}\gamma^l r_{t+l}\). Su media condicionada a \((s_t,a_t)\) es \(Q^\pi\).</dd>
+<dt>\(p_\theta(\tau)\)</dt><dd data-hojas="6,7">Probabilidad de la trayectoria \(\tau\) bajo la política \(\pi_\theta\) y la dinámica; solo la parte de la política depende de \(\theta\).</dd>
+<dt>\(p(s_{t+1}\mid s_t,a_t)\)</dt><dd data-hojas="7">Dinámica del entorno: no depende de \(\theta\), por eso desaparece del gradiente.</dd>
+<dt>\(Q^\pi(s,a)\)</dt><dd data-hojas="6,9">Valor de acción: retorno esperado si se toma \(a\) en \(s\) y después se sigue \(\pi\).</dd>
+<dt>\(V^\pi(s)\)</dt><dd data-hojas="6,9">Función de valor: retorno esperado desde \(s\) siguiendo \(\pi\). Es la línea base del gradiente.</dd>
+<dt>\(V(s_t)\)</dt><dd data-hojas="11,12">Función de valor aprendida (crítico) en el estado \(s_t\), con una red aparte de la política.</dd>
+<dt>\(A^\pi(s,a)\)</dt><dd data-hojas="6,9">Ventaja: \(Q^\pi(s,a)-V^\pi(s)\), cuánto mejor es la acción \(a\) que la media de la política en \(s\).</dd>
+<dt>\(b(s)\)</dt><dd data-hojas="6,9">Línea base: cualquier función que no dependa de la acción; restarla no cambia la esperanza del gradiente y reduce la varianza.</dd>
+<dt>\(\nabla_\theta\log\pi_\theta\)</dt><dd data-hojas="8,10">Gradiente del logaritmo de la política («score»). Sube la probabilidad de la acción tomada.</dd>
+<dt>\(\hat g\)</dt><dd data-hojas="7,8">Estimación del gradiente \(\nabla_\theta J\) con un lote de trayectorias.</dd>
+<dt>\(M\)</dt><dd data-hojas="8">Número de trayectorias con que se promedia el estimador REINFORCE.</dd>
+<dt>\(\mu\), \(\sigma\)</dt><dd data-hojas="10,26">Media y desviación de la política gaussiana. En el x500, la media sale de la red y \(\sigma\) es un parámetro aparte (\(\log\sigma\) independiente del estado), inicial \(e^{-0{,}5}\approx0{,}6\).</dd>
 </dl>
 <h3>GAE y PPO</h3>
 <dl>
-<dt>\(\delta_t\)</dt><dd data-hojas="7">Error de diferencia temporal: \(r_t+\gamma V(s_{t+1})-V(s_t)\). Es una estimación de la ventaja a un paso.</dd>
-<dt>\(\hat A_t\)</dt><dd data-hojas="7">Ventaja estimada en el paso \(t\) (con GAE).</dd>
-<dt>\(\hat A_t^{\mathrm{GAE}(\gamma,\lambda)}\)</dt><dd data-hojas="7">Estimador de ventaja generalizada: \(\sum_{l\ge0}(\gamma\lambda)^l\delta_{t+l}\), media exponencial de ventajas a varios pasos.</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="7">Parámetro de GAE en \([0,1]\): con 0 la ventaja es \(\delta_t\) (poca varianza, sesgo si \(V\) falla); con 1, el retorno menos \(V\) (sin sesgo, mucha varianza). Se usa 0,95 en el x500.</dd>
-<dt>\(l\)</dt><dd data-hojas="7">Índice de la suma de GAE: cuántos pasos hacia delante se mira.</dd>
-<dt>\(L^{\text{CLIP}}\)</dt><dd data-hojas="8">Objetivo sustituto recortado de PPO, que se maximiza.</dd>
-<dt>\(r_t\) (cociente)</dt><dd data-hojas="8">Cociente de probabilidades \(\pi_\theta(a_t\mid s_t)/\pi_{\theta_\text{viejo}}(a_t\mid s_t)\) entre la política nueva y la que recogió los datos. En la hoja 6, \(r_t\) es la recompensa; en PPO, el cociente.</dd>
-<dt>\(\bar r_t\)</dt><dd data-hojas="8">Cociente recortado \(\mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)\).</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="8">Anchura del recorte de PPO (0,2 en el tema). En BC/DAgger (A6b) es otra cosa: error por paso del alumno.</dd>
-<dt>\(\pi_{\theta_\text{viejo}}\)</dt><dd data-hojas="9">Política con la que se recogieron los datos del lote, fija durante las épocas de actualización.</dd>
-<dt>\(L^{\text{VF}}\)</dt><dd data-hojas="9">Pérdida de la función de valor (error cuadrático contra los objetivos \(\hat A_t+V(s_t)\)).</dd>
-<dt>\(c_1\), \(c_2\)</dt><dd data-hojas="9">Coeficientes que ponderan la pérdida del valor y la bonificación de entropía en el objetivo total de PPO.</dd>
-<dt>\(S[\pi_\theta]\)</dt><dd data-hojas="9">Bonificación de entropía de la política; en el x500 no se usa.</dd>
-<dt>\(N\), \(T\)</dt><dd data-hojas="9">En PPO: número de entornos en paralelo y de pasos por tramo desplegado (4096 × 32 en el x500). En DAgger (A6b), \(T\) es el horizonte.</dd>
-<dt>\(K\)</dt><dd data-hojas="9">Número de épocas de optimización sobre cada lote.</dd>
-<dt>\(\delta\)</dt><dd data-hojas="8">Cota de la divergencia KL media en TRPO (0,01). No es el error de diferencia temporal \(\delta_t\) de GAE.</dd>
-<dt>σ</dt><dd data-hojas="11">Desviación de la acción de la política gaussiana; se aprende como \(\log\sigma\) independiente del estado (inicial 0,6 en el x500).</dd>
+<dt>\(\delta_t\)</dt><dd data-hojas="11">Error de diferencia temporal: \(r_t+\gamma V(s_{t+1})-V(s_t)\). Si \(V = V^\pi\), su media es la ventaja: una estimación a un paso.</dd>
+<dt>\(\hat A_t^{(k)}\)</dt><dd data-hojas="11,14">Ventaja a \(k\) pasos: \(k\) recompensas reales y el crítico en \(s_{t+k}\); igual a \(\sum_{l\lt k}\gamma^l\delta_{t+l}\).</dd>
+<dt>\(k\)</dt><dd data-hojas="11">Número de pasos con recompensas reales en \(\hat A_t^{(k)}\).</dd>
+<dt>\(\hat A_t\)</dt><dd data-hojas="12,14">Ventaja estimada en el paso \(t\) (con GAE). Se calcula hacia atrás: \(\hat A_t = \delta_t + \gamma\lambda\hat A_{t+1}\).</dd>
+<dt>\(\hat A_t^{\mathrm{GAE}(\gamma,\lambda)}\)</dt><dd data-hojas="12">Estimador de ventaja generalizada: media exponencial \((1-\lambda)\sum_k\lambda^{k-1}\hat A_t^{(k)} = \sum_{l\ge0}(\gamma\lambda)^l\delta_{t+l}\).</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="12">Parámetro de GAE en \([0,1]\): con 0 la ventaja es \(\delta_t\) (poca varianza, sesgo si \(V\) falla); con 1, el retorno menos \(V\) (sin sesgo, mucha varianza). Se usa 0,95 en el x500.</dd>
+<dt>\(l\)</dt><dd data-hojas="11,12">Índice de la suma de GAE: cuántos pasos hacia delante se mira.</dd>
+<dt>\(\mathrm{fin}_t\)</dt><dd data-hojas="13">Indicador de final de episodio en el paso \(t\) (choque o corte por tiempo): corta la recursión de GAE.</dd>
+<dt>\(\hat V_t\)</dt><dd data-hojas="20">Objetivo del valor: \(\hat A_t + V(s_t)\), con el \(V\) del despliegue.</dd>
+<dt>\(L^{\text{IS}}\)</dt><dd data-hojas="16">Objetivo sustituto \(\hat{\mathbb E}_t[r_t\hat A_t]\): su gradiente en \(\theta_\text{viejo}\) es el de la política.</dd>
+<dt>\(r_t\) (cociente)</dt><dd data-hojas="16">Cociente de probabilidades \(\pi_\theta(a_t\mid s_t)/\pi_{\theta_\text{viejo}}(a_t\mid s_t)\) entre la política nueva y la que recogió los datos. En las hojas 6–15, \(r_t\) es la recompensa.</dd>
+<dt>\(\pi_{\theta_\text{viejo}}\)</dt><dd data-hojas="16,19">Política con la que se recogieron los datos del lote, fija durante las épocas de actualización.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="16">Cota de la divergencia KL media en TRPO (0,01). No es el error de diferencia temporal \(\delta_t\) de GAE.</dd>
+<dt>\(L^{\text{CLIP}}\)</dt><dd data-hojas="17,18">Objetivo sustituto recortado de PPO, que se maximiza.</dd>
+<dt>\(\bar r_t\)</dt><dd data-hojas="17">Cociente recortado \(\mathrm{clip}(r_t,1-\varepsilon,1+\varepsilon)\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="17">Anchura del recorte de PPO (0,2 en el tema). En BC/DAgger (A6b) es otra cosa: error por paso del alumno.</dd>
+<dt>\(N\), \(T\)</dt><dd data-hojas="19,20">En PPO: número de entornos en paralelo y de pasos por tramo desplegado (4096 × 32 en el x500). En la hoja 26, \(T\) es el empuje colectivo; en DAgger (A6b), el horizonte.</dd>
+<dt>\(K\)</dt><dd data-hojas="20">Número de épocas de optimización sobre cada lote (5 en el x500).</dd>
+<dt>\(L^{\text{VF}}\)</dt><dd data-hojas="20">Pérdida de la función de valor: \(\tfrac12\hat{\mathbb E}_t[(V_\theta(s_t)-\hat V_t)^2]\).</dd>
+<dt>\(c_1\), \(c_2\)</dt><dd data-hojas="20">Coeficientes que ponderan la pérdida del valor (0,5) y la bonificación de entropía (0) en el objetivo total de PPO.</dd>
+<dt>\(S[\pi_\theta]\)</dt><dd data-hojas="20">Bonificación de entropía de la política; en el x500 no se usa.</dd>
+<dt>\(\widehat{\mathrm{KL}}\)</dt><dd data-hojas="21">Estimador de la KL entre política vieja y nueva con las muestras del lote: \(\hat{\mathbb E}_t[(r_t-1)-\log r_t]\), siempre \(\ge0\).</dd>
+</dl>
+<h3>Implementación (parte 2)</h3>
+<dl>
+<dt>\(\mu_A\), \(\sigma_A\)</dt><dd data-hojas="24">Media y desviación de las ventajas de un minilote, con las que se normalizan.</dd>
+<dt>\(\hat\mu_o\), \(\hat\sigma_o\)</dt><dd data-hojas="24">Media y desviación móviles de las observaciones \(o\), para normalizarlas.</dd>
+<dt>\(\hat\sigma_G\)</dt><dd data-hojas="24">Desviación de un retorno descontado móvil, con la que se escala la recompensa.</dd>
+<dt>\(T\) (empuje)</dt><dd data-hojas="26">Empuje colectivo del x500, \(mg(1+0{,}8a_0)\), de 0,2 a 1,8 veces el peso (N).</dd>
+<dt>\(mg\)</dt><dd data-hojas="26">Peso del x500: masa \(m\) = 2 kg (en el script) por la gravedad \(g\); 19,6 N.</dd>
+<dt>\(a_0\)</dt><dd data-hojas="26">Primera componente de la acción, la del empuje; \(a_1\), \(a_2\), \(a_3\) mandan las velocidades angulares.</dd>
+<dt>\(\boldsymbol\omega_\text{des}\)</dt><dd data-hojas="26">Velocidad angular pedida al lazo interno, \((4,4,2)\odot(a_1,a_2,a_3)\) rad/s.</dd>
 </dl>
 
 <h3>Fuera de política: SAC y TD3</h3>
+<p>En esta parte, \(\theta\) son los pesos del crítico y \(\phi\) los del actor, como en los artículos.</p>
 <dl>
-<dt>\(\alpha\)</dt><dd data-hojas="15">Temperatura de SAC: peso de la entropía frente a la recompensa. Se ajusta sola con su propio gradiente.</dd>
-<dt>\(\mathcal H(\pi(\cdot\mid s_t))\)</dt><dd data-hojas="15">Entropía de la política en \(s_t\): mide cuánto aleatoriza.</dd>
-<dt>\(\rho_\pi\)</dt><dd data-hojas="15">Distribución de pares estado-acción que visita la política \(\pi\).</dd>
-<dt>\(J(\pi)\)</dt><dd data-hojas="15">Objetivo de máxima entropía de SAC: recompensa más \(\alpha\) por entropía, sumados en el tiempo.</dd>
-<dt>\(Q(s,a)\)</dt><dd data-hojas="15">Crítico de acción aprendido con el búfer de repetición.</dd>
-<dt>\(\bar{\mathcal H}\)</dt><dd data-hojas="15">Entropía mínima objetivo de SAC, restricción de la temperatura automática; objetivo \(-\dim(A)\).</dd>
-<dt>\(\dim(A)\)</dt><dd data-hojas="15">Dimensión del espacio de acciones \(A\).</dd>
-<dt>\(\tau = 0{,}005\)</dt><dd data-hojas="15">Tasa de la actualización suave de las redes objetivo en SAC.</dd>
-<dt>\(u\), \(\mu(u\mid s)\)</dt><dd data-hojas="15">Muestra gaussiana previa a la tangente hiperbólica y su densidad. En DAgger (A6b), \(u\) es otra cosa: el aumento del coste futuro por una acción errónea.</dd>
-<dt>\(\log\pi(a\mid s)\)</dt><dd data-hojas="15">Log-probabilidad de la acción acotada: \(\log\mu(u\mid s)-\sum_i\log(1-\tanh^2u_i)\).</dd>
-<dt>\(y\)</dt><dd data-hojas="16">Objetivo del crítico en TD3: \(r+\gamma\min_i Q_{\theta'_i}(s',\pi_{\phi'}(s'))\).</dd>
-<dt>\(Q_{\theta'_i}\)</dt><dd data-hojas="16">Los dos críticos objetivo de TD3 (\(i=1,2\)); se toma el mínimo para evitar sobrestimar el valor.</dd>
-<dt>\(\pi_{\phi'}\)</dt><dd data-hojas="16">Actor determinista objetivo de TD3, con parámetros \(\phi'\).</dd>
-<dt>\(d\)</dt><dd data-hojas="16">Retraso de las actualizaciones del actor en TD3 (cada 2 pasos del crítico).</dd>
+<dt>\(\mathcal D\)</dt><dd data-hojas="29,30">Búfer de repetición: transiciones \((s,a,r,s',\mathrm{fin})\) de políticas pasadas (\(10^6\) en SAC).</dd>
+<dt>\(Q_{\theta_1}\), \(Q_{\theta_2}\)</dt><dd data-hojas="29,31">Los dos críticos de acción de SAC y TD3; se usa el mínimo de los dos para no sobrestimar.</dd>
+<dt>\(\theta'_i\), \(\phi'\)</dt><dd data-hojas="29">Parámetros de las redes objetivo (copias lentas de críticos y actor).</dd>
+<dt>\(\tau = 0{,}005\)</dt><dd data-hojas="31">Tasa de la actualización suave de las redes objetivo, \(\theta'\leftarrow\tau\theta+(1-\tau)\theta'\): memoria de unos 200 pasos.</dd>
+<dt>\(\pi_\phi\)</dt><dd data-hojas="29,33">Actor con parámetros \(\phi\): estocástico en SAC, determinista en TD3.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="29,31">Temperatura de SAC: peso de la entropía frente a la recompensa. Se ajusta sola con su propio gradiente.</dd>
+<dt>\(\mathcal H(\pi(\cdot\mid s))\)</dt><dd data-hojas="29,31">Entropía de la política en \(s\), \(-\mathbb E_{a\sim\pi}[\log\pi(a\mid s)]\): mide cuánto aleatoriza (en nats).</dd>
+<dt>\(\bar{\mathcal H}\)</dt><dd data-hojas="29,33">Entropía mínima objetivo de SAC, restricción de la temperatura automática; habitual \(-\dim(A)\).</dd>
+<dt>\(\rho_\pi\)</dt><dd data-hojas="29,31">Distribución de pares estado-acción que visita la política \(\pi\).</dd>
+<dt>\(u\), \(\mu(u\mid s)\)</dt><dd data-hojas="29,33">Muestra gaussiana previa a la tangente hiperbólica y su densidad. En DAgger (A6b), \(u\) es otra cosa: el aumento del coste futuro por una acción errónea.</dd>
+<dt>\(\xi\)</dt><dd data-hojas="29,33">Ruido gaussiano: el de la reparametrización en SAC y el del suavizado en TD3 (\(\epsilon\) en los artículos).</dd>
+<dt>\(y\)</dt><dd data-hojas="29,31">Objetivo del crítico. En SAC, \(r+\gamma(1-\mathrm{fin})(\min_iQ_{\theta'_i}(s',a')-\alpha\log\pi_\phi(a'\mid s'))\); en TD3, \(r+\gamma\min_iQ_{\theta'_i}(s',\tilde a)\).</dd>
+<dt>\(d\)</dt><dd data-hojas="29,35">Retraso de las actualizaciones del actor en TD3 (cada 2 pasos del crítico).</dd>
+<dt>\(J(\pi)\)</dt><dd data-hojas="31">Objetivo de máxima entropía de SAC: recompensa más \(\alpha\) por entropía, sumados en el tiempo.</dd>
+<dt>\(V(s)\) (SAC)</dt><dd data-hojas="31">Valor suave: \(\mathbb E_{a\sim\pi}[Q(s,a)-\alpha\log\pi(a\mid s)]\), que incluye la entropía que se cobrará en \(s\).</dd>
+<dt>\(Q(s,a)\)</dt><dd data-hojas="31">Crítico de acción aprendido con el búfer de repetición.</dd>
+<dt>\(\mathcal L\), \(\eta\), \(Z\)</dt><dd data-hojas="32">Lagrangiano, multiplicador de Lagrange de la normalización y constante de normalización \(\sum_b e^{Q(b)/\alpha}\) de la política de Boltzmann.</dd>
+<dt>\(J_\pi(\phi)\)</dt><dd data-hojas="33">Pérdida del actor de SAC: \(\mathbb E[\alpha\log\pi_\phi(a\mid s)-Q_\theta(s,a)]\), con \(a\) reparametrizada.</dd>
+<dt>\(\mu_\phi(s)\), \(\sigma_\phi(s)\)</dt><dd data-hojas="33">Media y desviación de la gaussiana del actor de SAC antes de la tanh.</dd>
+<dt>\(J(\alpha)\)</dt><dd data-hojas="33">Pérdida de la temperatura: \(\mathbb E[-\alpha\log\pi-\alpha\bar{\mathcal H}]\); su derivada es \(\mathcal H(\pi)-\bar{\mathcal H}\).</dd>
+<dt>\(\dim(A)\)</dt><dd data-hojas="33">Dimensión del espacio de acciones \(A\) (4 en el x500).</dd>
+<dt>\(\log\pi(a\mid s)\)</dt><dd data-hojas="33">Log-probabilidad de la acción acotada: \(\log\mu(u\mid s)-\sum_i\log(1-\tanh^2u_i)\).</dd>
+<dt>\(n_a\), \(a^\ast\)</dt><dd data-hojas="34">Número de acciones del ejemplo de sobrestimación y acción que elige el primer crítico.</dd>
+<dt>\(Q_{\theta'_i}\)</dt><dd data-hojas="35">Los dos críticos objetivo de TD3 (\(i=1,2\)); se toma el mínimo para evitar sobrestimar el valor.</dd>
+<dt>\(\pi_{\phi'}\)</dt><dd data-hojas="35">Actor determinista objetivo de TD3, con parámetros \(\phi'\).</dd>
+<dt>\(\tilde a\)</dt><dd data-hojas="35">Acción suavizada del objetivo de TD3: la del actor objetivo más ruido recortado a ±0,5, recortada a las cotas \(a_\text{mín}\), \(a_\text{máx}\).</dd>
+<dt>\(\tilde\sigma\)</dt><dd data-hojas="35">Desviación del ruido de suavizado de TD3 (0,2).</dd>
 </dl>
 
 <h3>Recompensa de un dron</h3>
 <dl>
-<dt>\(p\), \(e_p\)</dt><dd data-hojas="18">Posición del dron y su error respecto a la consigna.</dd>
-<dt>\(v\), \(e_v\)</dt><dd data-hojas="18">Velocidad lineal del dron y su error.</dd>
-<dt>\(\omega\), \(e_\omega\)</dt><dd data-hojas="18">Velocidad angular del dron (rad/s) y su error.</dd>
-<dt>\(\Delta a\)</dt><dd data-hojas="19">Cambio de la acción entre pasos consecutivos; \(\|\Delta a\|^2\) mide la suavidad del mando.</dd>
-<dt>\(\angle R\)</dt><dd data-hojas="18">Ángulo de la rotación del dron respecto a la actitud deseada.</dd>
-<dt>\(\alpha_v\), \(\alpha_\omega\), \(\alpha_a\), \(\alpha_R\)</dt><dd data-hojas="18">Pesos de los términos de velocidad, velocidad angular, acción y rotación en el coste de Molchanov et al.</dd>
-<dt>\(dt\)</dt><dd data-hojas="18">Paso de tiempo que multiplica el coste en la recompensa de Molchanov et al.</dd>
-<dt>\(b\)</dt><dd data-hojas="18">Peso de la penalización \(b\|\omega\|^2\) en la recompensa de carreras de Song et al. (en la hoja 6, \(b(s)\) es la línea base).</dd>
-<dt>\(C_{rs}\)</dt><dd data-hojas="18">Constante de supervivencia de Eschmann et al.: se suma por paso para que seguir volando valga más que terminar.</dd>
-<dt>\(c\)</dt><dd data-hojas="19">Coste por paso del x500: \(\|e_p\|+0{,}1\|v\|+0{,}05\|\omega\|+0{,}1\|\Delta a\|^2\).</dd>
-<dt>\(P\)</dt><dd data-hojas="19">Castigo único por estrellarse (10 en el x500).</dd>
-<dt>\(\bar r\)</dt><dd data-hojas="19">Recompensa media por paso mientras se sigue volando. Terminar compensa si \(\bar r<-P(1-\gamma)\).</dd>
-<dt>\(\Phi\)</dt><dd data-hojas="20">Potencial de moldeado (p. ej. menos la distancia a la meta).</dd>
-<dt>\(\tilde r\)</dt><dd data-hojas="20">Recompensa con moldeado por potencial: \(r+\gamma\Phi(s')-\Phi(s)\).</dd>
-<dt>\(\tilde Q\), \(\tilde V\), \(\tilde A\)</dt><dd data-hojas="20">Valores bajo la recompensa moldeada: \(\tilde Q=Q-\Phi\), \(\tilde V=V-\Phi\), \(\tilde A=A\). La política óptima no cambia.</dd>
+<dt>\(p\), \(e_p\)</dt><dd data-hojas="38,39">Posición del dron y su error respecto a la consigna (m).</dd>
+<dt>\(v\), \(e_v\)</dt><dd data-hojas="38">Velocidad lineal del dron y su error.</dd>
+<dt>\(\omega\), \(e_\omega\)</dt><dd data-hojas="38">Velocidad angular del dron (rad/s) y su error.</dd>
+<dt>\(\Delta a\)</dt><dd data-hojas="39">Cambio de la acción entre pasos consecutivos, \(a_t-a_{t-1}\); \(\|\Delta a\|^2\) mide la suavidad del mando.</dd>
+<dt>\(\angle R\)</dt><dd data-hojas="38">Ángulo de la rotación que lleva la actitud del dron a la deseada.</dd>
+<dt>\(\alpha_v\), \(\alpha_\omega\), \(\alpha_a\), \(\alpha_R\)</dt><dd data-hojas="38">Pesos de los términos de velocidad, velocidad angular, acción y rotación en el coste de Molchanov et al. (no son la temperatura de SAC).</dd>
+<dt>\(dt\)</dt><dd data-hojas="38">Paso de tiempo que multiplica el coste en la recompensa de Molchanov et al.</dd>
+<dt>\(b\)</dt><dd data-hojas="38">Peso de la penalización \(b\|\omega\|^2\) en la recompensa de carreras de Song et al. (en la hoja 9, \(b(s)\) es la línea base).</dd>
+<dt>\(C_{rs}\)</dt><dd data-hojas="38">Constante de supervivencia de Eschmann et al.: se suma por paso para que seguir volando valga más que terminar.</dd>
+<dt>\(c\)</dt><dd data-hojas="39">Coste por paso del x500: \(\|e_p\|+0{,}1\|v\|+0{,}05\|\omega\|+0{,}1\|\Delta a\|^2\).</dd>
+<dt>\(P\)</dt><dd data-hojas="40">Castigo único por estrellarse (10 en el x500).</dd>
+<dt>\(\bar r\)</dt><dd data-hojas="40">Recompensa media por paso mientras se sigue volando. Terminar compensa si \(\bar r&lt;-P(1-\gamma)\).</dd>
+<dt>\(H\)</dt><dd data-hojas="40">Pasos que quedan de episodio, si no se arrancara del valor en los cortes por tiempo.</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="42,43">Potencial de moldeado: función del estado elegida a mano (p. ej. menos la distancia a la meta), nula en los estados terminales.</dd>
+<dt>\(F_t\)</dt><dd data-hojas="43,44">Término de moldeado \(\gamma\Phi(s_{t+1})-\Phi(s_t)\) que se suma a la recompensa.</dd>
+<dt>\(\tilde r_t\)</dt><dd data-hojas="43">Recompensa con moldeado por potencial: \(r_t+F_t\).</dd>
+<dt>\(\tilde G_0\)</dt><dd data-hojas="43,44">Retorno con la recompensa moldeada: \(G_0-\Phi(s_0)\).</dd>
+<dt>\(\tilde Q\), \(\tilde V\), \(\tilde A\)</dt><dd data-hojas="43">Valores bajo la recompensa moldeada: \(\tilde Q=Q-\Phi\), \(\tilde V=V-\Phi\), \(\tilde A=A\). La política óptima no cambia.</dd>
 </dl>
 
 <h3>PPO en JAX con el x500</h3>
 <dl>
-<dt>log σ</dt><dd data-hojas="22">Logaritmo de la desviación de la política gaussiana, parámetro independiente del estado.</dd>
-<dt>\(q\)</dt><dd data-hojas="22">Cuaternión de actitud; \(q\) y \(-q\) representan la misma actitud (doble cobertura), por eso la observación usa la matriz de rotación.</dd>
+<dt>log σ</dt><dd data-hojas="47">Logaritmo de la desviación de la política gaussiana, parámetro independiente del estado.</dd>
+<dt>\(q\)</dt><dd data-hojas="46">Cuaternión de actitud; \(q\) y \(-q\) representan la misma actitud (doble cobertura), por eso la observación usa la matriz de rotación.</dd>
 </dl>
 
 <h3>Siglas</h3>
 <dl>
 <dt>RL</dt><dd data-hojas="1">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>PPO</dt><dd data-hojas="8">Proximal policy optimization: gradiente de política con recorte del cociente de probabilidades.</dd>
-<dt>TRPO</dt><dd data-hojas="4">Trust region policy optimization: mejora la política con la divergencia KL acotada.</dd>
-<dt>GAE</dt><dd data-hojas="7">Generalized advantage estimation: ventajas como media exponencial de errores TD.</dd>
-<dt>SAC</dt><dd data-hojas="15">Soft actor-critic: método fuera de política de máxima entropía.</dd>
-<dt>TD3</dt><dd data-hojas="16">Twin delayed DDPG: actor determinista con doble crítico, actualizaciones retrasadas y suavizado.</dd>
-<dt>KL</dt><dd data-hojas="8">Divergencia de Kullback-Leibler entre dos distribuciones; mide cuánto cambió la política.</dd>
-<dt>JAX</dt><dd data-hojas="22">Biblioteca de cálculo numérico con compilación (XLA) para GPU; en ella está el PPO del tema.</dd>
-<dt>GPU</dt><dd data-hojas="1">Unidad de procesamiento gráfico, donde se entrena.</dd>
+<dt>PPO</dt><dd data-hojas="17">Proximal policy optimization: gradiente de política con recorte del cociente de probabilidades.</dd>
+<dt>TRPO</dt><dd data-hojas="4,16">Trust region policy optimization: mejora la política con la divergencia KL acotada.</dd>
+<dt>TD</dt><dd data-hojas="11">Temporal difference, diferencia temporal: aprender un valor con el del estado siguiente (error \(\delta_t\)).</dd>
+<dt>GAE</dt><dd data-hojas="12">Generalized advantage estimation: ventajas como media exponencial de errores TD.</dd>
+<dt>REINFORCE</dt><dd data-hojas="8">El estimador del gradiente de la política con el retorno de toda la trayectoria.</dd>
+<dt>SAC</dt><dd data-hojas="31">Soft actor-critic: método fuera de política de máxima entropía.</dd>
+<dt>TD3</dt><dd data-hojas="35">Twin delayed DDPG: actor determinista con doble crítico, actualizaciones retrasadas y suavizado.</dd>
+<dt>KL</dt><dd data-hojas="16,21">Divergencia de Kullback-Leibler entre dos distribuciones; mide cuánto cambió la política.</dd>
+<dt>JAX</dt><dd data-hojas="45">Biblioteca de cálculo numérico con compilación (XLA) para GPU; en ella está el PPO del tema.</dd>
+<dt>GPU</dt><dd data-hojas="1,19">Unidad de procesamiento gráfico, donde se entrena.</dd>
 <dt>PQN</dt><dd data-hojas="4">Parallelised Q-network: Q-learning sin búfer ni red objetivo con entornos vectorizados.</dd>
 <dt>FastTD3</dt><dd data-hojas="4">Variante de TD3 para entornos masivos (preprint).</dd>
-<dt>SAPG</dt><dd data-hojas="16">Split and aggregate policy gradients: reparte PPO en varias políticas cuando se satura con muchos entornos.</dd>
-<dt>MuJoCo</dt><dd data-hojas="9">Simulador de física usado en los bancos de prueba de PPO.</dd>
+<dt>SAPG</dt><dd data-hojas="36">Split and aggregate policy gradients: reparte PPO en varias políticas cuando se satura con muchos entornos.</dd>
+<dt>MuJoCo</dt><dd data-hojas="21">Simulador de física usado en los bancos de prueba de PPO.</dd>
 <dt>RPM</dt><dd data-hojas="3">Revoluciones por minuto de los rotores.</dd>
 <dt>RTX</dt><dd data-hojas="3">Familia de GPU de NVIDIA (3090, 4060 Ti) usada en los experimentos.</dd>
 <dt>x500</dt><dd data-hojas="1">Cuadricóptero de referencia del curso, el que se mantiene en el aire.</dd>
