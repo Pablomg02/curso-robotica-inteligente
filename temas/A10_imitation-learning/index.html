@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../assets/curso.css?v=10">
+<link rel="stylesheet" href="../../assets/curso.css?v=11">
 <script>
   window.MathJax = {
     tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
@@ -18,7 +18,6 @@
 </head>
 <body data-deck-id="A10" data-deck-title="Imitation learning y políticas generativas · Curso de robótica inteligente">
 <main class="deck">
-
 <!-- ============ APERTURA ============ -->
 <section class="slide title-slide" data-section="Apertura">
   <p class="kicker">Fase 3 · Jornada 25 · Curso de robótica inteligente</p>
@@ -80,55 +79,439 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Clonar · ALVINN y el desplazamiento de covariables</p>
-  <h2>Desde 1988: la red no sabe volver si nunca vio un error</h2>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:38%">En el x500 de este tema</th></tr>
+      <tr><td>\(s\), \(s_t\)</td><td><strong>Estado</strong> verdadero del sistema (en el paso \(t\))</td><td>Posición, velocidad, actitud y velocidad angular</td></tr>
+      <tr><td>\(o\), \(o_t\)</td><td><strong>Observación</strong>: lo que recibe la política</td><td>18 números: posición respecto a la meta, velocidad, matriz de actitud y velocidad angular (aquí, el estado verdadero)</td></tr>
+      <tr><td>\(a\), \(a_t\), \(\hat a\)</td><td><strong>Acción</strong> del experto (la etiqueta que se copia); \(\hat a\), la que propone el alumno</td><td>4 números en \([-1, 1]\): empuje y tres velocidades angulares deseadas</td></tr>
+      <tr><td>\(\pi_E\)</td><td>El <strong>experto</strong> (el maestro de A6b)</td><td>MPPI con la física: 10,0 ms por decisión</td></tr>
+      <tr><td>\(\pi_\theta\), \(\theta\)</td><td>El <strong>alumno</strong> y sus parámetros (los pesos de la red)</td><td>Red de 3 capas de 256 unidades</td></tr>
+      <tr><td>\(\mathcal D\), \(|\mathcal D|\)</td><td>Conjunto de pares \((o_i, a_i)\) grabados y su número de pares</td><td>300 vuelos × 300 pasos = 90 000 pares</td></tr>
+      <tr><td>\(\ell(\hat a, a)\)</td><td>Pérdida de un par: cuánto se aleja \(\hat a\) de \(a\)</td><td>Error cuadrático \(\|\hat a - a\|^2\)</td></tr>
+      <tr><td>\(T\), \(\varepsilon\), \(u\)</td><td>Horizonte en pasos, error por paso y lo que cuesta como mucho un error (A6b)</td><td>Un vuelo: 300 pasos, 6 s a <span class="hz">50 Hz</span></td></tr>
+      <tr><td>\(\rho_\pi\), \(\rho_E\), \(D_w\)</td><td>Con qué frecuencia visitan alumno y experto cada par \((s, a)\); discriminador de GAIL</td><td>Hojas de GAIL, al final de la parte</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: en esta parte \(i\) numera los pares de \(\mathcal D\) y \(\varepsilon\) es el error por paso; en la parte 2, \(i\) numera predicciones y \(\varepsilon\) es ruido gaussiano.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · esquema</p>
+  <h2>Qué hacemos: grabar al experto, ajustar una red, soltarla</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 250" style="max-height:250px" role="img" aria-label="El experto vuela y graba pares observación-acción; una regresión ajusta la red; el alumno vuela solo; con DAgger, el experto etiqueta los estados del alumno">
+      <defs><marker id="a10m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="20" y="40" width="230" height="90" rx="8" class="box-tesis"/>
+      <text x="135" y="72" text-anchor="middle" class="t-bold" font-size="17">Experto π_E</text>
+      <text x="135" y="96" text-anchor="middle" font-size="14">MPPI con la física</text>
+      <text x="135" y="116" text-anchor="middle" class="t-time" font-size="14">10,0 ms por decisión</text>
+      <rect x="320" y="40" width="230" height="90" rx="8" class="box"/>
+      <text x="435" y="72" text-anchor="middle" class="t-bold" font-size="17">Datos 𝒟</text>
+      <text x="435" y="96" text-anchor="middle" font-size="14">pares (o_i, a_i)</text>
+      <text x="435" y="116" text-anchor="middle" class="t-muted" font-size="14">90 000</text>
+      <rect x="620" y="40" width="250" height="90" rx="8" class="box"/>
+      <text x="745" y="72" text-anchor="middle" class="t-bold" font-size="17">Regresión</text>
+      <text x="745" y="96" text-anchor="middle" class="t-mono" font-size="14">min_θ Σ ℓ(π_θ(o_i), a_i)</text>
+      <text x="745" y="116" text-anchor="middle" class="t-muted" font-size="14">aprendizaje supervisado</text>
+      <rect x="940" y="40" width="220" height="90" rx="8" class="box-accent"/>
+      <text x="1050" y="72" text-anchor="middle" class="t-bold" font-size="17">Alumno π_θ</text>
+      <text x="1050" y="96" text-anchor="middle" font-size="14">vuela solo</text>
+      <text x="1050" y="116" text-anchor="middle" class="t-time" font-size="14">0,021 ms por decisión</text>
+      <path d="M250,85 L316,85" class="ln" marker-end="url(#a10m1)"/>
+      <text x="283" y="74" text-anchor="middle" class="t-faint" font-size="12">vuela</text>
+      <path d="M550,85 L616,85" class="ln" marker-end="url(#a10m1)"/>
+      <path d="M870,85 L936,85" class="ln" marker-end="url(#a10m1)"/>
+      <path d="M1050,130 V200 H435 V134" class="ln-dash" fill="none" marker-end="url(#a10m1)"/>
+      <text x="742" y="222" text-anchor="middle" class="t-accent" font-size="14">DAgger: el experto dice qué haría en los estados a los que llega el alumno, y esos pares se añaden</text>
+      <text x="135" y="160" text-anchor="middle" class="t-faint" font-size="13">ve el estado verdadero</text>
+      <text x="1050" y="160" text-anchor="middle" class="t-faint" font-size="13">ve o y nada más</text>
+    </svg>
+    <figcaption>Clonación del comportamiento (BC): las dos primeras cajas ocurren una vez, en tierra; la última, en vuelo.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Entra:</strong> un experto que sabe hacer la tarea pero es caro o lento (un humano, un MPC, una búsqueda con belief). <strong>Sale:</strong> una política barata que hace lo mismo.</p>
+    <p><strong>Caso de este tema:</strong> el MPPI rodea un poste con el x500; el alumno tiene que llegar a la meta <em>y</em> rodearlo como lo hace él, por los dos lados.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · la fórmula</p>
+  <h2>Clonar es una regresión: la acción del experto es la etiqueta</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>ALVINN:</strong> una red de 1217 entradas (entre ellas, una retina de vídeo de 30×32 y un telémetro de 8×32), 29 unidades ocultas y 46 salidas, entrenada con 1200 imágenes simuladas de carretera; condujo el NAVLAB a 0,5 m/s en un camino de 400 m <a class="cite" data-ref="pomerleau1989"></a>.</li>
-        <li>Pomerleau ya lo vio: a la red hay que enseñarle también cómo recuperarse una vez cometido un error.</li>
-        <li><strong>Clonado de comportamiento:</strong> \(\min_\theta \mathbb E_{(o, a)\sim\mathcal D_{\text{experto}}}\,\ell(\pi_\theta(o), a)\). Entrenado con los estados del experto, desplegado en los suyos.</li>
-      </ul>
+      \[ \theta^* = \arg\min_\theta\ \frac{1}{|\mathcal D|}\sum_{i=1}^{|\mathcal D|} \ell\big(\pi_\theta(o_i),\ a_i\big) \]
+      <p>Se lee: elige los pesos \(\theta\) con los que la red, al ver la observación \(o_i\) de cada par grabado, devuelve una acción \(\pi_\theta(o_i)\) lo más parecida posible a la que tomó el experto, \(a_i\). Es la media de la pérdida sobre los datos; cuando hay muchos, se escribe como esperanza, \(\min_\theta \mathbb E_{(o, a)\sim\mathcal D}\,\ell(\pi_\theta(o), a)\).</p>
+      <p>Con \(\ell = \|\hat a - a\|^2\) es una regresión por mínimos cuadrados. Nada de recompensas ni de interactuar con el entorno: solo los pares grabados.</p>
+      <div class="aparte"><span class="rotulo">En el x500</span>
+        <p>\(\pi_\theta\) es una red de 18 entradas, 3 capas de 256 unidades y 4 salidas con \(\tanh\) (para que la acción quede en \([-1, 1]\)). Adam, 20 000 pasos con lotes de 256 pares. Pérdida final: 0,035. <code>figuras_a10.py</code>.</p>
+      </div>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">Repaso de A6b</span>Con error \(\varepsilon\) por paso en la distribución del experto, el coste de BC puede crecer como \(T^2\varepsilon\) por el desplazamiento de covariables; DAgger, que etiqueta con el experto los estados que visita el alumno, lo deja en \(O(uT\varepsilon)\) <a class="cite" data-ref="ross2011"></a>.</div>
-      <div class="callout realidad"><span class="tag">En drones</span>Las acrobacias de Kaufmann et al. imitan con DAgger a un MPC con información privilegiada: el alumno, un perceptrón a 100 Hz en una Jetson TX2 con rasgos visuales e IMU, completa en real 10 de 10 bucles, toneles y «Matty flips» <a class="cite" data-ref="kaufmann2020"></a>.</div>
+      <p><strong>A mano, con un parámetro.</strong> \(o\) = desviación lateral \(y\) (m) y \(a\) = orden lateral; política lineal \(\pi_\theta(o) = \theta\,o\). Cuatro pares: \((-0{,}2;\ 0{,}5)\), \((-0{,}1;\ 0{,}3)\), \((0{,}1;\ -0{,}2)\), \((0{,}2;\ -0{,}4)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(L(\theta) = \frac14\sum_i(\theta o_i - a_i)^2\)</td><td>La fórmula de la izquierda con \(|\mathcal D| = 4\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(L'(\theta) = \frac12\sum_i o_i(\theta o_i - a_i) = 0\)</td><td>Derivar e igualar a cero (es una parábola en \(\theta\))</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\theta^* = \dfrac{\sum_i o_i a_i}{\sum_i o_i^2} = \dfrac{-0{,}23}{0{,}10} = -2{,}3\)</td><td>Despejar \(\theta\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(L(-2) = 0{,}0050\);<br>\(L(-2{,}3) = 0{,}0027\);<br>\(L(-3) = 0{,}0150\)</td><td>Comprobación: el óptimo es el menor</td></tr>
+        </table>
+      </div>
+      <p>Lectura: desviado 10 cm a la izquierda, el alumno ordena 0,23 hacia la derecha. Ejemplo 1 de <code>figuras/ejemplos_a10.py</code>.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Clonar · multimodalidad</p>
-  <h2>El segundo problema: cuando el experto hace dos cosas distintas en el mismo estado</h2>
+  <p class="kicker">Clonar · ALVINN</p>
+  <h2>Desde 1988: una red que conduce copiando</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con error cuadrático, el óptimo es la media condicionada:</p>
-      \[ \pi^*(o) = \arg\min_{\hat a}\ \mathbb E\big[\|\hat a - a\|^2 \mid o\big] = \mathbb E[a \mid o]. \]
-      <p class="small">Si en un estado el experto rodea un obstáculo la mitad de las veces por la izquierda y la otra mitad por la derecha, la media es seguir recto. Una gaussiana o una mezcla con pocos componentes tienen versiones del mismo problema.</p>
-      <ul class="small">
-        <li><strong>BC implícito:</strong> un modelo de energía \(E_\theta(o, a)\) y \(\hat a = \arg\min_a E_\theta(o, a)\) aproxima funciones discontinuas y multivaluadas que el explícito interpola. En un robot real, meter una pieza con 1 mm de tolerancia: 83,3 % frente a 6,7 % del BC con error cuadrático <a class="cite" data-ref="florence2022"></a>.</li>
-        <li><strong>Behavior Transformers:</strong> agrupan las acciones en k grupos con k-means, predicen el grupo como una categoría y un desplazamiento continuo dentro de él <a class="cite" data-ref="shafiullah2022"></a>.</li>
-      </ul>
+      <p><strong>ALVINN:</strong> una red de 1217 entradas (entre ellas, una retina de vídeo de 30×32 y un telémetro de 8×32), 29 unidades ocultas y 46 salidas, entrenada con 1200 imágenes simuladas de carretera; condujo el NAVLAB a 0,5 m/s en un camino de 400 m <a class="cite" data-ref="pomerleau1989"></a>.</p>
+      <p>En la notación de la hoja anterior: \(o\) es la imagen, \(a\) la dirección del volante y \(\pi_\theta\) la red de 29 unidades. Exactamente una clonación del comportamiento.</p>
+      <p>Pomerleau ya vio el problema: a la red hay que enseñarle también cómo recuperarse una vez cometido un error. Es lo que desarrolla la hoja siguiente.</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: por qué la media</summary>
-        <p class="small">Para un \(o\) fijo, \(J(\hat a) = \mathbb E[\|\hat a - a\|^2\mid o] = \|\hat a\|^2 - 2\hat a^\top\mathbb E[a\mid o] + \mathbb E[\|a\|^2\mid o]\). El gradiente \(2\hat a - 2\mathbb E[a\mid o]\) se anula en la media. Con una red y datos finitos, la red aproxima esa media allí donde tiene datos de los dos modos; en cuanto el estado los separa, aprende cada uno por su lado.</p>
-      </details>
+      <div class="callout realidad"><span class="tag">En drones</span>Las acrobacias de Kaufmann et al. imitan con DAgger a un MPC con información privilegiada: el alumno, un perceptrón a <span class="hz">100 Hz</span> en una Jetson TX2 con rasgos visuales e IMU, completa en real 10 de 10 bucles, toneles y «Matty flips» <a class="cite" data-ref="kaufmann2020"></a>.</div>
+      <div class="callout clave"><span class="tag">El patrón</span>Un experto que ve más (el estado verdadero, información privilegiada) y un alumno que ve lo que tendrá a bordo. Es el maestro y alumno de A6b, y el de este tema.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · problema 1 · el desplazamiento de covariables</p>
+  <h2>La red no sabe volver si nunca vio un error</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Vista cenital: el experto rodea el poste por arriba dentro de una franja gris con datos; el alumno comete un error, sale de la franja y sigue alejándose">
+        <defs><marker id="a10m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <circle cx="280" cy="190" r="48" class="box-soft"/>
+        <text x="280" y="195" text-anchor="middle" class="t-muted" font-size="13">poste</text>
+        <path d="M40,190 C130,190 170,90 280,90 C390,90 430,190 520,190" class="ln-rule" style="stroke-width:44px; stroke-opacity:0.55" stroke-linecap="round" fill="none"/>
+        <path d="M40,190 C130,190 170,90 280,90 C390,90 430,190 520,190" class="ln-accent" stroke-width="2.4" fill="none"/>
+        <circle cx="40" cy="190" r="5" class="fill-ink3"/>
+        <circle cx="520" cy="190" r="7" class="fill-accent"/>
+        <text x="520" y="222" text-anchor="middle" class="t-accent" font-size="13">meta</text>
+        <text x="40" y="222" text-anchor="middle" class="t-muted" font-size="13">salida</text>
+        <path d="M200,107 C240,80 270,52 330,40 C380,30 430,34 500,30" class="ln-time" stroke-width="2.2" stroke-dasharray="6 4" fill="none" marker-end="url(#a10m2)"/>
+        <circle cx="200" cy="107" r="7" fill="none" class="ln-time" stroke-width="2"/>
+        <text x="190" y="140" text-anchor="end" class="t-time" font-size="13">primer error</text>
+        <text x="500" y="56" text-anchor="end" class="t-time" font-size="13">sin datos: nadie le enseñó a volver</text>
+        <text x="300" y="265" text-anchor="middle" class="t-muted" font-size="13">gris: d_πE, los estados que visita el experto (hay etiquetas)</text>
+        <text x="300" y="285" text-anchor="middle" class="t-accent" font-size="13">azul: el experto · naranja discontinuo: el alumno clonado</text>
+      </svg>
+      <figcaption>Esquema. Cada error saca al alumno de la zona con datos, y fuera de ella sus errores son más probables.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>La regresión de la hoja anterior se entrena en \(d_{\pi_E}\), los estados que visita el <em>experto</em>; el alumno se despliega en \(d_{\pi_\theta}\), los que visita <em>él</em>. Las dos distribuciones coinciden mientras no se equivoque. Es el <strong>desplazamiento de covariables</strong>: cambia la distribución de las entradas \(o\), no la regla \(o\mapsto a\).</p>
+      <div class="callout clave"><span class="tag">Repaso de A6b, hojas 20–23</span>Con error \(\varepsilon\) por paso en \(d_{\pi_E}\), el coste extra de BC puede crecer como \(T^2\varepsilon\); DAgger, que etiqueta con el experto los estados que visita el alumno, lo deja en \(O(uT\varepsilon)\) <a class="cite" data-ref="ross2011"></a>. Con \(T = 100\) y \(\varepsilon = 0{,}01\): 37,2 pasos de coste extra en el peor caso, frente a la cota de 100 (ejemplo 2).</div>
+      <p class="small">En nuestro experimento, DAgger hace 4 rondas de 100 vuelos del alumno con el experto calculando a la sombra qué haría en cada estado.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · problema 2 · la multimodalidad · 1</p>
+  <h2>Cuando el experto hace dos cosas distintas en el mismo estado</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 620 300" role="img" aria-label="El experto rodea el poste por arriba la mitad de las veces y por abajo la otra mitad desde la misma salida; la media de las dos acciones es seguir recto, contra el poste. A la derecha, la distribución de la acción: dos picos de un medio en menos uno y más uno">
+        <defs><marker id="a10m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker></defs>
+        <circle cx="230" cy="150" r="50" class="box-soft"/>
+        <text x="230" y="155" text-anchor="middle" class="t-muted" font-size="13">poste</text>
+        <path d="M30,150 C100,150 130,60 230,60 C330,60 360,150 420,150" class="ln-accent" stroke-width="2.4" fill="none"/>
+        <path d="M30,150 C100,150 130,240 230,240 C330,240 360,150 420,150" class="ln-tesis" stroke-width="2.4" fill="none"/>
+        <path d="M30,150 L172,150" class="ln-time" stroke-width="2.6" stroke-dasharray="7 4" marker-end="url(#a10m3)"/>
+        <circle cx="30" cy="150" r="5" class="fill-ink3"/>
+        <circle cx="420" cy="150" r="7" class="fill-accent"/>
+        <text x="110" y="46" text-anchor="middle" class="t-accent" font-size="14">izquierda: a = +1 (½)</text>
+        <text x="110" y="268" text-anchor="middle" class="t-tesis" font-size="14">derecha: a = −1 (½)</text>
+        <text x="100" y="140" text-anchor="middle" class="t-time" font-size="14">media: recto</text>
+        <line x1="470" y1="250" x2="600" y2="250" class="ln-rule"/>
+        <line x1="485" y1="250" x2="485" y2="120" class="ln-tesis" stroke-width="5"/>
+        <line x1="585" y1="250" x2="585" y2="120" class="ln-accent" stroke-width="5"/>
+        <text x="485" y="112" text-anchor="middle" font-size="14">½</text>
+        <text x="585" y="112" text-anchor="middle" font-size="14">½</text>
+        <text x="485" y="270" text-anchor="middle" class="t-mono t-faint" font-size="13">−1</text>
+        <text x="535" y="270" text-anchor="middle" class="t-mono t-time" font-size="13">0</text>
+        <text x="585" y="270" text-anchor="middle" class="t-mono t-faint" font-size="13">+1</text>
+        <path d="M535,250 L535,232" class="ln-time" stroke-width="2.4" marker-end="url(#a10m3)"/>
+        <text x="535" y="80" text-anchor="middle" class="t-muted" font-size="13">p(a | o)</text>
+        <text x="535" y="292" text-anchor="middle" class="t-faint" font-size="12">acción lateral a</text>
+      </svg>
+      <figcaption>Esquema. Las dos maneras son buenas; su media, no.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>En nuestro montaje todos los vuelos salen casi centrados (±2 cm) y es el ruido del propio MPPI el que decide el lado: <strong>con la misma \(o\)</strong>, la mitad de las demostraciones van por la izquierda y la mitad por la derecha.</p>
+      <p>Para hacer cuentas, reducimos la acción a un número: \(a = +1\) es la orden lateral de rodear por la izquierda y \(a = -1\), por la derecha. Lo que el experto hace en \(o\) no es una acción sino una <strong>distribución</strong> con dos picos:</p>
+      \[ P(a = +1\mid o) = \tfrac12,\qquad P(a = -1\mid o) = \tfrac12. \]
+      <p>Hojas siguientes: qué aprende de esto la regresión con error cuadrático.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · problema 2 · la multimodalidad · 2</p>
+  <h2>El error cuadrático aprende la media condicionada: recto, contra el poste</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ \pi^*(o) = \arg\min_{\hat a}\ \mathbb E\big[\|\hat a - a\|^2 \mid o\big] = \mathbb E[a \mid o] \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(J(\hat a) = \mathbb E\big[\|\hat a - a\|^2\mid o\big]\)</td><td>Para un \(o\) fijo, \(\hat a\) lo elegimos y \(a\) es aleatoria</td></tr>
+          <tr><td><strong>2</strong></td><td>\(= \|\hat a\|^2 - 2\hat a^\top\mathbb E[a\mid o] + \mathbb E[\|a\|^2\mid o]\)</td><td>Desarrollar el cuadrado; \(\hat a\) sale de la esperanza</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\nabla_{\hat a} J = 2\hat a - 2\,\mathbb E[a\mid o]\)</td><td>El último término no depende de \(\hat a\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\nabla J = 0 \iff \hat a = \mathbb E[a\mid o]\)</td><td>Y es un mínimo: \(J\) es una parábola (hessiano \(2I\))</td></tr>
+          <tr><td><strong>5</strong></td><td>\(J_{\min} = \mathbb E\big[\|a - \mathbb E[a\mid o]\|^2\mid o\big]\)</td><td>Lo que queda es la varianza: no baja con más datos</td></tr>
+        </table>
+      </div>
+      <p class="small muted">La misma cuenta, para la brecha de imitación, en A6b, hoja 28.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 440 250" style="max-height:165px" role="img" aria-label="Parábola del error esperado en función de la acción propuesta: vale 2 en menos uno y más uno y su mínimo, 1, está en cero">
+          <line x1="50" y1="220" x2="410" y2="220" class="ln-rule"/>
+          <line x1="50" y1="20" x2="50" y2="220" class="ln-rule"/>
+          <path d="M50.0,116.0 L56.0,120.7 L62.0,125.3 L68.0,129.7 L74.0,133.9 L80.0,138.0 L86.0,141.9 L92.0,145.7 L98.0,149.3 L104.0,152.7 L110.0,156.0 L116.0,159.1 L122.0,162.1 L128.0,164.9 L134.0,167.5 L140.0,170.0 L146.0,172.3 L152.0,174.5 L158.0,176.5 L164.0,178.3 L170.0,180.0 L176.0,181.5 L182.0,182.9 L188.0,184.1 L194.0,185.1 L200.0,186.0 L206.0,186.7 L212.0,187.3 L218.0,187.7 L224.0,187.9 L230.0,188.0 L236.0,187.9 L242.0,187.7 L248.0,187.3 L254.0,186.7 L260.0,186.0 L266.0,185.1 L272.0,184.1 L278.0,182.9 L284.0,181.5 L290.0,180.0 L296.0,178.3 L302.0,176.5 L308.0,174.5 L314.0,172.3 L320.0,170.0 L326.0,167.5 L332.0,164.9 L338.0,162.1 L344.0,159.1 L350.0,156.0 L356.0,152.7 L362.0,149.3 L368.0,145.7 L374.0,141.9 L380.0,138.0 L386.0,133.9 L392.0,129.7 L398.0,125.3 L404.0,120.7 L410.0,116.0" fill="none" class="ln-time" stroke-width="2.4"/>
+          <circle cx="230" cy="188" r="5" class="fill-time"/>
+          <circle cx="110" cy="156" r="4" class="fill-ink3"/>
+          <circle cx="350" cy="156" r="4" class="fill-ink3"/>
+          <text x="230" y="178" text-anchor="middle" class="t-time" font-size="13">J(0) = 1</text>
+          <text x="110" y="146" text-anchor="middle" class="t-muted" font-size="13">2</text>
+          <text x="350" y="146" text-anchor="middle" class="t-muted" font-size="13">2</text>
+          <text x="44" y="224" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="44" y="160" text-anchor="end" class="t-mono t-faint" font-size="12">2</text>
+          <text x="44" y="96" text-anchor="end" class="t-mono t-faint" font-size="12">4</text>
+          <text x="110" y="238" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="230" y="238" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="350" y="238" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+          <text x="400" y="210" text-anchor="end" class="t-muted" font-size="12">â</text>
+          <text x="60" y="30" class="t-muted" font-size="13">J(â) con ½ y ½</text>
+        </svg>
+      </figure>
+      <p><strong>A mano</strong>, con ½ en \(+1\) y ½ en \(-1\): \(J(\hat a) = \tfrac12(\hat a - 1)^2 + \tfrac12(\hat a + 1)^2 = \hat a^2 + 1\). Para \(\hat a = -1;\ -0{,}5;\ 0;\ 0{,}5;\ 1\) vale 2; 1,25; 1; 1,25; 2. Con el reparto real de las demostraciones, 48 / 52, la media es \(-0{,}04\): casi recto. Ejemplo 3.</p>
+      <div class="aparte"><span class="rotulo">¿Y una gaussiana?</span>
+        <p>Ajustar \(\mathcal N(\mu, \sigma^2)\) por máxima verosimilitud a los mismos datos da \(\mu = 0\), \(\sigma = 1\): la acción más probable sigue siendo 0 (densidad 0,399, frente a 0,242 en \(\pm1\)). Una mezcla con pocos componentes tiene versiones del mismo problema.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · problema 2 · la multimodalidad · 3</p>
+  <h2>En la práctica, la media no se queda en el centro: rompe la simetría</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La cuenta anterior vale para un \(o\) fijo. Con una red y datos finitos, la red aproxima esa media allí donde tiene datos de los dos modos; en cuanto el estado los separa, aprende cada uno por su lado.</p>
+      <p><strong>Modelo de juguete</strong> (no es el x500): la probabilidad de rodear por la izquierda crece con la desviación lateral \(y\), \(P(\text{izq}\mid y) = \Phi(y/h)\), con \(\Phi\) la función de distribución de la normal estándar y \(h = 5\) cm la anchura de la franja en la que el lado es incierto. La media que aprende BC es</p>
+      \[ \mathbb E[a\mid y] = P(\text{izq}\mid y) - P(\text{der}\mid y) = 2\,\Phi(y/h) - 1. \]
+      <p>Vale 0 solo en \(y = 0\). Con \(y = 2\) cm ya ordena \(+0{,}31\) hacia la izquierda, lo que aumenta \(y\): si en cada paso se mueve \(0{,}01\,\mathbb E[a\mid y]\) m, un milímetro inicial se convierte en 5,9 mm en 12 pasos, y sigue creciendo. El centro es un equilibrio inestable. Ejemplo 4.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 440 240" style="max-height:210px" role="img" aria-label="Curva en forma de ese de la acción media frente a la desviación lateral: menos uno a la izquierda, cero en el centro y más uno a la derecha">
+          <line x1="50" y1="115" x2="410" y2="115" class="ln-rule"/>
+          <line x1="230" y1="25" x2="230" y2="205" class="ln-rule"/>
+          <path d="M50.0,196.1 L54.5,195.7 L59.0,195.1 L63.5,194.5 L68.0,193.9 L72.5,193.2 L77.0,192.4 L81.5,191.6 L86.0,190.7 L90.5,189.7 L95.0,188.6 L99.5,187.5 L104.0,186.3 L108.5,185.0 L113.0,183.5 L117.5,182.0 L122.0,180.4 L126.5,178.7 L131.0,176.9 L135.5,175.0 L140.0,173.0 L144.5,170.9 L149.0,168.7 L153.5,166.4 L158.0,164.0 L162.5,161.5 L167.0,158.9 L171.5,156.2 L176.0,153.4 L180.5,150.5 L185.0,147.5 L189.5,144.5 L194.0,141.4 L198.5,138.3 L203.0,135.0 L207.5,131.8 L212.0,128.5 L216.5,125.1 L221.0,121.8 L225.5,118.4 L230.0,115.0 L234.5,111.6 L239.0,108.2 L243.5,104.9 L248.0,101.5 L252.5,98.2 L257.0,95.0 L261.5,91.7 L266.0,88.6 L270.5,85.5 L275.0,82.5 L279.5,79.5 L284.0,76.6 L288.5,73.8 L293.0,71.1 L297.5,68.5 L302.0,66.0 L306.5,63.6 L311.0,61.3 L315.5,59.1 L320.0,57.0 L324.5,55.0 L329.0,53.1 L333.5,51.3 L338.0,49.6 L342.5,48.0 L347.0,46.5 L351.5,45.0 L356.0,43.7 L360.5,42.5 L365.0,41.4 L369.5,40.3 L374.0,39.3 L378.5,38.4 L383.0,37.6 L387.5,36.8 L392.0,36.1 L396.5,35.5 L401.0,34.9 L405.5,34.3 L410.0,33.9" fill="none" class="ln-time" stroke-width="2.4"/>
+          <circle cx="266" cy="88.6" r="5" class="fill-time"/>
+          <text x="276" y="106" class="t-time" font-size="13">y = 2 cm: +0,31</text>
+          <text x="50" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">−10</text>
+          <text x="140" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">−5</text>
+          <text x="230" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="320" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">5</text>
+          <text x="410" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">10 cm</text>
+          <text x="222" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">+1</text>
+          <text x="222" y="204" text-anchor="end" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="60" y="40" class="t-muted" font-size="13">E[a | y]</text>
+        </svg>
+        <figcaption>La media condicionada del juguete. Ejemplo 4 de <code>ejemplos_a10.py</code>.</figcaption>
+      </figure>
       <div class="callout error"><span class="tag">Lo que de verdad pasa (parte 4)</span>En nuestro x500, el BC no promedia hasta chocar: elige siempre el mismo lado, probablemente porque un sesgo mínimo rompe la simetría al principio. Diffusion Policy describe lo mismo en sus comparaciones: otros métodos quedan «sesgados hacia un modo» <a class="cite" data-ref="chi2025"></a>.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Clonar · la otra rama</p>
-  <h2>Aprender la recompensa en lugar de la acción: IRL y GAIL</h2>
+  <p class="kicker">Clonar · salida 1 · BC implícito · 1</p>
+  <h2>BC implícito: una energía con un valle por modo, y elegir un valle</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Aprendizaje inverso por refuerzo:</strong> suponer que el experto optimiza una recompensa desconocida, recuperarla de las demostraciones y obtener la política con RL; es el «aprendizaje por aprendiz» de Abbeel y Ng <a class="cite" data-ref="abbeel2004"></a>. Según Ho y Ermon, este camino «es indirecto y puede ser lento» <a class="cite" data-ref="ho2016"></a>.</li>
-        <li><strong>GAIL:</strong> extrae la política directamente, como si se hubiera obtenido con RL después de IRL. Un discriminador \(D_w(s, a)\in(0, 1)\) separa los pares estado-acción del experto de los del alumno, y la política minimiza el coste \(c(s, a) = \log D_w(s, a)\) con trayectorias simuladas en el entorno <a class="cite" data-ref="ho2016"></a>.</li>
-        <li>En sus 9 tareas de control simuladas, el clonado de comportamiento necesitaba más demostraciones en las clásicas (cartpole, acrobot, mountain car), pero fue excelente en Reacher.</li>
-      </ul>
+      \[ \hat a = \arg\min_a\ E_\theta(o, a) \]
+      <p>En lugar de una red que devuelve la acción, \(\hat a = \pi_\theta(o)\), una red \(E_\theta(o, a)\) que recibe la observación <em>y</em> una acción candidata y devuelve un número, la <strong>energía</strong>: baja si el par es el que haría el experto, alta si no. La acción se obtiene minimizando.</p>
+      <p>Con dos modos, la energía tiene dos valles. El mínimo está en uno de ellos y nunca en el centro, que tiene energía alta: el BC implícito aproxima funciones discontinuas y multivaluadas que el explícito interpola <a class="cite" data-ref="florence2022"></a>.</p>
+      <p>El precio: cada decisión es una optimización. Florence et al. la resuelven con una optimización sin derivadas basada en muestreo, con una variante autorregresiva por coordenadas o con muestreo de Langevin.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 440 240" style="max-height:220px" role="img" aria-label="Energía en función de la acción: dos valles en menos uno y más uno y una colina en el centro">
+          <line x1="50" y1="210" x2="410" y2="210" class="ln-rule"/>
+          <line x1="50" y1="30" x2="50" y2="210" class="ln-rule"/>
+          <path d="M50.0,30.0 L54.5,38.8 L59.0,54.2 L63.5,68.8 L68.0,82.5 L72.5,95.5 L77.0,107.5 L81.5,118.8 L86.0,129.2 L90.5,138.8 L95.0,147.5 L99.5,155.5 L104.0,162.5 L108.5,168.8 L113.0,174.2 L117.5,178.8 L122.0,182.5 L126.5,185.5 L131.0,187.5 L135.5,188.8 L140.0,189.2 L144.5,188.8 L149.0,187.5 L153.5,185.5 L158.0,182.5 L162.5,178.8 L167.0,174.2 L171.5,168.8 L176.0,162.5 L180.5,155.5 L185.0,147.5 L189.5,138.8 L194.0,129.2 L198.5,118.8 L203.0,107.6 L207.5,95.6 L212.0,82.9 L216.5,69.8 L221.0,57.3 L225.5,47.3 L230.0,43.3 L234.5,47.3 L239.0,57.3 L243.5,69.8 L248.0,82.9 L252.5,95.6 L257.0,107.6 L261.5,118.8 L266.0,129.2 L270.5,138.8 L275.0,147.5 L279.5,155.5 L284.0,162.5 L288.5,168.8 L293.0,174.2 L297.5,178.8 L302.0,182.5 L306.5,185.5 L311.0,187.5 L315.5,188.8 L320.0,189.2 L324.5,188.8 L329.0,187.5 L333.5,185.5 L338.0,182.5 L342.5,178.8 L347.0,174.2 L351.5,168.8 L356.0,162.5 L360.5,155.5 L365.0,147.5 L369.5,138.8 L374.0,129.2 L378.5,118.8 L383.0,107.5 L387.5,95.5 L392.0,82.5 L396.5,68.8 L401.0,54.2 L405.5,38.8 L410.0,30.0" fill="none" class="ln-accent" stroke-width="2.4"/>
+          <circle cx="140" cy="189.2" r="5" class="fill-accent"/>
+          <circle cx="320" cy="189.2" r="5" class="fill-accent"/>
+          <circle cx="230" cy="43.3" r="4" class="fill-time"/>
+          <text x="240" y="48" class="t-time" font-size="13">E(0) = 5,56</text>
+          <text x="140" y="180" text-anchor="middle" class="t-accent" font-size="13">mínimo</text>
+          <text x="320" y="180" text-anchor="middle" class="t-accent" font-size="13">mínimo</text>
+          <text x="140" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="230" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="320" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+          <text x="44" y="214" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="400" y="200" text-anchor="end" class="t-muted" font-size="12">a</text>
+          <text x="60" y="40" class="t-muted" font-size="13">E(o, a)</text>
+        </svg>
+        <figcaption>Energía de juguete \(E = -\log\big(\tfrac12 e^{-(a-1)^2/0{,}18} + \tfrac12 e^{-(a+1)^2/0{,}18}\big)\): mínimos 0,693 en \(\pm 1\). Ejemplo 5.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">En un robot real</span>Meter una pieza con 1 mm de tolerancia: 83,3 % de éxito con BC implícito, frente a 6,7 % del BC con error cuadrático <a class="cite" data-ref="florence2022"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · salida 1 · BC implícito · 2</p>
+  <h2>Cómo se entrena una energía: el par del experto contra contraejemplos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>No hay una etiqueta de energía que copiar. Para cada par del experto \((o, a)\) se generan acciones falsas \(\tilde a_1, \dots, \tilde a_M\) (contraejemplos) y se pide que el experto gane la comparación. Es una pérdida de tipo InfoNCE <a class="cite" data-ref="florence2022"></a>:</p>
+      \[ \tilde p = \frac{e^{-E_\theta(o, a)}}{e^{-E_\theta(o, a)} + \sum_{j=1}^{M} e^{-E_\theta(o, \tilde a_j)}},\qquad \mathcal L = -\log\tilde p. \]
+      <p>\(\tilde p\) es la probabilidad que da un softmax sobre las energías cambiadas de signo a que la acción buena sea la del experto. Bajar \(E_\theta\) en el par del experto y subirla en los contraejemplos aumenta \(\tilde p\) y baja la pérdida.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(E(o, a) = 0{,}2\); contraejemplos 2,0; 1,5; 3,0</td><td>Energías de partida, inventadas para el ejemplo</td></tr>
+          <tr><td><strong>2</strong></td><td>\(e^{-E}\): 0,819; 0,135; 0,223; 0,050</td><td>Lo que entra en el softmax</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\tilde p = 0{,}819 / 1{,}227 = 0{,}667\)</td><td>El par del experto entre la suma</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathcal L = -\log 0{,}667 = 0{,}405\)</td><td>La pérdida de ese par</td></tr>
+          <tr><td><strong>5</strong></td><td>Contraejemplos 1 más altos: \(\tilde p = 0{,}845\), \(\mathcal L = 0{,}168\)</td><td>El gradiente empuja en esa dirección</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Ejemplo 5 de <code>ejemplos_a10.py</code>.</p>
+      <div class="aparte"><span class="rotulo">Por qué no hace falta normalizar</span>
+        <p>Una energía define una distribución \(p(a\mid o)\propto e^{-E_\theta(o, a)}\), pero su constante de normalización es una integral sobre todas las acciones. El cociente de \(\tilde p\) la sustituye por una suma sobre unas pocas acciones: el experto y sus contraejemplos.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · salida 2 · Behavior Transformers</p>
+  <h2>Behavior Transformers: elegir primero el grupo y después afinar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Antes de entrenar, se agrupan todas las acciones de las demostraciones en \(k\) grupos con k-means. La red predice dos cosas: <strong>a qué grupo</strong> pertenece la acción (una categoría, con un softmax) y un <strong>desplazamiento</strong> continuo desde el centro de ese grupo <a class="cite" data-ref="shafiullah2022"></a>.</p>
+      <p>Una categoría sí puede representar dos modos: la red da probabilidad ½ a cada grupo y, al muestrear, se elige uno. Ninguna probabilidad cae «entre» los grupos.</p>
+      <p class="small muted">Aviso: este \(k\) es el número de grupos; en la parte 2, \(k\) será el tamaño de un trozo de acciones.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 170" style="max-height:170px" role="img" aria-label="Seis acciones en una recta, tres cerca de menos uno y tres cerca de más uno; dos centros de grupo; la acción 0,9 es el centro más uno con desplazamiento menos 0,1">
+          <line x1="30" y1="90" x2="490" y2="90" class="ln-rule"/>
+          <text x="80" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="260" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+          <text x="440" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+          <circle cx="71" cy="90" r="5" class="fill-tesis"/><circle cx="80" cy="90" r="5" class="fill-tesis"/><circle cx="89" cy="90" r="5" class="fill-tesis"/>
+          <circle cx="422" cy="90" r="5" class="fill-accent"/><circle cx="440" cy="90" r="5" class="fill-accent"/><circle cx="458" cy="90" r="5" class="fill-accent"/>
+          <rect x="70" y="56" width="20" height="14" class="box-tesis"/>
+          <rect x="430" y="56" width="20" height="14" class="box-accent"/>
+          <text x="80" y="46" text-anchor="middle" class="t-tesis" font-size="13">centro −1,00</text>
+          <text x="440" y="46" text-anchor="middle" class="t-accent" font-size="13">centro +1,00</text>
+          <path d="M440,140 L424,140" class="ln-time" stroke-width="2"/>
+          <circle cx="422" cy="140" r="4" class="fill-time"/>
+          <text x="410" y="160" text-anchor="end" class="t-time" font-size="13">a = 0,90: grupo +1, desplazamiento −0,10</text>
+        </svg>
+        <figcaption>k-means con \(k = 2\) sobre seis acciones de juguete: los centros salen \(\pm 1{,}00\). Ejemplo 6.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Tres salidas a la multimodalidad</span>Una energía con varios valles (BC implícito), una categoría más un ajuste fino (Behavior Transformers) o un modelo generativo que muestrea la acción (difusión y flow matching, partes 2 y 3).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · la otra rama · IRL y GAIL · esquema</p>
+  <h2>Aprender la recompensa en lugar de la acción: IRL y GAIL</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 330" role="img" aria-label="Bucle de GAIL: las demostraciones del experto y los despliegues del alumno entran al discriminador; su salida da el coste; un paso de RL mejora al alumno, que vuelve a desplegarse">
+        <defs><marker id="a10m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <rect x="20" y="20" width="250" height="70" rx="8" class="box-tesis"/>
+        <text x="145" y="48" text-anchor="middle" class="t-bold" font-size="15">Demostraciones (s, a) ∼ π_E</text>
+        <text x="145" y="72" text-anchor="middle" class="t-muted" font-size="13">fijas, grabadas una vez</text>
+        <rect x="20" y="130" width="250" height="70" rx="8" class="box-accent"/>
+        <text x="145" y="158" text-anchor="middle" class="t-bold" font-size="15">Despliegues (s, a) ∼ π_θ</text>
+        <text x="145" y="182" text-anchor="middle" class="t-muted" font-size="13">el alumno vuela en el simulador</text>
+        <rect x="360" y="70" width="260" height="80" rx="8" class="box"/>
+        <text x="490" y="100" text-anchor="middle" class="t-bold" font-size="15">Discriminador D_w(s, a)</text>
+        <text x="490" y="124" text-anchor="middle" font-size="13">≈ 1 si parece del alumno</text>
+        <text x="490" y="142" text-anchor="middle" font-size="13">≈ 0 si parece del experto</text>
+        <rect x="360" y="230" width="260" height="70" rx="8" class="box"/>
+        <text x="490" y="258" text-anchor="middle" class="t-bold" font-size="15">Paso de RL (TRPO)</text>
+        <text x="490" y="282" text-anchor="middle" class="t-mono" font-size="13">coste c(s, a) = log D_w(s, a)</text>
+        <path d="M270,55 L356,95" class="ln" marker-end="url(#a10m4)"/>
+        <path d="M270,165 L356,128" class="ln" marker-end="url(#a10m4)"/>
+        <path d="M490,150 L490,226" class="ln" marker-end="url(#a10m4)"/>
+        <path d="M360,265 H145 V204" class="ln" fill="none" marker-end="url(#a10m4)"/>
+        <text x="255" y="285" text-anchor="middle" class="t-faint" font-size="12">π_θ mejorada</text>
+        <text x="500" y="196" class="t-faint" font-size="12">D_w nuevo</text>
+        <text x="320" y="322" text-anchor="middle" class="t-time" font-size="13">se repite: D aprende a distinguir, π_θ aprende a no dejarse distinguir</text>
+      </svg>
+      <figcaption>Algoritmo 1 de Ho y Ermon, en esquema <a class="cite" data-ref="ho2016"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Aprendizaje inverso por refuerzo (IRL):</strong> suponer que el experto optimiza una recompensa desconocida, recuperarla de las demostraciones y obtener la política con RL; es el «aprendizaje por aprendiz» de Abbeel y Ng <a class="cite" data-ref="abbeel2004"></a>. Según Ho y Ermon, este camino «es indirecto y puede ser lento» <a class="cite" data-ref="ho2016"></a>.</p>
+      <p><strong>GAIL</strong> extrae la política directamente, como si se hubiera obtenido con RL después de IRL. Busca un punto de silla (su ecuación 16):</p>
+      \[ \begin{aligned}\min_{\pi}\max_{D}\ &\mathbb E_{\pi}[\log D(s,a)]\\ &+ \mathbb E_{\pi_E}[\log(1 - D(s,a))] - \lambda H(\pi)\end{aligned} \]
+      <p>\(\mathbb E_\pi\): media sobre los pares que visita el alumno; \(\mathbb E_{\pi_E}\), sobre los del experto. \(H(\pi)\): entropía causal de la política, un regularizador con peso \(\lambda\ge 0\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · la otra rama · qué recompensa da el discriminador</p>
+  <h2>El discriminador óptimo dice dónde va el alumno más que el experto</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\max_D \sum_{s,a}\big[\rho_\pi\log D + \rho_E\log(1 - D)\big]\)</td><td>Las esperanzas de la hoja anterior, como sumas pesadas por la frecuencia de cada par</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{\rho_\pi}{D} - \dfrac{\rho_E}{1 - D} = 0\)</td><td>Cada par se maximiza por separado: derivar respecto a \(D(s,a)\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(D^*(s,a) = \dfrac{\rho_\pi(s,a)}{\rho_\pi(s,a) + \rho_E(s,a)}\)</td><td>Despejar</td></tr>
+          <tr><td><strong>4</strong></td><td>\(c(s,a) = \log D^*\), \(\ r(s,a) = -\log D^*\)</td><td>El coste del algoritmo 1; la recompensa es su opuesto</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\rho_\pi = \rho_E\Rightarrow D^* = \tfrac12\) en todas partes</td><td>Coste constante: ya no hay nada que corregir</td></tr>
+        </table>
+      </div>
+      <p class="small muted">Sustituyendo \(D^*\), el objetivo de GAIL es la divergencia de Jensen-Shannon entre \(\rho_\pi\) y \(\rho_E\) menos \(\lambda H(\pi)\) (su ecuación 15).</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\rho_\pi\)</th><th>\(\rho_E\)</th><th>\(D^*\)</th><th>Coste \(\log D^*\)</th><th>Recompensa</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0,30</td><td class="n">0,10</td><td class="n">0,750</td><td class="n">−0,288</td><td class="n">0,288</td></tr>
+            <tr><td class="n">0,20</td><td class="n">0,20</td><td class="n">0,500</td><td class="n">−0,693</td><td class="n">0,693</td></tr>
+            <tr><td class="n">0,10</td><td class="n">0,30</td><td class="n">0,250</td><td class="n">−1,386</td><td class="n">1,386</td></tr>
+            <tr><td class="n">0,02</td><td class="n">0,30</td><td class="n">0,062</td><td class="n">−2,773</td><td class="n">2,773</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Donde el alumno va más que el experto, la recompensa es pequeña; donde casi solo va el experto, grande. RL lleva al alumno hacia los pares del experto. Ejemplo 7.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Clonar · la otra rama · resultados</p>
+  <h2>BC frente a GAIL en control simulado, y qué tienes tú</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En las 9 tareas de control simuladas de Ho y Ermon, el clonado de comportamiento necesitaba más demostraciones en las clásicas (cartpole, acrobot, mountain car), pero fue excelente en Reacher <a class="cite" data-ref="ho2016"></a>.</p>
+      <p>Lectura con el esquema de la hoja 10: con pocas demostraciones, BC cubre mal los estados a los que le llevan sus errores; GAIL los visita en el simulador y aprende allí qué parece del experto.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Cuándo cada una</span>BC solo necesita demostraciones. IRL y GAIL necesitan además interactuar con el entorno, pero entrenan en los estados que visita la propia política, lo que ataca el desplazamiento de covariables sin un experto al que consultar (DAgger sí lo necesita).</div>
@@ -145,15 +528,120 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Trozos · ACT</p>
-  <h2>ACT: predecir k acciones, ensamblar en el tiempo</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Trozos, ensamblado y difusión: las letras nuevas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:34%">Ejemplo</th></tr>
+      <tr><td>\(k\), \(a_{t:t+k}\)</td><td>Tamaño del <strong>trozo</strong> y el trozo \(a_t, \dots, a_{t+k-1}\); ACT lo pide dado \(s_t\), lo que observa. (En BeT, \(k\) eran grupos)</td><td>x500: \(k = 8\), es decir, 8 × 4 = 32 números</td></tr>
+      <tr><td>\(i\), \(w_i\), \(m\)</td><td>Predicciones para un mismo instante (\(i = 0\) la <strong>más antigua</strong>), su peso \(w_i = e^{-m i}\) y el ritmo \(m\)</td><td>Cuatro predicciones para \(t\) con \(k = 4\)</td></tr>
+      <tr><td>\(z\)</td><td>Variable de «estilo» del CVAE de ACT</td><td>\(z = 0\) en la prueba</td></tr>
+      <tr><td>\(T_o\), \(T_p\), \(T_a\)</td><td>Horizontes de Diffusion Policy: observaciones que toma, acciones que predice, acciones que ejecuta</td><td>2, 16 y 8</td></tr>
+      <tr><td>\(O_t\), \(A^n_t\)</td><td>Las \(T_o\) últimas observaciones; trozo de \(T_p\) acciones con ruido de nivel \(n\)</td><td>\(A^0_t\): el trozo limpio del experto</td></tr>
+      <tr><td>\(n\), \(N\)</td><td>Nivel de ruido, de \(n = 0\) (limpio) a \(n = N\) (ruido puro). Chi et al. lo llaman \(k\)</td><td>\(N = 100\) al entrenar</td></tr>
+      <tr><td>\(\beta_n\), \(\bar\alpha_n\)</td><td>Ruido que añade el paso \(n\); señal (al cuadrado) que queda tras \(n\)</td><td>\(\bar\alpha_{50} = 0{,}49\)</td></tr>
+      <tr><td>\(\varepsilon\), \(\varepsilon_\theta\)</td><td>Ruido \(\mathcal N(0, I)\) y la red que lo predice (en la parte 1, \(\varepsilon\) era un error)</td><td>La red de la política</td></tr>
+      <tr><td>\(\alpha\), \(\gamma\), \(\sigma\)</td><td>Coeficientes de un paso de quitar ruido; dependen de \(n\)</td><td>Ecuación 4 de Chi et al.</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Trozos · ACT · 1</p>
+  <h2>ACT: predecir k acciones en cada consulta</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 190" style="max-height:190px" role="img" aria-label="Línea temporal de 12 pasos. Arriba, una consulta por paso. Abajo, una consulta cada cuatro pasos, cada una con un trozo de cuatro acciones">
+      <text x="20" y="56" class="t-muted" font-size="14">k = 1</text>
+      <text x="20" y="74" class="t-time" font-size="12">12 consultas</text>
+      <text x="20" y="126" class="t-muted" font-size="14">k = 4</text>
+      <text x="20" y="144" class="t-time" font-size="12">3 consultas</text>
+      <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+        <text x="190" y="180">0</text><text x="270" y="180">1</text><text x="350" y="180">2</text><text x="430" y="180">3</text><text x="510" y="180">4</text><text x="590" y="180">5</text><text x="670" y="180">6</text><text x="750" y="180">7</text><text x="830" y="180">8</text><text x="910" y="180">9</text><text x="990" y="180">10</text><text x="1070" y="180">11</text>
+      </g>
+      <g>
+        <rect x="152" y="40" width="76" height="34" rx="4" class="box"/><rect x="232" y="40" width="76" height="34" rx="4" class="box"/><rect x="312" y="40" width="76" height="34" rx="4" class="box"/><rect x="392" y="40" width="76" height="34" rx="4" class="box"/><rect x="472" y="40" width="76" height="34" rx="4" class="box"/><rect x="552" y="40" width="76" height="34" rx="4" class="box"/><rect x="632" y="40" width="76" height="34" rx="4" class="box"/><rect x="712" y="40" width="76" height="34" rx="4" class="box"/><rect x="792" y="40" width="76" height="34" rx="4" class="box"/><rect x="872" y="40" width="76" height="34" rx="4" class="box"/><rect x="952" y="40" width="76" height="34" rx="4" class="box"/><rect x="1032" y="40" width="76" height="34" rx="4" class="box"/>
+      </g>
+      <g class="fill-time">
+        <circle cx="156" cy="36" r="5"/><circle cx="236" cy="36" r="5"/><circle cx="316" cy="36" r="5"/><circle cx="396" cy="36" r="5"/><circle cx="476" cy="36" r="5"/><circle cx="556" cy="36" r="5"/><circle cx="636" cy="36" r="5"/><circle cx="716" cy="36" r="5"/><circle cx="796" cy="36" r="5"/><circle cx="876" cy="36" r="5"/><circle cx="956" cy="36" r="5"/><circle cx="1036" cy="36" r="5"/>
+      </g>
+      <rect x="152" y="110" width="316" height="34" rx="4" class="box-accent"/>
+      <rect x="472" y="110" width="316" height="34" rx="4" class="box-accent"/>
+      <rect x="792" y="110" width="316" height="34" rx="4" class="box-accent"/>
+      <text x="310" y="132" text-anchor="middle" class="t-mono" font-size="13">a_0 … a_3</text>
+      <text x="630" y="132" text-anchor="middle" class="t-mono" font-size="13">a_4 … a_7</text>
+      <text x="950" y="132" text-anchor="middle" class="t-mono" font-size="13">a_8 … a_11</text>
+      <circle cx="156" cy="106" r="5" class="fill-time"/><circle cx="476" cy="106" r="5" class="fill-time"/><circle cx="796" cy="106" r="5" class="fill-time"/>
+      <text x="640" y="20" text-anchor="middle" class="t-faint" font-size="13">punto naranja: la política observa y predice · paso de control t</text>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Trozos:</strong> la política modela \(\pi_\theta(a_{t:t+k}\mid s_t)\) en lugar de \(\pi_\theta(a_t\mid s_t)\); cada \(k\) pasos observa y genera las \(k\) siguientes, lo que reduce \(k\) veces el horizonte efectivo y ayuda con el comportamiento no markoviano de las demostraciones humanas <a class="cite" data-ref="zhao2023"></a>.</li>
-        <li><strong>Ensamblado temporal:</strong> se consulta la política en cada paso y se promedian las acciones predichas para el mismo instante con pesos \(w_i = e^{-m i}\); no cuesta entrenamiento, solo cálculo en inferencia.</li>
-        <li><strong>CVAE:</strong> una variable de «estilo» \(z\) que comprime la secuencia de acciones durante el entrenamiento y se descarta en la prueba.</li>
-      </ul>
+      <p>La política modela \(\pi_\theta(a_{t:t+k}\mid s_t)\) en lugar de \(\pi_\theta(a_t\mid s_t)\): cada \(k\) pasos observa y genera las \(k\) siguientes, lo que reduce \(k\) veces el horizonte efectivo de la tarea <a class="cite" data-ref="zhao2023"></a>.</p>
+    </div>
+    <div class="stack">
+      <p>Menos decisiones, menos ocasiones de acumular errores (hoja 10). Además ayuda con el comportamiento no markoviano de las demostraciones humanas, como las pausas. En el x500: 300 pasos ejecutados de 4 en 4 son 75 consultas. Ejemplo 8.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Trozos · ACT · 2 · ensamblado temporal</p>
+  <h2>Consultar en cada paso y promediar lo que se predijo para ese instante</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 640 250" style="max-height:250px" role="img" aria-label="Cuatro consultas consecutivas, cada una con un trozo de cuatro acciones; en el paso 3 se solapan las cuatro y sus valores son 0,40, 0,44, 0,50 y 0,52">
+          <rect x="358" y="24" width="84" height="196" rx="4" class="box-soft"/>
+          <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+            <text x="160" y="240">0</text><text x="240" y="240">1</text><text x="320" y="240">2</text><text x="400" y="240">3</text><text x="480" y="240">4</text><text x="560" y="240">5</text>
+          </g>
+          <text x="400" y="16" text-anchor="middle" class="t-time" font-size="13">paso t = 3</text>
+          <text x="10" y="56" class="t-muted" font-size="13">consulta en 0</text>
+          <text x="10" y="102" class="t-muted" font-size="13">consulta en 1</text>
+          <text x="10" y="148" class="t-muted" font-size="13">consulta en 2</text>
+          <text x="10" y="194" class="t-muted" font-size="13">consulta en 3</text>
+          <rect x="122" y="34" width="316" height="32" rx="4" class="box"/>
+          <rect x="202" y="80" width="316" height="32" rx="4" class="box"/>
+          <rect x="282" y="126" width="316" height="32" rx="4" class="box"/>
+          <rect x="362" y="172" width="276" height="32" rx="4" class="box"/>
+          <text x="400" y="55" text-anchor="middle" class="t-mono t-bold" font-size="13">0,40</text>
+          <text x="400" y="101" text-anchor="middle" class="t-mono t-bold" font-size="13">0,44</text>
+          <text x="400" y="147" text-anchor="middle" class="t-mono t-bold" font-size="13">0,50</text>
+          <text x="400" y="193" text-anchor="middle" class="t-mono t-bold" font-size="13">0,52</text>
+          <text x="470" y="55" class="t-accent" font-size="12">i = 0</text>
+          <text x="530" y="101" class="t-accent" font-size="12">i = 1</text>
+          <text x="610" y="147" class="t-accent" font-size="12">i = 2</text>
+          <text x="560" y="193" class="t-accent" font-size="12">i = 3</text>
+        </svg>
+        <figcaption>Con \(k = 4\), en el paso 3 hay cuatro predicciones; la de la consulta en 0 es la más antigua (\(i = 0\)). Valores de juguete.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      \[ \hat a_t = \frac{\sum_i w_i\,A_t[i]}{\sum_i w_i},\qquad w_i = e^{-m\,i} \]
+      <p>\(A_t[i]\): la acción que la consulta \(i\) predijo para el instante \(t\). La más antigua pesa \(w_0 = 1\); \(m\) fija lo deprisa que se incorporan las nuevas: con \(m\) pequeño, antes <a class="cite" data-ref="zhao2023"></a>. No cuesta entrenamiento, solo una consulta por paso.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(m\)</th><th>Pesos \(w_0, \dots, w_3\)</th><th>\(\hat a_3\)</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0</td><td class="n">1; 1; 1; 1</td><td class="n">0,4650</td></tr>
+            <tr><td class="n">0,5</td><td class="n">1; 0,607; 0,368; 0,223</td><td class="n">0,4400</td></tr>
+            <tr><td class="n">2</td><td class="n">1; 0,135; 0,018; 0,002</td><td class="n">0,4065</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">\(m = 0\) es la media simple; con \(m\) grande manda la predicción más antigua. Ejemplo 8.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Trozos · ACT · 3 · el CVAE y los resultados</p>
+  <h2>Una variable de estilo para las demostraciones humanas, y lo que mide la ablación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>CVAE:</strong> al entrenar, un codificador comprime el trozo de acciones (con la observación) en una variable de «estilo» \(z\); la política, el decodificador, genera el trozo a partir de \(s_t\) y \(z\). La pérdida suma la reconstrucción y una regularización de \(z\) hacia su prior \(\mathcal N(0, I)\), con un peso \(\beta\).</p>
+      <p>En la prueba se fija \(z\) en la media del prior, cero, para decodificar de forma determinista, y el codificador se descarta <a class="cite" data-ref="zhao2023"></a>.</p>
+      <p class="small">Por qué ayuda: dos demostraciones humanas de la misma tarea difieren en ritmo y en camino; \(z\) absorbe esa variación al entrenar y la regresión no tiene que promediarla.</p>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -167,22 +655,209 @@
         </table>
       </div>
       <p class="xsmall muted">Sección VI de Zhao et al. <a class="cite" data-ref="zhao2023"></a>. Unos 80 millones de parámetros, 5 horas de entrenamiento y unos 0,01 s por inferencia en una RTX 2080 Ti.</p>
-      <p class="small">En el robot real, con 50 demostraciones por tarea grabadas a 50 Hz: abrir una bolsa con cierre 88 %, meter una batería 96 %, abrir una taza 84 %, poner un zapato 92 % y enhebrar velcro 20 %.</p>
+      <p>En el robot real, con 50 demostraciones por tarea grabadas a <span class="hz">50 Hz</span>: abrir una bolsa con cierre 88 %, meter una batería 96 %, abrir una taza 84 %, poner un zapato 92 % y enhebrar velcro 20 %. Con \(k = 100\) a 50 Hz, cada trozo cubre 2 s.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Difusión · Diffusion Policy</p>
-  <h2>Diffusion Policy: generar el trozo, ejecutar una parte y volver a generar</h2>
+  <p class="kicker">Difusión · 1 · esquema</p>
+  <h2>Difusión: ensuciar los datos hasta ruido y aprender a deshacerlo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 270" style="max-height:270px" role="img" aria-label="Cuatro densidades de una acción de juguete: con n igual a cero, dos picos en menos uno y más uno; con n igual a treinta, dos jorobas anchas; con sesenta, casi una sola; con cien, una gaussiana. Flecha hacia delante arriba y hacia atrás abajo">
+      <defs><marker id="a10m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <path d="M100,24 H1060" class="ln" marker-end="url(#a10m5)"/>
+      <text x="580" y="16" text-anchor="middle" class="t-muted" font-size="14">hacia delante: cada paso encoge un poco y añade ruido (fijo, no se aprende)</text>
+      <g transform="translate(60,50)">
+        <line x1="0" y1="100" x2="200" y2="100" class="ln-rule"/>
+        <path d="M0.0,100.0 L1.7,100.0 L3.3,100.0 L5.0,100.0 L6.7,100.0 L8.3,100.0 L10.0,100.0 L11.7,100.0 L13.3,100.0 L15.0,100.0 L16.7,100.0 L18.3,100.0 L20.0,100.0 L21.7,100.0 L23.3,100.0 L25.0,100.0 L26.7,100.0 L28.3,100.0 L30.0,100.0 L31.7,100.0 L33.3,100.0 L35.0,100.0 L36.7,100.0 L38.3,100.0 L40.0,100.0 L41.7,100.0 L43.3,100.0 L45.0,100.0 L46.7,100.0 L48.3,100.0 L50.0,100.0 L51.7,100.0 L53.3,100.0 L55.0,99.8 L56.7,99.0 L58.3,96.1 L60.0,88.1 L61.7,71.4 L63.3,46.6 L65.0,22.3 L66.7,12.0 L68.3,22.3 L70.0,46.6 L71.7,71.4 L73.3,88.1 L75.0,96.1 L76.7,99.0 L78.3,99.8 L80.0,100.0 L81.7,100.0 L83.3,100.0 L85.0,100.0 L86.7,100.0 L88.3,100.0 L90.0,100.0 L91.7,100.0 L93.3,100.0 L95.0,100.0 L96.7,100.0 L98.3,100.0 L100.0,100.0 L101.7,100.0 L103.3,100.0 L105.0,100.0 L106.7,100.0 L108.3,100.0 L110.0,100.0 L111.7,100.0 L113.3,100.0 L115.0,100.0 L116.7,100.0 L118.3,100.0 L120.0,100.0 L121.7,99.8 L123.3,99.0 L125.0,96.1 L126.7,88.1 L128.3,71.4 L130.0,46.6 L131.7,22.3 L133.3,12.0 L135.0,22.3 L136.7,46.6 L138.3,71.4 L140.0,88.1 L141.7,96.1 L143.3,99.0 L145.0,99.8 L146.7,100.0 L148.3,100.0 L150.0,100.0 L151.7,100.0 L153.3,100.0 L155.0,100.0 L156.7,100.0 L158.3,100.0 L160.0,100.0 L161.7,100.0 L163.3,100.0 L165.0,100.0 L166.7,100.0 L168.3,100.0 L170.0,100.0 L171.7,100.0 L173.3,100.0 L175.0,100.0 L176.7,100.0 L178.3,100.0 L180.0,100.0 L181.7,100.0 L183.3,100.0 L185.0,100.0 L186.7,100.0 L188.3,100.0 L190.0,100.0 L191.7,100.0 L193.3,100.0 L195.0,100.0 L196.7,100.0 L198.3,100.0 L200.0,100.0" fill="none" class="ln-accent" stroke-width="2.2"/>
+        <text x="66.7" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text><text x="133.3" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+        <text x="100" y="142" text-anchor="middle" class="t-bold" font-size="14">n = 0: los datos</text>
+        <text x="100" y="160" text-anchor="middle" class="t-mono t-muted" font-size="13">ᾱ = 1</text>
+      </g>
+      <g transform="translate(360,50)">
+        <line x1="0" y1="100" x2="200" y2="100" class="ln-rule"/>
+        <path d="M0.0,100.0 L1.7,100.0 L3.3,100.0 L5.0,100.0 L6.7,100.0 L8.3,100.0 L10.0,99.9 L11.7,99.9 L13.3,99.9 L15.0,99.8 L16.7,99.8 L18.3,99.7 L20.0,99.5 L21.7,99.3 L23.3,99.0 L25.0,98.7 L26.7,98.2 L28.3,97.6 L30.0,96.8 L31.7,95.9 L33.3,94.7 L35.0,93.2 L36.7,91.4 L38.3,89.2 L40.0,86.7 L41.7,83.7 L43.3,80.3 L45.0,76.4 L46.7,72.1 L48.3,67.5 L50.0,62.4 L51.7,57.1 L53.3,51.5 L55.0,45.8 L56.7,40.2 L58.3,34.7 L60.0,29.5 L61.7,24.8 L63.3,20.6 L65.0,17.1 L66.7,14.5 L68.3,12.8 L70.0,12.0 L71.7,12.2 L73.3,13.4 L75.0,15.5 L76.7,18.4 L78.3,22.1 L80.0,26.4 L81.7,31.2 L83.3,36.2 L85.0,41.4 L86.7,46.5 L88.3,51.4 L90.0,56.0 L91.7,60.2 L93.3,63.7 L95.0,66.6 L96.7,68.6 L98.3,69.9 L100.0,70.4 L101.7,69.9 L103.3,68.6 L105.0,66.6 L106.7,63.7 L108.3,60.2 L110.0,56.0 L111.7,51.4 L113.3,46.5 L115.0,41.4 L116.7,36.2 L118.3,31.2 L120.0,26.4 L121.7,22.1 L123.3,18.4 L125.0,15.5 L126.7,13.4 L128.3,12.2 L130.0,12.0 L131.7,12.8 L133.3,14.5 L135.0,17.1 L136.7,20.6 L138.3,24.8 L140.0,29.5 L141.7,34.7 L143.3,40.2 L145.0,45.8 L146.7,51.5 L148.3,57.1 L150.0,62.4 L151.7,67.5 L153.3,72.1 L155.0,76.4 L156.7,80.3 L158.3,83.7 L160.0,86.7 L161.7,89.2 L163.3,91.4 L165.0,93.2 L166.7,94.7 L168.3,95.9 L170.0,96.8 L171.7,97.6 L173.3,98.2 L175.0,98.7 L176.7,99.0 L178.3,99.3 L180.0,99.5 L181.7,99.7 L183.3,99.8 L185.0,99.8 L186.7,99.9 L188.3,99.9 L190.0,99.9 L191.7,100.0 L193.3,100.0 L195.0,100.0 L196.7,100.0 L198.3,100.0 L200.0,100.0" fill="none" class="ln-accent" stroke-width="2.2"/>
+        <text x="66.7" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text><text x="133.3" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+        <text x="100" y="142" text-anchor="middle" class="t-bold" font-size="14">n = 30</text>
+        <text x="100" y="160" text-anchor="middle" class="t-mono t-muted" font-size="13">ᾱ = 0,79</text>
+      </g>
+      <g transform="translate(660,50)">
+        <line x1="0" y1="100" x2="200" y2="100" class="ln-rule"/>
+        <path d="M0.0,99.3 L1.7,99.2 L3.3,99.0 L5.0,98.8 L6.7,98.6 L8.3,98.3 L10.0,98.0 L11.7,97.7 L13.3,97.3 L15.0,96.9 L16.7,96.4 L18.3,95.8 L20.0,95.2 L21.7,94.5 L23.3,93.7 L25.0,92.9 L26.7,91.9 L28.3,90.9 L30.0,89.7 L31.7,88.5 L33.3,87.1 L35.0,85.6 L36.7,84.1 L38.3,82.4 L40.0,80.6 L41.7,78.7 L43.3,76.7 L45.0,74.6 L46.7,72.3 L48.3,70.0 L50.0,67.6 L51.7,65.2 L53.3,62.7 L55.0,60.1 L56.7,57.5 L58.3,54.8 L60.0,52.1 L61.7,49.4 L63.3,46.8 L65.0,44.1 L66.7,41.5 L68.3,38.9 L70.0,36.4 L71.7,34.0 L73.3,31.7 L75.0,29.4 L76.7,27.3 L78.3,25.2 L80.0,23.3 L81.7,21.6 L83.3,19.9 L85.0,18.5 L86.7,17.1 L88.3,15.9 L90.0,14.9 L91.7,14.0 L93.3,13.3 L95.0,12.7 L96.7,12.3 L98.3,12.1 L100.0,12.0 L101.7,12.1 L103.3,12.3 L105.0,12.7 L106.7,13.3 L108.3,14.0 L110.0,14.9 L111.7,15.9 L113.3,17.1 L115.0,18.5 L116.7,19.9 L118.3,21.6 L120.0,23.3 L121.7,25.2 L123.3,27.3 L125.0,29.4 L126.7,31.7 L128.3,34.0 L130.0,36.4 L131.7,38.9 L133.3,41.5 L135.0,44.1 L136.7,46.8 L138.3,49.4 L140.0,52.1 L141.7,54.8 L143.3,57.5 L145.0,60.1 L146.7,62.7 L148.3,65.2 L150.0,67.6 L151.7,70.0 L153.3,72.3 L155.0,74.6 L156.7,76.7 L158.3,78.7 L160.0,80.6 L161.7,82.4 L163.3,84.1 L165.0,85.6 L166.7,87.1 L168.3,88.5 L170.0,89.7 L171.7,90.9 L173.3,91.9 L175.0,92.9 L176.7,93.7 L178.3,94.5 L180.0,95.2 L181.7,95.8 L183.3,96.4 L185.0,96.9 L186.7,97.3 L188.3,97.7 L190.0,98.0 L191.7,98.3 L193.3,98.6 L195.0,98.8 L196.7,99.0 L198.3,99.2 L200.0,99.3" fill="none" class="ln-accent" stroke-width="2.2"/>
+        <text x="66.7" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text><text x="133.3" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+        <text x="100" y="142" text-anchor="middle" class="t-bold" font-size="14">n = 60</text>
+        <text x="100" y="160" text-anchor="middle" class="t-mono t-muted" font-size="13">ᾱ = 0,34</text>
+      </g>
+      <g transform="translate(960,50)">
+        <line x1="0" y1="100" x2="200" y2="100" class="ln-rule"/>
+        <path d="M0.0,99.0 L1.7,98.9 L3.3,98.7 L5.0,98.5 L6.7,98.3 L8.3,98.0 L10.0,97.7 L11.7,97.4 L13.3,97.0 L15.0,96.6 L16.7,96.1 L18.3,95.6 L20.0,95.1 L21.7,94.4 L23.3,93.8 L25.0,93.0 L26.7,92.2 L28.3,91.3 L30.0,90.3 L31.7,89.2 L33.3,88.1 L35.0,86.9 L36.7,85.5 L38.3,84.1 L40.0,82.6 L41.7,81.0 L43.3,79.3 L45.0,77.4 L46.7,75.5 L48.3,73.5 L50.0,71.4 L51.7,69.2 L53.3,67.0 L55.0,64.6 L56.7,62.2 L58.3,59.7 L60.0,57.2 L61.7,54.6 L63.3,51.9 L65.0,49.3 L66.7,46.6 L68.3,44.0 L70.0,41.3 L71.7,38.7 L73.3,36.1 L75.0,33.6 L76.7,31.1 L78.3,28.8 L80.0,26.5 L81.7,24.4 L83.3,22.3 L85.0,20.5 L86.7,18.8 L88.3,17.2 L90.0,15.9 L91.7,14.7 L93.3,13.7 L95.0,13.0 L96.7,12.4 L98.3,12.1 L100.0,12.0 L101.7,12.1 L103.3,12.4 L105.0,13.0 L106.7,13.7 L108.3,14.7 L110.0,15.9 L111.7,17.2 L113.3,18.8 L115.0,20.5 L116.7,22.3 L118.3,24.4 L120.0,26.5 L121.7,28.8 L123.3,31.1 L125.0,33.6 L126.7,36.1 L128.3,38.7 L130.0,41.3 L131.7,44.0 L133.3,46.6 L135.0,49.3 L136.7,51.9 L138.3,54.6 L140.0,57.2 L141.7,59.7 L143.3,62.2 L145.0,64.6 L146.7,67.0 L148.3,69.2 L150.0,71.4 L151.7,73.5 L153.3,75.5 L155.0,77.4 L156.7,79.3 L158.3,81.0 L160.0,82.6 L161.7,84.1 L163.3,85.5 L165.0,86.9 L166.7,88.1 L168.3,89.2 L170.0,90.3 L171.7,91.3 L173.3,92.2 L175.0,93.0 L176.7,93.8 L178.3,94.4 L180.0,95.1 L181.7,95.6 L183.3,96.1 L185.0,96.6 L186.7,97.0 L188.3,97.4 L190.0,97.7 L191.7,98.0 L193.3,98.3 L195.0,98.5 L196.7,98.7 L198.3,98.9 L200.0,99.0" fill="none" class="ln-accent" stroke-width="2.2"/>
+        <text x="66.7" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text><text x="133.3" y="118" text-anchor="middle" class="t-mono t-faint" font-size="12">+1</text>
+        <text x="100" y="142" text-anchor="middle" class="t-bold" font-size="14">n = N = 100: ruido</text>
+        <text x="100" y="160" text-anchor="middle" class="t-mono t-muted" font-size="13">ᾱ = 0, N(0, 1)</text>
+      </g>
+      <path d="M1060,240 H100" class="ln-accent" stroke-width="2" marker-end="url(#a10m5)"/>
+      <text x="580" y="262" text-anchor="middle" class="t-accent" font-size="14">hacia atrás: la red ε_θ, condicionada a la observación, quita el ruido paso a paso (lo que se aprende)</text>
+    </svg>
+    <figcaption>Una acción de juguete con dos modos, \(\pm 1\) con desviación 0,1; cada densidad con su propia escala vertical. Programa de ruido coseno, \(N = 100\). Ejemplo 9.</figcaption>
+  </figure>
+  <div class="cols">
+    <p><strong>Entra:</strong> las observaciones \(O_t\) y ruido puro \(A^N_t\sim\mathcal N(0, I)\). <strong>Sale:</strong> un trozo de acciones \(A^0_t\) que parece sacado de las demostraciones, de uno de sus modos.</p>
+    <p>Hacia delante es una fórmula fija (hoja siguiente); lo único que se aprende es la red que deshace un paso. Muestrear de \(p(A\mid O)\) es partir de ruido y aplicarla \(N\) veces.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Difusión · 2 · hacia delante</p>
+  <h2>Cualquier nivel de ruido se alcanza en un solo paso</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x^n = \sqrt{1-\beta_n}\,x^{n-1} + \sqrt{\beta_n}\,\varepsilon_n\)</td><td>Un paso: encoger un poco y añadir ruido nuevo, independiente</td></tr>
+          <tr><td><strong>2</strong></td><td>\(x^2 = \sqrt{(1-\beta_1)(1-\beta_2)}\,x^0 + \sqrt{(1-\beta_2)\beta_1}\,\varepsilon_1 + \sqrt{\beta_2}\,\varepsilon_2\)</td><td>Encadenar dos pasos</td></tr>
+          <tr><td><strong>3</strong></td><td>Varianza del ruido: \((1-\beta_2)\beta_1 + \beta_2 = 1 - (1-\beta_1)(1-\beta_2)\)</td><td>Gaussianas independientes: las varianzas se suman</td></tr>
+          <tr><td><strong>4</strong></td><td>\(x^n = \sqrt{\bar\alpha_n}\,x^0 + \sqrt{1-\bar\alpha_n}\,\varepsilon,\quad \bar\alpha_n = \prod_{j\le n}(1-\beta_j)\)</td><td>Por inducción: un solo ruido \(\varepsilon\sim\mathcal N(0, I)\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\bar\alpha_N\approx 0\Rightarrow x^N\approx\varepsilon\)</td><td>Al final no queda nada de los datos</td></tr>
+        </table>
+      </div>
+      <p>Lo que importa del paso 4: para entrenar no hace falta simular la cadena; se sortea \(n\) y se ensucia el dato directamente. \(\sqrt{\bar\alpha_n}\) es cuánto queda de la señal y \(\sqrt{1-\bar\alpha_n}\), cuánto ruido hay.</p>
+    </div>
+    <div class="stack">
+      <p>Diffusion Policy usa el programa coseno de iDDPM <a class="cite" data-ref="chi2025"></a>:</p>
+      \[ \begin{aligned}\bar\alpha_n &= \frac{f(n)}{f(0)}\\ f(n) &= \cos^2\!\Big(\frac{n/N + 0{,}008}{1{,}008}\cdot\frac{\pi}{2}\Big)\end{aligned} \]
+      <p class="small">\(f\) baja de 1 a 0 como un coseno al cuadrado; el 0,008 es un desplazamiento pequeño para que los primeros pasos no sean demasiado pequeños.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(n\)</th><th>\(\bar\alpha_n\)</th><th>señal \(\sqrt{\bar\alpha_n}\)</th><th>ruido</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0</td><td class="n">1,000</td><td class="n">1,000</td><td class="n">0,000</td></tr>
+            <tr><td class="n">25</td><td class="n">0,847</td><td class="n">0,920</td><td class="n">0,391</td></tr>
+            <tr><td class="n">50</td><td class="n">0,494</td><td class="n">0,703</td><td class="n">0,711</td></tr>
+            <tr><td class="n">75</td><td class="n">0,144</td><td class="n">0,380</td><td class="n">0,925</td></tr>
+            <tr><td class="n">100</td><td class="n">0,000</td><td class="n">0,000</td><td class="n">1,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">\(N = 100\). Ejemplo 9 de <code>ejemplos_a10.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Difusión · 3 · el objetivo</p>
+  <h2>Entrenar es una regresión: adivinar el ruido que se añadió</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li>Toma las últimas \(T_o\) observaciones, genera \(T_p\) acciones por difusión y ejecuta \(T_a\) sin replanificar; después vuelve a generar, partiendo de la predicción anterior: control con horizonte de retroceso <a class="cite" data-ref="chi2025"></a>.</li>
-        <li>Valores habituales: \(T_o = 2\), \(T_a = 8\), \(T_p = 16\); según sus autores, un horizonte de ejecución de 8 pasos es el mejor para la mayoría de las tareas.</li>
-        <li>Velocidad: con DDIM y 10 iteraciones de inferencia, 0,1 s de latencia en una RTX 3080 (su tabla de hiperparámetros usa 16 en las tareas reales).</li>
+      <p>Chi et al. lo escriben así (su ecuación 5), con \(\varepsilon^n\) un ruido de la varianza que toca al nivel \(n\) <a class="cite" data-ref="chi2025"></a>:</p>
+      \[ \mathcal L = \mathrm{MSE}\big(\varepsilon^n,\ \varepsilon_\theta(O_t,\ A^0_t + \varepsilon^n,\ n)\big) \]
+      <p>Con la escala de la hoja anterior a la vista:</p>
+      \[ \begin{aligned}\mathcal L &= \mathbb E\,\big\|\varepsilon - \varepsilon_\theta\big(O_t,\ A^n_t,\ n\big)\big\|^2\\ A^n_t &= \sqrt{\bar\alpha_n}\,A^0_t + \sqrt{1-\bar\alpha_n}\,\varepsilon\end{aligned} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:60%">Una iteración de entrenamiento</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>Tomar \((O_t, A^0_t)\) de las demostraciones</td><td>El dato</td></tr>
+          <tr><td><strong>2</strong></td><td>Sortear \(n\) y \(\varepsilon\sim\mathcal N(0, I)\); ensuciar</td><td>Sin simular la cadena</td></tr>
+          <tr><td><strong>3</strong></td><td>Error entre \(\varepsilon\) y \(\varepsilon_\theta(O_t, A^n_t, n)\)</td><td>La etiqueta es el ruido</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>A mano</strong> (ejemplo 9), una sola acción: \(x^0 = 0{,}8\), \(\bar\alpha = 0{,}5\), \(\varepsilon = -1{,}2\).</p>
+      <ul>
+        <li>Ensuciar: \(x^n = 0{,}707\cdot 0{,}8\) \(+\ 0{,}707\cdot(-1{,}2)\) \(= -0{,}283\).</li>
+        <li>Si la red predice \(\hat\varepsilon = -1{,}0\), el error es \((-1{,}2 + 1{,}0)^2 = 0{,}040\).</li>
+        <li>Predecir el ruido es predecir el dato: \(\hat x^0 = (x^n - 0{,}707\,\hat\varepsilon)/0{,}707 = 0{,}600\).</li>
       </ul>
+      <div class="aparte"><span class="rotulo">Otra vez la media condicionada</span>
+        <p>Por la hoja 12, la mejor \(\varepsilon_\theta\) es \(\mathbb E[\varepsilon\mid A^n_t, O_t]\), y con ella \(\hat x^0 = \mathbb E[A^0_t\mid A^n_t, O_t]\). Con mucho ruido, \(A^n_t\) no dice casi nada y esa media es la de los dos modos; con poco, señala uno. La hoja siguiente lo cuenta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Difusión · 4 · hacia atrás</p>
+  <h2>Muestrear: partir de ruido y quitarlo; el modo se decide por el camino</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Un paso hacia atrás (ecuación 4 de Chi et al.) <a class="cite" data-ref="chi2025"></a>:</p>
+      \[ A^{n-1}_t = \alpha\big(A^n_t - \gamma\,\varepsilon_\theta(O_t, A^n_t, n) + \mathcal N(0, \sigma^2 I)\big) \]
+      <p>Restar el ruido predicho (escalado por \(\gamma\)), encoger con \(\alpha\) y añadir un poco de ruido nuevo, con \(\alpha, \gamma, \sigma\) fijados por el programa de ruido. Se repite de \(n = N\) a \(n = 1\).</p>
+      <p><strong>DDIM</strong> separa los pasos de entrenamiento de los de inferencia: con 100 al entrenar y 10 al muestrear, Diffusion Policy decide en 0,1 s en una RTX 3080.</p>
+      <p>Con el quitarruidos ideal de nuestro juguete (datos en \(\pm1\)), \(\hat x^0 = \tanh\big(\sqrt{\bar\alpha}\,x/(1-\bar\alpha)\big)\). En \(x = 0{,}2\): 0,070 con \(\bar\alpha = 0{,}1\) (casi la media, 0); 0,276 con 0,5; 0,956 con 0,9 (casi el modo \(+1\)).</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 580 250" style="max-height:250px" role="img" aria-label="Ocho trayectorias de muestreo: salen de ruido entre menos dos y dos y acaban en menos uno o en más uno según su signo">
+          <line x1="60" y1="20" x2="60" y2="230" class="ln-rule"/>
+          <line x1="60" y1="125" x2="520" y2="125" class="ln-rule"/>
+          <line x1="60" y1="83" x2="520" y2="83" class="ln-dash"/>
+          <line x1="60" y1="167" x2="520" y2="167" class="ln-dash"/>
+          <path d="M60.0,204.8 L106.0,203.8 L152.0,202.9 L198.0,201.8 L244.0,200.6 L290.0,198.6 L336.0,195.4 L382.0,190.7 L428.0,184.5 L474.0,176.7 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.8"/>
+          <path d="M60.0,175.4 L106.0,174.8 L152.0,174.2 L198.0,173.7 L244.0,173.5 L290.0,173.7 L336.0,174.1 L382.0,174.1 L428.0,173.0 L474.0,170.7 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.8"/>
+          <path d="M60.0,154.4 L106.0,154.0 L152.0,153.7 L198.0,153.5 L244.0,153.6 L290.0,154.4 L336.0,156.4 L382.0,159.7 L428.0,163.0 L474.0,165.5 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.8"/>
+          <path d="M60.0,135.5 L106.0,135.4 L152.0,135.3 L198.0,135.2 L244.0,135.3 L290.0,135.7 L336.0,137.0 L382.0,140.7 L428.0,148.7 L474.0,158.0 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.8"/>
+          <path d="M60.0,120.8 L106.0,120.9 L152.0,120.9 L198.0,120.9 L244.0,120.9 L290.0,120.7 L336.0,120.1 L382.0,118.4 L428.0,112.3 L474.0,98.0 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.8"/>
+          <path d="M60.0,106.1 L106.0,106.3 L152.0,106.5 L198.0,106.7 L244.0,106.6 L290.0,105.9 L336.0,103.9 L382.0,99.6 L428.0,93.6 L474.0,88.0 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.8"/>
+          <path d="M60.0,87.2 L106.0,87.7 L152.0,88.1 L198.0,88.4 L244.0,88.4 L290.0,87.7 L336.0,86.2 L382.0,84.1 L428.0,82.7 L474.0,82.3 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.8"/>
+          <path d="M60.0,57.8 L106.0,58.6 L152.0,59.4 L198.0,60.2 L244.0,60.9 L290.0,61.8 L336.0,63.4 L382.0,66.1 L428.0,70.3 L474.0,75.8 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.8"/>
+          <text x="52" y="87" text-anchor="end" class="t-mono t-faint" font-size="12">+1</text>
+          <text x="52" y="129" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="171" text-anchor="end" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="60" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">n = 100</text>
+          <text x="520" y="246" text-anchor="end" class="t-mono t-faint" font-size="12">n = 0</text>
+          <text x="290" y="246" text-anchor="middle" class="t-muted" font-size="12">10 pasos deterministas (tipo DDIM)</text>
+        </svg>
+        <figcaption>Ocho muestras del juguete con el quitarruidos ideal: salen de ruido y acaban en \(-1\) o en \(+1\), nunca en medio. Ejemplo 9.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Por qué no promedia</span>La red promedia en cada paso, pero el resultado de un paso es la entrada del siguiente: al principio casi no se compromete, y en cuanto la muestra se acerca a un modo, el quitarruidos la empuja hacia él.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Difusión · Diffusion Policy · el horizonte de retroceso</p>
+  <h2>Diffusion Policy: generar el trozo, ejecutar una parte y volver a generar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 230" style="max-height:220px" role="img" aria-label="Dos ciclos. En el primero, se observan los pasos t menos uno y t, se predicen 16 acciones y se ejecutan las 8 primeras. En el segundo, a partir de t más 8, lo mismo">
+      <text x="10" y="88" class="t-muted" font-size="14">ciclo 1</text>
+      <text x="10" y="158" class="t-muted" font-size="14">ciclo 2</text>
+      <circle cx="131" cy="56" r="6" class="fill-time"/><circle cx="173" cy="56" r="6" class="fill-time"/>
+      <text x="200" y="60" class="t-time" font-size="13">T_o = 2 observaciones</text>
+      <rect x="152" y="70" width="672" height="28" rx="4" class="box-soft"/>
+      <rect x="152" y="70" width="336" height="28" rx="4" class="box-accent"/>
+      <text x="320" y="89" text-anchor="middle" class="t-bold" font-size="13">T_a = 8 ejecutadas</text>
+      <text x="656" y="89" text-anchor="middle" class="t-muted" font-size="13">predichas, no ejecutadas</text>
+      <text x="830" y="89" class="t-muted" font-size="13">T_p = 16</text>
+      <circle cx="467" cy="126" r="6" class="fill-time"/><circle cx="509" cy="126" r="6" class="fill-time"/>
+      <rect x="488" y="140" width="672" height="28" rx="4" class="box-soft"/>
+      <rect x="488" y="140" width="336" height="28" rx="4" class="box-accent"/>
+      <text x="656" y="159" text-anchor="middle" class="t-bold" font-size="13">T_a = 8 ejecutadas</text>
+      <text x="992" y="159" text-anchor="middle" class="t-muted" font-size="13">predichas, no ejecutadas</text>
+      <path d="M488,100 V136" class="ln-dash"/>
+      <text x="496" y="118" class="t-faint" font-size="12">se vuelve a generar, partiendo de la predicción anterior</text>
+      <g class="t-mono t-faint" font-size="12" text-anchor="middle">
+        <text x="131" y="200">t−1</text><text x="173" y="200">t</text><text x="509" y="200">t+8</text><text x="845" y="200">t+16</text><text x="1139" y="200">t+23</text>
+      </g>
+      <line x1="110" y1="186" x2="1160" y2="186" class="ln-rule"/>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p>Toma las últimas \(T_o\) observaciones, genera \(T_p\) acciones por difusión y ejecuta \(T_a\) sin replanificar; después vuelve a generar, partiendo de la predicción anterior: control con horizonte de retroceso <a class="cite" data-ref="chi2025"></a>.</p>
+    <p>Valores habituales: \(T_o = 2\), \(T_a = 8\), \(T_p = 16\); según sus autores, un horizonte de ejecución de 8 pasos es el mejor para la mayoría de las tareas. A <span class="hz">50 Hz</span>, 8 pasos serían 160 ms entre inferencias (ejemplo 10).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Difusión · Diffusion Policy · modos y latencia</p>
+  <h2>Se compromete con un modo en cada despliegue, a cambio de latencia</h2>
+  <div class="cols">
+    <div class="stack">
       <div class="callout clave"><span class="tag">Multimodalidad</span>«Diffusion Policy aprende los dos modos y se compromete con uno en cada despliegue»; LSTM-GMM e IBC quedan sesgados hacia un modo, y BeT no se compromete por falta de consistencia temporal <a class="cite" data-ref="chi2025"></a>.</div>
+      <p>Lo primero es lo de la hoja anterior; lo segundo es la ventaja de los trozos: el modo se elige una vez por trozo, no en cada paso, y la trayectoria no salta de un lado a otro.</p>
+      <p>Velocidad: con DDIM y 10 iteraciones de inferencia, 0,1 s de latencia en una RTX 3080 (su tabla de hiperparámetros usa 16 en las tareas reales).</p>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -201,21 +876,316 @@
   </div>
 </section>
 
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Flow matching y destilación">
+  <p class="num">Parte 3</p>
+  <h2>Flow matching, π0 y destilación</h2>
+  <p>Un campo de velocidades que lleva ruido a acciones, derivado paso a paso, y cómo se mete un planificador caro en una red.</p>
+</section>
+
 <section class="slide">
-  <p class="kicker">Generativas · flow matching</p>
-  <h2>Flow matching: aprender un campo de velocidades que lleva ruido a acciones</h2>
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Flow matching: tiempo del flujo, ruido, datos y campos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:34%">En el juguete 1-D / en el x500</th></tr>
+      <tr><td>\(t\in[0, 1]\)</td><td>Tiempo del <strong>flujo</strong>: \(t = 0\) es ruido, \(t = 1\) son datos. <strong>No</strong> es el paso de control</td><td>10 pasos de Euler: \(t = 0;\ 0{,}1;\ \dots;\ 0{,}9\)</td></tr>
+      <tr><td>\(x_0\), \(x_1\)</td><td>Ruido \(x_0\sim\mathcal N(0, I)\) y un dato \(x_1\sim q\)</td><td>\(x_1 = \pm1\) / un trozo de 8 acciones (32 números)</td></tr>
+      <tr><td>\(x\), \(x_t\)</td><td>Un punto cualquiera; el punto del camino en el instante \(t\)</td><td>\(x_t = (1-t)x_0 + t x_1\)</td></tr>
+      <tr><td>\(q\), \(p_t\)</td><td>Distribución de los datos; distribución de \(x_t\) (de \(p_0 = \mathcal N(0, I)\) a \(p_1\approx q\))</td><td>\(q\): ½ en \(+1\), ½ en \(-1\)</td></tr>
+      <tr><td>\(\psi_t\), \(\sigma_{\min}\)</td><td>Camino condicional de Lipman et al. y su ruido residual en \(t = 1\)</td><td>\(\sigma_{\min} = 0\) en el x500</td></tr>
+      <tr><td>\(u_t(x\mid x_1)\)</td><td>Velocidad <strong>condicional</strong>: la del camino que va hacia un dato concreto</td><td>\((x_1 - x)/(1-t)\)</td></tr>
+      <tr><td>\(u_t(x)\)</td><td>Velocidad <strong>marginal</strong>: la que hay que seguir sin saber a qué dato se va</td><td>Fórmula cerrada en el juguete</td></tr>
+      <tr><td>\(v_\theta(x, t)\)</td><td>La red: aprende \(u_t\). En una política, también recibe la observación \(o\)</td><td>60 entradas, 32 salidas</td></tr>
+      <tr><td>\(N\), \(\phi_1(x_0)\)</td><td>Pasos de Euler (cada uno de \(1/N\)); \(\phi_1(x_0)\), dónde acaba en \(t = 1\) el flujo que sale de \(x_0\)</td><td>\(N = 10\)</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: en la difusión de la parte 2, el superíndice 0 era el dato limpio (\(A^0_t\)); en flow matching, con subíndice, \(x_0\) es el ruido y \(x_1\) el dato, como en Lipman et al.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 1 · esquema</p>
+  <h2>Qué hacemos: llevar una gaussiana a los datos siguiendo un campo de velocidades</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 580 250" style="max-height:260px" role="img" aria-label="A la izquierda, una campana gaussiana en t igual a cero; a la derecha, dos puntos en más uno y menos uno en t igual a uno; seis rectas unen muestras de ruido con datos y algunas se cruzan">
+        <line x1="60" y1="20" x2="60" y2="230" class="ln-rule"/>
+        <line x1="520" y1="20" x2="520" y2="230" class="ln-rule"/>
+        <path d="M58.0,230.0 L57.5,225.8 L56.8,221.6 L56.0,217.4 L55.0,213.2 L53.9,209.0 L52.6,204.8 L51.1,200.6 L49.4,196.4 L47.5,192.2 L45.4,188.0 L43.1,183.8 L40.7,179.6 L38.1,175.4 L35.4,171.2 L32.7,167.0 L30.0,162.8 L27.3,158.6 L24.8,154.4 L22.4,150.2 L20.3,146.0 L18.5,141.8 L17.0,137.6 L15.9,133.4 L15.2,129.2 L15.0,125.0 L15.2,120.8 L15.9,116.6 L17.0,112.4 L18.5,108.2 L20.3,104.0 L22.4,99.8 L24.8,95.6 L27.3,91.4 L30.0,87.2 L32.7,83.0 L35.4,78.8 L38.1,74.6 L40.7,70.4 L43.1,66.2 L45.4,62.0 L47.5,57.8 L49.4,53.6 L51.1,49.4 L52.6,45.2 L53.9,41.0 L55.0,36.8 L56.0,32.6 L56.8,28.4 L57.5,24.2 L58.0,20.0" fill="none" class="ln-time" stroke-width="2"/>
+        <path d="M520,83 H560" class="ln-accent" stroke-width="5"/>
+        <path d="M520,167 H560" class="ln-tesis" stroke-width="5"/>
+        <path d="M60.0,192.2 L520.0,83.0" class="ln-accent" stroke-width="1.6"/>
+        <path d="M60.0,162.8 L520.0,167.0" class="ln-tesis" stroke-width="1.6"/>
+        <path d="M60.0,137.6 L520.0,83.0" class="ln-accent" stroke-width="1.6"/>
+        <path d="M60.0,116.6 L520.0,167.0" class="ln-tesis" stroke-width="1.6"/>
+        <path d="M60.0,95.6 L520.0,83.0" class="ln-accent" stroke-width="1.6"/>
+        <path d="M60.0,66.2 L520.0,167.0" class="ln-tesis" stroke-width="1.6"/>
+        <text x="60" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 0: ruido</text>
+        <text x="520" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 1: datos</text>
+        <text x="566" y="87" class="t-mono t-accent" font-size="12">+1</text>
+        <text x="566" y="171" class="t-mono t-tesis" font-size="12">−1</text>
+        <text x="290" y="16" text-anchor="middle" class="t-muted" font-size="13">rectas: caminos condicionales x_t = (1 − t) x_0 + t x_1</text>
+      </svg>
+      <figcaption>Seis pares (ruido, dato) sorteados para entrenar. Las rectas se cruzan: por un mismo punto pasan caminos hacia datos distintos. Ejemplo 11.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Un campo \(v_\theta(x, t)\) define un flujo, la ecuación diferencial \(\dot x = v_\theta(x, t)\), de \(t = 0\) (ruido) a \(t = 1\) (datos) <a class="cite" data-ref="lipman2022"></a>. Si el campo es el bueno, las muestras de ruido que lo siguen acaban repartidas como los datos.</p>
+      <p><strong>Entra:</strong> ruido \(x_0\) y, en una política, la observación \(o\). <strong>Sale:</strong> \(x_1\), un trozo de acciones.</p>
+      <p><strong>El plan de las hojas siguientes:</strong> (1) un camino recto por cada par, con velocidad conocida; (2) el campo que de verdad hay que seguir, que es la media de esas velocidades; (3) por qué basta hacer regresión sobre las velocidades de las rectas; (4) muestrear con Euler.</p>
+      <p class="small muted">Como la difusión, pero sin ruido al muestrear: se integra una ecuación diferencial ordinaria.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 2 · el camino condicional</p>
+  <h2>Un camino recto por cada par, con velocidad constante</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Un campo \(v_\theta(x, t)\) define un flujo \(\dot x = v_\theta(x, t)\) de \(t = 0\) (ruido) a \(t = 1\) (datos). Con el camino condicional lineal (de transporte óptimo), el objetivo de flow matching condicional es <a class="cite" data-ref="lipman2022"></a>:</p>
-      \[ \mathcal L_{\text{CFM}}(\theta) = \mathbb E_{t, x_1, x_0}\big\|v_\theta(\psi_t(x_0), t) - \big(x_1 - (1-\sigma_{\min})x_0\big)\big\|^2, \]
-      <p class="small">con \(\psi_t(x_0) = (1 - (1-\sigma_{\min})t)\,x_0 + t\,x_1\), \(x_0\sim\mathcal N(0, I)\) y \(x_1\) un dato. Para una política, \(x_1\) es un trozo de acciones y \(v_\theta\) se condiciona a la observación.</p>
-      <p class="small"><strong>Muestrear:</strong> partir de ruido e integrar con Euler, \(x \leftarrow x + \tfrac{1}{N} v_\theta(x, t)\), \(N\) pasos. Los caminos lineales son rectos, y por eso bastan pocos pasos <a class="cite" data-ref="liu2022"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x_t = (1-t)\,x_0 + t\,x_1\)</td><td>La recta de \(x_0\) a \(x_1\): en \(t = 0\) es el ruido, en \(t = 1\) el dato</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{dx_t}{dt} = x_1 - x_0\)</td><td>Derivar respecto a \(t\): velocidad constante</td></tr>
+          <tr><td><strong>3</strong></td><td>\(x_0 = \dfrac{x - t\,x_1}{1-t}\)</td><td>Despejar el ruido del paso 1, en un punto \(x = x_t\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(u_t(x\mid x_1) = x_1 - x_0 = \dfrac{x_1 - x}{1-t}\)</td><td>La misma velocidad escrita en función del punto y del dato</td></tr>
+        </table>
+      </div>
+      <p><strong>A mano</strong> (ejemplo 11): \(x_0 = -0{,}5\), \(x_1 = 1\). En \(t = 0;\ 0{,}25;\ 0{,}5;\ 0{,}75;\ 1\), \(x_t\) vale \(-0{,}5;\ -0{,}125;\ 0{,}25;\ 0{,}625;\ 1\). Velocidad \(1{,}5\); con el paso 4 en \(t = 0{,}5\): \((1 - 0{,}25)/0{,}5 = 1{,}5\).</p>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: por qué basta el objetivo condicional</summary>
-        <p class="small">El campo que querríamos, \(u_t(x)\), genera la distribución de los datos pero es intratable. Para cada dato \(x_1\), el camino condicional tiene un campo sencillo \(u_t(x\mid x_1)\), y \(u_t(x) = \mathbb E[u_t(x\mid x_1)\mid x]\) bajo el camino. Desarrollando el cuadrado, \(\mathbb E\|v_\theta - u_t(x\mid x_1)\|^2\) y \(\mathbb E\|v_\theta - u_t(x)\|^2\) difieren en un término que no depende de \(\theta\): tienen el mismo gradiente (teorema 2 de Lipman et al.). Es la misma cuenta que hace que la regresión con error cuadrático aprenda la media condicionada, pero aquí la media es de velocidades, no de acciones: el flujo transporta toda la distribución.</p>
-      </details>
+      <p>Lipman et al. lo escriben con un ruido residual \(\sigma_{\min}\) (su camino de transporte óptimo), \(\psi_t(x_0) = (1 - (1-\sigma_{\min})t)\,x_0 + t\,x_1\), y el objetivo de flow matching condicional queda <a class="cite" data-ref="lipman2022"></a>:</p>
+      \[ \mathcal L_{\text{CFM}}(\theta) = \mathbb E_{t, x_1, x_0}\big\|v_\theta(\psi_t(x_0), t) - \big(x_1 - (1-\sigma_{\min})x_0\big)\big\|^2 \]
+      <p>con \(t\) uniforme en \([0, 1]\), \(x_0\sim\mathcal N(0, I)\) y \(x_1\) un dato. Con \(\sigma_{\min} = 0\) son los pasos 1 y 2: \(\psi_t(x_0) = x_t\) y el objetivo es \(x_1 - x_0\).</p>
+      <div class="callout error"><span class="tag">El problema</span>La velocidad del paso 4 depende de \(x_1\), el dato al que se va. Al muestrear no lo sabemos: es lo que queremos generar. Hace falta un campo que dependa solo de \((x, t)\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 3 · el campo marginal</p>
+  <h2>El campo marginal: la media de las velocidades que pasan por ahí</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Por un punto \((x, t)\) pasan caminos hacia datos distintos (las rectas que se cruzan). El campo marginal promedia sus velocidades, pesando cada dato por lo probable que es dado que estamos en \(x\) (ecuación 8 de Lipman et al.):</p>
+      \[ \begin{aligned} u_t(x) &= \mathbb E\big[u_t(x\mid x_1)\ \big|\ x_t = x\big]\\ &= \int u_t(x\mid x_1)\,\frac{p_t(x\mid x_1)\,q(x_1)}{p_t(x)}\,dx_1 \end{aligned} \]
+      <p>El cociente es la regla de Bayes: la probabilidad de \(x_1\) tras ver \(x\). El teorema 1 de Lipman et al. asegura que este campo genera las distribuciones \(p_t\): seguirlo desde el ruido lleva a los datos <a class="cite" data-ref="lipman2022"></a>.</p>
+      <div class="callout clave"><span class="tag">La pega</span>\(u_t(x)\) necesita \(q\), la distribución de los datos, que es justo lo que no tenemos. Por eso no se puede regresar directamente.</div>
+    </div>
+    <div class="stack">
+      <p><strong>A mano</strong>, en \(t = 0{,}5\), \(x = 0{,}3\), datos \(\pm 1\) con ½ cada uno:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x_t\mid x_1\sim\mathcal N\big(t x_1,\ (1-t)^2\big)\)</td><td>\(x_0\) gaussiano, escalado por \(1-t\) y desplazado por \(t x_1\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(e^{-(0{,}3-0{,}5)^2/0{,}5} = 0{,}923\); \(\ e^{-(0{,}3+0{,}5)^2/0{,}5} = 0{,}278\)</td><td>Verosimilitud de \(x = 0{,}3\) para \(x_1 = +1\) y \(-1\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(P(x_1 = +1\mid x) = 0{,}923/1{,}201 = 0{,}769\)</td><td>Bayes con prior ½ y ½</td></tr>
+          <tr><td><strong>4</strong></td><td>\((1 - 0{,}3)/0{,}5 = +1{,}40\); \(\ (-1 - 0{,}3)/0{,}5 = -2{,}60\)</td><td>Velocidades condicionales, hoja anterior</td></tr>
+          <tr><td><strong>5</strong></td><td>\(u = 0{,}769\cdot 1{,}40 + 0{,}231\cdot(-2{,}60) = 0{,}474\)</td><td>Su media ponderada</td></tr>
+        </table>
+      </div>
+      <p class="small">En el juguete, \(\mathbb E[x_1\mid x_t = x] = \tanh\!\big(t x/(1-t)^2\big)\) y \(u_t(x) = \big(\tanh(t x/(1-t)^2) - x\big)/(1-t)\): 0,474 en este punto. Ejemplo 11.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 4 · por qué basta el objetivo condicional</p>
+  <h2>Regresar las velocidades de las rectas da el mismo gradiente que regresar el campo marginal</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:57%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathcal L_{\text{FM}} = \mathbb E_{t,\,x\sim p_t}\|v_\theta(x,t) - u_t(x)\|^2\); \(\ \mathcal L_{\text{CFM}} = \mathbb E_{t,\,x_1,\,x\sim p_t(\cdot\mid x_1)}\|v_\theta(x,t) - u_t(x\mid x_1)\|^2\)</td><td>Lo que querríamos (ec. 5) y lo que podemos calcular (ec. 9)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\|v - w\|^2 = \|v\|^2 - 2\,v^\top w + \|w\|^2\)</td><td>Desarrollar los dos cuadrados</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E\|v_\theta(x_t,t)\|^2\): igual en las dos</td><td>Sorteando \(x_1\) y luego \(x\), \(x\) sale de \(p_t\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathbb E_{x_1, x}\big[v_\theta^\top u_t(x\mid x_1)\big] = \mathbb E_x\big[v_\theta^\top\,\mathbb E[u_t(x\mid x_1)\mid x]\big] = \mathbb E_x\big[v_\theta^\top u_t(x)\big]\)</td><td>Esperanza por etapas y la definición de \(u_t\) de la hoja anterior</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\|u_t(x)\|^2\) y \(\|u_t(x\mid x_1)\|^2\) no dependen de \(\theta\)</td><td>Son datos del problema</td></tr>
+          <tr><td><strong>6</strong></td><td>\(\mathcal L_{\text{CFM}} = \mathcal L_{\text{FM}} + C\Rightarrow\nabla_\theta\mathcal L_{\text{CFM}} = \nabla_\theta\mathcal L_{\text{FM}}\)</td><td>3, 4 y 5: solo difieren en la constante \(C\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Teorema 2 de Lipman et al.</span>Si \(p_t(x) > 0\) para todo \(x\) y \(t\), salvo una constante independiente de \(\theta\), \(\mathcal L_{\text{CFM}}\) y \(\mathcal L_{\text{FM}}\) son iguales; por tanto, sus gradientes coinciden <a class="cite" data-ref="lipman2022"></a>.</div>
+      <p>Es la misma cuenta que la de la hoja 12: una regresión con error cuadrático aprende la media condicionada de la etiqueta. Allí la etiqueta era la acción y la media, una acción que nadie haría. Aquí la etiqueta es una <strong>velocidad</strong> y la media, \(u_t(x)\), es exactamente el campo que transporta toda la distribución.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 5 · el teorema 2 con números</p>
+  <h2>Cambiar la red cambia las dos pérdidas en lo mismo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>En un punto</strong> (\(t = 0{,}5\), \(x = 0{,}3\), hoja 35), con una red que devuelve una constante \(v\): pérdida condicional \(0{,}769(v - 1{,}40)^2 + 0{,}231(v + 2{,}60)^2\) y marginal \((v - 0{,}474)^2\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(v\)</th><th>Condicional</th><th>Marginal</th><th>Diferencia</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0</td><td class="n">3,071</td><td class="n">0,225</td><td class="n">2,846</td></tr>
+            <tr><td class="n">0,474</td><td class="n">2,846</td><td class="n">0,000</td><td class="n">2,846</td></tr>
+            <tr><td class="n">1,40</td><td class="n">3,704</td><td class="n">0,857</td><td class="n">2,846</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>El mínimo de la condicional está en \(v = 0{,}474\), el campo marginal, aunque ningún camino tenga esa velocidad.</p>
+    </div>
+    <div class="stack">
+      <p><strong>En todo el juguete</strong>, por Monte Carlo (400 000 muestras de \(t\), \(x_0\), \(x_1\), con \(t\le 0{,}98\)):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Campo \(v(x, t)\)</th><th>\(\mathcal L_{\text{CFM}}\)</th><th>\(\mathcal L_{\text{FM}}\)</th><th>Diferencia</th></tr></thead>
+          <tbody>
+            <tr><td>\(v = 0\)</td><td class="n">2,001</td><td class="n">0,964</td><td class="n">1,036</td></tr>
+            <tr><td>\(v = 0{,}5\,x\)</td><td class="n">2,184</td><td class="n">1,149</td><td class="n">1,035</td></tr>
+            <tr><td>\(v = u_t(x)\)</td><td class="n">1,036</td><td class="n">0,000</td><td class="n">1,036</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">Ejemplo 11 de <code>ejemplos_a10.py</code>.</p>
+      <div class="callout realidad"><span class="tag">Consecuencia práctica</span>La pérdida condicional no baja de \(C\) (aquí 1,036) ni con la red perfecta: es la varianza de las velocidades en cada punto. Por eso la del x500 se queda en 19,44 y no es comparable con el 0,035 de BC.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 6 · muestrear con Euler, a mano</p>
+  <h2>Diez pasos de Euler: primero hacia el centro, después hacia un modo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Integrar \(\dot x = u_t(x)\) con \(N\) pasos de \(1/N\): \(x \leftarrow x + \tfrac1N\,u_t(x)\), con \(t = 0, \tfrac1N, \dots, \tfrac{N-1}{N}\). Con \(N = 10\), desde \(x_0 = 0{,}30\) y el campo exacto del juguete:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(t\)</th><th>\(x\)</th><th>\(u_t(x)\)</th><th>\(t\)</th><th>\(x\)</th><th>\(u_t(x)\)</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0,0</td><td class="n">0,300</td><td class="n">−0,300</td><td class="n">0,5</td><td class="n">0,213</td><td class="n">+0,379</td></tr>
+            <tr><td class="n">0,1</td><td class="n">0,270</td><td class="n">−0,263</td><td class="n">0,6</td><td class="n">0,251</td><td class="n">+1,213</td></tr>
+            <tr><td class="n">0,2</td><td class="n">0,244</td><td class="n">−0,210</td><td class="n">0,7</td><td class="n">0,373</td><td class="n">+2,071</td></tr>
+            <tr><td class="n">0,3</td><td class="n">0,223</td><td class="n">−0,125</td><td class="n">0,8</td><td class="n">0,580</td><td class="n">+2,101</td></tr>
+            <tr><td class="n">0,4</td><td class="n">0,210</td><td class="n">+0,032</td><td class="n">0,9</td><td class="n">0,790</td><td class="n">+2,101</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Final: \(0{,}790 + 0{,}1\cdot 2{,}101 = 1{,}000\). Desde \(-0{,}80\) acaba en \(-1{,}000\) y desde \(0{,}05\), en \(+1{,}000\). Ejemplo 11.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 580 250" style="max-height:250px" role="img" aria-label="Doce trayectorias de Euler: salen de ruido, se acercan al centro y después se separan hacia más uno o menos uno según su signo inicial">
+          <line x1="60" y1="20" x2="60" y2="230" class="ln-rule"/>
+          <line x1="60" y1="125" x2="520" y2="125" class="ln-rule"/>
+          <line x1="60" y1="83" x2="520" y2="83" class="ln-dash"/>
+          <line x1="60" y1="167" x2="520" y2="167" class="ln-dash"/>
+          <path d="M60.0,209.0 L106.0,200.6 L152.0,193.2 L198.0,187.2 L244.0,182.6 L290.0,179.4 L336.0,176.8 L382.0,174.3 L428.0,171.9 L474.0,169.4 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,183.8 L106.0,177.9 L152.0,172.8 L198.0,168.6 L244.0,165.7 L290.0,164.5 L336.0,164.6 L382.0,165.2 L428.0,165.8 L474.0,166.4 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,167.0 L106.0,162.8 L152.0,159.1 L198.0,156.2 L244.0,154.3 L290.0,153.9 L336.0,155.5 L382.0,158.3 L428.0,161.2 L474.0,164.1 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,154.4 L106.0,151.5 L152.0,148.9 L198.0,146.8 L244.0,145.5 L290.0,145.6 L336.0,147.8 L382.0,152.3 L428.0,157.2 L474.0,162.1 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,141.8 L106.0,140.1 L152.0,138.6 L198.0,137.5 L244.0,136.8 L290.0,136.9 L336.0,138.9 L382.0,144.3 L428.0,151.8 L474.0,159.4 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,131.3 L106.0,130.7 L152.0,130.1 L198.0,129.7 L244.0,129.4 L290.0,129.5 L336.0,130.4 L382.0,133.7 L428.0,143.7 L474.0,155.4 L520.0,167.0" fill="none" class="ln-tesis" stroke-width="1.6"/>
+          <path d="M60.0,120.8 L106.0,121.2 L152.0,121.6 L198.0,121.9 L244.0,122.1 L290.0,122.0 L336.0,121.4 L382.0,119.1 L428.0,109.8 L474.0,96.4 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <path d="M60.0,110.3 L106.0,111.8 L152.0,113.1 L198.0,114.1 L244.0,114.7 L290.0,114.6 L336.0,112.8 L382.0,107.5 L428.0,99.3 L474.0,91.2 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <path d="M60.0,99.8 L106.0,102.3 L152.0,104.5 L198.0,106.3 L244.0,107.4 L290.0,107.3 L336.0,105.0 L382.0,100.1 L428.0,94.4 L474.0,88.7 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <path d="M60.0,87.2 L106.0,91.0 L152.0,94.3 L198.0,97.0 L244.0,98.6 L290.0,98.8 L336.0,96.9 L382.0,93.6 L428.0,90.1 L474.0,86.5 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <path d="M60.0,70.4 L106.0,75.9 L152.0,80.7 L198.0,84.5 L244.0,87.1 L290.0,88.1 L336.0,87.6 L382.0,86.5 L428.0,85.3 L474.0,84.2 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <path d="M60.0,45.2 L106.0,53.2 L152.0,60.2 L198.0,65.9 L244.0,70.2 L290.0,73.1 L336.0,75.2 L382.0,77.1 L428.0,79.1 L474.0,81.0 L520.0,83.0" fill="none" class="ln-accent" stroke-width="1.6"/>
+          <text x="52" y="87" text-anchor="end" class="t-mono t-faint" font-size="12">+1</text>
+          <text x="52" y="129" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+          <text x="52" y="171" text-anchor="end" class="t-mono t-faint" font-size="12">−1</text>
+          <text x="60" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 0</text>
+          <text x="290" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+          <text x="520" y="246" text-anchor="middle" class="t-mono t-faint" font-size="12">t = 1</text>
+        </svg>
+        <figcaption>Doce muestras, 10 pasos de Euler con el campo exacto. Las trayectorias no se cruzan: el signo inicial decide el modo. Ejemplo 11.</figcaption>
+      </figure>
+      <div class="aparte"><span class="rotulo">Por qué al principio va hacia el centro</span>
+        <p>En \(t = 0\), \(x_t = x_0\) no dice nada del dato: la media de \(x_1\) es la de los datos, 0, y \(u_0(x) = 0 - x\). Solo cuando \(x_t\) empieza a contener información (\(t\gtrsim 0{,}4\)) el campo apunta a un modo.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 7 · cuántos pasos</p>
+  <h2>Con un solo paso de Euler, flow matching da la media: recto contra el poste</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(N = 1\): \(x = x_0 + u_0(x_0)\)</td><td>Un paso de longitud 1 desde \(t = 0\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(u_0(x_0) = \mathbb E[x_1] - x_0\)</td><td>En \(t = 0\) el punto no informa del dato (aparte de la hoja anterior)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(x = \mathbb E[x_1] = 0\) para todo \(x_0\)</td><td>Sustituir: la respuesta de BC, la media</td></tr>
+          <tr><td><strong>4</strong></td><td>\(N = 2\): \(x = \tanh(x_0)\)</td><td>Dos pasos: los valores se reparten entre \(-1\) y \(1\), sin concentrarse en los modos</td></tr>
+        </table>
+      </div>
+      <p>Por ejemplo, \(\tanh(0{,}3) = 0{,}291\) y \(\tanh(1) = 0{,}762\). Euler con pasos grandes sigue demasiado tiempo la dirección del principio, que apunta a la media.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Pasos de Euler \(N\)</th><th>Muestras a menos de 0,1 de un modo</th><th>Fracción en \(+1\)</th></tr></thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="n">0,0 %</td><td class="n">— (todas en 0)</td></tr>
+            <tr><td class="n">2</td><td class="n">13,7 %</td><td class="n">0,497</td></tr>
+            <tr><td class="n">3</td><td class="n">66,7 %</td><td class="n">0,497</td></tr>
+            <tr><td class="n">5</td><td class="n">96,5 %</td><td class="n">0,497</td></tr>
+            <tr><td class="n">10</td><td class="n">100,0 %</td><td class="n">0,497</td></tr>
+            <tr><td class="n">30</td><td class="n">100,0 %</td><td class="n">0,497</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted">20 000 muestras de \(x_0\), campo exacto. Ejemplo 11 de <code>ejemplos_a10.py</code>.</p>
+      <div class="callout tesis"><span class="tag">En el laboratorio</span>El paso 3.2 del lab prueba 1, 3 y 30 pasos con la red entrenada del x500. El juguete predice que con un paso el flujo se comporta como BC, la media: compruébalo con el reparto de lados y la actividad.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 8 · rectified flow</p>
+  <h2>Rectified flow: enderezar las trayectorias para usar menos pasos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Las rectas condicionales se cruzan (hoja 33), pero las trayectorias del flujo no pueden: si dos se cruzaran, la ecuación diferencial tendría dos soluciones desde el mismo punto <a class="cite" data-ref="liu2022"></a>. Por eso el flujo marginal se curva (hoja 38) y Euler necesita varios pasos.</p>
+      <p><strong>Reflow:</strong> generar pares con el propio flujo, \((x_0, \phi_1(x_0))\), y reentrenar con las rectas entre ellos. Como esos pares vienen de trayectorias que no se cruzan, las nuevas rectas se cruzan mucho menos y el flujo nuevo es casi recto. Según Liu et al., repetirlo da flujos cada vez más rectos, con buenos resultados incluso con un solo paso de Euler.</p>
+    </div>
+    <div class="stack">
+      <p><strong>En el juguete</strong> (ejemplo 12): \(\phi_1\) es monótona, así que las rectas \((1-t)x_0 + t\,\phi_1(x_0)\) siguen ordenadas para todo \(t\) y no se cruzan. La velocidad en cada una es constante, \(\phi_1(x_0) - x_0\), y un paso de Euler llega exactamente:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(x_0\)</th><th>\(\phi_1(x_0)\)</th><th>Original, 1 paso</th><th>Rectificado, 1 paso</th></tr></thead>
+          <tbody>
+            <tr><td class="n">+0,30</td><td class="n">+1,000</td><td class="n">0,000</td><td class="n">+1,000</td></tr>
+            <tr><td class="n">−0,80</td><td class="n">−1,000</td><td class="n">0,000</td><td class="n">−1,000</td></tr>
+            <tr><td class="n">+0,05</td><td class="n">+1,000</td><td class="n">0,000</td><td class="n">+1,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">En más dimensiones las nuevas rectas aún pueden cruzarse un poco; por eso se repite.</p>
+      <div class="callout clave"><span class="tag">La misma idea, otro camino</span>Consistency Policy (parte 2) también pasa de muchos pasos a uno, destilando un modelo de difusión <a class="cite" data-ref="prasad2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Flow matching · 9 · en el x500</p>
+  <h2>Lo que hace <code>figuras_a10.py</code> con todo lo anterior</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:24%">Pieza</th><th>En el script</th></tr>
+          <tr><td>Dato \(x_1\)</td><td>Trozo de 8 acciones del experto, normalizadas (restar la media y dividir por la desviación de cada componente: 0,279; 0,253; 0,366; 0,217): 32 números</td></tr>
+          <tr><td>Camino</td><td>\(\sigma_{\min} = 0\): \(x_t = (1-t)x_0 + t x_1\), objetivo \(x_1 - x_0\), \(t\) uniforme en \([0, 1]\)</td></tr>
+          <tr><td>Red \(v_\theta\)</td><td>Entradas: \(o\) normalizada (18), \(x_t\) (32) y \(t\) codificado con senos y cosenos de 5 frecuencias (10): 60. Tres capas de 256; 32 salidas</td></tr>
+          <tr><td>Entrenamiento</td><td>Adam, 40 000 pasos con lotes de 256; pérdida final 19,44 (suma sobre los 32 números)</td></tr>
+          <tr><td>Muestreo</td><td>10 pasos de Euler, deshacer la normalización, recortar a \([-1, 1]\); ejecutar 4 de las 8 y volver a muestrear</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
       <div class="callout clave"><span class="tag">En nuestro x500</span>Con \(\sigma_{\min} = 0\): \(x_t = (1-t)x_0 + t x_1\), objetivo \(x_1 - x_0\), trozos de 8 acciones normalizadas y 10 pasos de Euler.</div>
+      <p>La normalización no es un detalle: el ruido \(x_0\) tiene desviación 1 en cada componente y los datos deben estar en la misma escala. Una primera versión sin normalizar las acciones fallaba.</p>
+      <p>Coste: 10 pasadas de la red por trozo, uno cada 4 pasos de control (parte 4).</p>
     </div>
   </div>
 </section>
@@ -225,18 +1195,95 @@
   <h2>π0: flow matching sobre un modelo de visión y lenguaje</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li>Un modelo de visión y lenguaje de 3000 millones de parámetros más un «experto de acciones» de 300 millones que genera trozos de \(H = 50\) acciones con flow matching, para controlar hasta a 50 Hz <a class="cite" data-ref="black2024"></a>.</li>
+      <ul>
+        <li>Un modelo de visión y lenguaje de 3000 millones de parámetros más un «experto de acciones» de 300 millones que genera trozos de \(H = 50\) acciones con flow matching, para controlar hasta a <span class="hz">50 Hz</span> <a class="cite" data-ref="black2024"></a>.</li>
         <li>10 pasos de Euler (\(\delta = 0{,}1\)); 73 ms por trozo a bordo en una RTX 4090 (86 ms si se calcula fuera), de los que 27 ms son las diez pasadas del flujo.</li>
-        <li>No usan ensamblado temporal («empeoraba la política»): ejecutan los trozos en lazo abierto, 25 acciones en robots de 50 Hz y 16 en los de 20 Hz.</li>
         <li>Unas 10 000 horas de demostraciones de 7 configuraciones de robot y 68 tareas, más datos abiertos.</li>
       </ul>
       <p class="xsmall muted">Todas son cifras de Physical Intelligence en su preprint (según arXiv, publicado en RSS 2025).</p>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Latencia y horizonte</span>Generar 50 acciones en 73 ms y ejecutar 25 a 50 Hz deja 0,5 s entre inferencias: la política es reactiva cada medio segundo, no cada paso. Para un dron rápido, ese lazo abierto es el punto débil.</div>
+      <div class="aparte"><span class="rotulo">Con la notación de esta parte</span>
+        <p>\(x_1\) es un trozo de 50 acciones; \(v_\theta\) es el experto de acciones, condicionado a lo que el modelo de visión y lenguaje extrae de las imágenes y la instrucción; \(\delta = 1/N\) con \(N = 10\). Es el mismo esquema que nuestro x500 con una red mucho mayor delante.</p>
+      </div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Una política de búsqueda generativa podría proponer varias rutas plausibles (por dónde mirar) y el planificador elegir con el belief. Es la idea de las múltiples hipótesis de Loquercio et al., que ya devolvía varias trayectorias <a class="cite" data-ref="loquercio2021"></a>.</div>
     </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Generativas · π0 · trozos en lazo abierto</p>
+  <h2>Generar 50, ejecutar 25: reactiva cada medio segundo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 200" style="max-height:200px" role="img" aria-label="Línea temporal de un segundo y medio a 50 hercios: cada trozo genera 50 acciones, se ejecutan 25 en medio segundo y llega el trozo siguiente">
+      <text x="20" y="66" class="t-muted" font-size="14">generadas</text>
+      <text x="20" y="126" class="t-muted" font-size="14">ejecutadas</text>
+      <rect x="150" y="44" width="640" height="30" rx="4" class="box-soft"/>
+      <text x="310" y="64" text-anchor="middle" font-size="13">trozo 1: 50 acciones</text>
+      <text x="630" y="64" text-anchor="middle" class="t-faint" font-size="13">acciones 26–50: no se usan</text>
+      <rect x="150" y="104" width="316" height="30" rx="4" class="box-accent"/>
+      <rect x="470" y="104" width="316" height="30" rx="4" class="box-accent"/>
+      <rect x="790" y="104" width="316" height="30" rx="4" class="box-accent"/>
+      <text x="308" y="124" text-anchor="middle" class="t-bold" font-size="13">25 del trozo 1</text>
+      <text x="628" y="124" text-anchor="middle" class="t-bold" font-size="13">25 del trozo 2</text>
+      <text x="948" y="124" text-anchor="middle" class="t-bold" font-size="13">25 del trozo 3</text>
+      <circle cx="150" cy="94" r="6" class="fill-time"/><circle cx="470" cy="94" r="6" class="fill-time"/><circle cx="790" cy="94" r="6" class="fill-time"/>
+      <text x="484" y="91" class="t-time" font-size="12">nueva inferencia (73 ms)</text>
+      <line x1="150" y1="160" x2="1110" y2="160" class="ln-rule"/>
+      <g class="t-mono t-faint" font-size="12" text-anchor="middle"><text x="150" y="180">0 s</text><text x="470" y="180">0,5 s</text><text x="790" y="180">1 s</text><text x="1110" y="180">1,5 s</text></g>
+    </svg>
+    <figcaption>Robots de <span class="hz">50 Hz</span>. Esquema: no dibujamos si la inferencia se solapa con la ejecución. Ejemplo 10.</figcaption>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>No usan ensamblado temporal («empeoraba la política»): ejecutan los trozos en lazo abierto, 25 acciones en robots de <span class="hz">50 Hz</span> y 16 en los de <span class="hz">20 Hz</span> <a class="cite" data-ref="black2024"></a>. Son 0,5 s y 0,8 s sin mirar el mundo.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Latencia y horizonte</span>Generar 50 acciones en 73 ms y ejecutar 25 a <span class="hz">50 Hz</span> deja 0,5 s entre inferencias: la política es reactiva cada medio segundo, no cada paso. Para un dron rápido, ese lazo abierto es el punto débil.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Destilar · esquema</p>
+  <h2>Destilar un MPC: resolver la optimización en tierra, llevar la respuesta a bordo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 260" style="max-height:250px" role="img" aria-label="En tierra, el MPC robusto de tubo genera una demostración; se añaden muestras dentro del tubo etiquetadas con el controlador auxiliar; se entrena una red. A bordo, el estado estimado entra en la red, que da la acción a cien hercios">
+      <defs><marker id="a10m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="10" y="10" width="790" height="240" rx="10" class="box-soft"/>
+      <text x="26" y="34" class="t-muted" font-size="14">EN TIERRA · una vez, sin prisa</text>
+      <rect x="830" y="10" width="340" height="240" rx="10" class="box-soft"/>
+      <text x="846" y="34" class="t-muted" font-size="14">A BORDO · cada paso</text>
+      <rect x="30" y="60" width="210" height="80" rx="8" class="box-tesis"/>
+      <text x="135" y="90" text-anchor="middle" class="t-bold" font-size="15">MPC robusto de tubo</text>
+      <text x="135" y="112" text-anchor="middle" font-size="13">optimiza en cada paso</text>
+      <text x="135" y="130" text-anchor="middle" class="t-time" font-size="13">55,3 ms por decisión</text>
+      <rect x="290" y="60" width="210" height="80" rx="8" class="box"/>
+      <text x="395" y="90" text-anchor="middle" class="t-bold" font-size="15">Demostración</text>
+      <text x="395" y="112" text-anchor="middle" class="t-mono" font-size="13">(x_t, u_t)</text>
+      <text x="395" y="130" text-anchor="middle" class="t-muted" font-size="13">y el tubo alrededor</text>
+      <rect x="290" y="160" width="210" height="76" rx="8" class="box"/>
+      <text x="395" y="186" text-anchor="middle" class="t-bold" font-size="15">SA: muestras en el tubo</text>
+      <text x="395" y="208" text-anchor="middle" class="t-mono" font-size="12">u⁺ = ǔ + K (x⁺ − x̌)</text>
+      <text x="395" y="226" text-anchor="middle" class="t-muted" font-size="12">etiqueta gratis, sin optimizar</text>
+      <rect x="560" y="100" width="210" height="80" rx="8" class="box"/>
+      <text x="665" y="130" text-anchor="middle" class="t-bold" font-size="15">Regresión</text>
+      <text x="665" y="152" text-anchor="middle" class="t-muted" font-size="13">BC (o DAgger)</text>
+      <rect x="860" y="100" width="290" height="80" rx="8" class="box-accent"/>
+      <text x="1005" y="130" text-anchor="middle" class="t-bold" font-size="15">Red: estado → acción</text>
+      <text x="1005" y="152" text-anchor="middle" class="t-time" font-size="13">0,25 ms portátil · 1,66 ms TX2</text>
+      <text x="1005" y="215" text-anchor="middle" class="t-time" font-size="14">100 Hz a bordo</text>
+      <path d="M240,100 L286,100" class="ln" marker-end="url(#a10m6)"/>
+      <path d="M395,140 L395,156" class="ln" marker-end="url(#a10m6)"/>
+      <path d="M500,100 L556,130" class="ln" marker-end="url(#a10m6)"/>
+      <path d="M500,198 L556,152" class="ln" marker-end="url(#a10m6)"/>
+      <path d="M770,140 L856,140" class="ln" marker-end="url(#a10m6)"/>
+    </svg>
+    <figcaption>El caso de Tagliabue et al. <a class="cite" data-ref="tagliabue2022"></a>: ǔ y x̌ son la acción y el estado del plan nominal; K, la ganancia del controlador auxiliar del tubo.</figcaption>
+  </figure>
+  <div class="cols">
+    <p>El MPC define una función estado → acción que se evalúa resolviendo una optimización. Destilar es aproximar esa función con una red: se pagan las optimizaciones una vez, al generar los datos. 55,3 / 0,25 = 221 veces más rápido; a <span class="hz">100 Hz</span>, los 1,66 ms de la TX2 son el 16,6 % del presupuesto de 10 ms (ejemplo 13).</p>
+    <p><strong>SA, a mano</strong> (juguete 1-D): plan nominal \(\check x = 0\), \(\check u = 0{,}2\), \(K = -1{,}5\), tubo de \(\pm0{,}1\). Los estados \(x^+ = -0{,}1\) y \(+0{,}1\) se etiquetan con \(u^+ = 0{,}35\) y \(0{,}05\): dos pares nuevos sin resolver el MPC. La variante dispersa toma los centros de las caras del tubo, \(2n_x\) muestras.</p>
   </div>
 </section>
 
@@ -245,9 +1292,9 @@
   <h2>Destilar el planificador: el control en microsegundos</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>MPC robusto de tubo destilado</strong> <a class="cite" data-ref="tagliabue2022"></a>: el experto tarda 55,3 ms y la política comprimida 0,25 ms en el portátil, 1,66 ms en la CPU de una TX2; vuela a 100 Hz a bordo y se aprende a partir de una sola demostración, aprovechando el tubo del MPC robusto; según sus autores, con 5 a 6 veces menos muestras que las alternativas.</li>
-        <li><strong>Cuadrúpedo</strong> <a class="cite" data-ref="reske2021"></a>: aprender de un MPC simulado a 400 Hz da una política que compite con el MPC corriendo a 40 Hz, la frecuencia alcanzable a bordo.</li>
+      <ul>
+        <li><strong>MPC robusto de tubo destilado</strong> <a class="cite" data-ref="tagliabue2022"></a>: el experto tarda 55,3 ms y la política comprimida 0,25 ms en el portátil, 1,66 ms en la CPU de una TX2; vuela a <span class="hz">100 Hz</span> a bordo y se aprende a partir de una sola demostración, aprovechando el tubo del MPC robusto; según sus autores, con 5 a 6 veces menos muestras que las alternativas.</li>
+        <li><strong>Cuadrúpedo</strong> <a class="cite" data-ref="reske2021"></a>: aprender de un MPC simulado a <span class="hz">400 Hz</span> da una política que compite con el MPC corriendo a <span class="hz">40 Hz</span>, la frecuencia alcanzable a bordo.</li>
         <li><strong>Drones de alta velocidad</strong> <a class="cite" data-ref="loquercio2021"></a>: un alumno con profundidad e IMU imita a un planificador privilegiado; 8 de 10 vuelos reales a 7 m/s y un 60 % a 10 m/s.</li>
       </ul>
     </div>
@@ -267,27 +1314,52 @@
 
 <section class="slide">
   <p class="kicker">Experimento · montaje</p>
-  <h2>Un experto caro, unos alumnos baratos</h2>
+  <h2>Un experto caro que rodea el poste por un lado u otro</h2>
   <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 270" role="img" aria-label="Vista cenital: salida en x igual a menos dos y medio, meta en más dos y medio, poste de 0,6 metros de radio en el origen rodeado de una zona de coste de 0,95 metros; dos caminos, por arriba y por abajo">
+        <circle cx="280" cy="130" r="91.2" fill="none" class="ln-dash"/>
+        <circle cx="280" cy="130" r="57.6" class="box-soft"/>
+        <text x="280" y="134" text-anchor="middle" class="t-muted" font-size="13">poste 0,6 m</text>
+        <text x="280" y="66" text-anchor="middle" class="t-faint" font-size="11">zona de coste: 0,95 m</text>
+        <path d="M40,130 C130,130 170,26 280,26 C390,26 430,130 520,130" class="ln-accent" stroke-width="2.4" fill="none"/>
+        <path d="M40,130 C130,130 170,234 280,234 C390,234 430,130 520,130" class="ln-tesis" stroke-width="2.4" fill="none" stroke-dasharray="7 4"/>
+        <circle cx="40" cy="130" r="5" class="fill-ink3"/>
+        <circle cx="520" cy="130" r="7" class="fill-accent"/>
+        <text x="40" y="160" text-anchor="middle" class="t-muted" font-size="13">x = −2,5 m</text>
+        <text x="40" y="176" text-anchor="middle" class="t-faint" font-size="12">y₀ en ±2 cm</text>
+        <text x="520" y="160" text-anchor="middle" class="t-accent" font-size="13">meta, +2,5 m</text>
+        <text x="280" y="16" text-anchor="middle" class="t-accent" font-size="13">izquierda (y > 0): 48 %</text>
+        <text x="280" y="262" text-anchor="middle" class="t-tesis" font-size="13">derecha: 52 %</text>
+      </svg>
+      <figcaption>Esquema; salida, meta, poste y zona de coste a escala (96 píxeles por metro). Reparto de las 300 demostraciones. <code>figuras_a10.py</code>, sección 1.</figcaption>
+    </figure>
     <div class="stack">
-      <p class="small">El x500 va de \(x = -2{,}5\) a \(x = +2{,}5\) m con un poste vertical de 0,6 m de radio en medio. El experto es el MPPI de A8b con la física y el estado verdadero (256 secuencias de 0,8 s, 3 iteraciones, ruido correlado) y un coste que castiga acercarse al poste. Todos los vuelos empiezan casi centrados (±2 cm): <strong>es el ruido del propio MPPI el que decide el lado</strong>, así que las demostraciones son bimodales y el estado no explica la elección.</p>
-      <p class="small">300 demostraciones (90 000 pares estado-acción), todas con éxito: 48 % por la izquierda y 52 % por la derecha.</p>
+      <p>El x500 va de \(x = -2{,}5\) a \(x = +2{,}5\) m con un poste vertical de 0,6 m de radio en medio. El experto es el MPPI de A8b con la física y el estado verdadero (256 secuencias de 0,8 s, 3 iteraciones, ruido correlado) y un coste que castiga acercarse al poste.</p>
+      <p>Todos los vuelos empiezan casi centrados (±2 cm): <strong>es el ruido del propio MPPI el que decide el lado</strong>, así que las demostraciones son bimodales y el estado no explica la elección.</p>
+      <p>300 demostraciones (90 000 pares estado-acción), todas con éxito: 48 % por la izquierda y 52 % por la derecha.</p>
     </div>
-    <div class="stack">
-      <div class="table-wrap">
-        <table class="t">
-          <thead><tr><th>Alumno</th><th>Qué aprende</th></tr></thead>
-          <tbody>
-            <tr><td>BC</td><td>\(a_t\) con error cuadrático</td></tr>
-            <tr><td>BC con trozos</td><td>8 acciones con error cuadrático; ejecuta 4 y vuelve a predecir</td></tr>
-            <tr><td>Flow matching</td><td>un campo de velocidades que lleva ruido a trozos de 8 acciones; 10 pasos de Euler</td></tr>
-            <tr><td>DAgger (BC)</td><td>4 rondas de 100 despliegues del alumno etiquetados por el experto a la sombra</td></tr>
-            <tr><td>Flow matching + DAgger</td><td>lo mismo, con el trozo de 8 acciones del plan del experto como etiqueta</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="xsmall muted">Redes de 3 capas de 256 unidades; todos ven el estado verdadero (posición relativa a la meta, velocidad, actitud y velocidad angular). 200 vuelos de prueba. <code>figuras_a10.py</code> (JAX en GPU, determinista).</p>
-    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · los alumnos</p>
+  <h2>Cinco alumnos: qué aprende y qué ejecuta cada uno</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th style="width:20%">Alumno</th><th>Qué aprende</th><th style="width:30%">Con qué parte del tema</th></tr></thead>
+      <tbody>
+        <tr><td>BC</td><td>\(a_t\) con error cuadrático</td><td>Parte 1: media condicionada</td></tr>
+        <tr><td>BC con trozos</td><td>8 acciones con error cuadrático; ejecuta 4 y vuelve a predecir</td><td>Parte 2: trozos de ACT, sin CVAE ni ensamblado</td></tr>
+        <tr><td>Flow matching</td><td>un campo de velocidades que lleva ruido a trozos de 8 acciones; 10 pasos de Euler</td><td>Parte 3</td></tr>
+        <tr><td>DAgger (BC)</td><td>4 rondas de 100 despliegues del alumno etiquetados por el experto a la sombra</td><td>Parte 1 y A6b</td></tr>
+        <tr><td>Flow matching + DAgger</td><td>lo mismo, con el trozo de 8 acciones del plan del experto como etiqueta</td><td>Partes 1 y 3</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="cols">
+    <p><strong>Lo que tienen en común:</strong> redes de 3 capas de 256 unidades; todos ven el estado verdadero (posición relativa a la meta, velocidad, actitud y velocidad angular), así que aquí no hay observabilidad parcial: solo se mide la imitación. Control a <span class="hz">50 Hz</span>, vuelos de 6 s.</p>
+    <p><strong>Cómo se mide:</strong> 200 vuelos de prueba con otras desviaciones iniciales. Éxito: acabar a menos de 0,3 m de la meta sin tocar el poste. Lado: el signo de \(y\) al cruzar \(x = 0\). <code>figuras_a10.py</code> (JAX en GPU, determinista).</p>
   </div>
 </section>
 
@@ -362,20 +1434,34 @@
   </div>
 </section>
 
+
 <section class="slide">
-  <p class="kicker">Experimento · lectura</p>
+  <p class="kicker">Experimento · lectura · 1</p>
   <h2>El error cuadrático no promedia hasta chocar: elige un modo y olvida el otro</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>BC:</strong> al empezar centrado, el promedio de «ir a la izquierda» y «a la derecha» es seguir recto. La red no lo hace: llega en el 100 % de los vuelos, pero siempre por el mismo lado (0 % por la izquierda). Nuestra lectura, no comprobada: un sesgo mínimo rompe la simetría en los primeros pasos, el estado deja de ser simétrico y desde ahí mandan las demostraciones de ese lado.</li>
-        <li><strong>Flow matching:</strong> muestrea un trozo de acciones de la distribución condicionada al estado y reproduce el reparto del experto (51 / 49). Reproduce hasta lo brusco del experto (actividad 0,33 frente a 0,35 del MPPI, que muestrea en cada paso); BC lo suaviza (0,10), porque promediar también quita ese ruido.</li>
-        <li><strong>DAgger</strong> no cambia esto: corrige el desplazamiento de covariables, no la multimodalidad. El DAgger con BC también acaba en un solo lado (99 / 1), aunque en otro distinto: qué lado gana depende de detalles del entrenamiento.</li>
-      </ul>
+      <p><strong>BC:</strong> al empezar centrado, el promedio de «ir a la izquierda» y «a la derecha» es seguir recto (hoja 12). La red no lo hace: llega en el 100 % de los vuelos, pero siempre por el mismo lado (0 % por la izquierda).</p>
+      <p>Nuestra lectura, no comprobada: un sesgo mínimo rompe la simetría en los primeros pasos, el estado deja de ser simétrico y desde ahí mandan las demostraciones de ese lado. Es el equilibrio inestable del juguete de la hoja 13.</p>
     </div>
     <div class="stack">
+      <p><strong>Flow matching:</strong> muestrea un trozo de acciones de la distribución condicionada al estado y reproduce el reparto del experto (51 / 49): el ruido inicial elige el modo, como en el juguete de la hoja 38.</p>
+      <p>Reproduce hasta lo brusco del experto (actividad 0,33 frente a 0,35 del MPPI, que muestrea en cada paso); BC lo suaviza (0,10), porque promediar también quita ese ruido.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · lectura · 2</p>
+  <h2>DAgger no arregla la multimodalidad, y el estado puede hacerla desaparecer</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>DAgger</strong> no cambia esto: corrige el desplazamiento de covariables, no la multimodalidad. El DAgger con BC también acaba en un solo lado (99 / 1), aunque en otro distinto: qué lado gana depende de detalles del entrenamiento.</p>
+      <p>Tiene sentido: DAgger añade pares nuevos, pero sigue entrenando con error cuadrático, y la cuenta de la hoja 12 no depende de qué estados haya en los datos.</p>
       <div class="callout realidad"><span class="tag">El contraste</span>Con desviaciones iniciales de ±15 cm (<code>A10_Y0=0.15</code>), el estado decide el lado y la acción dado el estado es casi unimodal: BC reparte 49 / 51 y acierta el 100 %. La multimodalidad que importa es la de la acción <em>dado el estado</em>, no la de las trayectorias.</div>
+    </div>
+    <div class="stack">
       <div class="callout clave"><span class="tag">¿Cuándo importa perder un modo?</span>Cuando el modo que la política eligió deja de ser posible (algo bloquea ese lado), cuando se quiere generar datos diversos o evaluar con la distribución del experto, y cuando el promedio sí es peligroso: si la decisión llega tarde, cerca del obstáculo, promediar es chocar.</div>
+      <p>En el juguete de la hoja 13, ±15 cm frente a una franja de incertidumbre de 5 cm es estar casi siempre donde \(\mathbb E[a\mid y]\approx\pm1\): ya no hay dos modos que promediar.</p>
     </div>
   </div>
 </section>
@@ -396,9 +1482,21 @@
         </table>
       </div>
       <p class="xsmall muted">RTX 4060 Ti, tras compilar. <code>figuras_a10.py</code>, sección 4.</p>
-      <p class="small">Destilar el MPC en una red quita el planificador del bucle de control: BC son unas 137 000 multiplicaciones por paso, y el flow matching, unos 1,5 millones por trozo (10 pasadas de la red), uno cada 4 pasos. Las dos están al alcance de un ordenador de a bordo modesto; el experto, con 30 720 pasos de la física por decisión, no.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>De dónde salen las cuentas</th><th>Total</th></tr></thead>
+          <tbody>
+            <tr><td>MPPI: 40 pasos × 256 secuencias × 3 iteraciones</td><td class="n">30 720</td></tr>
+            <tr><td>BC: 18·256 + 256·256 + 256·256 + 256·4 multiplicaciones</td><td class="n">136 704</td></tr>
+            <tr><td>Flujo, una pasada: 60·256 + 2·256² + 256·32</td><td class="n">154 624</td></tr>
+            <tr><td>Flujo, un trozo: 10 pasadas</td><td class="n">1 546 240</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">10,0 / 0,021: unas 476 veces. El flujo, repartido en los 4 pasos de su trozo, sale a 0,020 ms por paso (ejemplo 13).</p>
     </div>
     <div class="stack">
+      <p>Destilar el MPC en una red quita el planificador del bucle de control: BC son unas 137 000 multiplicaciones por paso, y el flow matching, unos 1,5 millones por trozo (10 pasadas de la red), uno cada 4 pasos. Las dos están al alcance de un ordenador de a bordo modesto; el experto, con 30 720 pasos de la física por decisión, no.</p>
       <div class="callout error"><span class="tag">Lo que la destilación no arregla</span>El alumno solo sabe lo que el experto le enseñó en los estados que visitó: fuera de esa distribución (otro poste, otra meta), no hay garantías. Y hereda los defectos del experto: aquí, un MPPI con el estado verdadero.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>El experto de tu búsqueda (A7a, con el belief exacto) es caro; destilarlo en una política que solo vea observaciones es el maestro y alumno de A6b otra vez, y la política generativa conserva las varias formas buenas de buscar.</div>
     </div>
@@ -611,123 +1709,179 @@
   </ol>
 </section>
 
+
 </main>
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
 <p>\(\mathbb E\) es la esperanza; \(\|\cdot\|\) la norma euclídea; \(\sim\) significa «se distribuye según».</p>
 <dl>
-<dt>\(\mathbb E\)</dt><dd data-hojas="6,7">Esperanza (media) de una variable aleatoria; el subíndice o la barra vertical indican respecto a qué distribución o dado qué.</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="7">Norma euclídea de un vector; \(\|\hat a - a\|^2\) es el error cuadrático entre acción predicha y acción del experto.</dd>
-<dt>\(\sim\)</dt><dd data-hojas="6,12">«Se distribuye según», p. ej. \(x_0\sim\mathcal N(0, I)\).</dd>
-<dt>\(\mathcal N(0, I)\)</dt><dd data-hojas="12">Gaussiana de media cero y covarianza identidad: de ella sale el ruido inicial \(x_0\) del flow matching.</dd>
-<dt>\(^\top\)</dt><dd data-hojas="7">Traspuesta de un vector o matriz; en \(\hat a^\top\mathbb E[a\mid o]\) es el producto escalar.</dd>
-<dt>\(\arg\min\)</dt><dd data-hojas="7">Argumento que minimiza la función que sigue: el valor de la variable donde se alcanza el mínimo.</dd>
-<dt>\(\mid\)</dt><dd data-hojas="7">«Dado»: \(\mathbb E[a\mid o]\) es la media de \(a\) condicionada a la observación \(o\).</dd>
-<dt>\(\dot x\)</dt><dd data-hojas="12">Derivada de \(x\) respecto al tiempo del flujo \(t\) (no el tiempo del robot).</dd>
-<dt>\(\sum|\Delta a|\)</dt><dd data-hojas="17">Actividad de control por paso: suma de los cambios absolutos de la acción entre pasos consecutivos; mide lo brusca que es la política.</dd>
-<dt>\(\pm\)</dt><dd data-hojas="16,18">Intervalo simétrico de las desviaciones iniciales: \(\pm 2\) cm en el experimento principal, \(\pm 15\) cm en el contraste.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="8,12">Esperanza (media) de una variable aleatoria; el subíndice o la barra vertical indican respecto a qué distribución o dado qué.</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="12">Norma euclídea de un vector; \(\|\hat a - a\|^2\) es el error cuadrático entre acción predicha y acción del experto.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="8,32">«Se distribuye según», p. ej. \(x_0\sim\mathcal N(0, I)\).</dd>
+<dt>\(\mathcal N(0, I)\)</dt><dd data-hojas="25,32">Gaussiana de media cero y covarianza identidad: de ella sale el ruido de la difusión y el \(x_0\) del flow matching.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="12">Traspuesta de un vector o matriz; en \(\hat a^\top\mathbb E[a\mid o]\) es el producto escalar.</dd>
+<dt>\(\arg\min\)</dt><dd data-hojas="8,12">Argumento que minimiza la función que sigue: el valor de la variable donde se alcanza el mínimo.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="12">«Dado»: \(\mathbb E[a\mid o]\) es la media de \(a\) condicionada a la observación \(o\).</dd>
+<dt>\(\nabla\)</dt><dd data-hojas="12,36">Gradiente respecto a la variable del subíndice (\(\hat a\) o \(\theta\)).</dd>
+<dt>\(\dot x\)</dt><dd data-hojas="33">Derivada de \(x\) respecto al tiempo del flujo \(t\) (no el tiempo del robot).</dd>
+<dt>\(\sum|\Delta a|\)</dt><dd data-hojas="49">Actividad de control por paso: suma de los cambios absolutos de la acción entre pasos consecutivos; mide lo brusca que es la política.</dd>
+<dt>\(\pm\)</dt><dd data-hojas="47,51">Intervalo simétrico de las desviaciones iniciales: \(\pm 2\) cm en el experimento principal, \(\pm 15\) cm en el contraste.</dd>
 </dl>
 <h3>Clonado de comportamiento</h3>
-<p>Letras de la parte 1: \(o\) observación, \(a\) acción, \(\pi\) política.</p>
+<p>Letras de la parte 1 (hoja 6): \(o\) observación, \(a\) acción, \(\pi\) política. Aquí \(i\) numera pares y \(\varepsilon\) es un error por paso.</p>
 <dl>
-<dt>\(\theta\)</dt><dd data-hojas="6">Parámetros (pesos) de la red que representa la política o el campo de velocidades; se optimizan en el entrenamiento.</dd>
-<dt>\(\pi_\theta(o)\)</dt><dd data-hojas="6">Política del alumno con parámetros \(\theta\): función que devuelve la acción para la observación \(o\).</dd>
-<dt>\(\pi_\theta(a_t\mid s_t)\)</dt><dd data-hojas="10">Política estocástica: distribución de la acción \(a_t\) dado el estado \(s_t\), una acción por paso.</dd>
-<dt>\(\pi^*(o)\)</dt><dd data-hojas="7">Política óptima del error cuadrático: la que minimiza el error esperado, que resulta ser la media condicionada \(\mathbb E[a\mid o]\).</dd>
-<dt>\(o\)</dt><dd data-hojas="6">Observación que recibe la política (lo que mide el robot).</dd>
-<dt>\(a\)</dt><dd data-hojas="6">Acción del experto en la observación \(o\) (la etiqueta que se imita).</dd>
-<dt>\(\hat a\)</dt><dd data-hojas="7">Acción propuesta o predicha por el alumno, el argumento que se optimiza en \(J(\hat a)\).</dd>
-<dt>\(\mathcal D_{\text{experto}}\)</dt><dd data-hojas="6">Conjunto de demostraciones del experto: pares observación-acción \((o, a)\).</dd>
-<dt>\(\ell\)</dt><dd data-hojas="6">Función de pérdida que compara la acción del alumno con la del experto (aquí, error cuadrático).</dd>
-<dt>\(\min_\theta\)</dt><dd data-hojas="6">Minimización respecto a los parámetros \(\theta\): es el entrenamiento del clonado de comportamiento.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="6">Error por paso de la política en la distribución del experto (repaso de A6b).</dd>
-<dt>\(T\)</dt><dd data-hojas="6">Horizonte del episodio, número de pasos; el coste de BC puede crecer como \(T^2\varepsilon\).</dd>
-<dt>\(u\)</dt><dd data-hojas="6">Constante de la cota de DAgger, \(O(uT\varepsilon)\): A6b la introduce como lo máximo que cuesta equivocarse en un paso; el tema solo la recuerda.</dd>
-<dt>\(O(uT\varepsilon)\)</dt><dd data-hojas="6">Orden de magnitud del coste de DAgger, lineal en el horizonte \(T\) frente al cuadrático de BC.</dd>
-<dt>\(T^2\varepsilon\)</dt><dd data-hojas="6">Orden al que puede crecer el coste del clonado de comportamiento por el desplazamiento de covariables.</dd>
-<dt>\(J(\hat a)\)</dt><dd data-hojas="7">Error cuadrático esperado de la acción \(\hat a\) para una \(o\) fija; se desarrolla en tres términos para ver que su mínimo es la media.</dd>
-<dt>\(E_\theta(o, a)\)</dt><dd data-hojas="7">Energía del BC implícito: función escalar que es baja para pares observación-acción compatibles; la acción se obtiene minimizándola.</dd>
-<dt>\(k\) (Behavior Transformers)</dt><dd data-hojas="7">Número de grupos de k-means en que se agrupan las acciones; la red predice el grupo y un desplazamiento continuo.</dd>
-<dt>\(D_w(s, a)\)</dt><dd data-hojas="8">Discriminador de GAIL con parámetros \(w\): da un valor en \((0, 1)\) que separa los pares estado-acción del experto de los del alumno.</dd>
-<dt>\(w\)</dt><dd data-hojas="8">Parámetros del discriminador de GAIL.</dd>
-<dt>\(s\)</dt><dd data-hojas="8,10">Estado (en GAIL y en la política con trozos); \(s_t\) es el estado en el paso \(t\).</dd>
-<dt>\(c(s, a)\)</dt><dd data-hojas="8">Coste que minimiza la política en GAIL: \(c(s, a) = \log D_w(s, a)\), calculado con trayectorias simuladas.</dd>
-<dt>\(x\), \(y\) (posición del x500)</dt><dd data-hojas="16,18">\(x\) es la coordenada a lo largo del vuelo, de \(-2{,}5\) a \(+2{,}5\) m; \(y\) es la lateral, y la variable de entorno A10_Y0 fija sus desviaciones iniciales.</dd>
-<dt>A10_Y0</dt><dd data-hojas="18">Parámetro del script con la desviación inicial lateral en metros (0,15 en el contraste).</dd>
+<dt>\(s\), \(s_t\)</dt><dd data-hojas="6,17">Estado verdadero del sistema (en el paso \(t\)); en GAIL, los pares estado-acción \((s, a)\).</dd>
+<dt>\(o\)</dt><dd data-hojas="6,8">Observación que recibe la política. En el x500, 18 números: posición respecto a la meta, velocidad, matriz de actitud y velocidad angular.</dd>
+<dt>\(a\)</dt><dd data-hojas="6,8">Acción del experto (la etiqueta que se imita). En el x500, 4 números en \([-1, 1]\): empuje y tres velocidades angulares deseadas; en los juguetes, una orden lateral.</dd>
+<dt>\(\hat a\)</dt><dd data-hojas="6,12">Acción propuesta o predicha por el alumno, el argumento que se optimiza en \(J(\hat a)\).</dd>
+<dt>\(\pi_E\)</dt><dd data-hojas="6,17">El experto (el maestro de A6b): en el x500, el MPPI con la física, 10,0 ms por decisión.</dd>
+<dt>\(\theta\)</dt><dd data-hojas="6,8">Parámetros (pesos) de la red que representa la política, la energía o el campo de velocidades.</dd>
+<dt>\(\pi_\theta\)</dt><dd data-hojas="6,8">El alumno: política con parámetros \(\theta\); \(\pi_\theta(o)\) es la acción que devuelve para la observación \(o\).</dd>
+<dt>\(\theta^*\)</dt><dd data-hojas="8">Los parámetros que minimizan la pérdida media sobre las demostraciones.</dd>
+<dt>\(\pi^*(o)\)</dt><dd data-hojas="12">Política óptima del error cuadrático: la media condicionada \(\mathbb E[a\mid o]\).</dd>
+<dt>\(\mathcal D\)</dt><dd data-hojas="6,8">Conjunto de demostraciones del experto: pares observación-acción \((o_i, a_i)\).</dd>
+<dt>\(|\mathcal D|\)</dt><dd data-hojas="6,8">Número de pares de \(\mathcal D\): 90 000 en el x500 (300 vuelos × 300 pasos).</dd>
+<dt>\(i\) (pares)</dt><dd data-hojas="8">Índice de un par de \(\mathcal D\) en la parte 1. En la parte 2, \(i\) numera las predicciones del ensamblado.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="6,8">Pérdida de un par: compara la acción del alumno con la del experto (aquí, error cuadrático).</dd>
+<dt>\(L(\theta)\)</dt><dd data-hojas="8">Pérdida media de la política lineal de juguete \(\pi_\theta(o) = \theta o\); su mínimo es \(\theta^* = -2{,}3\).</dd>
+<dt>\(\min_\theta\)</dt><dd data-hojas="8">Minimización respecto a los parámetros \(\theta\): es el entrenamiento del clonado de comportamiento.</dd>
+<dt>\(d_{\pi_E}\)</dt><dd data-hojas="10">Distribución de los estados que visita el experto: donde hay etiquetas.</dd>
+<dt>\(d_{\pi_\theta}\)</dt><dd data-hojas="10">Distribución de los estados que visita el alumno al volar solo.</dd>
+<dt>\(\varepsilon\) (error)</dt><dd data-hojas="10">Error por paso de la política en la distribución del experto (repaso de A6b). En la parte 2, \(\varepsilon\) es ruido gaussiano.</dd>
+<dt>\(T\)</dt><dd data-hojas="6,10">Horizonte del episodio en pasos; el coste de BC puede crecer como \(T^2\varepsilon\). Un vuelo del x500: 300 pasos.</dd>
+<dt>\(u\)</dt><dd data-hojas="10">Constante de la cota de DAgger, \(O(uT\varepsilon)\): A6b la introduce como lo máximo que cuesta equivocarse en un paso; el tema solo la recuerda.</dd>
+<dt>\(O(uT\varepsilon)\)</dt><dd data-hojas="10">Orden de magnitud del coste de DAgger, lineal en el horizonte \(T\) frente al cuadrático de BC.</dd>
+<dt>\(T^2\varepsilon\)</dt><dd data-hojas="10">Orden al que puede crecer el coste del clonado de comportamiento por el desplazamiento de covariables.</dd>
+<dt>\(J(\hat a)\)</dt><dd data-hojas="12">Error cuadrático esperado de la acción \(\hat a\) para una \(o\) fija; se desarrolla en tres términos para ver que su mínimo es la media.</dd>
+<dt>\(J_{\min}\)</dt><dd data-hojas="12">Valor mínimo de \(J\): la varianza de la acción dado \(o\). No baja con más datos.</dd>
+<dt>\(\mathcal N(\mu, \sigma^2)\)</dt><dd data-hojas="12">Gaussiana ajustada a los dos modos en el aparte de la hoja 12: \(\mu = 0\), \(\sigma = 1\).</dd>
+<dt>\(y\) (desviación lateral)</dt><dd data-hojas="8,13">Coordenada lateral del dron en metros; es la observación de los juguetes de las hojas 8 y 13.</dd>
+<dt>\(\Phi\)</dt><dd data-hojas="13">Función de distribución de la normal estándar; en el juguete, \(P(\text{izq}\mid y) = \Phi(y/h)\).</dd>
+<dt>\(h\)</dt><dd data-hojas="13">Anchura (5 cm) de la franja en la que el lado es incierto, en el juguete de la hoja 13.</dd>
+<dt>\(E_\theta(o, a)\)</dt><dd data-hojas="14,15">Energía del BC implícito: función escalar que es baja para pares observación-acción compatibles; la acción se obtiene minimizándola.</dd>
+<dt>\(\tilde a_j\)</dt><dd data-hojas="15">Contraejemplos: acciones falsas con las que se compara la del experto al entrenar la energía.</dd>
+<dt>\(M\)</dt><dd data-hojas="15">Número de contraejemplos por par del experto.</dd>
+<dt>\(\tilde p\)</dt><dd data-hojas="15">Probabilidad, según un softmax de las energías cambiadas de signo, de que la acción buena sea la del experto; la pérdida InfoNCE es \(-\log\tilde p\).</dd>
+<dt>\(\mathcal L\) (InfoNCE)</dt><dd data-hojas="15">Pérdida del BC implícito, \(-\log\tilde p\). En la parte 2, \(\mathcal L\) es la pérdida de la difusión.</dd>
+<dt>\(k\) (Behavior Transformers)</dt><dd data-hojas="16">Número de grupos de k-means en que se agrupan las acciones; la red predice el grupo y un desplazamiento continuo.</dd>
+<dt>\(D_w(s, a)\)</dt><dd data-hojas="17,18">Discriminador de GAIL con parámetros \(w\): un valor en \((0, 1)\), cerca de 1 si el par parece del alumno y de 0 si parece del experto.</dd>
+<dt>\(w\)</dt><dd data-hojas="17">Parámetros del discriminador de GAIL.</dd>
+<dt>\(\mathbb E_\pi\), \(\mathbb E_{\pi_E}\)</dt><dd data-hojas="17">Medias sobre los pares estado-acción que visitan el alumno y el experto.</dd>
+<dt>\(H(\pi)\)</dt><dd data-hojas="17">Entropía causal de la política, regularizador del objetivo de GAIL.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="17">Peso \(\lambda\ge 0\) de la entropía en GAIL.</dd>
+<dt>\(\rho_\pi\), \(\rho_E\)</dt><dd data-hojas="6,18">Frecuencia con que el alumno y el experto visitan cada par \((s, a)\) (medidas de ocupación).</dd>
+<dt>\(D^*\)</dt><dd data-hojas="18">Discriminador óptimo para una política fija: \(\rho_\pi/(\rho_\pi + \rho_E)\).</dd>
+<dt>\(c(s, a)\)</dt><dd data-hojas="18">Coste que minimiza la política en GAIL: \(c(s, a) = \log D_w(s, a)\), calculado con trayectorias simuladas.</dd>
+<dt>\(r(s, a)\)</dt><dd data-hojas="18">Recompensa que se deriva del discriminador: \(-\log D^*\), el opuesto del coste.</dd>
+<dt>\(x\), \(y\) (posición del x500)</dt><dd data-hojas="47,51">\(x\) es la coordenada a lo largo del vuelo, de \(-2{,}5\) a \(+2{,}5\) m; \(y\) es la lateral, y la variable de entorno A10_Y0 fija sus desviaciones iniciales.</dd>
+<dt>A10_Y0</dt><dd data-hojas="51">Parámetro del script con la desviación inicial lateral en metros (0,15 en el contraste).</dd>
 </dl>
 <h3>Trozos de acciones y difusión</h3>
-<p>Parte 2: ACT y Diffusion Policy generan secuencias de acciones en lugar de una sola.</p>
+<p>Parte 2 (hoja 21): ACT y Diffusion Policy generan secuencias de acciones en lugar de una sola. El superíndice \(n\) es el nivel de ruido; \(n = 0\), el trozo limpio.</p>
 <dl>
-<dt>\(a_{t:t+k}\)</dt><dd data-hojas="10">Trozo de \(k\) acciones consecutivas desde el paso \(t\): lo que predice la política con trozos en cada consulta.</dd>
-<dt>\(k\)</dt><dd data-hojas="10">Tamaño del trozo de acciones de ACT; la política observa cada \(k\) pasos, lo que reduce \(k\) veces el horizonte efectivo.</dd>
-<dt>\(w_i\)</dt><dd data-hojas="10">Peso del ensamblado temporal para la predicción de antigüedad \(i\): \(w_i = e^{-m i}\).</dd>
-<dt>\(m\)</dt><dd data-hojas="10">Constante positiva que fija lo deprisa que decae el peso del ensamblado temporal con la antigüedad.</dd>
-<dt>\(i\)</dt><dd data-hojas="10">Índice de la predicción dentro del ensamblado temporal (cuánto hace que se hizo).</dd>
-<dt>\(z\)</dt><dd data-hojas="10">Variable de «estilo» del CVAE de ACT: comprime la secuencia de acciones en el entrenamiento y se descarta en la prueba.</dd>
-<dt>\(T_o\)</dt><dd data-hojas="11">Número de observaciones pasadas que toma Diffusion Policy; valor habitual 2.</dd>
-<dt>\(T_p\)</dt><dd data-hojas="11">Número de acciones que genera por difusión (horizonte de predicción); valor habitual 16.</dd>
-<dt>\(T_a\)</dt><dd data-hojas="11">Número de acciones que ejecuta sin replanificar (horizonte de ejecución); valor habitual 8.</dd>
-<dt>\(H\)</dt><dd data-hojas="13">Longitud del trozo que genera π0: 50 acciones.</dd>
-<dt>\(\delta\)</dt><dd data-hojas="13">Tamaño del paso de integración de π0: \(\delta = 0{,}1\), es decir, 10 pasos de Euler.</dd>
+<dt>\(a_{t:t+k}\)</dt><dd data-hojas="21,22">Trozo de \(k\) acciones consecutivas desde el paso \(t\): lo que predice la política con trozos en cada consulta.</dd>
+<dt>\(k\)</dt><dd data-hojas="21,22">Tamaño del trozo de acciones de ACT; la política observa cada \(k\) pasos, lo que reduce \(k\) veces el horizonte efectivo. En el x500, 8 predichas y 4 ejecutadas.</dd>
+<dt>\(s_t\) (ACT)</dt><dd data-hojas="21,22">Lo que observa ACT en el paso \(t\) (ellos lo llaman estado).</dd>
+<dt>\(\pi_\theta(a_t\mid s_t)\)</dt><dd data-hojas="22">Política que da una acción por consulta, frente a \(\pi_\theta(a_{t:t+k}\mid s_t)\), que da un trozo.</dd>
+<dt>\(w_i\)</dt><dd data-hojas="21,23">Peso del ensamblado temporal para la predicción \(i\): \(w_i = e^{-m i}\); la más antigua (\(i = 0\)) pesa 1.</dd>
+<dt>\(m\)</dt><dd data-hojas="21,23">Constante del ensamblado temporal: con \(m\) pequeño las predicciones nuevas se incorporan antes; \(m = 0\) es la media simple.</dd>
+<dt>\(i\)</dt><dd data-hojas="21,23">Índice de las predicciones hechas para un mismo instante, contando desde la más antigua (\(i = 0\)).</dd>
+<dt>\(A_t[i]\)</dt><dd data-hojas="23">Acción que la consulta \(i\) predijo para el instante \(t\).</dd>
+<dt>\(\hat a_t\)</dt><dd data-hojas="23">Acción ejecutada en \(t\) con ensamblado temporal: media de las \(A_t[i]\) pesada por \(w_i\).</dd>
+<dt>\(z\)</dt><dd data-hojas="21,24">Variable de «estilo» del CVAE de ACT: comprime el trozo de acciones al entrenar; en la prueba se fija en cero, la media del prior.</dd>
+<dt>\(\beta\) (ACT)</dt><dd data-hojas="24">Peso de la regularización de \(z\) en la pérdida del CVAE de ACT. No confundir con \(\beta_n\) de la difusión.</dd>
+<dt>\(T_o\)</dt><dd data-hojas="21,29">Número de observaciones pasadas que toma Diffusion Policy; valor habitual 2.</dd>
+<dt>\(T_p\)</dt><dd data-hojas="21,29">Número de acciones que genera por difusión (horizonte de predicción); valor habitual 16.</dd>
+<dt>\(T_a\)</dt><dd data-hojas="21,29">Número de acciones que ejecuta sin replanificar (horizonte de ejecución); valor habitual 8.</dd>
+<dt>\(O_t\)</dt><dd data-hojas="21,25">Las \(T_o\) últimas observaciones, con las que se condiciona la red de la difusión.</dd>
+<dt>\(A^n_t\)</dt><dd data-hojas="21,27">Trozo de \(T_p\) acciones con ruido de nivel \(n\); \(A^0_t\) es el trozo limpio del experto y \(A^N_t\), ruido puro.</dd>
+<dt>\(n\)</dt><dd data-hojas="21,26">Nivel de ruido de la difusión, de 0 (limpio) a \(N\) (ruido puro). Chi et al. lo llaman \(k\).</dd>
+<dt>\(N\) (difusión)</dt><dd data-hojas="21,26">Número de niveles de ruido: 100 al entrenar Diffusion Policy. En la parte 3, \(N\) es el número de pasos de Euler.</dd>
+<dt>\(\beta_n\)</dt><dd data-hojas="21,26">Ruido que añade el paso \(n\) del proceso hacia delante.</dd>
+<dt>\(\bar\alpha_n\)</dt><dd data-hojas="21,26">\(\prod_{j\le n}(1-\beta_j)\): fracción de la señal (al cuadrado) que queda tras \(n\) pasos; \(\sqrt{\bar\alpha_n}\) multiplica al dato y \(\sqrt{1-\bar\alpha_n}\) al ruido.</dd>
+<dt>\(f(n)\)</dt><dd data-hojas="26">Función del programa de ruido coseno de iDDPM: \(\bar\alpha_n = f(n)/f(0)\).</dd>
+<dt>\(x^n\), \(x^0\)</dt><dd data-hojas="26,27">Una acción con ruido de nivel \(n\) y la acción limpia, en los ejemplos de una sola acción.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="21,26">Ruido gaussiano \(\mathcal N(0, I)\) que se añade al dato (en la parte 1, \(\varepsilon\) era un error por paso).</dd>
+<dt>\(\varepsilon^n\)</dt><dd data-hojas="27">En la notación compacta de Chi et al., ruido con la varianza que corresponde al nivel \(n\).</dd>
+<dt>\(\varepsilon_\theta\)</dt><dd data-hojas="21,27">Red que predice el ruido a partir de \(O_t\), \(A^n_t\) y \(n\); es la política de Diffusion Policy.</dd>
+<dt>\(\hat\varepsilon\), \(\hat x^0\)</dt><dd data-hojas="27,28">Ruido predicho por la red y la acción limpia que se deduce de él: \(\hat x^0 = (x^n - \sqrt{1-\bar\alpha}\,\hat\varepsilon)/\sqrt{\bar\alpha}\).</dd>
+<dt>\(\mathcal L\) (difusión)</dt><dd data-hojas="27">Pérdida de Diffusion Policy: error cuadrático entre el ruido añadido y el predicho.</dd>
+<dt>\(\alpha\), \(\gamma\), \(\sigma\)</dt><dd data-hojas="21,28">Coeficientes de un paso hacia atrás (ecuación 4 de Chi et al.); dependen de \(n\) a través del programa de ruido.</dd>
+<dt>\(H\)</dt><dd data-hojas="42">Longitud del trozo que genera π0: 50 acciones.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="42">Tamaño del paso de integración de π0: \(\delta = 0{,}1\), es decir, 10 pasos de Euler.</dd>
 </dl>
 <h3>Flow matching</h3>
-<p>Parte 3: \(x_0\) es ruido, \(x_1\) es un dato (un trozo de acciones) y \(t\in[0, 1]\) es el tiempo del flujo.</p>
+<p>Parte 3 (hoja 32): \(x_0\) es ruido, \(x_1\) es un dato (un trozo de acciones) y \(t\in[0, 1]\) es el tiempo del flujo. Ojo: en la difusión, el superíndice 0 era el dato limpio.</p>
 <dl>
-<dt>\(x\)</dt><dd data-hojas="12">Punto del espacio de datos por el que circula el flujo; en una política, un trozo de acciones (parcialmente generado).</dd>
-<dt>\(t\)</dt><dd data-hojas="12">Tiempo del flujo, de \(t = 0\) (ruido) a \(t = 1\) (datos). No es el paso de control del robot.</dd>
-<dt>\(x_0\)</dt><dd data-hojas="12">Muestra de ruido gaussiano, punto de partida del flujo.</dd>
-<dt>\(x_1\)</dt><dd data-hojas="12">Dato (un trozo de acciones del experto), punto de llegada del flujo.</dd>
-<dt>\(x_t\)</dt><dd data-hojas="12,24">Punto del camino condicional en el instante \(t\); con \(\sigma_{\min} = 0\), \(x_t = (1-t)x_0 + t x_1\).</dd>
-<dt>\(v_\theta(x, t)\)</dt><dd data-hojas="12">Campo de velocidades aprendido por la red: define el flujo \(\dot x = v_\theta(x, t)\) que lleva ruido a datos. Se condiciona a la observación.</dd>
-<dt>\(\psi_t(x_0)\)</dt><dd data-hojas="12">Camino condicional lineal desde el ruido \(x_0\) hacia el dato \(x_1\) en el instante \(t\).</dd>
-<dt>\(\sigma_{\min}\)</dt><dd data-hojas="12">Ruido residual del camino condicional; en nuestro x500 vale 0.</dd>
-<dt>\(\mathcal L_{\text{CFM}}(\theta)\)</dt><dd data-hojas="12">Objetivo de flow matching condicional: error cuadrático medio entre \(v_\theta\) y la velocidad del camino \(x_1 - (1-\sigma_{\min})x_0\).</dd>
-<dt>\(u_t(x)\)</dt><dd data-hojas="12">Campo de velocidades ideal que genera la distribución de los datos; es intratable.</dd>
-<dt>\(u_t(x\mid x_1)\)</dt><dd data-hojas="12">Campo condicional del camino hacia un dato concreto \(x_1\); es sencillo y da el mismo gradiente que \(u_t(x)\).</dd>
-<dt>\(N\)</dt><dd data-hojas="12">Número de pasos de Euler al muestrear: \(x \leftarrow x + \tfrac{1}{N} v_\theta(x, t)\).</dd>
-<dt>\(\leftarrow\)</dt><dd data-hojas="12">Asignación: el valor de la derecha sustituye al de la izquierda en cada paso de Euler.</dd>
-<dt>\(x_1 - x_0\)</dt><dd data-hojas="12,24">Objetivo de regresión con \(\sigma_{\min} = 0\): la derivada del camino lineal respecto a \(t\).</dd>
-<dt>\(p(a\mid o)\)</dt><dd data-hojas="25">Distribución de la acción dada la observación; su multimodalidad es la que importa para perder o no un modo.</dd>
+<dt>\(x\)</dt><dd data-hojas="32,35">Punto del espacio de datos por el que circula el flujo; en una política, un trozo de acciones (parcialmente generado).</dd>
+<dt>\(t\)</dt><dd data-hojas="32,33">Tiempo del flujo, de \(t = 0\) (ruido) a \(t = 1\) (datos). No es el paso de control del robot.</dd>
+<dt>\(x_0\)</dt><dd data-hojas="32,34">Muestra de ruido gaussiano, punto de partida del flujo.</dd>
+<dt>\(x_1\)</dt><dd data-hojas="32,34">Dato (un trozo de acciones del experto, o \(\pm 1\) en el juguete), punto de llegada del flujo.</dd>
+<dt>\(x_t\)</dt><dd data-hojas="32,34">Punto del camino condicional en el instante \(t\); con \(\sigma_{\min} = 0\), \(x_t = (1-t)x_0 + t x_1\).</dd>
+<dt>\(q\)</dt><dd data-hojas="32,35">Distribución de los datos; en el juguete, ½ en \(+1\) y ½ en \(-1\).</dd>
+<dt>\(p_t\)</dt><dd data-hojas="32,35">Distribución de \(x_t\): de \(p_0 = \mathcal N(0, I)\) a \(p_1\approx q\).</dd>
+<dt>\(v_\theta(x, t)\)</dt><dd data-hojas="32,33">Campo de velocidades aprendido por la red: define el flujo \(\dot x = v_\theta(x, t)\) que lleva ruido a datos. Se condiciona a la observación.</dd>
+<dt>\(\psi_t(x_0)\)</dt><dd data-hojas="34,32">Camino condicional de Lipman et al. desde el ruido \(x_0\) hacia el dato \(x_1\) en el instante \(t\).</dd>
+<dt>\(\sigma_{\min}\)</dt><dd data-hojas="32,34">Ruido residual del camino condicional en \(t = 1\); en nuestro x500 vale 0.</dd>
+<dt>\(\mathcal L_{\text{CFM}}(\theta)\)</dt><dd data-hojas="34,36">Objetivo de flow matching condicional: error cuadrático medio entre \(v_\theta\) y la velocidad del camino \(x_1 - (1-\sigma_{\min})x_0\).</dd>
+<dt>\(\mathcal L_{\text{FM}}\)</dt><dd data-hojas="36,37">Objetivo de flow matching: error cuadrático entre \(v_\theta\) y el campo marginal \(u_t(x)\); no se puede calcular, pero tiene el mismo gradiente que \(\mathcal L_{\text{CFM}}\).</dd>
+<dt>\(u_t(x\mid x_1)\)</dt><dd data-hojas="32,34">Velocidad condicional del camino hacia un dato concreto \(x_1\): \((x_1 - x)/(1-t)\) con \(\sigma_{\min} = 0\).</dd>
+<dt>\(u_t(x)\)</dt><dd data-hojas="32,35">Campo de velocidades marginal: la media de las velocidades condicionales en \(x\); genera la distribución de los datos y es el que aprende la red.</dd>
+<dt>\(C\)</dt><dd data-hojas="36,37">Constante (independiente de \(\theta\)) en que difieren \(\mathcal L_{\text{CFM}}\) y \(\mathcal L_{\text{FM}}\); en el juguete, 1,036.</dd>
+<dt>\(N\)</dt><dd data-hojas="32,38">Número de pasos de Euler al muestrear: \(x \leftarrow x + \tfrac{1}{N} u_t(x)\).</dd>
+<dt>\(\leftarrow\)</dt><dd data-hojas="38">Asignación: el valor de la derecha sustituye al de la izquierda en cada paso de Euler.</dd>
+<dt>\(x_1 - x_0\)</dt><dd data-hojas="34,57">Objetivo de regresión con \(\sigma_{\min} = 0\): la derivada del camino lineal respecto a \(t\).</dd>
+<dt>\(\phi_1(x_0)\)</dt><dd data-hojas="32,40">Punto al que llega en \(t = 1\) el flujo que sale de \(x_0\); los pares \((x_0, \phi_1(x_0))\) son los que usa el reflow.</dd>
+<dt>\(p(a\mid o)\)</dt><dd data-hojas="58,11">Distribución de la acción dada la observación; su multimodalidad es la que importa para perder o no un modo.</dd>
 </dl>
-<h3>Montaje y resultados</h3>
-<p>Parte 4: x500 que esquiva un poste, un experto MPPI y cinco alumnos.</p>
+<h3>Destilación, montaje y resultados</h3>
+<p>Parte 3 (destilación) y parte 4: x500 que esquiva un poste, un experto MPPI y cinco alumnos.</p>
 <dl>
-<dt>x500</dt><dd data-hojas="1,16">Dron cuadricóptero del experimento, que va de \(x = -2{,}5\) a \(x = +2{,}5\) m con un poste de 0,6 m de radio en medio.</dd>
-<dt>Éxito</dt><dd data-hojas="17">Porcentaje de los 200 vuelos de prueba que llegan a la meta.</dd>
-<dt>Izquierda / derecha</dt><dd data-hojas="17">Porcentaje de vuelos que rodean el poste por cada lado; mide si el alumno reproduce el reparto bimodal del experto.</dd>
-<dt>BC con trozos</dt><dd data-hojas="16">Alumno que predice 8 acciones con error cuadrático, ejecuta 4 y vuelve a predecir.</dd>
-<dt>DAgger (BC)</dt><dd data-hojas="16">Alumno BC reentrenado en 4 rondas de 100 despliegues propios, etiquetados por el experto a la sombra.</dd>
-<dt>Flow matching + DAgger</dt><dd data-hojas="16">Lo mismo con el trozo de 8 acciones del plan del experto como etiqueta.</dd>
-<dt>ms por paso</dt><dd data-hojas="19">Tiempo de cómputo por decisión de control en una RTX 4060 Ti: 10,0 (MPPI), 0,021 (BC), 0,081 (flow matching).</dd>
+<dt>\(\check x\), \(\check u\)</dt><dd data-hojas="44">Estado y acción del plan nominal del MPC robusto de tubo.</dd>
+<dt>\(K\)</dt><dd data-hojas="44">Ganancia del controlador auxiliar del tubo, que corrige la desviación respecto al plan nominal.</dd>
+<dt>\(x^+\), \(u^+\)</dt><dd data-hojas="44">Estado muestreado dentro del tubo y su acción, \(u^+ = \check u + K(x^+ - \check x)\): pares extra sin resolver el MPC (SA).</dd>
+<dt>\(n_x\)</dt><dd data-hojas="44">Dimensión del estado; la variante dispersa de SA toma \(2n_x\) muestras.</dd>
+<dt>x500</dt><dd data-hojas="1,47">Dron cuadricóptero del experimento, que va de \(x = -2{,}5\) a \(x = +2{,}5\) m con un poste de 0,6 m de radio en medio.</dd>
+<dt>Éxito</dt><dd data-hojas="48,49">Porcentaje de los 200 vuelos de prueba que acaban a menos de 0,3 m de la meta sin tocar el poste.</dd>
+<dt>Izquierda / derecha</dt><dd data-hojas="48,49">Porcentaje de vuelos que rodean el poste por cada lado (signo de \(y\) al cruzar \(x = 0\)); mide si el alumno reproduce el reparto bimodal del experto.</dd>
+<dt>BC con trozos</dt><dd data-hojas="48">Alumno que predice 8 acciones con error cuadrático, ejecuta 4 y vuelve a predecir.</dd>
+<dt>DAgger (BC)</dt><dd data-hojas="48">Alumno BC reentrenado en 4 rondas de 100 despliegues propios, etiquetados por el experto a la sombra.</dd>
+<dt>Flow matching + DAgger</dt><dd data-hojas="48">Lo mismo con el trozo de 8 acciones del plan del experto como etiqueta.</dd>
+<dt>ms por paso</dt><dd data-hojas="52">Tiempo de cómputo por decisión de control en una RTX 4060 Ti: 10,0 (MPPI), 0,021 (BC), 0,081 (flow matching, por trozo).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>ALVINN</dt><dd data-hojas="4,6">Autonomous Land Vehicle In a Neural Network: red de 1988 entrenada con imágenes simuladas para conducir un vehículo.</dd>
-<dt>BC</dt><dd data-hojas="6">Behavioral cloning: regresión supervisada de las acciones del experto a partir de la observación.</dd>
-<dt>DAgger</dt><dd data-hojas="4,6">Dataset Aggregation: etiqueta con el experto los estados que visita el alumno y reentrena, lo que corrige el desplazamiento de covariables.</dd>
-<dt>MPC</dt><dd data-hojas="3,14">Model predictive control: control que optimiza una secuencia de acciones con un modelo en cada paso.</dd>
-<dt>MPPI</dt><dd data-hojas="3,16">Model predictive path integral: MPC que muestrea secuencias de acciones con ruido y las pondera por su coste; es el experto del experimento.</dd>
-<dt>NAVLAB</dt><dd data-hojas="6">Vehículo terrestre que ALVINN condujo a 0,5 m/s en un camino.</dd>
-<dt>IBC</dt><dd data-hojas="11,7">Implicit behavioral cloning: BC con modelo de energía.</dd>
-<dt>BeT</dt><dd data-hojas="11">Behavior Transformers: agrupan las acciones con k-means y predicen grupo más desplazamiento.</dd>
-<dt>LSTM-GMM</dt><dd data-hojas="11">Línea base con una red recurrente que predice una mezcla de gaussianas.</dd>
-<dt>IRL</dt><dd data-hojas="8">Inverse reinforcement learning: recuperar la recompensa del experto a partir de demostraciones y luego obtener la política con RL.</dd>
-<dt>GAIL</dt><dd data-hojas="8">Generative adversarial imitation learning: extrae la política directamente con un discriminador entre pares del experto y del alumno.</dd>
-<dt>RL</dt><dd data-hojas="8">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>ACT</dt><dd data-hojas="3,10">Action Chunking with Transformers: política que predice trozos de acciones y los ensambla en el tiempo.</dd>
+<dt>ALVINN</dt><dd data-hojas="4,9">Autonomous Land Vehicle In a Neural Network: red de 1988 entrenada con imágenes simuladas para conducir un vehículo.</dd>
+<dt>BC</dt><dd data-hojas="7,8">Behavioral cloning: regresión supervisada de las acciones del experto a partir de la observación.</dd>
+<dt>DAgger</dt><dd data-hojas="7,10">Dataset Aggregation: etiqueta con el experto los estados que visita el alumno y reentrena, lo que corrige el desplazamiento de covariables.</dd>
+<dt>MPC</dt><dd data-hojas="3,44">Model predictive control: control que optimiza una secuencia de acciones con un modelo en cada paso.</dd>
+<dt>MPPI</dt><dd data-hojas="3,47">Model predictive path integral: MPC que muestrea secuencias de acciones con ruido y las pondera por su coste; es el experto del experimento.</dd>
+<dt>NAVLAB</dt><dd data-hojas="9">Vehículo terrestre que ALVINN condujo a 0,5 m/s en un camino.</dd>
+<dt>IBC</dt><dd data-hojas="30,14">Implicit behavioral cloning: BC con modelo de energía.</dd>
+<dt>InfoNCE</dt><dd data-hojas="15">Pérdida contrastiva: un softmax que compara el ejemplo bueno con contraejemplos.</dd>
+<dt>BeT</dt><dd data-hojas="30,16">Behavior Transformers: agrupan las acciones con k-means y predicen grupo más desplazamiento.</dd>
+<dt>LSTM-GMM</dt><dd data-hojas="30">Línea base con una red recurrente que predice una mezcla de gaussianas.</dd>
+<dt>IRL</dt><dd data-hojas="17">Inverse reinforcement learning: recuperar la recompensa del experto a partir de demostraciones y luego obtener la política con RL.</dd>
+<dt>GAIL</dt><dd data-hojas="17,18">Generative adversarial imitation learning: extrae la política directamente con un discriminador entre pares del experto y del alumno.</dd>
+<dt>TRPO</dt><dd data-hojas="17">Trust region policy optimization: el algoritmo de RL con el que GAIL actualiza la política.</dd>
+<dt>RL</dt><dd data-hojas="17">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>ACT</dt><dd data-hojas="3,22">Action Chunking with Transformers: política que predice trozos de acciones y los ensambla en el tiempo.</dd>
 <dt>ALOHA</dt><dd data-hojas="4">Sistema bimanual de bajo coste con el que se presenta ACT.</dd>
-<dt>CVAE</dt><dd data-hojas="10">Conditional variational autoencoder: aporta la variable de estilo \(z\) de ACT.</dd>
-<dt>DDPM</dt><dd data-hojas="11">Denoising diffusion probabilistic model: difusión original, con unos 100 pasos de inferencia en la tabla de latencias.</dd>
-<dt>DDIM</dt><dd data-hojas="11">Denoising diffusion implicit model: muestreo de difusión con menos pasos (10 a 15).</dd>
-<dt>Consistency Policy</dt><dd data-hojas="4,11">Destilación de Diffusion Policy con autoconsistencia, que genera en un solo paso.</dd>
-<dt>π0</dt><dd data-hojas="4,13">Modelo de visión, lenguaje y acción de Physical Intelligence con un experto de acciones por flow matching (cifras de la empresa).</dd>
-<dt>CFM</dt><dd data-hojas="12">Conditional flow matching: flow matching con el objetivo condicional.</dd>
-<dt>RSSM</dt><dd data-hojas="21">Recurrent state-space model: world model cuyo estado latente sirve de belief aprendido.</dd>
-<dt>TX2</dt><dd data-hojas="3,6">Jetson TX2, ordenador de a bordo donde se miden las políticas destiladas.</dd>
-<dt>IMU</dt><dd data-hojas="6">Inertial measurement unit: acelerómetro y giróscopo.</dd>
-<dt>CPU, GPU</dt><dd data-hojas="3,27">Procesador general y procesador gráfico; el laboratorio corre en GPU de consumo, con CPU como alternativa.</dd>
-<dt>JAX</dt><dd data-hojas="16">Librería de cálculo con la que se escribe el script de las figuras, determinista.</dd>
+<dt>CVAE</dt><dd data-hojas="24">Conditional variational autoencoder: aporta la variable de estilo \(z\) de ACT.</dd>
+<dt>DDPM</dt><dd data-hojas="30">Denoising diffusion probabilistic model: difusión original, con unos 100 pasos de inferencia en la tabla de latencias.</dd>
+<dt>DDIM</dt><dd data-hojas="28,30">Denoising diffusion implicit model: muestreo de difusión con menos pasos (10 a 15) que los de entrenamiento.</dd>
+<dt>iDDPM</dt><dd data-hojas="26">Improved DDPM: de él sale el programa de ruido coseno que usa Diffusion Policy.</dd>
+<dt>MSE</dt><dd data-hojas="27">Mean squared error: error cuadrático medio.</dd>
+<dt>Consistency Policy</dt><dd data-hojas="4,30">Destilación de Diffusion Policy con autoconsistencia, que genera en un solo paso.</dd>
+<dt>π0</dt><dd data-hojas="4,42">Modelo de visión, lenguaje y acción de Physical Intelligence con un experto de acciones por flow matching (cifras de la empresa).</dd>
+<dt>CFM</dt><dd data-hojas="34">Conditional flow matching: flow matching con el objetivo condicional.</dd>
+<dt>SA</dt><dd data-hojas="44">Sampling Augmentation: muestras extra dentro del tubo del MPC robusto, etiquetadas con el controlador auxiliar.</dd>
+<dt>RSSM</dt><dd data-hojas="54">Recurrent state-space model: world model cuyo estado latente sirve de belief aprendido.</dd>
+<dt>TX2</dt><dd data-hojas="3,9">Jetson TX2, ordenador de a bordo donde se miden las políticas destiladas.</dd>
+<dt>IMU</dt><dd data-hojas="9">Inertial measurement unit: acelerómetro y giróscopo.</dd>
+<dt>CPU, GPU</dt><dd data-hojas="3,60">Procesador general y procesador gráfico; el laboratorio corre en GPU de consumo, con CPU como alternativa.</dd>
+<dt>JAX</dt><dd data-hojas="48">Librería de cálculo con la que se escribe el script de las figuras, determinista.</dd>
 </dl>
 </aside>
 
