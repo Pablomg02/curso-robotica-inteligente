@@ -25,8 +25,8 @@
   <h1>Percepción para estimación: VIO, SLAM, eventos y filtros aprendidos</h1>
   <p class="subtitle">Cómo se estima el estado de un dron sin GNSS con una cámara y una IMU: geometría, observabilidad, filtros frente a optimización, preintegración, desfase temporal, cámaras de eventos y lo que han cambiado las redes.</p>
   <div class="meta-row">
-    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
-    <span><b>Prerrequisitos</b> A4a (ESKF, consistencia), M1 (SO(3))</span>
+    <span><b>Duración</b> ≈ 5 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A4a (Kalman, EKF, ESKF, consistencia), M1 (SO(3), Schur), A3a (Gauss-Newton)</span>
     <span><b>Prepara</b> A5, A7b, A8, B3a, C6</span>
   </div>
 </section>
@@ -35,12 +35,12 @@
   <p class="kicker">Objetivos de A4b</p>
   <h2>Al terminar esta jornada deberías poder…</h2>
   <ol class="body" style="font-size:20px; gap:10px;">
-    <li>Escribir el modelo de proyección de una cámara y calcular la incertidumbre de profundidad de un par estéreo.</li>
+    <li>Escribir el modelo de proyección de una cámara, su jacobiano y el error de reproyección, y calcular la incertidumbre de profundidad de un par estéreo.</li>
     <li>Explicar qué estados son observables en VIO y por qué la escala necesita aceleración.</li>
-    <li>Derivar la proyección al espacio nulo del MSCKF y la preintegración de la IMU, y comparar filtros con optimización por ventana deslizante.</li>
+    <li>Derivar la proyección al espacio nulo del MSCKF, la marginalización con el complemento de Schur y la preintegración de la IMU, y comparar filtros con optimización por ventana deslizante.</li>
     <li>Cuantificar el efecto del desfase temporal cámara-IMU y estimarlo en línea.</li>
-    <li>Explicar cómo funciona una cámara de eventos y cuándo compensa.</li>
-    <li>Situar los estimadores aprendidos (DROID-SLAM, DPVO, odometría inercial aprendida) con cifras de vuelo.</li>
+    <li>Explicar cómo genera eventos una cámara de eventos y cuándo compensa.</li>
+    <li>Situar los estimadores aprendidos (filtros diferenciables, DROID-SLAM, DPVO, odometría inercial aprendida) con cifras de vuelo.</li>
   </ol>
 </section>
 
@@ -49,11 +49,8 @@
   <h2>Sin GNSS, el belief sobre la pose sale de una cámara y una IMU</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li>En interiores, bajo árboles o cerca de edificios, el GNSS falla o miente. La alternativa estándar es la odometría visual-inercial (VIO): la IMU da movimiento a alta frecuencia y la cámara corrige la deriva.</li>
-        <li>Es el mismo problema de A4a con un estado mucho mayor (poses pasadas, puntos del mapa) y medidas muy no lineales.</li>
-        <li>Lo que llega al control (A2, A3) depende de este estimador: su retardo, su frecuencia y sus fallos.</li>
-      </ul>
+      <p>En interiores, bajo árboles o cerca de edificios, el GNSS falla o miente. La alternativa estándar es la <strong>odometría visual-inercial</strong> (VIO): la IMU da el movimiento a alta frecuencia y la cámara corrige la deriva.</p>
+      <p>Es el mismo problema de A4a con un estado mucho mayor (poses pasadas, puntos del mapa) y medidas muy no lineales. Lo que llega al control (A2, A3) depende de este estimador: su retardo, su frecuencia y sus fallos.</p>
       <div class="callout realidad"><span class="tag">Una cifra de referencia</span>ORB-SLAM3 estéreo-inercial: 3,5 cm de error medio en EuRoC y 9 mm en la sala de TUM-VI, según sus autores <a class="cite" data-ref="campos2021"></a>. En una carrera a unos 70 km/h, en cambio, OpenVINS y SVO acumulan errores de 98 y 47 m <a class="cite" data-ref="cioffi2023"></a>.</div>
     </div>
     <div class="stack">
@@ -82,6 +79,59 @@
   </div>
 </section>
 
+<section class="slide">
+  <p class="kicker">El problema, en un dibujo</p>
+  <h2>Qué entra en un VIO, qué sale y qué parte del tema explica cada pieza</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 290" style="max-height:290px" role="img" aria-label="Diagrama de bloques de un VIO: la IMU a 200 Hz se integra entre imágenes, la cámara a 20 Hz da píxeles de puntos seguidos, el estimador los funde y entrega estado y covarianza a 100-200 Hz al control">
+      <defs>
+        <marker id="a4bm0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect class="box-time" x="20" y="30" width="180" height="70" rx="6"/>
+      <text x="110" y="55" text-anchor="middle" class="t-bold" font-size="17">IMU</text>
+      <text x="110" y="74" text-anchor="middle" class="t-muted" font-size="13">giróscopo y acelerómetro</text>
+      <text x="110" y="92" text-anchor="middle" class="t-time t-mono" font-size="13">200 Hz</text>
+      <rect class="box-time" x="20" y="180" width="180" height="70" rx="6"/>
+      <text x="110" y="205" text-anchor="middle" class="t-bold" font-size="17">Cámara</text>
+      <text x="110" y="224" text-anchor="middle" class="t-muted" font-size="13">imágenes de 752 × 480</text>
+      <text x="110" y="242" text-anchor="middle" class="t-time t-mono" font-size="13">20 Hz</text>
+      <rect class="box" x="260" y="30" width="210" height="70" rx="6"/>
+      <text x="365" y="56" text-anchor="middle" font-size="16">Integrar la IMU</text>
+      <text x="365" y="76" text-anchor="middle" class="t-muted" font-size="13">entre dos imágenes</text>
+      <text x="365" y="93" text-anchor="middle" class="t-accent t-mono" font-size="12">parte 2: preintegración</text>
+      <rect class="box" x="260" y="180" width="210" height="70" rx="6"/>
+      <text x="365" y="206" text-anchor="middle" font-size="16">Detectar y seguir puntos</text>
+      <text x="365" y="226" text-anchor="middle" class="t-muted" font-size="13">píxeles medidos z</text>
+      <text x="365" y="243" text-anchor="middle" class="t-accent t-mono" font-size="12">parte 1: geometría</text>
+      <rect class="box-accent" x="540" y="95" width="240" height="100" rx="6"/>
+      <text x="660" y="125" text-anchor="middle" class="t-bold" font-size="17">Estimador</text>
+      <text x="660" y="148" text-anchor="middle" font-size="14">filtro (MSCKF) u</text>
+      <text x="660" y="166" text-anchor="middle" font-size="14">optimización (ventana)</text>
+      <text x="660" y="185" text-anchor="middle" class="t-accent t-mono" font-size="12">parte 2</text>
+      <rect class="box-tesis" x="840" y="95" width="240" height="100" rx="6"/>
+      <text x="960" y="125" text-anchor="middle" class="t-bold" font-size="17">Estado y covarianza</text>
+      <text x="960" y="148" text-anchor="middle" font-size="14">pose, velocidad, sesgos</text>
+      <text x="960" y="170" text-anchor="middle" class="t-time t-mono" font-size="13">100–200 Hz</text>
+      <text x="960" y="187" text-anchor="middle" class="t-muted" font-size="13">al control (A2, A3)</text>
+      <path class="ln" d="M200 65 H258" marker-end="url(#a4bm0)"/>
+      <path class="ln" d="M200 215 H258" marker-end="url(#a4bm0)"/>
+      <path class="ln" d="M470 65 C510 65 510 120 538 120" marker-end="url(#a4bm0)"/>
+      <path class="ln" d="M470 215 C510 215 510 170 538 170" marker-end="url(#a4bm0)"/>
+      <path class="ln" d="M780 145 H838" marker-end="url(#a4bm0)"/>
+      <path class="ln-time ln-dash" d="M470 45 H960 V93" marker-end="url(#a4bm0)"/>
+      <text x="715" y="38" text-anchor="middle" class="t-time" font-size="13">entre imágenes, propagar al presente con la IMU (A4a, retardos)</text>
+      <text x="230" y="276" text-anchor="middle" class="t-time" font-size="13">relojes distintos: desfase t<tspan font-size="10" dy="3">d</tspan><tspan dy="-3"> (parte 3)</tspan></text>
+      <text x="660" y="232" text-anchor="middle" class="t-muted" font-size="13">otro sensor: eventos (parte 4)</text>
+      <text x="660" y="252" text-anchor="middle" class="t-muted" font-size="13">piezas aprendidas (parte 5)</text>
+      <path class="ln-dash" d="M660 215 V197"/>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p><strong>Entra:</strong> medidas de la IMU a 200 Hz y píxeles de puntos de la escena seguidos de imagen en imagen a 20 Hz. <strong>Sale:</strong> el belief gaussiano de A4a, una media (pose, velocidad, sesgos) y su covarianza, a la frecuencia que pide el control.</p>
+    <div class="callout realidad"><span class="tag">Caso concreto</span>El microdrón de EuRoC <a class="cite" data-ref="burri2016"></a> vuela en una sala con un par estéreo y una IMU. Con sus calibraciones haremos todas las cuentas del tema.</div>
+  </div>
+</section>
+
 <!-- ============ PARTE 1 · GEOMETRÍA ============ -->
 <section class="slide divider" data-section="1 · Geometría">
   <p class="num">Parte 1</p>
@@ -90,24 +140,327 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra de la geometría de la cámara</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo (cam0 de EuRoC)</th></tr>
+      <tr><td>\(\mathbf p_w\)</td><td>Un punto de la escena, en ejes del <strong>mundo</strong> (m)</td><td>La esquina de un cuadro: \((3;\ -0{,}4;\ 1{,}2)\) m</td></tr>
+      <tr><td>\(R_{wc}\), \(\mathbf t_{wc}\)</td><td>Orientación y posición de la <strong>cámara</strong> en el mundo. \(R_{wc}\) pasa coordenadas de cámara a mundo (M1, hoja 8)</td><td>Cámara a 1,5 m de altura mirando a \(+x\)</td></tr>
+      <tr><td>\(\mathbf p_c = (X, Y, Z)\)</td><td>El mismo punto en ejes cámara: \(X\) a la derecha, \(Y\) hacia abajo, \(Z\) hacia delante. \(Z\) es la <strong>profundidad</strong></td><td>\((0{,}4;\ 0{,}3;\ 2)\) m</td></tr>
+      <tr><td>\(f_x\), \(f_y\); \(c_x\), \(c_y\)</td><td><strong>Intrínsecos</strong>: focales y punto principal, en píxeles. Sin subíndice, \(f\) es la focal cuando \(f_x \approx f_y\)</td><td>458,65 y 457,30; 367,22 y 248,38</td></tr>
+      <tr><td>\(\pi(\cdot)\), \(\mathbf u = (u, v)\)</td><td>Proyección y píxel predicho: \(u\) es la columna y \(v\) la fila, contadas desde la esquina superior izquierda</td><td>\(\mathbf u = (458{,}9;\ 317{,}0)\)</td></tr>
+      <tr><td>\(\mathbf z\), \(\mathbf n\), \(\mathbf r\)</td><td>Píxel medido, su ruido y el <strong>residuo</strong> \(\mathbf r = \mathbf z - \pi(\cdot)\)</td><td>Ruido de 0,5–1 píxel tras la detección</td></tr>
+      <tr><td>\(b\), \(d\)</td><td>Base del par estéreo (distancia entre cámaras) y disparidad (diferencia de columna del mismo punto en las dos imágenes)</td><td>\(b\) = 11,0 cm</td></tr>
+      <tr><td>\(\sigma_d\), \(\sigma_Z\)</td><td>Desviaciones típicas de la disparidad (px) y de la profundidad (m)</td><td>\(\sigma_d\) = 0,5 px</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Aviso: \(v\) (fila del píxel) no es la velocidad \(\mathbf v\) de la parte 2, que va en negrita. Intrínsecos y extrínsecos de EuRoC: configuración de OpenVINS <a class="cite" data-ref="geneva2020"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara estenopeica · 1</p>
+  <h2>De dónde sale la proyección: dos triángulos semejantes</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 480 290" role="img" aria-label="Vista lateral del modelo estenopeico: el rayo de un punto P pasa por el centro óptico y corta el plano imagen, situado a distancia f, a una altura f X/Z">
+        <polygon points="60,200 420,200 420,80" class="box-soft"/>
+        <polygon points="60,200 180,200 180,160" class="box-accent"/>
+        <line class="ln" x1="60" y1="200" x2="470" y2="200"/>
+        <text x="466" y="222" text-anchor="end" class="t-muted" font-size="13">eje óptico (Z)</text>
+        <line class="ln" x1="180" y1="50" x2="180" y2="235" stroke-width="2"/>
+        <text x="186" y="48" class="t-muted" font-size="13">plano imagen</text>
+        <line class="ln-accent" x1="60" y1="200" x2="420" y2="80" stroke-width="2"/>
+        <circle cx="60" cy="200" r="5" class="fill-ink3"/>
+        <text x="20" y="190" class="t-muted" font-size="13">centro O</text>
+        <circle cx="420" cy="80" r="6" class="fill-tesis"/>
+        <text x="410" y="68" class="t-tesis t-bold" font-size="15">P</text>
+        <circle cx="300" cy="120" r="5" class="fill-tesis"/>
+        <text x="250" y="104" class="t-tesis" font-size="13">P′, mismo rayo</text>
+        <line class="ln-dash" x1="420" y1="80" x2="420" y2="200"/>
+        <text x="428" y="145" class="t-mono" font-size="14">X</text>
+        <circle cx="180" cy="160" r="4.5" class="fill-accent"/>
+        <text x="190" y="176" class="t-accent t-mono" font-size="13">x = f·X/Z</text>
+        <path class="ln-rule" d="M60 252 H180 M60 246 V258 M180 246 V258"/>
+        <text x="120" y="270" text-anchor="middle" class="t-mono" font-size="14">f</text>
+        <path class="ln-rule" d="M60 280 H420 M60 274 V286 M420 274 V286"/>
+        <text x="300" y="276" text-anchor="middle" class="t-mono" font-size="14">Z</text>
+      </svg>
+      <figcaption>Vista lateral. El plano imagen se dibuja delante del centro: es equivalente al real, que está detrás, y no invierte la imagen.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:45%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>Todo rayo de luz pasa por el centro óptico O</td><td>Es el modelo estenopeico (de agujero): la luz entra por un solo punto</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{x}{f} = \dfrac{X}{Z}\ \Rightarrow\ x = f\,\dfrac{X}{Z}\)</td><td>Los triángulos sombreados comparten el ángulo en O: son semejantes</td></tr>
+          <tr><td><strong>3</strong></td><td>\(u = \dfrac{x}{s} + c_x = f_x\dfrac{X}{Z} + c_x\), con \(f_x = f/s\)</td><td>Pasar de metros en el sensor a píxeles (\(s\), tamaño de un píxel) y contar desde la esquina: \(c_x\) es la columna donde corta el eje óptico</td></tr>
+          <tr><td><strong>4</strong></td><td>\(v = f_y\dfrac{Y}{Z} + c_y\)</td><td>Lo mismo en vertical; \(f_x \ne f_y\) si los píxeles no son cuadrados</td></tr>
+        </table>
+      </div>
+      \[ \mathbf u = \pi(\mathbf p_c) = \begin{pmatrix} f_x X/Z + c_x\\ f_y Y/Z + c_y \end{pmatrix} \]
+      <div class="callout clave"><span class="tag">Lo que se pierde</span>\(Z\) se va al dividir: \(P\) y \(P'\) dan el mismo píxel. Una cámara mide <strong>direcciones</strong>, no distancias.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara estenopeica · 2</p>
+  <h2>La proyección con los intrínsecos de la cámara de EuRoC</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 420 290" role="img" aria-label="Imagen de 752 por 480 píxeles con el origen arriba a la izquierda, el punto principal cerca del centro y el píxel proyectado del ejemplo">
+        <defs>
+          <marker id="a4bm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect class="box-soft" x="22" y="30" width="376" height="240"/>
+        <path class="ln" d="M22 30 H120" marker-end="url(#a4bm1)"/>
+        <path class="ln" d="M22 30 V100" marker-end="url(#a4bm1)"/>
+        <text x="124" y="34" class="t-mono t-muted" font-size="13">u</text>
+        <text x="28" y="112" class="t-mono t-muted" font-size="13">v</text>
+        <text x="24" y="22" class="t-mono t-faint" font-size="12">(0, 0)</text>
+        <text x="398" y="22" text-anchor="end" class="t-mono t-faint" font-size="12">752 px</text>
+        <text x="404" y="270" class="t-mono t-faint" font-size="12">480</text>
+        <path class="ln-accent" d="M199.6 154.2 H211.6 M205.6 148.2 V160.2" stroke-width="2"/>
+        <text x="120" y="142" class="t-accent t-mono" font-size="12">(c_x, c_y)</text>
+        <path class="ln-dash" fill="none" d="M205.6 154.2 H251.5 V188.5"/>
+        <text x="228" y="148" text-anchor="middle" class="t-mono t-muted" font-size="11">91,7</text>
+        <text x="258" y="174" class="t-mono t-muted" font-size="11">68,6</text>
+        <circle cx="251.5" cy="188.5" r="5.5" class="fill-tesis"/>
+        <text x="262" y="205" class="t-tesis t-mono" font-size="13">u = (458,9; 317,0)</text>
+      </svg>
+      <figcaption>La imagen de cam0 a escala 1:2. Las cotas son \(f_xX/Z\) y \(f_yY/Z\) en píxeles. Ejemplo 1 de <code>figuras/ejemplos_a4b.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Intrínsecos de cam0: \(f_x\) = 458,654, \(f_y\) = 457,296, \(c_x\) = 367,215 y \(c_y\) = 248,375 píxeles, en una imagen de 752 × 480.</p>
+      <p>Un punto 2 m delante, 40 cm a la derecha y 30 cm por debajo del eje, \(\mathbf p_c = (0{,}4;\ 0{,}3;\ 2)\):</p>
+      \[ \begin{aligned} u &= 458{,}654\cdot\tfrac{0{,}4}{2} + 367{,}215 = 458{,}95\\ v &= 457{,}296\cdot\tfrac{0{,}3}{2} + 248{,}375 = 316{,}97 \end{aligned} \]
+      <p>Con el doble de distancia, \(\mathbf p_c = (0{,}8;\ 0{,}6;\ 4)\), sale el mismo píxel.</p>
+      <div class="aparte"><span class="rotulo">La lente no es un agujero</span>
+        <p>EuRoC calibra también una distorsión radial-tangencial (<em>radtan</em>). Los VIO corrigen los píxeles medidos con ella antes de usar \(\pi\), o la meten dentro de \(\pi\). Sin distorsión, el campo de visión horizontal sería \(2\arctan(376/458{,}65) \approx 79°\).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Del mundo a la cámara</p>
+  <h2>Antes de proyectar, el punto se escribe en ejes de la cámara</h2>
+  <div class="cols w60">
+    <div class="stack">
+      \[ \mathbf p_c = R_{wc}^\top\,(\mathbf p_w - \mathbf t_{wc}) \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbf p_w - \mathbf t_{wc}\)</td><td>Vector que va de la cámara al punto, todavía en ejes del mundo</td></tr>
+          <tr><td><strong>2</strong></td><td>Multiplicar por \(R_{cw} = R_{wc}^{-1} = R_{wc}^\top\)</td><td>\(R_{wc}\) pasa de ejes cámara a ejes mundo; para ir al revés, su inversa, que es la traspuesta (M1, hoja 8)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(X = \mathbf x_c^\top(\mathbf p_w - \mathbf t_{wc})\), y lo mismo con \(\mathbf y_c\), \(\mathbf z_c\)</td><td>Las filas de \(R_{wc}^\top\) son las columnas de \(R_{wc}\): los ejes de la cámara escritos en el mundo. Cada coordenada es una proyección sobre un eje</td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Con números</span>Cámara en \(\mathbf t_{wc} = (1;\ 0;\ 1{,}5)\) mirando a \(+x_w\): su eje \(\mathbf z_c\) es \((1,0,0)\); \(\mathbf x_c\) (derecha), \((0,-1,0)\); \(\mathbf y_c\) (abajo), \((0,0,-1)\). Con \(\mathbf p_w = (3;\ -0{,}4;\ 1{,}2)\): \(\mathbf p_w - \mathbf t_{wc} = (2;\ -0{,}4;\ -0{,}3)\), así que \(X = 0{,}4\), \(Y = 0{,}3\), \(Z = 2\). Es el punto de la hoja anterior. Ejemplo 2.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 360 270" role="img" aria-label="Vista cenital: ejes del mundo, la cámara en x igual a 1 mirando a más x, su eje x apuntando a menos y del mundo, y el punto en (3, -0,4)">
+        <defs>
+          <marker id="a4bm2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a4bm2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        </defs>
+        <path class="ln-rule" d="M40 110 H340 M40 40 V240"/>
+        <path class="ln" d="M40 110 H330" marker-end="url(#a4bm2)"/>
+        <path class="ln" d="M40 110 V45" marker-end="url(#a4bm2)"/>
+        <text x="318" y="100" class="t-mono t-muted" font-size="13">x_w</text>
+        <text x="48" y="52" class="t-mono t-muted" font-size="13">y_w</text>
+        <text x="20" y="126" class="t-mono t-faint" font-size="12">0</text>
+        <text x="106" y="136" class="t-mono t-faint" font-size="12">1</text>
+        <text x="246" y="126" class="t-mono t-faint" font-size="12">3 m</text>
+        <rect class="box-time" x="100" y="100" width="20" height="20" rx="3"/>
+        <path class="ln-accent" d="M110 110 H200" marker-end="url(#a4bm2a)" stroke-width="2.2"/>
+        <path class="ln-accent" d="M110 110 V185" marker-end="url(#a4bm2a)" stroke-width="2.2"/>
+        <text x="170" y="100" class="t-accent t-mono" font-size="13">z_c</text>
+        <text x="118" y="190" class="t-accent t-mono" font-size="13">x_c</text>
+        <path class="ln-tesis ln-dash" d="M110 110 L250 138"/>
+        <circle cx="250" cy="138" r="5.5" class="fill-tesis"/>
+        <text x="236" y="162" class="t-tesis t-mono" font-size="13">p_w = (3; −0,4)</text>
+        <text x="40" y="225" class="t-muted" font-size="13">Vista desde arriba (z_w hacia ti). La cámara está</text>
+        <text x="40" y="243" class="t-muted" font-size="13">a 1,5 m y el punto a 1,2 m de altura: Y = 0,3 m</text>
+        <text x="40" y="261" class="t-muted" font-size="13">por debajo del eje, porque y_c apunta hacia abajo.</text>
+      </svg>
+      <figcaption>1 m = 70 unidades del dibujo.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">La medida de una cámara</p>
-  <h2>Un punto 3D se convierte en un píxel: proyección y error de reproyección</h2>
+  <h2>El error de reproyección: el residuo que minimizan casi todos los VIO</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Punto en el mundo \(\mathbf p_w\), pose de la cámara \((R_{wc}, \mathbf t_{wc})\). En ejes cámara, \(\mathbf p_c = R_{wc}^\top(\mathbf p_w - \mathbf t_{wc}) = (X, Y, Z)\), y con el modelo de agujero:</p>
-      \[ \mathbf u = \pi(\mathbf p_c) = \begin{pmatrix} f_x X/Z + c_x\\ f_y Y/Z + c_y \end{pmatrix} \]
-      <p class="small">Medida: \(\mathbf z = \pi(\mathbf p_c) + \mathbf n\), con ruido de 0,5–1 píxel tras la detección. El <strong>error de reproyección</strong> \(\mathbf z - \pi(\cdot)\) es el residuo que minimizan casi todos los VIO.</p>
-      <details class="deriv"><summary>Jacobiano de la proyección</summary>
-        <p class="small">\(\dfrac{\partial\pi}{\partial\mathbf p_c} = \dfrac1Z\begin{bmatrix} f_x & 0 & -f_xX/Z\\ 0 & f_y & -f_yY/Z\end{bmatrix}\). Respecto a la rotación de la cámara (perturbación por la derecha) se multiplica por \([\mathbf p_c]_\times\), y respecto al punto, por \(R_{wc}^\top\). El factor \(1/Z\) dice que los puntos lejanos informan poco de la traslación.</p>
-      </details>
+      <p>El detector encuentra el punto en el píxel \(\mathbf z\), con un ruido \(\mathbf n\) de 0,5–1 píxel. El modelo predice \(\pi(\hat{\mathbf p}_c)\), dónde debería estar con la pose y el punto que creemos:</p>
+      \[ \mathbf z = \pi(\mathbf p_c) + \mathbf n,\qquad \mathbf r = \mathbf z - \pi(\hat{\mathbf p}_c) \]
+      <p>El estimador mueve la pose (y los puntos) hasta que los residuos de todos los puntos sean pequeños, pesando cada uno por su ruido: \(\sum\|\mathbf r\|^2/\sigma^2\).</p>
+      <div class="callout realidad"><span class="tag">Con números</span>Predicción \((458{,}95;\ 316{,}97)\), medida \((461{,}0;\ 315{,}5)\): \(\mathbf r = (2{,}05;\ -1{,}47)\) px, \(\|\mathbf r\| = 2{,}53\) px, y con \(\sigma = 1\) px aporta 6,38 al coste. Ejemplo 3.</div>
     </div>
     <div class="stack">
-      <p class="small"><strong>Estéreo.</strong> Con base \(b\) y disparidad \(d\), \(Z = fb/d\), de donde \(\sigma_Z = Z^2\sigma_d/(fb)\). Con las cámaras de EuRoC (\(f\) = 458,65 px y base de 11,0 cm, según la configuración de OpenVINS) y \(\sigma_d\) = 0,5 px:</p>
+      <figure class="fig">
+        <svg viewBox="0 0 360 170" style="max-height:170px" role="img" aria-label="Rejilla de píxeles con el píxel predicho, el medido y la flecha del residuo entre ellos">
+          <defs>
+            <marker id="a4bm3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+          </defs>
+          <path class="ln-rule" d="M60 10 V160 M100 10 V160 M140 10 V160 M180 10 V160 M220 10 V160 M260 10 V160 M300 10 V160 M60 10 H300 M60 50 H300 M60 90 H300 M60 130 H300"/>
+          <circle cx="140" cy="110" r="7" fill="none" class="ln" stroke-width="2"/>
+          <text x="74" y="150" class="t-mono" font-size="13">π(p̂_c)</text>
+          <path class="ln-tesis" d="M216 45 l12 12 M228 45 l-12 12" stroke-width="2.4"/>
+          <text x="236" y="40" class="t-tesis t-mono" font-size="13">z</text>
+          <path class="ln-accent" d="M146 106 L216 56" marker-end="url(#a4bm3)" stroke-width="2"/>
+          <text x="150" y="70" class="t-accent t-mono" font-size="13">r</text>
+          <text x="308" y="30" class="t-faint" font-size="12">1 px</text>
+        </svg>
+        <figcaption>Cada casilla es un píxel.</figcaption>
+      </figure>
+      <p>Cuánto mueve el píxel un error de pose (punto centrado; ejemplo 3):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Error de la cámara</th><th>Punto a 2 m</th><th>Punto a 20 m</th></tr>
+          <tr><td>1 cm de traslación lateral</td><td class="n">2,29 px</td><td class="n">0,23 px</td></tr>
+          <tr><td>0,01 rad de giro</td><td class="n">4,59 px</td><td class="n">4,59 px</td></tr>
+        </table>
+      </div>
+      <p>Los puntos lejanos dicen mucho de la rotación y casi nada de la traslación: la hoja siguiente lo explica con el factor \(1/Z\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Jacobiano de la proyección</p>
+  <h2>Cómo cambia el píxel al mover el punto o la cámara</h2>
+  <p>El estimador linealiza el residuo (A4a, EKF), así que necesita las derivadas de \(\pi\) respecto a todo lo que estima. Se encadenan dos piezas: \(\pi\) depende de \(\mathbf p_c\), y \(\mathbf p_c\) de la pose y del punto.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(J = \dfrac{\partial\pi}{\partial\mathbf p_c} = \dfrac1Z\begin{bmatrix} f_x & 0 & -f_xX/Z\\ 0 & f_y & -f_yY/Z\end{bmatrix}\)</td><td>Derivar \(f_xX/Z\) y \(f_yY/Z\): la derivada de un cociente da \(-X/Z^2\) en la columna de \(Z\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\dfrac{\partial\mathbf p_c}{\partial\boldsymbol\theta} = [\mathbf p_c]_\times\)</td><td>Girar la cámara un poco, \(R_{wc}\,\mathrm{Exp}(\boldsymbol\theta)\): \(\mathbf p_c' \approx (I - [\boldsymbol\theta]_\times)\mathbf p_c = \mathbf p_c + \mathbf p_c\times\boldsymbol\theta\). Mismo truco que M1, hoja 26</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\dfrac{\partial\mathbf p_c}{\partial\mathbf t_{wc}} = -R_{wc}^\top,\qquad \dfrac{\partial\mathbf p_c}{\partial\mathbf p_w} = R_{wc}^\top\)</td><td>\(\mathbf p_c = R_{wc}^\top(\mathbf p_w - \mathbf t_{wc})\) es lineal en los dos</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\dfrac{\partial\pi}{\partial\boldsymbol\theta} = J[\mathbf p_c]_\times,\quad \dfrac{\partial\pi}{\partial\mathbf t_{wc}} = -JR_{wc}^\top,\quad \dfrac{\partial\pi}{\partial\mathbf p_w} = JR_{wc}^\top\)</td><td>Regla de la cadena</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Con números</span>En \(\mathbf p_c = (0{,}4;\ 0{,}3;\ 2)\): \(J = \left[\begin{smallmatrix}229{,}3 & 0 & -45{,}9\\ 0 & 228{,}6 & -34{,}3\end{smallmatrix}\right]\) px/m. Las diferencias finitas dan lo mismo con un error de \(3\cdot10^{-8}\) (ejemplo 4).</div>
+    <div class="callout clave"><span class="tag">El factor 1/Z</span>Toda la fila se divide por \(Z\): a 20 m, mover la cámara 1 cm apenas mueve el píxel. En cambio \(J[\mathbf p_c]_\times\) no depende de la escala de \(\mathbf p_c\): el giro se ve igual de cerca que de lejos.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estéreo · 1</p>
+  <h2>Con dos cámaras, la profundidad vuelve: \(Z = fb/d\)</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 400 300" role="img" aria-label="Vista cenital de un par estéreo: dos cámaras separadas una base b miran hacia delante; el punto P se proyecta en columnas distintas, y la diferencia es la disparidad">
+        <line class="ln-rule" x1="120" y1="20" x2="120" y2="270"/>
+        <line class="ln-rule" x1="220" y1="20" x2="220" y2="270"/>
+        <line class="ln" x1="80" y1="200" x2="160" y2="200" stroke-width="2"/>
+        <line class="ln" x1="180" y1="200" x2="260" y2="200" stroke-width="2"/>
+        <line class="ln-accent" x1="120" y1="260" x2="150" y2="60"/>
+        <line class="ln-tesis" x1="220" y1="260" x2="150" y2="60"/>
+        <circle cx="150" cy="60" r="6" class="fill-ink3"/>
+        <text x="160" y="56" class="t-bold" font-size="15">P</text>
+        <circle cx="120" cy="260" r="5" class="fill-accent"/>
+        <circle cx="220" cy="260" r="5" class="fill-tesis"/>
+        <text x="98" y="284" class="t-accent t-mono" font-size="13">izq.</text>
+        <text x="206" y="284" class="t-tesis t-mono" font-size="13">der.</text>
+        <circle cx="129" cy="200" r="4" class="fill-accent"/>
+        <circle cx="199" cy="200" r="4" class="fill-tesis"/>
+        <text x="86" y="194" class="t-accent t-mono" font-size="12">x_L</text>
+        <text x="226" y="194" class="t-tesis t-mono" font-size="12">x_R</text>
+        <path class="ln-rule" d="M120 292 H220 M120 286 V298 M220 286 V298"/>
+        <text x="170" y="290" text-anchor="middle" class="t-mono" font-size="14">b</text>
+        <path class="ln-rule" d="M280 200 V260 M274 200 H286 M274 260 H286"/>
+        <text x="290" y="236" class="t-mono" font-size="14">f</text>
+        <path class="ln-rule" d="M330 60 V260 M324 60 H336 M324 260 H336"/>
+        <text x="340" y="164" class="t-mono" font-size="14">Z</text>
+        <line class="ln-dash" x1="150" y1="60" x2="330" y2="60"/>
+      </svg>
+      <figcaption>Vista cenital de un par rectificado: las dos cámaras miran en paralelo y sus filas están alineadas. Columnas \(x_L\), \(x_R\) medidas desde el eje de cada cámara.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x_L = f\,\dfrac{X}{Z}\)</td><td>Proyección de la hoja «Cámara estenopeica · 1» en la cámara izquierda, con \(X\) medido desde su eje</td></tr>
+          <tr><td><strong>2</strong></td><td>\(x_R = f\,\dfrac{X - b}{Z}\)</td><td>La cámara derecha está \(b\) más a la derecha: para ella el punto está en \(X - b\). Misma \(Z\) porque miran en paralelo</td></tr>
+          <tr><td><strong>3</strong></td><td>\(d = x_L - x_R = \dfrac{fb}{Z}\)</td><td>Restar: \(X\) se cancela. La disparidad solo depende de la profundidad</td></tr>
+          <tr><td><strong>4</strong></td><td>\(Z = \dfrac{fb}{d}\)</td><td>Despejar</td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Con números</span>Base de EuRoC: la distancia entre las posiciones de cam0 y cam1 en su calibración, \(b\) = 11,0 cm. Con \(f\) = 458,65 px, \(fb\) = 50,5 px·m. Un punto a 3 m da \(d = 50{,}5/3 = 16{,}8\) px; a 10 m, solo 5,0 px (ejemplo 5).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estéreo · 2</p>
+  <h2>Medio píxel de ruido en la disparidad, ¿cuántos centímetros de profundidad?</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>La disparidad se mide con ruido \(\sigma_d\) (0,5 px en el ejemplo). La profundidad es una función no lineal de ella: se propaga linealizando, como \(J\Sigma J^\top\) de M1 (hoja 32) en una dimensión.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\dfrac{dZ}{dd} = -\dfrac{fb}{d^2}\)</td><td>Derivar \(Z = fb/d\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\sigma_Z \approx \Big|\dfrac{dZ}{dd}\Big|\,\sigma_d = \dfrac{fb}{d^2}\,\sigma_d\)</td><td>Primer orden: un error pequeño en \(d\) se multiplica por la pendiente</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\sigma_Z = \dfrac{Z^2\,\sigma_d}{fb}\)</td><td>Sustituir \(d = fb/Z\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\dfrac{\sigma_Z}{Z} = \dfrac{\sigma_d}{d}\)</td><td>Dividir por \(Z = fb/d\): el error relativo de la profundidad es el de la disparidad</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números (ejemplo 5)</span>
+        <p>A 3 m: \(d\) = 16,8 px, pendiente \(fb/d^2\) = 0,178 m/px, \(\sigma_Z = 0{,}178\cdot0{,}5\) = 8,9 cm (un 3 %).</p>
+        <p>A 10 m: \(d\) = 5,0 px, pendiente 1,98 m/px, \(\sigma_Z\) = 99 cm (un 10 %).</p>
+      </div>
+      <div class="aparte"><span class="rotulo">Comprobación por Monte Carlo</span>
+        <p>Con 200 000 disparidades ruidosas, la dispersión de \(Z\) es de 9,0 cm a 3 m (la fórmula da 8,9) y de 103 cm a 10 m (la fórmula da 99). Lejos, la linealización empieza a fallar: \(1/d\) se curva mucho cuando \(d\) es de pocos píxeles, y la distribución de \(Z\) se vuelve asimétrica.</p>
+      </div>
+      <p>Por el paso 3, el error crece con el <strong>cuadrado</strong> de la distancia, y se reduce con más base o más focal.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estéreo · 3</p>
+  <h2>Más allá de unos metros, el estéreo de un dron pequeño casi no informa</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 520 280" role="img" aria-label="Desviación típica de la profundidad estéreo frente a la distancia para bases de 11 y 30 centímetros: parábolas que crecen con el cuadrado de la distancia">
+        <line class="ln-rule" x1="60" y1="240" x2="500" y2="240"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="240"/>
+        <line class="ln-rule" x1="60" y1="135" x2="500" y2="135" stroke-dasharray="2 4"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M67.3,239.9 L74.7,239.7 L82.0,239.4 L89.3,239.0 L96.7,238.4 L104.0,237.7 L111.3,236.8 L118.7,235.8 L126.0,234.7 L133.3,233.5 L140.7,232.1 L148.0,230.6 L155.3,229.0 L162.7,227.3 L170.0,225.4 L177.3,223.4 L184.7,221.2 L192.0,218.9 L199.3,216.5 L206.7,214.0 L214.0,211.3 L221.3,208.5 L228.7,205.6 L236.0,202.6 L243.3,199.4 L250.7,196.1 L258.0,192.6 L265.3,189.0 L272.7,185.3 L280.0,181.5 L287.3,177.5 L294.7,173.4 L302.0,169.2 L309.3,164.9 L316.7,160.4 L324.0,155.8 L331.3,151.0 L338.7,146.2 L346.0,141.1 L353.3,136.0 L360.7,130.7 L368.0,125.4 L375.3,119.8 L382.7,114.2 L390.0,108.4 L397.3,102.5 L404.7,96.4 L412.0,90.3 L419.3,84.0 L426.7,77.5 L434.0,71.0 L441.3,64.3 L448.7,57.4 L456.0,50.5 L463.3,43.4 L470.7,36.2"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.4" d="M67.3,240.0 L74.7,239.9 L82.0,239.8 L89.3,239.6 L96.7,239.4 L104.0,239.1 L111.3,238.8 L118.7,238.5 L126.0,238.1 L133.3,237.6 L140.7,237.1 L148.0,236.6 L155.3,236.0 L162.7,235.3 L170.0,234.6 L177.3,233.9 L184.7,233.1 L192.0,232.3 L199.3,231.4 L206.7,230.5 L214.0,229.5 L221.3,228.5 L228.7,227.4 L236.0,226.3 L243.3,225.1 L250.7,223.9 L258.0,222.6 L265.3,221.3 L272.7,219.9 L280.0,218.5 L287.3,217.1 L294.7,215.6 L302.0,214.0 L309.3,212.4 L316.7,210.8 L324.0,209.1 L331.3,207.4 L338.7,205.6 L346.0,203.7 L353.3,201.8 L360.7,199.9 L368.0,197.9 L375.3,195.9 L382.7,193.8 L390.0,191.7 L397.3,189.5 L404.7,187.3 L412.0,185.1 L419.3,182.7 L426.7,180.4 L434.0,178.0 L441.3,175.5 L448.7,173.0 L456.0,170.5 L463.3,167.9 L470.7,165.2 L478.0,162.5 L485.3,159.8 L492.7,157.0 L500.0,154.2"/>
+        <circle cx="353.3" cy="136.0" r="4.5" class="fill-accent"/>
+        <circle cx="353.3" cy="201.9" r="4.5" class="fill-tesis"/>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="258" text-anchor="middle">0</text>
+          <text x="206.7" y="258" text-anchor="middle">5</text>
+          <text x="353.3" y="258" text-anchor="middle">10</text>
+          <text x="500" y="258" text-anchor="end">15 m</text>
+          <text x="52" y="244" text-anchor="end">0</text>
+          <text x="52" y="139" text-anchor="end">1 m</text>
+          <text x="52" y="34" text-anchor="end">2 m</text>
+        </g>
+        <text x="300" y="70" class="t-accent" font-size="13">base 11 cm (EuRoC)</text>
+        <text x="420" y="212" class="t-tesis" font-size="13">base 30 cm</text>
+        <text x="344" y="122" text-anchor="end" class="t-accent t-mono" font-size="12">99 cm</text>
+        <text x="344" y="220" text-anchor="end" class="t-tesis t-mono" font-size="12">36 cm</text>
+        <text x="280" y="276" text-anchor="middle" class="t-muted" font-size="12">distancia Z</text>
+      </svg>
+      <figcaption>\(\sigma_Z = Z^2\sigma_d/(fb)\) con \(f\) = 458,65 px y \(\sigma_d\) = 0,5 px. Ejemplo 5 de <code>figuras/ejemplos_a4b.py</code>.</figcaption>
+    </figure>
+    <div class="stack">
       <div class="table-wrap">
         <table class="t">
           <tr><th>Distancia</th><th>1 m</th><th>3 m</th><th>10 m</th><th>30 m</th></tr>
-          <tr><td>\(\sigma_Z\), base 11 cm</td><td class="n">1,0 cm</td><td class="n">8,9 cm</td><td class="n">99 cm</td><td class="n">8,9 m</td></tr>
-          <tr><td>\(\sigma_Z\), base 30 cm</td><td class="n">0,4 cm</td><td class="n">3,3 cm</td><td class="n">36 cm</td><td class="n">3,3 m</td></tr>
+          <tr><td>Base 11 cm</td><td class="n">1,0 cm</td><td class="n">8,9 cm</td><td class="n">99 cm</td><td class="n">8,9 m</td></tr>
+          <tr><td>Base 30 cm</td><td class="n">0,4 cm</td><td class="n">3,3 cm</td><td class="n">36 cm</td><td class="n">3,3 m</td></tr>
         </table>
       </div>
       <p class="xsmall muted">Calculado en <code>figuras/figuras_a4b.py</code>.</p>
@@ -121,15 +474,43 @@
   <h2>Cuatro direcciones que una cámara y una IMU nunca ven</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Posición global (3) y guiñada global (1):</strong> trasladar todo el mundo o girarlo alrededor de la vertical no cambia ni las imágenes ni lo que mide la IMU. Un VIO deriva en esas cuatro direcciones sin remedio; solo un mapa previo, un GNSS o una referencia externa las fijan.</li>
+      <p>Una dirección del estado es <strong>inobservable</strong> si moverla no cambia ninguna medida (A4a, observabilidad).</p>
+      <ul>
+        <li><strong>Posición global (3) y guiñada global (1).</strong> Trasladar todo el mundo, o girarlo alrededor de la vertical, no cambia ni las imágenes ni lo que mide la IMU. Un VIO deriva en esas cuatro direcciones; solo un mapa previo, un GNSS o una referencia externa las fijan.</li>
         <li><strong>Inclinación:</strong> observable, porque el acelerómetro ve la gravedad (A4a).</li>
-        <li><strong>Escala (monocular):</strong> la cámara sola la pierde; la IMU la recupera <em>si el dron acelera</em>. Con velocidad constante, la escala deja de ser observable.</li>
+        <li><strong>Escala (monocular):</strong> la cámara sola la pierde; la IMU la recupera <em>si el dron acelera</em> (hoja siguiente).</li>
         <li><strong>Sesgos:</strong> observables con excitación suficiente (giros en varios ejes).</li>
       </ul>
     </div>
     <div class="stack">
       <div class="callout error"><span class="tag">El fallo silencioso</span>Si el estimador linealiza en sus estimaciones, gana información espuria en esas direcciones y se vuelve sobreconfiado: el problema que Hesch et al. analizan en VIO y que viste en la guiñada de A4a <a class="cite" data-ref="hesch2014"></a>.</div>
+      <div class="aparte"><span class="rotulo">Por qué la guiñada y no la inclinación</span>
+        <p>La gravedad es un vector vertical que la IMU ve en ejes cuerpo: fija hacia dónde está «abajo», y con ello el alabeo y el cabeceo. Girar alrededor de la vertical deja la gravedad igual, así que nada en las medidas fija el rumbo absoluto.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La escala, con números</p>
+  <h2>Mundo y trayectoria al doble de tamaño dan las mismas imágenes</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Multiplicar por \(s\) el punto y la posición de la cámara:</p>
+      \[ R_{wc}^\top\,(s\,\mathbf p_w - s\,\mathbf t_{wc}) = s\,\mathbf p_c \ \Rightarrow\ \pi(s\,\mathbf p_c) = \pi(\mathbf p_c) \]
+      <p>porque \(sX/(sZ) = X/Z\). Con la cámara de EuRoC mirando a \(+x\), un punto en \((2;\ 0{,}5;\ 0{,}3)\) y dos poses de cámara separadas 30 cm (ejemplo 6):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Escala</th><th>Píxel desde la pose A</th><th>Píxel desde la pose B</th></tr>
+          <tr><td>\(s = 1\)</td><td class="n">(252,55; 179,78)</td><td class="n">(321,35; 179,78)</td></tr>
+          <tr><td>\(s = 2\)</td><td class="n">(252,55; 179,78)</td><td class="n">(321,35; 179,78)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>La IMU rompe el empate.</strong> Si la visión da la trayectoria a escala desconocida, \(\mathbf p(t) = s\,\mathbf p_{\text{vis}}(t)\), el acelerómetro mide la aceleración métrica:</p>
+      \[ \ddot{\mathbf p} = s\,\ddot{\mathbf p}_{\text{vis}} \ \Rightarrow\ s = \|\ddot{\mathbf p}\| / \|\ddot{\mathbf p}_{\text{vis}}\| \]
+      <p>Con 1 m/s² medidos, la hipótesis \(s = 2\) exigiría 2 m/s² y se descarta. A velocidad constante, \(0 = s\cdot 0\) para todo \(s\): la escala deja de ser observable.</p>
       <div class="callout tesis"><span class="tag">Percepción activa</span>La escala y los sesgos dependen de cómo vuela el dron. Un planificador que sabe esto puede elegir trayectorias que los hagan observables: es percepción activa (A7), y PAMPC en A3a ya lo hacía para la visibilidad.</div>
     </div>
   </div>
@@ -143,60 +524,503 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">MSCKF</p>
-  <h2>Usar los puntos del mapa sin guardarlos en el estado</h2>
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Qué es cada letra de filtros y ventanas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:30%">Ejemplo</th></tr>
+      <tr><td>\(\mathbf x\), \(\delta\mathbf x\)</td><td>Estado del filtro y su error, como en el ESKF de A4a: IMU (posición, velocidad, actitud, sesgos) más los <strong>clones</strong>, copias de poses pasadas de la cámara</td><td>15 estados de IMU + 6 por clon</td></tr>
+      <tr><td>\(\mathbf p_f\), \(\delta\mathbf p_f\)</td><td>Posición de un punto de la escena (\(f\), de <em>feature</em>) y su error. No es la focal</td><td>La esquina del cuadro</td></tr>
+      <tr><td>\(m\)</td><td>Número de imágenes en las que se ha visto ese punto</td><td>\(m = 2\) en el ejemplo</td></tr>
+      <tr><td>\(H_x\), \(H_f\)</td><td>Jacobianos del residuo apilado respecto al estado y al punto: \(2m\) filas cada uno</td><td>\(H_f\) de 4 × 3</td></tr>
+      <tr><td>\(\mathcal X\), \(K\)</td><td>Variables de la ventana deslizante (poses, velocidades, sesgos, puntos) y número de poses que guarda. <strong>Esta \(K\) no es la ganancia de Kalman</strong></td><td>\(K = 4\) en el dibujo</td></tr>
+      <tr><td>\(\|\mathbf r\|^2_\Sigma\)</td><td>\(\mathbf r^\top\Sigma^{-1}\mathbf r\): residuo al cuadrado pesado por su covarianza (distancia de Mahalanobis)</td><td>\(\|\mathbf r\|^2/\sigma^2\) en escalar</td></tr>
+      <tr><td>\(J\), \(\Lambda\), \(\boldsymbol\eta\)</td><td>Jacobiano de todos los residuos; matriz de información \(\Lambda = J^\top\Sigma^{-1}J\) y vector \(\boldsymbol\eta = -J^\top\Sigma^{-1}\mathbf r\) (los de la forma de información de A4a)</td><td>Hojas de Gauss-Newton y Schur</td></tr>
+      <tr><td>\(\delta\mathcal X\)</td><td>Corrección de las variables de la ventana en una iteración</td><td>\(\Lambda\,\delta\mathcal X = \boldsymbol\eta\)</td></tr>
+    </table>
+  </div>
+  <p class="small muted">Los símbolos de la preintegración (\(\Delta R_{ij}\), \(\boldsymbol\omega_k\), \(\mathbf b_g\)…) se definen en su hoja. Los índices \(i, j\) significan fotograma y punto en el coste de la ventana, y dos fotogramas en la preintegración.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">El problema, en un dibujo</p>
+  <h2>Dos maneras de usar las mismas medidas: filtrar u optimizar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 250" style="max-height:250px" role="img" aria-label="Dos filas de poses en el tiempo: el filtro solo guarda el estado actual y algunos clones; la ventana deslizante guarda las K últimas poses y marginaliza la más vieja en una prioridad">
+      <text x="20" y="66" class="t-bold" font-size="16">Filtro</text>
+      <text x="20" y="86" class="t-muted" font-size="13">(EKF, MSCKF)</text>
+      <g font-size="13" class="t-mono">
+        <circle cx="200" cy="70" r="20" class="box-soft"/><circle cx="300" cy="70" r="20" class="box-soft"/><circle cx="400" cy="70" r="20" class="box-soft"/>
+        <circle cx="500" cy="70" r="20" class="box-accent"/><circle cx="600" cy="70" r="20" class="box-accent"/><circle cx="700" cy="70" r="22" class="box-accent" stroke-width="2.4"/>
+        <text x="200" y="75" text-anchor="middle" class="t-faint">t−5</text><text x="300" y="75" text-anchor="middle" class="t-faint">t−4</text><text x="400" y="75" text-anchor="middle" class="t-faint">t−3</text>
+        <text x="500" y="75" text-anchor="middle">t−2</text><text x="600" y="75" text-anchor="middle">t−1</text><text x="700" y="75" text-anchor="middle">t</text>
+      </g>
+      <text x="300" y="112" text-anchor="middle" class="t-faint" font-size="13">ya resumidas en la media y en P</text>
+      <path class="ln-accent" d="M478 105 V112 H722 V105"/>
+      <text x="600" y="130" text-anchor="middle" class="t-accent" font-size="13">en el estado: IMU actual + clones</text>
+      <text x="20" y="181" class="t-bold" font-size="16">Ventana</text>
+      <text x="20" y="201" class="t-muted" font-size="13">deslizante</text>
+      <rect x="370" y="150" width="355" height="60" rx="10" class="box-soft" fill="none" stroke-dasharray="6 4"/>
+      <g font-size="13" class="t-mono">
+        <circle cx="200" cy="180" r="20" class="box-soft"/>
+        <rect x="282" y="164" width="36" height="32" rx="4" class="box-tesis"/>
+        <circle cx="400" cy="180" r="20" class="box-accent"/><circle cx="500" cy="180" r="20" class="box-accent"/><circle cx="600" cy="180" r="20" class="box-accent"/><circle cx="700" cy="180" r="22" class="box-accent" stroke-width="2.4"/>
+        <text x="200" y="185" text-anchor="middle" class="t-faint">t−5</text><text x="300" y="185" text-anchor="middle" class="t-tesis">prior</text>
+        <text x="400" y="185" text-anchor="middle">t−3</text><text x="500" y="185" text-anchor="middle">t−2</text><text x="600" y="185" text-anchor="middle">t−1</text><text x="700" y="185" text-anchor="middle">t</text>
+      </g>
+      <text x="548" y="232" text-anchor="middle" class="t-accent" font-size="13">K = 4 poses, con todas sus medidas</text>
+      <text x="300" y="232" text-anchor="middle" class="t-tesis" font-size="13">t−4, marginalizada</text>
+      <g font-size="14">
+        <text x="760" y="60">Cada medida se linealiza <tspan class="t-bold">una vez</tspan>,</text>
+        <text x="760" y="80">en la estimación de ese instante,</text>
+        <text x="760" y="100">y su información pasa a la media y a P.</text>
+        <text x="760" y="170">Las medidas de la ventana se</text>
+        <text x="760" y="190"><tspan class="t-bold">relinealizan</tspan> en cada iteración;</text>
+        <text x="760" y="210">la pose que sale deja una prioridad.</text>
+      </g>
+    </svg>
+  </figure>
   <div class="cols">
+    <p><strong>Entra</strong> lo mismo en los dos: IMU y píxeles de puntos seguidos. <strong>Sale</strong> lo mismo: pose, velocidad, sesgos y covarianza. Cambia cuánto pasado se guarda y cuántas veces se vuelve a linealizar.</p>
+    <div class="callout clave"><span class="tag">Por qué importa</span>Linealizar lejos del valor verdadero da jacobianos malos. La ventana corrige ese error porque vuelve a linealizar; el filtro, no. A cambio, el filtro cuesta menos.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MSCKF · 1</p>
+  <h2>Usar los puntos del mapa sin guardarlos en el estado</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 540 270" role="img" aria-label="Cinco poses de cámara en el tiempo; un punto de la escena se ve desde las cuatro primeras; en la quinta ya no se ve y el filtro lo triangula y actualiza">
+        <path class="ln-accent ln-dash" d="M70 215 L270 50 M160 215 L270 50 M250 215 L270 50 M340 215 L270 50"/>
+        <polygon points="270,36 275,47 287,47 277,54 281,66 270,58 259,66 263,54 253,47 265,47" class="fill-tesis"/>
+        <text x="292" y="46" class="t-tesis" font-size="14">punto p_f</text>
+        <g>
+          <polygon points="58,230 82,230 70,212" class="box-accent"/>
+          <polygon points="148,230 172,230 160,212" class="box-accent"/>
+          <polygon points="238,230 262,230 250,212" class="box-accent"/>
+          <polygon points="328,230 352,230 340,212" class="box-accent"/>
+          <polygon points="418,230 442,230 430,212" class="box-accent" stroke-width="2.4"/>
+        </g>
+        <g class="t-mono" font-size="12" text-anchor="middle">
+          <text x="70" y="250">clon 1</text><text x="160" y="250">clon 2</text><text x="250" y="250">clon 3</text><text x="340" y="250">clon 4</text><text x="430" y="250">ahora</text>
+        </g>
+        <path class="ln-tesis" d="M405 150 l14 14 M419 150 l-14 14" stroke-width="2.2"/>
+        <text x="380" y="140" class="t-tesis" font-size="13">ya no se ve</text>
+        <text x="40" y="120" class="t-muted" font-size="13">m = 4 observaciones</text>
+        <path class="ln-rule" d="M40 266 H470"/>
+        <text x="470" y="262" text-anchor="end" class="t-faint" font-size="11">tiempo</text>
+      </svg>
+      <figcaption>El punto se sigue en cuatro imágenes. Cuando se pierde, sus cuatro píxeles se usan de golpe para corregir las cuatro poses.</figcaption>
+    </figure>
     <div class="stack">
-      <p class="small">Estado: IMU (ESKF de A4a) más una ventana de clones de poses pasadas de la cámara, sin puntos del mapa. Cuando un punto deja de verse, se triangula con las poses de la ventana y se apilan sus residuos de reproyección <a class="cite" data-ref="mourikis2007"></a>:</p>
-      \[ \mathbf r = H_x\,\delta\mathbf x + H_f\,\delta\mathbf p_f + \mathbf n \]
-      <p class="small">El error del punto \(\delta\mathbf p_f\) no está en el estado. Se elimina proyectando con una base \(N\) del espacio nulo izquierdo de \(H_f\) (\(N^\top H_f = 0\)):</p>
-      \[ \mathbf r_o = N^\top\mathbf r = N^\top H_x\,\delta\mathbf x + N^\top\mathbf n \]
-    </div>
-    <div class="stack">
-      <details class="deriv"><summary>Por qué funciona</summary>
-        <p class="small">\(H_f\) tiene 3 columnas y \(2m\) filas (\(m\) observaciones del punto), así que su espacio nulo izquierdo tiene dimensión \(2m - 3\). La proyección quita las 3 direcciones que dependen del punto y deja \(2m - 3\) residuos que solo dependen de las poses, con ruido todavía blanco si \(N\) es ortonormal. Es una marginalización exacta del punto, sin añadirlo al estado.</p>
-      </details>
-      <ul class="small">
-        <li>Coste lineal en el número de puntos y acotado por el tamaño de la ventana.</li>
-        <li>La base de OpenVINS, que lo extiende con puntos SLAM en el estado y calibración en línea <a class="cite" data-ref="geneva2020"></a>.</li>
-      </ul>
-      <div class="callout realidad"><span class="tag">En drones</span>En la comparación de Delmerico y Scaramuzza, el MSCKF completó todas las secuencias en todas las plataformas, incluidas las de poco cómputo <a class="cite" data-ref="delmerico2018"></a>.</div>
+      <p><strong>Estado:</strong> la IMU (el ESKF de A4a) más una ventana de <strong>clones</strong> de las poses de la cámara en las últimas imágenes. Ningún punto del mapa <a class="cite" data-ref="mourikis2007"></a>.</p>
+      <p><strong>Por qué clones:</strong> los píxeles de un mismo punto relacionan varias poses pasadas. Para usarlos, esas poses tienen que seguir en el estado con su covarianza.</p>
+      <p><strong>Cuándo se actualiza:</strong> al perder el punto (o al salir su primer clon de la ventana) se triangula con los clones y se apilan sus \(m\) residuos.</p>
+      <div class="callout realidad"><span class="tag">En drones</span>Coste lineal en el número de puntos y acotado por la ventana. Es la base de OpenVINS <a class="cite" data-ref="geneva2020"></a>, y en la comparación de Delmerico y Scaramuzza terminó todas las secuencias en todas las plataformas <a class="cite" data-ref="delmerico2018"></a>.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Ventana deslizante</p>
-  <h2>Optimizar las últimas poses y marginalizar las viejas</h2>
+  <p class="kicker">MSCKF · 2</p>
+  <h2>El residuo de un punto depende de las poses y del propio punto</h2>
+  <p>Cada una de las \(m\) observaciones da un error de reproyección de 2 componentes. Se linealiza alrededor de lo que creemos (las poses del estado y el punto triangulado \(\hat{\mathbf p}_f\)):</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathbf r_j = \mathbf z_j - \pi(\hat{\mathbf p}_{c,j})\), \(j = 1,\dots,m\)</td><td>Error de reproyección en la imagen \(j\), con la pose del clon \(j\) y el punto \(\hat{\mathbf p}_f\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathbf r_j \approx H_{x,j}\,\delta\mathbf x + H_{f,j}\,\delta\mathbf p_f + \mathbf n_j\)</td><td>Taylor de primer orden: \(\mathbf p_{c,j}\) depende de la pose del clon (está en \(\mathbf x\)) y del punto. Los jacobianos son los de la hoja «Jacobiano de la proyección»</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\mathbf r = H_x\,\delta\mathbf x + H_f\,\delta\mathbf p_f + \mathbf n\)</td><td>Apilar las \(m\) observaciones: \(\mathbf r\) tiene \(2m\) filas; \(H_x\), \(2m\) × dim(\(\mathbf x\)); \(H_f\), \(2m\) × 3</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout error"><span class="tag">El problema</span>El EKF de A4a necesita \(\mathbf r = H\,\delta\mathbf x + \mathbf n\), y aquí sobra el término \(H_f\,\delta\mathbf p_f\): el punto no está en el estado. Y \(\hat{\mathbf p}_f\) se triangulará con esas mismas poses, así que tratarlo como exacto ignoraría su error.</div>
+    <div class="callout clave"><span class="tag">Dos salidas</span>Meter el punto en el estado (EKF-SLAM: el estado crece con el mapa) o quitar del residuo la parte que depende del punto. El MSCKF hace lo segundo, en la hoja siguiente.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MSCKF · 3</p>
+  <h2>Proyectar al espacio nulo izquierdo de \(H_f\) borra el punto</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(H_f\) es \(2m\times3\) de rango 3</td><td>Si el punto se ve desde posiciones distintas, sus tres coordenadas mueven los píxeles en direcciones independientes</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\{\mathbf w : \mathbf w^\top H_f = 0\}\) tiene dimensión \(2m - 3\)</td><td>Teorema del rango aplicado a \(H_f^\top\): número de filas de \(H_f\) (\(2m\)) menos su rango (3)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(N\): \(2m\times(2m-3)\), columnas ortonormales con \(N^\top H_f = 0\)</td><td>Una base de ese espacio; sale de una QR o una SVD de \(H_f\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathbf r_o = N^\top\mathbf r = N^\top H_x\,\delta\mathbf x + N^\top\mathbf n\)</td><td>Multiplicar el paso 3 de la hoja anterior por \(N^\top\): el término \(N^\top H_f\,\delta\mathbf p_f\) es cero</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mathrm{Cov}(N^\top\mathbf n) = \sigma^2N^\top N = \sigma^2I\)</td><td>Con ruido blanco \(\sigma^2I\) y \(N\) ortonormal, el ruido sigue siendo blanco</td></tr>
+      <tr><td><strong>6</strong></td><td>Actualización del EKF con \(H_o = N^\top H_x\) y \(\mathbf r_o\)</td><td>Ya tiene la forma \(\mathbf r_o = H_o\,\delta\mathbf x + \mathbf n_o\) de A4a (parte 3)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    \[ \mathbf r_o = N^\top\mathbf r = N^\top H_x\,\delta\mathbf x + N^\top\mathbf n \]
+    <div class="aparte"><span class="rotulo">Por qué funciona</span>
+      <p>La proyección quita las 3 direcciones de residuo que puede explicar el punto y deja \(2m - 3\) que solo dependen de las poses. Es una marginalización exacta del punto (en el modelo lineal), sin añadirlo al estado <a class="cite" data-ref="mourikis2007"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MSCKF · 4</p>
+  <h2>La proyección con números: un punto visto desde dos clones</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Se minimiza la suma de residuos (de reproyección, de la IMU y una prioridad de lo marginalizado) sobre las \(K\) últimas poses y los puntos visibles, con Gauss-Newton o Levenberg-Marquardt:</p>
-      \[ \min_{\mathcal X}\ \|\mathbf r_{\text{prior}}\|^2 + \sum_{k}\|\mathbf r_{\text{IMU},k}\|^2_{\Sigma_k} + \sum_{i,j}\rho\big(\|\mathbf r_{ij}\|^2_{\Sigma}\big) \]
-      <p class="small">\(\rho\) es una función robusta (Huber, Cauchy) que limita el peso de las asociaciones erróneas. Cuando sale una pose de la ventana, se <strong>marginaliza</strong>: complemento de Schur de su bloque en el sistema normal, que queda como prioridad sobre el resto.</p>
+      <p>El punto \((3;\ -0{,}4;\ 1{,}2)\) visto desde la cámara del ejemplo 2 y desde un segundo clon desplazado y girado 0,05 rad. Cada bloque de 2 filas es \(JR_{wc}^\top\) (hoja «Jacobiano de la proyección»):</p>
+      \[ H_f = \begin{bmatrix} -45{,}9 & -229{,}3 & 0\\ -34{,}3 & 0 & -228{,}6\\ -95{,}6 & -245{,}8 & 0\\ -40{,}8 & 2{,}0 & -249{,}5 \end{bmatrix} \]
+      <p>Valores singulares 355, 339 y 30: rango 3. El espacio nulo izquierdo tiene dimensión \(4 - 3 = 1\):</p>
+      \[ N = (0{,}065;\ -0{,}735;\ -0{,}055;\ 0{,}673),\qquad N^\top H_f = 0 \]
     </div>
     <div class="stack">
-      <ul class="small">
+      <div class="callout realidad"><span class="tag">Compruébalo</span>Un error del punto de \((5;\ -3;\ 2)\) cm mueve los cuatro píxeles \((4{,}6;\ -6{,}3;\ 2{,}6;\ -7{,}1)\), pero el residuo proyectado no cambia: \(N^\top H_f\,\delta\mathbf p_f = 10^{-15}\). Ejemplo 7.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Observaciones \(m\)</th><th>2</th><th>5</th><th>10</th><th>20</th></tr>
+          <tr><td>Residuos \(2m\)</td><td class="n">4</td><td class="n">10</td><td class="n">20</td><td class="n">40</td></tr>
+          <tr><td>Tras proyectar, \(2m - 3\)</td><td class="n">1</td><td class="n">7</td><td class="n">17</td><td class="n">37</td></tr>
+        </table>
+      </div>
+      <p>Con dos imágenes queda un solo número: la condición de que los dos rayos se corten. Cuantas más imágenes, más restricciones sobre las poses.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ventana deslizante · 1</p>
+  <h2>El grafo de factores: cada residuo une unas pocas variables</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="Grafo de factores con cuatro poses en fila unidas por factores de IMU, tres puntos arriba unidos a las poses que los ven por factores de reproyección, y un factor de prioridad en la primera pose">
+        <g class="ln-rule" stroke-width="1.3">
+          <path d="M110 200 L180 60 M250 200 L180 60 M110 200 L320 60 M250 200 L320 60 M390 200 L320 60 M530 200 L320 60 M390 200 L460 60 M530 200 L460 60"/>
+          <path d="M40 200 H530"/>
+        </g>
+        <g class="fill-accent">
+          <rect x="140" y="125" width="10" height="10"/><rect x="210" y="125" width="10" height="10"/><rect x="241.5" y="104" width="10" height="10"/><rect x="290.5" y="104" width="10" height="10"/><rect x="339.5" y="104" width="10" height="10"/><rect x="388.5" y="104" width="10" height="10"/><rect x="420" y="125" width="10" height="10"/><rect x="490" y="125" width="10" height="10"/>
+        </g>
+        <g class="fill-time">
+          <rect x="174" y="194" width="12" height="12"/><rect x="314" y="194" width="12" height="12"/><rect x="454" y="194" width="12" height="12"/>
+        </g>
+        <rect x="34" y="194" width="12" height="12" class="fill-tesis"/>
+        <g font-size="15" class="t-mono" text-anchor="middle">
+          <circle cx="110" cy="200" r="24" class="box"/><text x="110" y="205">x1</text>
+          <circle cx="250" cy="200" r="24" class="box"/><text x="250" y="205">x2</text>
+          <circle cx="390" cy="200" r="24" class="box"/><text x="390" y="205">x3</text>
+          <circle cx="530" cy="200" r="24" class="box"/><text x="530" y="205">x4</text>
+          <circle cx="180" cy="60" r="22" class="box-tesis"/><text x="180" y="65">l1</text>
+          <circle cx="320" cy="60" r="22" class="box-tesis"/><text x="320" y="65">l2</text>
+          <circle cx="460" cy="60" r="22" class="box-tesis"/><text x="460" y="65">l3</text>
+        </g>
+        <g font-size="13">
+          <rect x="60" y="250" width="12" height="12" class="fill-time"/><text x="80" y="261">IMU (preintegración)</text>
+          <rect x="240" y="250" width="10" height="10" class="fill-accent"/><text x="258" y="261">reproyección</text>
+          <rect x="380" y="250" width="12" height="12" class="fill-tesis"/><text x="400" y="261">prioridad</text>
+          <text x="60" y="288" class="t-muted">círculos: variables · cuadrados: factores (residuos)</text>
+        </g>
+      </svg>
+      <figcaption>Ventana de \(K = 4\) poses \(\mathbf x_k\) (pose, velocidad y sesgos) y tres puntos \(\mathbf l\): 3 factores de IMU, 8 de reproyección y la prioridad.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Un <strong>grafo de factores</strong> dibuja el problema de optimización: cada variable es un círculo y cada término del coste, un cuadrado unido a las variables de las que depende.</p>
+      <ul>
+        <li><strong>Reproyección:</strong> un punto y la pose que lo ve.</li>
+        <li><strong>IMU:</strong> dos poses consecutivas.</li>
+        <li><strong>Prioridad:</strong> lo que quedó de las poses que salieron de la ventana.</li>
+      </ul>
+      <p>El punto \(\mathbf l_2\) se ve desde las cuatro poses; \(\mathbf l_1\) y \(\mathbf l_3\), desde dos.</p>
+      <div class="callout clave"><span class="tag">Por qué importa</span>Ningún factor toca muchas variables: el sistema que hay que resolver es <strong>disperso</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ventana deslizante · 2</p>
+  <h2>El coste de la ventana, término a término</h2>
+  \[ \min_{\mathcal X}\ \underbrace{\|\mathbf r_{\text{prior}}\|^2}_{\text{prioridad}} + \underbrace{\sum_{k}\|\mathbf r_{\text{IMU},k}\|^2_{\Sigma_k}}_{\text{IMU}} + \underbrace{\sum_{i,j}\rho\big(\|\mathbf r_{ij}\|^2_{\Sigma}\big)}_{\text{reproyección}} \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Término</th><th>Qué mide</th><th style="width:30%">Variables que toca</th></tr>
+      <tr><td>\(\mathbf r_{\text{prior}}\)</td><td>Lo que decían las medidas de las poses que ya salieron (hojas de marginalización)</td><td>Las que compartían factor con ellas</td></tr>
+      <tr><td>\(\mathbf r_{\text{IMU},k}\), \(\Sigma_k\)</td><td>Si el movimiento entre dos poses cuadra con lo que integró la IMU, pesado por la covarianza propagada de esa integración</td><td>Poses, velocidades y sesgos de \(k\) y \(k+1\)</td></tr>
+      <tr><td>\(\mathbf r_{ij}\), \(\Sigma\)</td><td>Error de reproyección del punto \(j\) en el fotograma \(i\), pesado por el ruido del píxel</td><td>La pose \(i\) y el punto \(j\)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <p>\(\rho\) es una función <strong>robusta</strong>. La de Huber, con umbral \(\kappa\) y \(s = \|\mathbf r\|^2_\Sigma\):</p>
+      \[ \rho(s) = \begin{cases} s & s \le \kappa^2\\ 2\kappa\sqrt s - \kappa^2 & s \gt \kappa^2 \end{cases} \]
+    </div>
+    <div class="callout realidad"><span class="tag">Con números</span>Una asociación errónea con un residuo de 10 \(\sigma\) aporta \(s = 100\) al coste cuadrático. Con Huber y \(\kappa = 1\), aporta \(2\cdot10 - 1 = 19\), y tira de la solución con un peso \(\rho'(s) = \kappa/\sqrt s = 0{,}1\) del que tendría. Ejemplo 14.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ventana deslizante · 3</p>
+  <h2>Cada iteración resuelve un sistema lineal disperso</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Gauss-Newton, como en el NMPC de A3a: linealizar los residuos y resolver la cuadrática que queda.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbf r(\mathcal X\oplus\delta\mathcal X) \approx \mathbf r + J\,\delta\mathcal X\)</td><td>Taylor; \(\oplus\) porque las rotaciones se corrigen en el tangente (M1)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\|\mathbf r + J\delta\mathcal X\|^2_\Sigma\), cuadrática en \(\delta\mathcal X\)</td><td>Sustituir en el coste (sin \(\rho\), o con su peso fijo en la iteración)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\underbrace{J^\top\Sigma^{-1}J}_{\Lambda}\,\delta\mathcal X = \underbrace{-J^\top\Sigma^{-1}\mathbf r}_{\boldsymbol\eta}\)</td><td>Gradiente nulo</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathcal X \leftarrow \mathcal X\oplus\delta\mathcal X\) y volver al paso 1</td><td>Relinealizar en el nuevo punto: lo que el filtro no hace</td></tr>
+        </table>
+      </div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 300 300" style="max-height:300px" role="img" aria-label="Patrón de la matriz de información del grafo: bloque diagonal para los puntos, banda para las poses y bloques fuera de la diagonal donde un punto se ve desde una pose">
+        <g class="t-mono t-muted" font-size="12" text-anchor="middle">
+          <text x="76" y="30">l1</text><text x="108" y="30">l2</text><text x="140" y="30">l3</text><text x="172" y="30">x1</text><text x="204" y="30">x2</text><text x="236" y="30">x3</text><text x="268" y="30">x4</text>
+          <text x="46" y="61">l1</text><text x="46" y="93">l2</text><text x="46" y="125">l3</text><text x="46" y="157">x1</text><text x="46" y="189">x2</text><text x="46" y="221">x3</text><text x="46" y="253">x4</text>
+        </g>
+        <rect x="60" y="40" width="224" height="224" class="box" fill="none"/>
+        <g class="fill-tesis">
+          <rect x="61" y="41" width="30" height="30"/><rect x="93" y="73" width="30" height="30"/><rect x="125" y="105" width="30" height="30"/>
+        </g>
+        <g class="fill-accent">
+          <rect x="157" y="137" width="30" height="30"/><rect x="189" y="169" width="30" height="30"/><rect x="221" y="201" width="30" height="30"/><rect x="253" y="233" width="30" height="30"/>
+        </g>
+        <g class="fill-time">
+          <rect x="189" y="137" width="30" height="30"/><rect x="157" y="169" width="30" height="30"/>
+          <rect x="221" y="169" width="30" height="30"/><rect x="189" y="201" width="30" height="30"/>
+          <rect x="253" y="201" width="30" height="30"/><rect x="221" y="233" width="30" height="30"/>
+        </g>
+        <g class="fill-ink3">
+          <rect x="157" y="41" width="30" height="30"/><rect x="189" y="41" width="30" height="30"/>
+          <rect x="157" y="73" width="30" height="30"/><rect x="189" y="73" width="30" height="30"/><rect x="221" y="73" width="30" height="30"/><rect x="253" y="73" width="30" height="30"/>
+          <rect x="221" y="105" width="30" height="30"/><rect x="253" y="105" width="30" height="30"/>
+          <rect x="61" y="137" width="30" height="30"/><rect x="93" y="137" width="30" height="30"/>
+          <rect x="61" y="169" width="30" height="30"/><rect x="93" y="169" width="30" height="30"/>
+          <rect x="93" y="201" width="30" height="30"/><rect x="125" y="201" width="30" height="30"/>
+          <rect x="93" y="233" width="30" height="30"/><rect x="125" y="233" width="30" height="30"/>
+        </g>
+        <text x="60" y="288" class="t-muted" font-size="12">gris: reproyección · naranja: IMU</text>
+      </svg>
+      <figcaption>Bloques no nulos de \(\Lambda\) para el grafo de la hoja anterior: un bloque \((a, b)\) existe si algún factor toca \(a\) y \(b\). Diagonal: poses en azul, puntos en morado. Los puntos no se tocan entre sí.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Marginalización · 1</p>
+  <h2>Cuando una pose sale de la ventana, su información se queda</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 230" style="max-height:230px" role="img" aria-label="Antes: la pose x1 tiene una prioridad, un factor de IMU con x2 y factores con los puntos l1 y l2. Después: x1 desaparece y queda un único factor nuevo que une x2, l1 y l2">
+      <defs>
+        <marker id="a4bm4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <text x="40" y="24" class="t-bold" font-size="15">Antes</text>
+      <g class="ln-rule" stroke-width="1.3">
+        <path d="M60 170 H300 M150 170 L230 50 M150 170 L380 50 M300 170 L230 50 M300 170 L380 50"/>
+      </g>
+      <rect x="54" y="164" width="12" height="12" class="fill-tesis"/>
+      <rect x="219" y="164" width="12" height="12" class="fill-time"/>
+      <rect x="185" y="105" width="10" height="10" class="fill-accent"/><rect x="214" y="129" width="10" height="10" class="fill-accent"/><rect x="274" y="129" width="10" height="10" class="fill-accent"/><rect x="335" y="105" width="10" height="10" class="fill-accent"/>
+      <g font-size="15" class="t-mono" text-anchor="middle">
+        <circle cx="150" cy="170" r="24" class="box-tesis" stroke-dasharray="5 3"/><text x="150" y="175">x1</text>
+        <circle cx="300" cy="170" r="24" class="box"/><text x="300" y="175">x2</text>
+        <circle cx="230" cy="50" r="22" class="box"/><text x="230" y="55">l1</text>
+        <circle cx="380" cy="50" r="22" class="box"/><text x="380" y="55">l2</text>
+      </g>
+      <text x="150" y="216" text-anchor="middle" class="t-tesis" font-size="13">sale de la ventana</text>
+      <path class="ln" d="M470 120 H600" marker-end="url(#a4bm4)" stroke-width="1.6"/>
+      <text x="535" y="108" text-anchor="middle" class="t-muted" font-size="13">marginalizar</text>
+      <text x="535" y="142" text-anchor="middle" class="t-muted" font-size="13">(Schur)</text>
+      <text x="660" y="24" class="t-bold" font-size="15">Después</text>
+      <g class="ln-rule" stroke-width="1.3">
+        <path d="M920 170 L850 50 M920 170 L1000 50"/>
+      </g>
+      <rect x="880" y="106" width="10" height="10" class="fill-accent"/><rect x="955" y="106" width="10" height="10" class="fill-accent"/>
+      <g class="ln-tesis" stroke-width="1.8">
+        <path d="M760 120 L850 50 M760 120 L1000 50 M760 120 L920 170"/>
+      </g>
+      <rect x="740" y="104" width="40" height="32" rx="4" class="box-tesis"/>
+      <text x="760" y="160" text-anchor="middle" class="t-tesis" font-size="13">prior nuevo</text>
+      <g font-size="15" class="t-mono" text-anchor="middle">
+        <circle cx="920" cy="170" r="24" class="box"/><text x="920" y="175">x2</text>
+        <circle cx="850" cy="50" r="22" class="box"/><text x="850" y="55">l1</text>
+        <circle cx="1000" cy="50" r="22" class="box"/><text x="1000" y="55">l2</text>
+      </g>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>¿Por qué no tirar \(\mathbf x_1\) y sus factores?</strong> Porque se pierde lo que dijeron: la prioridad, la IMU y los píxeles que anclaban \(\mathbf x_2\), \(\mathbf l_1\) y \(\mathbf l_2\). En el ejemplo de dos hojas más adelante, el sistema queda singular: sin anclaje.</p>
+      <p><strong>Marginalizar</strong> es quedarse con la gaussiana de las variables que siguen, integrando la que sale (A4a, parte 1: marginalizar).</p>
+    </div>
+    <div class="callout error"><span class="tag">El precio: relleno</span>El factor nuevo une \(\mathbf x_2\), \(\mathbf l_1\) y \(\mathbf l_2\) entre sí, aunque antes \(\mathbf l_1\) y \(\mathbf l_2\) no compartían factor. Cada marginalización hace \(\Lambda\) menos dispersa; por eso se elige con cuidado qué marginalizar y qué tirar.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Marginalización · 2</p>
+  <h2>De dónde sale el complemento de Schur</h2>
+  <p>Ordenamos las variables en las que salen (1) y las que se quedan (2). El sistema de Gauss-Newton de la hoja «Ventana deslizante · 3» queda por bloques:</p>
+  \[ \begin{bmatrix}\Lambda_{11} & \Lambda_{12}\\ \Lambda_{21} & \Lambda_{22}\end{bmatrix}\begin{bmatrix}\delta_1\\ \delta_2\end{bmatrix} = \begin{bmatrix}\boldsymbol\eta_1\\ \boldsymbol\eta_2\end{bmatrix},\qquad \Lambda_{21} = \Lambda_{12}^\top \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\delta_1 = \Lambda_{11}^{-1}(\boldsymbol\eta_1 - \Lambda_{12}\,\delta_2)\)</td><td>Despejar de la primera fila lo que sale</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\Lambda_{21}\Lambda_{11}^{-1}(\boldsymbol\eta_1 - \Lambda_{12}\delta_2) + \Lambda_{22}\,\delta_2 = \boldsymbol\eta_2\)</td><td>Sustituir en la segunda fila</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\big(\Lambda_{22} - \Lambda_{21}\Lambda_{11}^{-1}\Lambda_{12}\big)\,\delta_2 = \boldsymbol\eta_2 - \Lambda_{21}\Lambda_{11}^{-1}\boldsymbol\eta_1\)</td><td>Agrupar los términos en \(\delta_2\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\Lambda_{\text{prior}} = \Lambda_{22} - \Lambda_{21}\Lambda_{11}^{-1}\Lambda_{12},\quad \boldsymbol\eta_{\text{prior}} = \boldsymbol\eta_2 - \Lambda_{21}\Lambda_{11}^{-1}\boldsymbol\eta_1\)</td><td>\(\Lambda_{\text{prior}}\) es el <strong>complemento de Schur</strong> de \(\Lambda_{11}\): da la misma \(\delta_2\) sin \(\delta_1\)</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\Lambda_{\text{prior}}^{-1}\) es el bloque (2, 2) de \(\Lambda^{-1}\)</td><td>Fórmula de la inversa por bloques: es la covarianza marginal de lo que queda. En forma de covarianza basta con tomar el bloque (M1, hoja 45)</td></tr>
+    </table>
+  </div>
+  <p>\(\Lambda_{12}\) solo es no nulo donde un factor toca la pose que sale y otra variable: de ahí el relleno. Y \(\Lambda_{11}\) es pequeño (una pose con su velocidad y sesgos, 15 × 15), así que invertirlo es barato.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Marginalización · 3</p>
+  <h2>Marginalizar con números: tres poses en una recta y un punto</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Posiciones 1D \(x_1, x_2, x_3\) y un punto \(l\). Factores: prioridad en \(x_1\) (\(\sigma\) = 0,1), odometría \(x_1\to x_2\) y \(x_2\to x_3\) (0,1) y el punto visto desde \(x_1\) y desde \(x_3\) (0,2). Cada factor \(\mathbf a^\top\mathbf x - z\) suma \(\mathbf a\mathbf a^\top/\sigma^2\) a \(\Lambda\):</p>
+      \[ \Lambda = \begin{bmatrix} 225 & -100 & 0 & -25\\ -100 & 200 & -100 & 0\\ 0 & -100 & 125 & -25\\ -25 & 0 & -25 & 50 \end{bmatrix} \]
+      <p>Marginalizar \(x_1\): \(\Lambda_{11} = 225\), \(\Lambda_{12} = (-100;\ 0;\ -25)\), y</p>
+      \[ \Lambda_{\text{prior}} = \begin{bmatrix} 200 & -100 & 0\\ -100 & 125 & -25\\ 0 & -25 & 50 \end{bmatrix} - \frac{1}{225}\begin{bmatrix} 10^4 & 0 & 2500\\ 0 & 0 & 0\\ 2500 & 0 & 625\end{bmatrix} \]
+    </div>
+    <div class="stack">
+      \[ \Lambda_{\text{prior}} = \begin{bmatrix} 155{,}6 & -100 & -11{,}1\\ -100 & 125 & -25\\ -11{,}1 & -25 & 47{,}2 \end{bmatrix} \]
+      <ul>
+        <li><strong>Relleno:</strong> el bloque \((x_2, l)\) pasa de 0 a −11,1: \(x_2\) y el punto quedan unidos por lo que sabía \(x_1\).</li>
+        <li><strong>Exacto:</strong> el sistema reducido da la misma solución \((x_2, x_3, l) = (1;\ 2;\ 2{,}5)\), y su inversa coincide con el bloque de \(\Lambda^{-1}\).</li>
+        <li><strong>Tirar en vez de marginalizar:</strong> sin los factores de \(x_1\), la matriz de \((x_2, x_3, l)\) es singular (determinante 0): nada fija dónde está la recta.</li>
+      </ul>
+      <p class="xsmall muted">Ejemplo 8 de <code>figuras/ejemplos_a4b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ventana deslizante en la práctica</p>
+  <h2>Optimizar las últimas poses y marginalizar las viejas: los sistemas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
         <li><strong>OKVIS</strong> (fotogramas clave) y <strong>VINS-Mono</strong> (monocular, con cierre de bucle y relocalización) son las referencias de esta familia <a class="cite" data-ref="leutenegger2015,qin2018"></a>.</li>
         <li><strong>Basalt</strong> extrae de la VIO factores no lineales que resumen lo marginalizado y los reutiliza en un ajuste global <a class="cite" data-ref="usenko2020"></a>.</li>
       </ul>
-      <div class="callout clave"><span class="tag">Filtro frente a optimización</span>Un EKF es una sola iteración de Gauss-Newton con todo marginalizado al instante; la ventana deslizante relinealiza varias veces las poses recientes. Es la misma diferencia que entre RTI y SQP convergido en A3a: más precisión a cambio de más cómputo.</div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Resolver la ventana cuesta más que una actualización de filtro, pero solo se hace a la frecuencia de la cámara (o de los fotogramas clave). Entre medias, el estado se propaga con la IMU.</div>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Filtro frente a optimización</span>Un EKF es una sola iteración de Gauss-Newton (hoja «Ventana deslizante · 3») con todo marginalizado al instante; la ventana relinealiza varias veces las poses recientes. Es la misma diferencia que entre RTI y SQP convergido en A3a: más precisión a cambio de más cómputo.</div>
+      <div class="aparte"><span class="rotulo">La trampa de la prioridad</span>
+        <p>La prioridad se linealizó en los valores que tenían las variables al marginalizar. Si después esas variables se vuelven a linealizar en otro punto, la prioridad y los factores nuevos ya no hablan del mismo sistema y pueden inventar información en las direcciones inobservables de la parte 1. Es el fallo de consistencia de la hoja «Observabilidad», y por eso estos sistemas tratan con cuidado el punto de linealización de las variables que toca la prioridad.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Preintegración</p>
-  <h2>Resumir cientos de medidas de la IMU en un solo factor</h2>
+  <p class="kicker">Preintegración · 1</p>
+  <h2>El problema: muchas muestras de IMU entre dos fotogramas</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 220" style="max-height:220px" role="img" aria-label="Línea temporal con dos fotogramas separados 50 ms y diez muestras de IMU entre ellos; dos caminos: integrar en el mundo desde el estado del fotograma i, que hay que repetir, o preintegrar una vez en los ejes del cuerpo en i">
+      <defs>
+        <marker id="a4bm5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        <marker id="a4bm5t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+      </defs>
+      <line class="ln" x1="80" y1="110" x2="1020" y2="110"/>
+      <rect x="70" y="70" width="40" height="80" rx="4" class="box-accent"/>
+      <rect x="990" y="70" width="40" height="80" rx="4" class="box-accent"/>
+      <text x="90" y="170" text-anchor="middle" class="t-mono" font-size="13">fotograma i</text>
+      <text x="1010" y="170" text-anchor="middle" class="t-mono" font-size="13">fotograma j</text>
+      <text x="90" y="188" text-anchor="middle" class="t-faint t-mono" font-size="12">t = 0</text>
+      <text x="1010" y="188" text-anchor="middle" class="t-faint t-mono" font-size="12">50 ms</text>
+      <g class="fill-time">
+        <rect x="132" y="102" width="6" height="16"/><rect x="222" y="102" width="6" height="16"/><rect x="312" y="102" width="6" height="16"/><rect x="402" y="102" width="6" height="16"/><rect x="492" y="102" width="6" height="16"/>
+        <rect x="582" y="102" width="6" height="16"/><rect x="672" y="102" width="6" height="16"/><rect x="762" y="102" width="6" height="16"/><rect x="852" y="102" width="6" height="16"/><rect x="942" y="102" width="6" height="16"/>
+      </g>
+      <text x="540" y="140" text-anchor="middle" class="t-time" font-size="13">10 muestras de IMU a 200 Hz: giróscopo ω_k y acelerómetro a_k, cada Δt = 5 ms</text>
+      <path class="ln-tesis" d="M110 72 C400 42 700 42 988 72" marker-end="url(#a4bm5t)"/>
+      <text x="540" y="28" text-anchor="middle" class="t-tesis" font-size="13">A: integrar en el mundo desde (R_i, v_i, p_i): repetirlo cada vez que el optimizador mueve el estado i</text>
+      <path class="ln-accent" d="M110 150 C400 215 700 215 988 150" marker-end="url(#a4bm5)"/>
+      <text x="540" y="212" text-anchor="middle" class="t-accent" font-size="13">B: preintegrar una vez en los ejes del cuerpo en i: ΔR_ij, Δv_ij, Δp_ij</text>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <p class="small">Entre dos fotogramas \(i\) y \(j\) hay cientos de muestras de la IMU. Integrarlas en el marco del mundo obligaría a repetirlo cada vez que cambia la estimación de la pose \(i\). La preintegración las integra en el marco del cuerpo en \(i\) <a class="cite" data-ref="forster2017"></a>:</p>
+      <p><strong>Qué se integra:</strong> el giróscopo da la rotación; el acelerómetro, girado con esa rotación, da la velocidad, y la velocidad da la posición. Es la propagación del ESKF de A4a.</p>
+      <p><strong>El problema del camino A:</strong> el resultado depende de \(R_i\) y \(\mathbf v_i\), que Gauss-Newton cambia en cada iteración: habría que reintegrar todas las muestras de todos los factores en cada iteración.</p>
+    </div>
+    <div class="callout clave"><span class="tag">La idea de Forster et al.</span>Integrar en los ejes del cuerpo en \(i\), donde el resultado solo depende de las medidas y de los sesgos <a class="cite" data-ref="forster2017"></a>. El estado entra después, en el residuo, sin reintegrar. M1 (hoja 34) presentó las fórmulas desde el lado de SO(3).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Preintegración · 2</p>
+  <h2>Las tres cantidades preintegradas, término a término</h2>
+  <div class="cols w60">
+    <div class="stack">
       \[ \begin{aligned} \Delta R_{ij} &= \prod_{k=i}^{j-1}\operatorname{Exp}\big((\boldsymbol\omega_k - \mathbf b_g)\Delta t\big)\\ \Delta\mathbf v_{ij} &= \sum_{k=i}^{j-1}\Delta R_{ik}(\mathbf a_k - \mathbf b_a)\Delta t\\ \Delta\mathbf p_{ij} &= \sum_{k=i}^{j-1}\Big(\Delta\mathbf v_{ik}\Delta t + \tfrac12\Delta R_{ik}(\mathbf a_k - \mathbf b_a)\Delta t^2\Big) \end{aligned} \]
+      <ul>
+        <li>\(\Delta R_{ij}\): componer los giros pequeños de cada muestra, como al integrar la actitud con Exp (M1, hoja 21).</li>
+        <li>\(\Delta\mathbf v_{ij}\): cada aceleración se gira a los ejes de \(i\) con \(\Delta R_{ik}\), el giro acumulado hasta la muestra \(k\), y se suma.</li>
+        <li>\(\Delta\mathbf p_{ij}\): integrar la velocidad acumulada, más el medio \(a\,\Delta t^2\) de cada muestra.</li>
+      </ul>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:30%">Símbolo</th><th>Qué es</th></tr>
+        <tr><td>\(i\), \(j\); \(k\)</td><td>Dos fotogramas; una muestra de IMU entre ellos</td></tr>
+        <tr><td>\(\boldsymbol\omega_k\), \(\mathbf a_k\)</td><td>Giróscopo (rad/s) y acelerómetro (fuerza específica, m/s²) medidos en ejes cuerpo. M1 los escribe \(\tilde{\boldsymbol\omega}_k\), \(\tilde{\mathbf a}_k\)</td></tr>
+        <tr><td>\(\mathbf b_g\), \(\mathbf b_a\)</td><td>Sesgos estimados del giróscopo y del acelerómetro (\(\mathbf b^g\), \(\mathbf b^a\) en M1). No es la base \(b\) del estéreo</td></tr>
+        <tr><td>\(\Delta t\), \(\Delta t_{ij}\)</td><td>Periodo de la IMU (5 ms) y tiempo entre fotogramas (50 ms)</td></tr>
+        <tr><td>\(\Delta R_{ik}\), \(\Delta\mathbf v_{ik}\)</td><td>Lo acumulado desde \(i\) hasta la muestra \(k\)</td></tr>
+        <tr><td>\(R_i\), \(\mathbf v_i\), \(\mathbf p_i\); \(\mathbf g\)</td><td>Estado del cuerpo en el mundo en el fotograma \(i\); gravedad en el mundo, \((0, 0, -9{,}81)\) m/s²</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Preintegración · 3</p>
+  <h2>Por qué no depende del estado en \(i\): la derivación</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\dot R = R[\boldsymbol\omega - \mathbf b_g]_\times,\quad \dot{\mathbf v} = R(\mathbf a - \mathbf b_a) + \mathbf g,\quad \dot{\mathbf p} = \mathbf v\)</td><td>Cinemática de A4a: el acelerómetro mide fuerza específica, sin la gravedad, en ejes cuerpo</td></tr>
+      <tr><td><strong>2</strong></td><td>\(R_{k+1} = R_k\operatorname{Exp}\big((\boldsymbol\omega_k - \mathbf b_g)\Delta t\big)\), \(\ \mathbf v_{k+1} = \mathbf v_k + \mathbf g\Delta t + R_k(\mathbf a_k - \mathbf b_a)\Delta t\)</td><td>Discretizar con cada medida constante durante su \(\Delta t\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(R_k = R_i\,\Delta R_{ik}\), y por tanto \(R_j = R_i\,\Delta R_{ij}\)</td><td>Encadenar el paso 2 de \(i\) a \(k\): el producto de Exp es \(\Delta R_{ik}\)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathbf v_j - \mathbf v_i - \mathbf g\Delta t_{ij} = R_i\sum_k \Delta R_{ik}(\mathbf a_k - \mathbf b_a)\Delta t\)</td><td>Sumar el paso 2 de \(i\) a \(j\) (los \(\mathbf v_k\) intermedios se cancelan), usar el paso 3 y sacar \(R_i\) factor común</td></tr>
+      <tr><td><strong>5</strong></td><td>\(R_i^\top(\mathbf v_j - \mathbf v_i - \mathbf g\Delta t_{ij}) = \Delta\mathbf v_{ij}\)</td><td>Multiplicar por \(R_i^\top\): a la izquierda, solo estados; a la derecha, solo medidas y sesgos</td></tr>
+      <tr><td><strong>6</strong></td><td>\(R_i^\top(\mathbf p_j - \mathbf p_i - \mathbf v_i\Delta t_{ij} - \tfrac12\mathbf g\Delta t_{ij}^2) = \Delta\mathbf p_{ij},\quad R_i^\top R_j = \Delta R_{ij}\)</td><td>Lo mismo con la posición: los términos de gravedad de cada muestra suman \(\tfrac12\mathbf g\Delta t_{ij}^2\)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <p><strong>El factor de IMU</strong> compara las dos caras: \(\mathbf r_{\Delta v} = R_i^\top(\mathbf v_j - \mathbf v_i - \mathbf g\Delta t_{ij}) - \Delta\mathbf v_{ij}\), y lo análogo para la rotación (con Log) y la posición.</p>
+    <div class="aparte"><span class="rotulo">Si cambian los sesgos</span>
+      <p>Las \(\Delta\) sí dependen de \(\mathbf b_g\), \(\mathbf b_a\). Si el optimizador los corrige un poco, se actualizan a primer orden con sus jacobianos, sin reintegrar; ahí entra el \(J_r\) de M1 <a class="cite" data-ref="forster2017"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Preintegración · 4</p>
+  <h2>Preintegrar con números: diez muestras, dos estados iniciales</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Diez muestras iguales a 200 Hz: guiñada a 1 rad/s, \(\boldsymbol\omega = (0, 0, 1)\), y \(\mathbf a = (1;\ 0;\ 9{,}81)\) m/s² (el empuje compensa la gravedad y acelera 1 m/s² hacia delante). Sesgos nulos. Ejemplo 9:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Cantidad</th><th>Tras 1 muestra</th><th>Tras 10 (50 ms)</th></tr>
+          <tr><td>Giro de \(\Delta R\)</td><td class="n">0,29°</td><td class="n">2,86°</td></tr>
+          <tr><td>\(\Delta\mathbf v\) (m/s)</td><td class="n">(0,005; 0; 0,049)</td><td class="n">(0,050; 0,001; 0,491)</td></tr>
+          <tr><td>\(\Delta\mathbf p\) (m)</td><td class="n">(0; 0; 0,0001)</td><td class="n">(0,0012; 0; 0,0123)</td></tr>
+        </table>
+      </div>
+      <p>La componente vertical de \(\Delta\mathbf v\), 0,491 = 9,81 · 0,05, es la gravedad que compensa el empuje; en el residuo se cancela con \(\mathbf g\Delta t_{ij}\).</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Por qué no depende de la pose inicial</summary>
-        <p class="small">Integrando \(\dot R = R[\boldsymbol\omega]_\times\), \(\dot{\mathbf v} = R\mathbf a + \mathbf g\) y \(\dot{\mathbf p} = \mathbf v\) de \(i\) a \(j\) y multiplicando por \(R_i^\top\), los términos que dependen de \(R_i\), \(\mathbf v_i\) y \(\mathbf g\) se separan: \(R_i^\top(\mathbf v_j - \mathbf v_i - \mathbf g\Delta t_{ij}) = \Delta\mathbf v_{ij}\), y lo análogo para la posición. Las cantidades \(\Delta\) solo dependen de las medidas y de los sesgos. Si cambia la estimación de los sesgos, se corrigen a primer orden con sus jacobianos, sin reintegrar.</p>
-      </details>
-      <div class="callout clave"><span class="tag">Idea clave</span>Un factor por par de fotogramas con su covarianza propagada: la IMU entra en la optimización a coste casi nulo. Es lo que hizo prácticas la ventana deslizante y el ajuste de haces visual-inercial.</div>
+      <p>Integrando en el mundo desde dos estados distintos, (A) quieto con guiñada 0 y (B) a 3 m/s con guiñada 60°, se llega a \(\mathbf v_j\) distintas, \((0{,}05;\ 0{,}001;\ 0)\) y \((0{,}024;\ 3{,}044;\ 0)\), pero el paso 5 de la hoja anterior devuelve <strong>el mismo</strong> \(\Delta\mathbf v_{ij}\) en los dos.</p>
+      <div class="aparte"><span class="rotulo">Corregir el sesgo sin reintegrar</span>
+        <p>Si el sesgo del acelerómetro pasa a \((0{,}05;\ 0;\ 0)\), reintegrar da \(\Delta v_x\) = 0,0475, y la corrección de primer orden con el jacobiano \(-\sum_k\Delta R_{ik}\Delta t\) da también 0,0475.</p>
+      </div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Es también un buen resumen de la IMU para un world model: incrementos de rotación, velocidad y posición entre observaciones visuales, en lugar de cientos de muestras crudas.</div>
     </div>
   </div>
@@ -207,8 +1031,8 @@
   <h2>No hay almuerzo gratis: precisión, robustez y cómputo</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Delmerico y Scaramuzza compararon VIO monoculares en las secuencias de EuRoC y en varias placas, incluidas algunas de dron <a class="cite" data-ref="delmerico2018"></a>:</p>
-      <ul class="small">
+      <p>Delmerico y Scaramuzza compararon VIO monoculares en las secuencias de EuRoC y en varias placas, incluidas algunas de dron <a class="cite" data-ref="delmerico2018"></a>:</p>
+      <ul>
         <li><strong>VINS-Mono:</strong> el más preciso y robusto de forma consistente, con un coste de recursos que los autores llaman «potencialmente prohibitivo».</li>
         <li><strong>SVO + MSF:</strong> el más eficiente y el menos preciso.</li>
         <li><strong>ROVIO:</strong> el compromiso, aunque divergió en la placa Up Board.</li>
@@ -224,7 +1048,7 @@
           <tr><td>Basalt <a class="cite" data-ref="usenko2020"></a></td><td>Ventana + factores no lineales</td><td>VIO más ajuste global</td></tr>
         </table>
       </div>
-      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Lo que el control necesita a 100–200 Hz sale de la propagación con la IMU entre imágenes (20–30 Hz). El retardo de procesar una imagen se compensa como en A4a: fundir en el pasado y propagar al presente.</div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>Lo que el control necesita a <span class="hz">100–200 Hz</span> sale de la propagación con la IMU entre imágenes (<span class="hz">20–30 Hz</span>). El retardo de procesar una imagen se compensa como en A4a: fundir en el pasado y propagar al presente.</div>
     </div>
   </div>
 </section>
@@ -237,11 +1061,99 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">El problema, en un dibujo</p>
+  <h2>La imagen se tomó antes de lo que dice su marca de tiempo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1000 190" style="max-height:190px" role="img" aria-label="Línea temporal con muestras de IMU cada 5 ms; la imagen se toma en t menos t_d pero llega marcada con t, 30 ms después; el estimador la asocia a la pose de t">
+      <defs>
+        <marker id="a4bm6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+      </defs>
+      <line class="ln" x1="80" y1="110" x2="940" y2="110"/>
+      <g class="fill-time">
+        <rect x="98" y="104" width="4" height="12"/><rect x="148" y="104" width="4" height="12"/><rect x="198" y="104" width="4" height="12"/><rect x="248" y="104" width="4" height="12"/><rect x="298" y="104" width="4" height="12"/><rect x="348" y="104" width="4" height="12"/><rect x="398" y="104" width="4" height="12"/><rect x="448" y="104" width="4" height="12"/><rect x="498" y="104" width="4" height="12"/><rect x="548" y="104" width="4" height="12"/><rect x="598" y="104" width="4" height="12"/><rect x="648" y="104" width="4" height="12"/><rect x="698" y="104" width="4" height="12"/><rect x="748" y="104" width="4" height="12"/><rect x="798" y="104" width="4" height="12"/><rect x="848" y="104" width="4" height="12"/><rect x="898" y="104" width="4" height="12"/>
+      </g>
+      <text x="100" y="136" class="t-time t-mono" font-size="12">IMU cada 5 ms</text>
+      <rect x="285" y="40" width="30" height="40" rx="3" class="box-tesis"/>
+      <text x="300" y="30" text-anchor="middle" class="t-tesis" font-size="13">la cámara expone aquí</text>
+      <text x="300" y="160" text-anchor="middle" class="t-tesis t-mono" font-size="13">t − t_d</text>
+      <line class="ln-tesis ln-dash" x1="300" y1="80" x2="300" y2="146"/>
+      <rect x="585" y="40" width="30" height="40" rx="3" class="box-accent"/>
+      <text x="600" y="30" text-anchor="middle" class="t-accent" font-size="13">la imagen llega marcada con t</text>
+      <text x="600" y="160" text-anchor="middle" class="t-accent t-mono" font-size="13">t</text>
+      <line class="ln-accent ln-dash" x1="600" y1="80" x2="600" y2="146"/>
+      <path class="ln-time" d="M304 92 H596" marker-start="url(#a4bm6)" marker-end="url(#a4bm6)"/>
+      <text x="450" y="86" text-anchor="middle" class="t-time t-mono" font-size="13">t_d = 30 ms</text>
+      <text x="600" y="182" text-anchor="middle" class="t-muted" font-size="13">el estimador la compara con la pose de t: errónea</text>
+      <text x="940" y="134" text-anchor="end" class="t-faint" font-size="12">tiempo</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>Cámara e IMU tienen relojes, controladores y colas distintos: entre que la cámara expone y la imagen recibe su marca pasa un tiempo \(t_d\) que depende del sensor, del sistema operativo y de la carga del procesador.</p>
+      <p>Si el dron se mueve, la imagen corresponde a una pose que no es la de su marca.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:22%">Símbolo</th><th>Qué es</th></tr>
+        <tr><td>\(t_d\)</td><td>Desfase: segundos que antes de su marca se tomó la imagen</td></tr>
+        <tr><td>\(\omega\)</td><td>Módulo de la velocidad angular de la cámara (rad/s)</td></tr>
+        <tr><td>\(\mathbf v\), \(v\)</td><td>Velocidad del dron y su módulo (m/s)</td></tr>
+        <tr><td>\(f\)</td><td>Focal en píxeles (458,65 en EuRoC)</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">De dónde sale el error</p>
+  <h2>Girando a \(\omega\), en \(t_d\) segundos el píxel se mueve \(f\,\omega\,t_d\)</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:47%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>En \(t_d\), la cámara gira \(\alpha = \omega\,t_d\)</td><td>Velocidad angular constante durante un intervalo corto</td></tr>
+        <tr><td><strong>2</strong></td><td>Un punto en el centro, \(X/Z = 0\), pasa a \(X/Z = \tan\alpha\)</td><td>Girar la cámara \(\alpha\) alrededor de su eje vertical cambia el ángulo del rayo en \(\alpha\)</td></tr>
+        <tr><td><strong>3</strong></td><td>\(\Delta u = f\tan\alpha \approx f\,\omega\,t_d\)</td><td>Proyección \(u = fX/Z + c_x\); \(\tan\alpha \approx \alpha\) si \(\alpha\) es pequeño</td></tr>
+        <tr><td><strong>4</strong></td><td>Fuera del centro, \(\Delta u \approx f\,(1 + (X/Z)^2)\,\omega\,t_d\)</td><td>\(u = f\tan(\beta + \alpha)\) con \(\tan\beta = X/Z\); la derivada de \(\tan\) es \(1 + \tan^2\)</td></tr>
+        <tr><td><strong>5</strong></td><td>Por la traslación, la pose se equivoca en \(v\,t_d\) metros</td><td>El dron avanza mientras tanto</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números (ejemplo 10)</span>
+        <p>\(\omega\) = 2 rad/s, \(t_d\) = 10 ms: \(\alpha\) = 0,02 rad y \(\Delta u = 458{,}65\cdot0{,}02\) = 9,17 px (con \(\tan\) exacta, también 9,17).</p>
+        <p>En el borde derecho de EuRoC (\(X/Z\) = 0,84), el mismo giro mueve el píxel 15,6 px.</p>
+        <p>5 rad/s y 30 ms: 68,8 px a primer orden y 69,3 con \(\tan\) exacta.</p>
+      </div>
+      <figure class="fig">
+        <svg viewBox="0 0 460 240" style="max-height:250px" role="img" aria-label="Vista cenital: la cámara gira un ángulo alfa; un punto lejano que estaba en el eje óptico se proyecta ahora a f por tangente de alfa del centro de la imagen">
+          <line class="ln-dash" x1="60" y1="170" x2="440" y2="170"/>
+          <line class="ln-dash" x1="180" y1="115" x2="180" y2="225"/>
+          <line class="ln-accent" x1="60" y1="170" x2="431.7" y2="91.0"/>
+          <line class="ln-accent" x1="164.9" y1="86.3" x2="189.9" y2="203.7" stroke-width="2.2"/>
+          <path class="ln" d="M110 170 A50 50 0 0 0 108.9 159.6"/>
+          <text x="116" y="160" class="t-mono" font-size="16">α</text>
+          <circle cx="60" cy="170" r="5" class="fill-ink3"/>
+          <circle cx="430" cy="170" r="6" class="fill-tesis"/>
+          <text x="422" y="194" class="t-tesis" font-size="16">P</text>
+          <circle cx="177.4" cy="145.0" r="4" class="fill-accent"/>
+          <circle cx="182.7" cy="170" r="4" class="fill-tesis"/>
+          <text x="200" y="160" class="t-accent" font-size="15">centro de la imagen, ya girada</text>
+          <text x="196" y="218" class="t-tesis" font-size="15">píxel de P: Δu = f·tan α</text>
+          <text x="200" y="74" class="t-accent" font-size="15">eje óptico tras girar α = ω·t_d</text>
+          <text x="240" y="190" class="t-faint" font-size="15">eje antes de girar</text>
+        </svg>
+        <figcaption>Vista cenital, con el giro exagerado (12°). A 10 m/s, 10 ms de desfase son además 10 cm de posición mal asignada.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">El efecto</p>
   <h2>Un desfase de 10 ms girando a 2 rad/s son 9 píxeles</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Si la imagen se tomó \(t_d\) segundos antes de su marca de tiempo, el estimador la asocia a una pose equivocada. A primer orden, el error equivale a \(f\,\omega\,t_d\) píxeles por la rotación y a \(v\,t_d\) metros por la traslación:</p>
+      <p>Error equivalente \(f\,\omega\,t_d\) en el centro de la imagen, con \(f\) = 458,65 px:</p>
       <div class="table-wrap">
         <table class="t">
           <tr><th>\(\omega\)</th><th>\(t_d\) = 1 ms</th><th>5 ms</th><th>10 ms</th><th>30 ms</th></tr>
@@ -250,18 +1162,37 @@
           <tr><td>5 rad/s</td><td class="n">2,3 px</td><td class="n">11,5 px</td><td class="n">22,9 px</td><td class="n">68,8 px</td></tr>
         </table>
       </div>
-      <p class="xsmall muted">Con \(f\) = 458,65 px (cámara de EuRoC). A 10 m/s, 10 ms son 10 cm. Calculado en <code>figuras/figuras_a4b.py</code>.</p>
+      <p class="xsmall muted">Calculado en <code>figuras/figuras_a4b.py</code>.</p>
     </div>
     <div class="stack">
       <div class="callout error"><span class="tag">Por qué es tan traicionero</span>El ruido de detección es de 0,5–1 píxel: un desfase de pocos milisegundos en vuelo ágil ya es el error dominante, y ningún ajuste de covarianzas lo arregla, porque es sistemático.</div>
-      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>En un dron de carreras se gira a varios rad/s: con 5 ms de desfase sin corregir, el error equivale a más de 10 píxeles. Es una de las razones por las que los VIO genéricos fallan a alta velocidad.</div>
+      <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>En un dron de carreras se gira a varios rad/s: con <span class="hz">5 ms</span> de desfase sin corregir, el error equivale a más de 10 píxeles. Es una de las razones por las que los VIO genéricos fallan a alta velocidad.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Estimarlo</p>
-  <h2>El desfase como un estado más del filtro</h2>
+  <p class="kicker">El desfase como estado · 1</p>
+  <h2>El modelo de medida con desfase, y su jacobiano</h2>
+  <p>La solución: meter \(t_d\) en el estado y dejar que el filtro lo estime. Para eso hace falta escribir la medida en función de \(t_d\). Con una medida visual de posición (la del ejemplo del script):</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathbf y = \mathbf p(t - t_d) + \mathbf n\)</td><td>La imagen marcada en \(t\) se tomó en \(t - t_d\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\mathbf p(t - t_d) \approx \mathbf p(t) - \dot{\mathbf p}(t)\,t_d = \mathbf p(t) - \mathbf v(t)\,t_d\)</td><td>Taylor de primer orden en el tiempo; el filtro tiene \(\mathbf p\) y \(\mathbf v\) en \(t\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(h(\mathbf x) = \mathbf p - \mathbf v\,t_d\), con \(\mathbf x = (\mathbf p, \mathbf v, t_d)\)</td><td>Ampliar el estado con el desfase (7 estados en el ejemplo)</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\dfrac{\partial h}{\partial\mathbf p} = I,\quad \dfrac{\partial h}{\partial\mathbf v} = -t_d\,I,\quad \dfrac{\partial h}{\partial t_d} = -\mathbf v\)</td><td>Derivar término a término: es la \(H\) del EKF de A4a</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="callout realidad"><span class="tag">Con números</span>Volando a \(\mathbf v = (2, 0, 0)\) m/s con \(t_d\) = 30 ms, la corrección es \(\mathbf v\,t_d\) = 6 cm, y la columna de \(t_d\) en \(H\) es \((-2, 0, 0)\): una innovación de 1 cm en \(x\) informa sobre \(t_d\). Ejemplo 10.</div>
+    <div class="callout clave"><span class="tag">Observabilidad otra vez</span>Si \(\mathbf v = 0\), la columna de \(t_d\) es nula: en vuelo estacionario el desfase no es observable. Hace falta moverse.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El desfase como estado · 2</p>
+  <h2>Estimar el desfase reduce el error de 8,8 a 1,3 cm</h2>
   <div class="cols w60">
     <figure class="fig">
       <svg viewBox="0 0 520 300" role="img" aria-label="Error de posición con y sin estimar el desfase temporal y evolución del desfase estimado">
@@ -287,13 +1218,12 @@
       <figcaption>IMU a 200 Hz y posición visual a 20 Hz con 30 ms de desfase, en una trayectoria de hasta unos 3 m/s. Filtro de A4a con y sin el desfase como estado. Calculado en <code>figuras/figuras_a4b.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <p class="small">Modelo de medida con el desfase como estado: \(\mathbf p(t - t_d) \approx \mathbf p(t) - \mathbf v(t)\,t_d\), con jacobiano \(-\mathbf v\) respecto a \(t_d\). El filtro lo estima en 33 ms (real 30) y queda al 10 % en unos 2 s.</p>
-      <ul class="small">
+      <p>Con el modelo de la hoja anterior, el filtro estima el desfase en 33 ms (real 30) y queda al 10 % en unos 2 s.</p>
+      <ul>
         <li><strong>Li y Mourikis:</strong> el desfase es localmente identificable salvo en movimientos degenerados <a class="cite" data-ref="li2014"></a>.</li>
         <li><strong>VINS-Mono</strong> lo optimiza junto con los estados <a class="cite" data-ref="qinshen2018"></a>; <strong>OpenVINS</strong> lo activa con <code>calib_cam_timeoffset: true</code>.</li>
         <li><strong>Kalibr</strong> lo estima fuera de línea en tiempo continuo, junto con la calibración espacial <a class="cite" data-ref="furgale2013"></a>.</li>
       </ul>
-      <div class="callout clave"><span class="tag">Observabilidad otra vez</span>El jacobiano es la velocidad: en vuelo estacionario, el desfase no es observable. Hace falta moverse.</div>
     </div>
   </div>
 </section>
@@ -321,10 +1251,8 @@
       <figcaption>Desfase estimado por el filtro de la hoja anterior, que arranca suponiendo 0 ms. Calculado en <code>figuras/figuras_a4b.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
-        <li>El filtro arranca con 0 ms y una incertidumbre de 50 ms; queda dentro del 10 % del real a los 2 s y acaba en 33 ms.</li>
-        <li>Converge porque la trayectoria tiene velocidad en los tres ejes. En estacionario, el jacobiano \(-\mathbf v\) se anula y el desfase deja de ser observable.</li>
-      </ul>
+      <p>El filtro arranca con 0 ms y una incertidumbre de 50 ms; queda dentro del 10 % del real a los 2 s y acaba en 33 ms.</p>
+      <p>Converge porque la trayectoria tiene velocidad en los tres ejes. En estacionario, el jacobiano \(-\mathbf v\) se anula y el desfase deja de ser observable.</p>
       <div class="callout error"><span class="tag">Error frecuente</span>Calibrar el desfase con el dron en el banco, quieto, y darlo por bueno. El desfase depende del controlador del sensor, del sistema operativo y de la carga del procesador: puede cambiar en vuelo (C4, C6).</div>
     </div>
   </div>
@@ -338,20 +1266,115 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">El problema, en un dibujo</p>
+  <h2>Fotogramas a intervalos fijos frente a eventos cuando algo cambia</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1000 240" style="max-height:240px" role="img" aria-label="Arriba, cinco fotogramas completos a intervalos fijos con un borde que se desplaza. Abajo, en el plano posición-tiempo, eventos ON y OFF solo a lo largo de los bordes que se mueven">
+      <text x="20" y="40" class="t-bold" font-size="14">Fotogramas</text>
+      <g>
+        <rect x="140" y="18" width="80" height="54" class="box-soft"/><rect x="340" y="18" width="80" height="54" class="box-soft"/><rect x="540" y="18" width="80" height="54" class="box-soft"/><rect x="740" y="18" width="80" height="54" class="box-soft"/>
+      </g>
+      <rect x="150" y="18" width="10" height="54" class="fill-ink3"/>
+      <rect x="370" y="18" width="10" height="54" class="fill-ink3"/>
+      <rect x="590" y="18" width="10" height="54" class="fill-ink3"/>
+      <rect x="800" y="18" width="10" height="54" class="fill-ink3"/>
+      <text x="480" y="92" text-anchor="middle" class="t-muted" font-size="13">todos los píxeles, a intervalos fijos; entre medias, nada</text>
+      <text x="20" y="150" class="t-bold" font-size="14">Eventos</text>
+      <text x="20" y="168" class="t-muted" font-size="12">(columna x</text>
+      <text x="20" y="184" class="t-muted" font-size="12">frente a t)</text>
+      <line class="ln-rule" x1="100" y1="225" x2="960" y2="225"/>
+      <g class="fill-accent"><circle cx="100" cy="215.0" r="3"/><circle cx="125" cy="212.7" r="3"/><circle cx="150" cy="210.4" r="3"/><circle cx="175" cy="208.1" r="3"/><circle cx="200" cy="205.8" r="3"/><circle cx="225" cy="203.5" r="3"/><circle cx="250" cy="201.2" r="3"/><circle cx="275" cy="198.9" r="3"/><circle cx="300" cy="196.6" r="3"/><circle cx="325" cy="194.3" r="3"/><circle cx="350" cy="192.0" r="3"/><circle cx="375" cy="189.7" r="3"/><circle cx="400" cy="187.4" r="3"/><circle cx="425" cy="185.1" r="3"/><circle cx="450" cy="182.8" r="3"/><circle cx="475" cy="180.5" r="3"/><circle cx="500" cy="178.2" r="3"/><circle cx="525" cy="175.9" r="3"/><circle cx="550" cy="173.6" r="3"/><circle cx="575" cy="171.3" r="3"/><circle cx="600" cy="169.0" r="3"/><circle cx="625" cy="166.7" r="3"/><circle cx="650" cy="164.4" r="3"/><circle cx="675" cy="162.1" r="3"/><circle cx="700" cy="159.8" r="3"/><circle cx="725" cy="157.5" r="3"/><circle cx="750" cy="155.2" r="3"/><circle cx="775" cy="152.9" r="3"/><circle cx="800" cy="150.6" r="3"/><circle cx="825" cy="148.3" r="3"/><circle cx="850" cy="146.0" r="3"/><circle cx="875" cy="143.7" r="3"/><circle cx="900" cy="141.4" r="3"/><circle cx="925" cy="139.1" r="3"/><circle cx="950" cy="136.8" r="3"/></g>
+      <g class="fill-tesis"><circle cx="150" cy="191.0" r="3"/><circle cx="175" cy="188.7" r="3"/><circle cx="200" cy="186.4" r="3"/><circle cx="225" cy="184.1" r="3"/><circle cx="250" cy="181.8" r="3"/><circle cx="275" cy="179.5" r="3"/><circle cx="300" cy="177.2" r="3"/><circle cx="325" cy="174.9" r="3"/><circle cx="350" cy="172.6" r="3"/><circle cx="375" cy="170.3" r="3"/><circle cx="400" cy="168.0" r="3"/><circle cx="425" cy="165.7" r="3"/><circle cx="450" cy="163.4" r="3"/><circle cx="475" cy="161.1" r="3"/><circle cx="500" cy="158.8" r="3"/><circle cx="525" cy="156.5" r="3"/><circle cx="550" cy="154.2" r="3"/><circle cx="575" cy="151.9" r="3"/><circle cx="600" cy="149.6" r="3"/><circle cx="625" cy="147.3" r="3"/><circle cx="650" cy="145.0" r="3"/><circle cx="675" cy="142.7" r="3"/><circle cx="700" cy="140.4" r="3"/><circle cx="725" cy="138.1" r="3"/><circle cx="750" cy="135.8" r="3"/><circle cx="775" cy="133.5" r="3"/><circle cx="800" cy="131.2" r="3"/><circle cx="825" cy="128.9" r="3"/><circle cx="850" cy="126.6" r="3"/><circle cx="875" cy="124.3" r="3"/><circle cx="900" cy="122.0" r="3"/><circle cx="925" cy="119.7" r="3"/><circle cx="950" cy="117.4" r="3"/></g>
+      <text x="600" y="190" class="t-accent" font-size="13">ON: el borde claro llega y el píxel se aclara</text>
+      <text x="380" y="128" class="t-tesis" font-size="13">OFF: el borde pasa y el píxel se oscurece</text>
+      <text x="960" y="240" text-anchor="end" class="t-faint" font-size="12">tiempo</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>Un evento \(e_k = (x_k, y_k, t_k, p_k)\) dice: el píxel \((x_k, y_k)\) cambió de brillo en el instante \(t_k\), hacia arriba (\(p_k = +1\), ON) o hacia abajo (\(p_k = -1\), OFF). No hay fotogramas: el flujo es asíncrono <a class="cite" data-ref="gallego2022"></a>.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:24%">Símbolo</th><th>Qué es</th></tr>
+        <tr><td>\(I(t)\), \(L = \log I\)</td><td>Brillo de un píxel y su logaritmo</td></tr>
+        <tr><td>\(C\)</td><td>Umbral de contraste: cambio de \(L\) que dispara un evento</td></tr>
+        <tr><td>\(\Delta t_k\)</td><td>Tiempo desde el último evento de ese píxel</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Cómo funcionan</p>
   <h2>Cada píxel dispara cuando el logaritmo del brillo cambia más que un umbral</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Un evento \(e_k = (x_k, y_k, t_k, p_k)\) se genera cuando, en el píxel \((x_k, y_k)\),</p>
       \[ \log I(t_k) - \log I(t_k - \Delta t_k) = p_k\,C \]
-      <p class="small">con polaridad \(p_k = \pm1\), \(C\) el umbral de contraste y \(\Delta t_k\) el tiempo desde el último evento del píxel. No hay fotogramas: el flujo es asíncrono y su caudal depende del movimiento y de la textura <a class="cite" data-ref="gallego2022"></a>.</p>
-      <ul class="small">
-        <li>Resolución temporal del orden de <span class="hz">microsegundos</span> y ancho de banda por píxel del orden de kHz.</li>
-        <li>Rango dinámico de 140 dB frente a unos 60 dB de una cámara convencional; bajo consumo.</li>
-      </ul>
+      <p>Cada píxel recuerda el valor de \(L\) de su último evento. Cuando \(L\) se aleja de él en \(C\), dispara un evento con el signo del cambio y actualiza la referencia <a class="cite" data-ref="gallego2022"></a>.</p>
+      <p><strong>Por qué el logaritmo:</strong> si toda la escena recibe \(k\) veces más luz, \(\log(kI) = \log k + \log I\), y \(\log k\) se cancela en la resta. El umbral es sobre el cambio <em>relativo</em> del brillo (el contraste), no sobre el absoluto.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 280" role="img" aria-label="Logaritmo del brillo de un píxel al pasar un borde claro: sube en rampa, se mantiene y baja; cada vez que cruza un nivel separado C se genera un evento ON al subir y OFF al bajar">
+        <line class="ln-rule" x1="60" y1="230" x2="500" y2="230"/>
+        <line class="ln-rule" x1="60" y1="30" x2="60" y2="230"/>
+        <g class="ln-dash">
+          <line x1="60" y1="206.7" x2="500" y2="206.7"/><line x1="60" y1="182.9" x2="500" y2="182.9"/><line x1="60" y1="159.2" x2="500" y2="159.2"/><line x1="60" y1="135.4" x2="500" y2="135.4"/><line x1="60" y1="111.7" x2="500" y2="111.7"/><line x1="60" y1="87.9" x2="500" y2="87.9"/><line x1="60" y1="64.2" x2="500" y2="64.2"/>
+        </g>
+        <path class="ln" fill="none" stroke-width="2.4" d="M60.0,206.7 L64.4,206.7 L68.8,206.7 L73.2,206.7 L77.6,206.7 L82.0,206.7 L86.4,206.7 L90.8,206.7 L95.2,206.7 L99.6,206.7 L104.0,206.7 L108.4,206.7 L112.8,206.7 L117.2,204.5 L121.6,200.1 L126.0,195.7 L130.4,191.3 L134.8,186.9 L139.2,182.6 L143.6,178.2 L148.0,173.8 L152.4,169.4 L156.8,165.0 L161.2,160.6 L165.6,156.2 L170.0,151.8 L174.4,147.4 L178.8,143.0 L183.2,138.7 L187.6,134.3 L192.0,129.9 L196.4,125.5 L200.8,121.1 L205.2,116.7 L209.6,112.3 L214.0,107.9 L218.4,103.5 L222.8,99.1 L227.2,94.8 L231.6,90.4 L236.0,86.0 L240.4,81.6 L244.8,77.2 L249.2,72.8 L253.6,68.4 L258.0,64.0 L262.4,59.6 L266.8,55.2 L271.2,50.9 L275.6,46.5 L280.0,42.1 L284.4,42.1 L288.8,42.1 L293.2,42.1 L297.6,42.1 L302.0,42.1 L306.4,42.1 L310.8,42.1 L315.2,42.1 L319.6,42.1 L324.0,42.1 L328.4,42.1 L332.8,42.1 L337.2,42.1 L341.6,42.1 L346.0,42.1 L350.4,42.1 L354.8,42.1 L359.2,42.1 L363.6,42.1 L368.0,42.1 L372.4,50.9 L376.8,59.8 L381.2,68.6 L385.6,77.5 L390.0,86.4 L394.4,95.2 L398.8,104.1 L403.2,112.9 L407.6,121.8 L412.0,130.6 L416.4,139.5 L420.8,148.4 L425.2,157.2 L429.6,166.1 L434.0,174.9 L438.4,183.8 L442.8,192.6 L447.2,201.5 L451.6,210.4 L456.0,219.2 L460.4,219.2 L464.8,219.2 L469.2,219.2 L473.6,219.2 L478.0,219.2 L482.4,219.2 L486.8,219.2 L491.2,219.2 L495.6,219.2 L500.0,219.2"/>
+        <g class="ln-accent" stroke-width="2.2">
+          <path d="M139.2 262 V246 M163.4 262 V246 M186.5 262 V246 M210.7 262 V246 M234.9 262 V246 M258.0 262 V246"/>
+        </g>
+        <g class="ln-tesis" stroke-width="2.2">
+          <path d="M391.1 246 V262 M403.2 246 V262 M415.3 246 V262 M426.3 246 V262 M438.4 246 V262 M450.5 246 V262"/>
+        </g>
+        <g class="t-mono t-muted" font-size="12">
+          <text x="60" y="244" text-anchor="middle">0</text>
+          <text x="280" y="244" text-anchor="middle">2</text>
+          <text x="500" y="244" text-anchor="end">4 ms</text>
+          <text x="54" y="210" text-anchor="end">ln 50</text>
+          <text x="54" y="68" text-anchor="end">+6C</text>
+        </g>
+        <text x="200" y="278" text-anchor="middle" class="t-accent" font-size="12">6 eventos ON</text>
+        <text x="420" y="278" text-anchor="middle" class="t-tesis" font-size="12">6 eventos OFF</text>
+        <text x="300" y="30" class="t-muted" font-size="12">niveles separados C = 0,2</text>
+      </svg>
+      <figcaption>Un borde claro cruza el píxel: el brillo pasa de 50 a 200 y luego baja a 45. Ejemplo 11 de <code>figuras/ejemplos_a4b.py</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Eventos con números</p>
+  <h2>Cuántos eventos da un borde, y de qué depende el caudal</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Un borde</strong> (ejemplo 11, con \(C\) = 0,2 elegido para el ejemplo): el brillo pasa de 50 a 200.</p>
+      \[ \Delta L = \ln\tfrac{200}{50} = 1{,}386,\qquad \Big\lfloor\tfrac{1{,}386}{0{,}2}\Big\rfloor = 6\ \text{eventos ON} \]
+      <p>Con diez veces más luz, de 500 a 2000, \(\Delta L\) sigue siendo 1,386: los mismos 6 eventos. Una cámara de fotogramas vería una diferencia de 150 en un caso y de 1500 en el otro, y con poca luz o un contraluz se saturaría.</p>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">Cuándo compensa</span>Movimiento rápido (sin desenfoque), contraluces y poca luz. Con el dron quieto y una escena sin cambios, apenas hay eventos: la información viene del movimiento.</div>
+      <p><strong>El caudal</strong> sale de suponer que el brillo de un punto de la escena no cambia mientras se mueve en la imagen con velocidad \(\dot{\mathbf u}\) (px/s):</p>
+      \[ L(\mathbf u + \dot{\mathbf u}\,\delta t,\ t + \delta t) = L(\mathbf u, t)\ \Rightarrow\ \frac{\partial L}{\partial t} = -\nabla L\cdot\dot{\mathbf u} \]
+      <p>Un píxel dispara cada \(C/|\nabla L\cdot\dot{\mathbf u}|\) segundos. Con un gradiente de 0,5 por píxel y 1000 px/s: 500 por segundo, un evento cada 0,4 ms.</p>
+      <div class="callout clave"><span class="tag">La consecuencia</span>Sin movimiento (\(\dot{\mathbf u} = 0\)) o sin textura (\(\nabla L = 0\)) no hay eventos. La información de una cámara de eventos viene del movimiento.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cuándo compensa</p>
+  <h2>Microsegundos y 140 dB: útiles donde la cámara normal falla</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Resolución temporal del orden de <span class="hz">microsegundos</span> y ancho de banda por píxel del orden de <span class="hz">kHz</span> <a class="cite" data-ref="gallego2022"></a>.</li>
+        <li>Rango dinámico de 140 dB frente a unos 60 dB de una cámara convencional; bajo consumo.</li>
+        <li>El caudal depende del movimiento y de la textura (hoja anterior): un estimador de eventos tiene que soportar desde casi nada hasta muchísimos eventos por segundo.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Cuándo compensa</span>Movimiento rápido (sin desenfoque), contraluces y poca luz. Con el dron quieto y una escena sin cambios, apenas hay eventos.</div>
+    </div>
+    <div class="stack">
       <div class="callout realidad"><span class="tag">En drones</span>Eventos, imágenes e IMU juntos: un 130 % mejor que solo eventos y un 85 % mejor que la VIO con imágenes, en el primer cuadricóptero que estima con eventos <a class="cite" data-ref="rosinol2018"></a>. PL-EVIO cierra el lazo en volteretas: 0,097 m y 6,0° de error medio en 15 m, hasta 1000 Hz en un Intel NUC (preprint) <a class="cite" data-ref="guan2024"></a>.</div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Los eventos son una observación con su propio ruido, latencia y sesgos. Un world model que los use tiene que aprender un modelo de observación muy distinto del de una cámara: B3a los modela.</div>
     </div>
@@ -372,7 +1395,7 @@
     <table class="t">
       <tr><th style="width:22%">Nivel</th><th>Ejemplo</th><th>Resultado publicado</th></tr>
       <tr><td><strong>Filtro diferenciable</strong></td><td>Backprop KF: un Kalman cuya medida produce una red, entrenado de extremo a extremo <a class="cite" data-ref="haarnoja2016"></a>; filtros de partículas diferenciables <a class="cite" data-ref="jonschkowski2018"></a></td><td>Filtros de partículas diferenciables: la estructura de predicción y actualización reduce los errores alrededor de un 80 % frente a aprender sin ella</td></tr>
-      <tr><td><strong>Odometría inercial aprendida</strong></td><td>TLIO: una red predice desplazamientos a partir de ventanas de IMU y un EKF los funde <a class="cite" data-ref="liu2020"></a></td><td>Ver la hoja siguiente para drones</td></tr>
+      <tr><td><strong>Odometría inercial aprendida</strong></td><td>TLIO: una red predice desplazamientos a partir de ventanas de IMU y un EKF los funde <a class="cite" data-ref="liu2020"></a></td><td>Ver las hojas siguientes para drones</td></tr>
       <tr><td><strong>SLAM aprendido</strong></td><td>DROID-SLAM: actualización recurrente de flujo óptico y un ajuste de haces diferenciable <a class="cite" data-ref="teed2021"></a></td><td>62 % menos error (mono) en TartanAir; 2,2 cm de ATE medio en EuRoC monocular, sin fallos; tiempo real con dos RTX 3090</td></tr>
       <tr><td><strong>Odometría visual dispersa aprendida</strong></td><td>DPVO <a class="cite" data-ref="teed2023"></a></td><td>Un tercio de la memoria de DROID-SLAM y 3 veces más rápido</td></tr>
       <tr><td><strong>Modelos 3D fundacionales</strong></td><td>MASt3R-SLAM <a class="cite" data-ref="murai2025"></a></td><td>SLAM denso monocular a 15 FPS, sin IMU; estado del arte según los autores</td></tr>
@@ -385,11 +1408,126 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Filtro diferenciable · 1</p>
+  <h2>Se conserva el filtro y se aprende lo que no se sabe modelar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 230" style="max-height:230px" role="img" aria-label="Diagrama de bloques de un filtro diferenciable: una red convierte la observación en una medida y su ruido, un Kalman predice y corrige, la estimación se compara con la verdad en una pérdida y el gradiente vuelve a la red atravesando la corrección y el tiempo">
+      <defs>
+        <marker id="a4bm7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        <marker id="a4bm7t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-time"/></marker>
+      </defs>
+      <rect x="20" y="70" width="170" height="70" rx="6" class="box"/>
+      <text x="105" y="100" text-anchor="middle" font-size="15">observación o_k</text>
+      <text x="105" y="122" text-anchor="middle" class="t-muted" font-size="13">imagen, IMU…</text>
+      <rect x="250" y="70" width="170" height="70" rx="6" class="box-tesis"/>
+      <text x="335" y="100" text-anchor="middle" class="t-bold" font-size="15">red g_θ</text>
+      <text x="335" y="122" text-anchor="middle" class="t-muted" font-size="13">aprende θ</text>
+      <rect x="500" y="60" width="230" height="90" rx="6" class="box-accent"/>
+      <text x="615" y="92" text-anchor="middle" class="t-bold" font-size="15">Kalman</text>
+      <text x="615" y="114" text-anchor="middle" font-size="13">predecir con el modelo</text>
+      <text x="615" y="132" text-anchor="middle" font-size="13">corregir con (z_k, R_k)</text>
+      <rect x="800" y="70" width="130" height="70" rx="6" class="box"/>
+      <text x="865" y="100" text-anchor="middle" font-size="15">x̂_k, P_k</text>
+      <text x="865" y="122" text-anchor="middle" class="t-muted" font-size="13">el belief</text>
+      <rect x="980" y="70" width="100" height="70" rx="6" class="box-time"/>
+      <text x="1030" y="100" text-anchor="middle" font-size="15">pérdida</text>
+      <text x="1030" y="122" text-anchor="middle" class="t-muted t-mono" font-size="12">(x̂_k − x_k)²</text>
+      <path class="ln" d="M190 105 H248" marker-end="url(#a4bm7)"/>
+      <path class="ln" d="M420 105 H498" marker-end="url(#a4bm7)"/>
+      <text x="460" y="96" text-anchor="middle" class="t-mono" font-size="12">z_k, R_k</text>
+      <path class="ln" d="M730 105 H798" marker-end="url(#a4bm7)"/>
+      <path class="ln" d="M930 105 H978" marker-end="url(#a4bm7)"/>
+      <path class="ln ln-dash" d="M865 70 V30 H615 V58" marker-end="url(#a4bm7)"/>
+      <text x="740" y="24" text-anchor="middle" class="t-muted" font-size="12">al paso siguiente (recursión)</text>
+      <path class="ln-time ln-dash" d="M1030 140 V190 H335 V142" marker-end="url(#a4bm7t)"/>
+      <text x="680" y="212" text-anchor="middle" class="t-time" font-size="13">gradiente ∂L/∂θ: atraviesa la corrección de Kalman y los pasos anteriores</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Entra:</strong> observaciones y, para entrenar, la verdad \(\mathbf x_k\) (simulación o captura de movimiento). <strong>Sale:</strong> un filtro que da media y covarianza, como el de A4a.</p>
+      <p>Backprop KF aprende así el modelo de medida de un Kalman <a class="cite" data-ref="haarnoja2016"></a>; los filtros de partículas diferenciables hacen lo mismo con el filtro de partículas <a class="cite" data-ref="jonschkowski2018"></a>.</p>
+    </div>
+    <div class="callout clave"><span class="tag">Por qué la estructura ayuda</span>La predicción y la corrección no hay que aprenderlas: ya están escritas. La red \(g_\theta\) solo aprende lo difícil (de una imagen a una medida \(\mathbf z_k\) y su ruido \(R_k\)), y eso la hace más eficiente con los datos.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Filtro diferenciable · 2</p>
+  <h2>Aprender el ruido de un Kalman por descenso de gradiente, con números</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>El caso más pequeño: un paseo aleatorio \(x_k = x_{k-1} + w_k\) (\(q = 0{,}1^2\)) medido con ruido de \(\sigma = 0{,}5\), 3000 pasos. El único parámetro es \(\theta = \log r\), el logaritmo de la varianza del ruido de medida.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(P^- = P + q,\ K = P^-/(P^- + e^\theta),\ m \leftarrow m + K(y - m)\)</td><td>Kalman escalar (A4a, parte 2); \(e^\theta\) garantiza \(r \gt 0\)</td></tr>
+          <tr><td><strong>2</strong></td><td>\(L(\theta) = \frac1T\sum_k (m_k(\theta) - x_k)^2\)</td><td>Error cuadrático frente a la verdad</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dfrac{dL}{d\theta}\) por la regla de la cadena a través de \(K_k\) y de \(m_{k-1}\to m_k\)</td><td>Retropropagar en el tiempo, lo que hace <code>jax.grad</code>; el script usa diferencias finitas</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\theta \leftarrow \theta - 30\,dL/d\theta\)</td><td>Descenso de gradiente</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Iteración</th><th>\(\sigma\) aprendida</th><th>MSE</th></tr>
+          <tr><td>0</td><td class="n">2,000</td><td class="n">0,0822</td></tr>
+          <tr><td>1</td><td class="n">1,243</td><td class="n">0,0588</td></tr>
+          <tr><td>5</td><td class="n">0,655</td><td class="n">0,0452</td></tr>
+          <tr><td>20</td><td class="n">0,552</td><td class="n">0,0445</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo 12. Sin filtrar, el MSE es 0,2455; con la \(\sigma\) verdadera, 0,0447.</p>
+      <div class="aparte"><span class="rotulo">Lo que aprende y lo que no</span>
+        <p>Llega a 0,552, el mínimo de la pérdida en estos datos (una búsqueda en rejilla da lo mismo), no al 0,5 real. Un filtro aprendido ajusta su ruido para la pérdida que le das: su covarianza no tiene por qué ser consistente (NEES, A4a).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Odometría inercial aprendida · el esquema</p>
+  <h2>Una red convierte la IMU en un desplazamiento con incertidumbre</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1100 200" style="max-height:200px" role="img" aria-label="Diagrama de TLIO: una ventana de IMU entra en una red que da un desplazamiento y su incertidumbre; un EKF con clones lo usa como medida entre dos posiciones pasadas y estima pose, velocidad y sesgos">
+      <defs>
+        <marker id="a4bm8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect x="20" y="60" width="190" height="70" rx="6" class="box-time"/>
+      <text x="115" y="90" text-anchor="middle" font-size="15">ventana de IMU</text>
+      <text x="115" y="112" text-anchor="middle" class="t-muted t-mono" font-size="12">ω_k, a_k entre i y j</text>
+      <rect x="270" y="60" width="150" height="70" rx="6" class="box-tesis"/>
+      <text x="345" y="100" text-anchor="middle" class="t-bold" font-size="15">red</text>
+      <rect x="480" y="60" width="220" height="70" rx="6" class="box"/>
+      <text x="590" y="90" text-anchor="middle" font-size="15">desplazamiento d</text>
+      <text x="590" y="112" text-anchor="middle" font-size="13">y su incertidumbre Σ</text>
+      <rect x="760" y="50" width="320" height="90" rx="6" class="box-accent"/>
+      <text x="920" y="80" text-anchor="middle" class="t-bold" font-size="15">EKF con clones</text>
+      <text x="920" y="102" text-anchor="middle" class="t-mono" font-size="13">medida h = p_j − p_i, ruido Σ</text>
+      <text x="920" y="122" text-anchor="middle" class="t-muted" font-size="13">estima pose, velocidad y sesgos</text>
+      <path class="ln" d="M210 95 H268" marker-end="url(#a4bm8)"/>
+      <path class="ln" d="M420 95 H478" marker-end="url(#a4bm8)"/>
+      <path class="ln" d="M700 95 H758" marker-end="url(#a4bm8)"/>
+      <path class="ln-time ln-dash" d="M115 130 V175 H920 V142" marker-end="url(#a4bm8)"/>
+      <text x="520" y="192" text-anchor="middle" class="t-time" font-size="13">la misma IMU propaga el filtro entre medidas (A4a)</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>TLIO entrena una red que da desplazamientos 3D \(\hat{\mathbf d}\) y su incertidumbre \(\hat\Sigma\), y los usa como medida en un EKF con clones (<em>stochastic cloning</em>, la misma idea del MSCKF) que estima pose, velocidad y sesgos, sin cámara <a class="cite" data-ref="liu2020"></a>.</p>
+      <p>La medida relaciona dos posiciones pasadas, como el residuo de un punto relacionaba varios clones: \(\mathbf h = \mathbf p_j - \mathbf p_i\), con jacobiano \(+I\) y \(-I\).</p>
+    </div>
+    <div class="callout clave"><span class="tag">Por qué es mejor que integrar</span>Integrar dos veces el acelerómetro hace crecer el error de posición sin cota (A4a). La red aprende de los datos patrones del movimiento que la doble integración no usa, y su incertidumbre le dice al filtro cuánto fiarse. Esquema simplificado: el lab construye una versión de juguete.</div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Odometría inercial aprendida en carreras</p>
   <h2>Cuando la cámara se emborrona, la IMU con una red aguanta</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Cioffi et al. entrenan una red temporal que, con el giróscopo y los empujes colectivos mandados, predice desplazamientos que un EKF propagado con la IMU funde. En una carrera real a unos 70 km/h, con el estimador corriendo en una Jetson TX2 <a class="cite" data-ref="cioffi2023"></a>:</p>
+      <p>Cioffi et al. entrenan una red temporal que, con el giróscopo y los empujes colectivos mandados, predice desplazamientos que un EKF propagado con la IMU funde. En una carrera real a unos 70 km/h, con el estimador corriendo en una Jetson TX2 <a class="cite" data-ref="cioffi2023"></a>:</p>
       <div class="table-wrap">
         <table class="t">
           <tr><th>Estimador</th><th>Error de posición (ATE)</th></tr>
@@ -413,15 +1551,55 @@
   <h2>Odometría frente a SLAM: corregir la deriva al volver a un sitio conocido</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Odometría (VIO):</strong> estima el movimiento con una ventana reciente; la posición y la guiñada derivan sin cota.</li>
         <li><strong>SLAM:</strong> guarda un mapa y, al reconocer un lugar ya visitado, añade una restricción entre la pose actual y la antigua (cierre de bucle). Una optimización de grafo de poses reparte la corrección por toda la trayectoria.</li>
         <li><strong>Relocalización y varios mapas:</strong> si el estimador se pierde, empieza un mapa nuevo y lo une a los anteriores cuando reconoce un sitio; ORB-SLAM3 lo hace con su sistema de varios mapas <a class="cite" data-ref="campos2021"></a>.</li>
       </ul>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">Matriz de información dispersa</span>Cada medida relaciona pocas variables (una pose y un punto, dos poses), así que el sistema normal es disperso: la optimización escala con el tamaño del mapa mucho mejor que un filtro con covarianza densa. Es la forma de información de A4a llevada al límite.</div>
-      <div class="callout tesis"><span class="tag">Tu tesis</span>Un cierre de bucle es una observación que reduce de golpe la incertidumbre de toda la trayectoria. Un explorador con belief debería valorar volver a sitios conocidos cuando su incertidumbre crece: es exploración frente a explotación en el espacio de beliefs (A7).</div>
+      <div class="callout clave"><span class="tag">Matriz de información dispersa</span>Cada medida relaciona pocas variables (una pose y un punto, dos poses), así que el sistema normal es disperso (hoja «Ventana deslizante · 3»): la optimización escala con el tamaño del mapa mucho mejor que un filtro con covarianza densa. Es la forma de información de A4a llevada al límite.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un cierre de bucle es una observación que reduce de golpe la incertidumbre de toda la trayectoria (hoja siguiente). Un explorador con belief debería valorar volver a sitios conocidos cuando su incertidumbre crece: es exploración frente a explotación en el espacio de beliefs (A7).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cierre de bucle con números</p>
+  <h2>Una sola restricción al volver al inicio corrige toda la vuelta</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 300" role="img" aria-label="Vuelta a un cuadrado de 5 metros: la trayectoria verdadera, la odometría sesgada que acaba lejos del inicio y la corregida por el cierre de bucle, que vuelve al inicio">
+        <path class="ln-rule" d="M92.5 280 V20 M40 231.2 H320"/>
+        <path class="ln ln-dash" fill="none" stroke-width="1.6" d="M92.5,231.2 L127.5,231.2 L162.5,231.2 L197.5,231.2 L232.5,231.2 L267.5,231.2 L267.5,198.8 L267.5,166.2 L267.5,133.8 L267.5,101.2 L267.5,68.8 L232.5,68.8 L197.5,68.8 L162.5,68.8 L127.5,68.8 L92.5,68.8 L92.5,101.2 L92.5,133.8 L92.5,166.2 L92.5,198.8 L92.5,231.2"/>
+        <path class="ln-tesis" fill="none" stroke-width="2.2" d="M92.5,231.2 L131.7,235.0 L169.5,233.5 L207.8,231.6 L247.1,230.3 L282.2,228.0 L284.0,194.8 L284.6,159.8 L286.9,126.8 L287.3,96.0 L291.3,62.5 L259.7,60.6 L229.2,56.8 L195.8,53.0 L160.2,49.7 L123.6,47.8 L126.5,78.7 L126.9,111.2 L127.4,140.7 L130.0,172.3 L128.9,202.4"/>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M92.5,231.2 L130.0,236.3 L166.0,236.3 L202.6,235.7 L240.2,235.8 L273.6,234.9 L273.6,203.0 L272.5,169.4 L273.1,137.8 L271.7,108.3 L274.0,76.3 L240.7,75.7 L208.4,73.2 L173.3,70.9 L135.9,68.9 L97.6,68.4 L98.8,100.7 L97.5,134.5 L96.2,165.4 L97.1,198.4 L94.2,229.9"/>
+        <circle cx="92.5" cy="231.2" r="5" class="fill-ink3"/>
+        <circle cx="128.9" cy="202.4" r="5" class="fill-tesis"/>
+        <text x="138" y="196" class="t-tesis" font-size="12">final sin cierre</text>
+        <text x="60" y="256" class="t-muted" font-size="12">inicio</text>
+        <path class="ln-time ln-dash" d="M128.9 202.4 L92.5 231.2" stroke-width="1.6"/>
+        <text x="118" y="226" class="t-time" font-size="12">restricción de cierre</text>
+        <g font-size="12">
+          <text x="200" y="20" class="t-muted">— — verdad</text>
+          <text x="200" y="36" class="t-tesis">sin cierre</text>
+          <text x="200" y="52" class="t-accent">con cierre</text>
+        </g>
+      </svg>
+      <figcaption>Solo posiciones 2D, para que el problema sea lineal y se resuelva en una iteración. Ejemplo 13.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>20 pasos de 1 m alrededor de un cuadrado de 5 m de lado. La odometría tiene un sesgo de 5 cm por paso más ruido (\(\sigma\) = 5 cm). Variables: las posiciones \(\mathbf x_1,\dots,\mathbf x_{20}\), con \(\mathbf x_0\) fijo. Factores: \(\mathbf x_k - \mathbf x_{k-1} = \mathbf d_k\) y, al reconocer el inicio, \(\mathbf x_{20} - \mathbf x_0 = 0\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th></th><th>Sin cierre</th><th>Con cierre</th></tr>
+          <tr><td>Error al final de la vuelta</td><td class="n">1,37 m</td><td class="n">0,07 m</td></tr>
+          <tr><td>Error RMS de toda la vuelta</td><td class="n">0,86 m</td><td class="n">0,21 m</td></tr>
+          <tr><td>\(\sigma\) de la pose 10 (lado opuesto)</td><td class="n">0,158 m</td><td class="n">0,114 m</td></tr>
+          <tr><td>\(\sigma\) de la pose 20</td><td class="n">0,224 m</td><td class="n">0,049 m</td></tr>
+        </table>
+      </div>
+      <p>La restricción reparte el error acumulado entre todos los pasos, y la incertidumbre baja también en las poses que no tocó: la información se propaga por \(\Lambda\).</p>
     </div>
   </div>
 </section>
@@ -430,7 +1608,7 @@
   <p class="kicker">Fallos en vuelo</p>
   <h2>Cómo saber que el estimador visual se está perdiendo</h2>
   <div class="cols">
-    <ul class="small">
+    <ul>
       <li><strong>Pocas características seguidas</strong> o mal repartidas en la imagen: poca textura, desenfoque, cambio brusco de luz.</li>
       <li><strong>Innovaciones grandes</strong>: NIS por encima de su umbral \(\chi^2\) de forma sostenida (A4a).</li>
       <li><strong>Movimiento degenerado</strong>: rotación pura con cámara monocular (sin traslación no hay paralaje) o vuelo a velocidad constante (sin escala).</li>
@@ -456,13 +1634,12 @@
   </div>
   <div class="callout error"><span class="tag">Error frecuente</span>Comparar errores de distintos artículos sin alinear igual las trayectorias (escala, guiñada y posición inicial son inobservables) ni usar la misma métrica: ATE y RPE miden cosas distintas. Usa una herramienta común, como evo, y di cómo alineas.</div>
 </section>
-
 <!-- ============ CIERRE ============ -->
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
   <h2>Geometría clásica con piezas aprendidas, y modelos 3D fundacionales</h2>
   <div class="cols">
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Lo que ya se ve:</strong></p>
       <ul>
         <li>SLAM aprendido de extremo a extremo con precisión de referencia, pero con GPU de sobremesa <a class="cite" data-ref="teed2021,teed2023"></a>.</li>
@@ -471,7 +1648,7 @@
         <li>Eventos cerrando el lazo de control en maniobras agresivas <a class="cite" data-ref="guan2024"></a>.</li>
       </ul>
     </div>
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Previsión nuestra para 2027 y después:</strong></p>
       <ul>
         <li>Estimadores de a bordo con núcleo VIO clásico (por su consistencia y bajo coste) y módulos aprendidos donde la física no llega.</li>
@@ -488,11 +1665,11 @@
   <div class="cols">
     <div class="stack">
       <div class="callout tesis"><span class="tag">Tu tesis</span>En un dron con cámara, el belief no es solo «dónde estoy», sino también «qué hay alrededor» y «cuánto me fío de lo que creo». El VIO te da lo primero con una covarianza; el mapa y los objetos, lo segundo; y su consistencia, lo tercero. Un world model puede aprender las tres cosas o apoyarse en el VIO para la primera.</div>
-      <p class="small">Los fallos de percepción (desenfoque, desfase, poca textura, poca luz) son exactamente la observabilidad parcial de tu tesis en su forma más concreta.</p>
+      <p>Los fallos de percepción (desenfoque, desfase, poca textura, poca luz) son exactamente la observabilidad parcial de tu tesis en su forma más concreta.</p>
     </div>
     <div class="stack">
-      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
-      <ol class="small">
+      <p><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol>
         <li>¿Entrenas tu world model con la salida del VIO, con imágenes crudas o con las dos cosas?</li>
         <li>¿Cómo detecta tu agente que el VIO está fallando antes de que diverja?</li>
         <li>¿Puede tu planificador elegir trayectorias que mantengan observable la escala y los sesgos?</li>
@@ -506,14 +1683,15 @@
 <section class="slide">
   <p class="kicker">Resumen</p>
   <h2>Lo que te llevas de A4b</h2>
-  <ul class="body" style="font-size:19px; gap:9px;">
-    <li>La cámara mide proyecciones; el error de reproyección es el residuo de todo VIO. Estéreo: \(\sigma_Z = Z^2\sigma_d/(fb)\), casi 1 m a 10 m con la base de EuRoC.</li>
+  <ul class="body" style="font-size:19px; gap:8px;">
+    <li>La cámara mide direcciones: \(\mathbf u = (f_xX/Z + c_x,\ f_yY/Z + c_y)\), y el error de reproyección es el residuo de todo VIO. Su jacobiano lleva \(1/Z\): los puntos lejanos informan de la rotación, no de la traslación.</li>
+    <li>Estéreo: \(Z = fb/d\) y \(\sigma_Z = Z^2\sigma_d/(fb)\), casi 1 m a 10 m con la base de EuRoC.</li>
     <li>VIO no ve la posición global ni la guiñada global; la escala monocular necesita aceleración.</li>
-    <li>MSCKF: clones de poses y proyección al espacio nulo del punto. Ventana deslizante: optimizar y marginalizar con el complemento de Schur.</li>
-    <li>Preintegración: la IMU entre fotogramas en un factor que no depende de la pose inicial.</li>
-    <li>Desfase temporal: \(f\omega t_d\) píxeles; 30 ms sin corregir multiplican el error por 7 en el ejemplo, y estimarlo como estado lo arregla si hay movimiento.</li>
-    <li>Eventos: microsegundos y 140 dB, útiles en vuelo rápido y con poca luz.</li>
-    <li>Aprendidos: DROID-SLAM y DPVO precisos con GPU; odometría inercial aprendida que aguanta en carreras donde la VIO clásica falla.</li>
+    <li>MSCKF: clones de poses y proyección al espacio nulo del punto (\(2m - 3\) residuos). Ventana deslizante: grafo de factores, Gauss-Newton disperso y marginalización con el complemento de Schur, que conserva la información a cambio de relleno.</li>
+    <li>Preintegración: la IMU entre fotogramas en un factor que no depende del estado en \(i\), corregible a primer orden si cambian los sesgos.</li>
+    <li>Desfase temporal: \(f\omega t_d\) píxeles; 30 ms sin corregir multiplican el error por 7 en el ejemplo, y estimarlo como estado (jacobiano \(-\mathbf v\)) lo arregla si hay movimiento.</li>
+    <li>Eventos: un evento cada vez que \(\log I\) cambia \(C\); microsegundos y 140 dB, sin información si no hay movimiento.</li>
+    <li>Aprendidos: filtros diferenciables, DROID-SLAM y DPVO precisos con GPU; odometría inercial aprendida que aguanta en carreras donde la VIO clásica falla.</li>
   </ul>
 </section>
 
@@ -628,8 +1806,8 @@
   <h2>Estimación visual-inercial y el efecto del desfase temporal</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Desfase en tu ESKF</strong> de A4a con EuRoC: posiciones de la referencia como medida visual con desfase, sin y con el desfase como estado.</li>
         <li><strong>OpenVINS en EuRoC</strong>: ejecutarlo, evaluar con evo y desplazar las marcas de tiempo de las imágenes 10 y 30 ms, con la calibración del desfase activada y desactivada.</li>
         <li><strong>Geometría</strong>: profundidad estéreo y su incertidumbre con las cámaras de EuRoC.</li>
@@ -639,7 +1817,7 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>8,8 cm frente a 1,3 cm con 30 ms de desfase en la simulación; la tabla de \(f\omega t_d\); \(\sigma_Z\) del estéreo de EuRoC; y cómo empeora un VIO real con desfase sin calibrar.</div>
       <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. OpenVINS se compila en Linux (o en un contenedor); los pasos 1 y 3 solo necesitan Python.</div>
-      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a4b.py</code>.</p>
+      <p class="xsmall muted">Las figuras salen de <code>figuras/figuras_a4b.py</code>; los ejemplos numéricos de las hojas, de <code>figuras/ejemplos_a4b.py</code> (salida en <code>figuras/salida_ejemplos.txt</code>).</p>
     </div>
   </div>
 </section>
@@ -683,141 +1861,196 @@
   </ol>
 </section>
 
+
 </main>
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Misma notación que A4a: negrita, vector; mayúscula, matriz; \(\delta\), error pequeño del filtro de estado de error; \(\hat{\ }\), valor nominal (estimado). Subíndices \(w\) (mundo), \(c\) (cámara).</p>
+<p>Misma notación que A4a: negrita, vector; mayúscula, matriz; \(\delta\), error pequeño del filtro de estado de error; \(\hat{\ }\), valor estimado. Subíndices \(w\) (mundo), \(c\) (cámara).</p>
 <dl>
-<dt>\(\delta\)</dt><dd data-hojas="9">Prefijo de «error pequeño» (\(\delta\mathbf x\), \(\delta\mathbf p_f\)), como en el ESKF de A4a.</dd>
-<dt>\(^\top\)</dt><dd data-hojas="6">Traspuesta de una matriz. Para una rotación, \(R^\top=R^{-1}\).</dd>
-<dt>\(\partial\)</dt><dd data-hojas="6">Derivada parcial; \(\partial\pi/\partial\mathbf p_c\) es el jacobiano de la proyección.</dd>
-<dt>\(\operatorname{Exp}\)</dt><dd data-hojas="11">Exponencial de SO(3) (M1): vector de rotación de \(\mathbb R^3\) a matriz de rotación.</dd>
-<dt>\([\mathbf a]_\times\)</dt><dd data-hojas="6">Matriz \(3\times3\) antisimétrica de \(\mathbf a\): \([\mathbf a]_\times\mathbf b=\mathbf a\times\mathbf b\).</dd>
-<dt>\(\|\mathbf r\|^2_\Sigma\)</dt><dd data-hojas="10">Norma al cuadrado ponderada por la inversa de la covarianza \(\Sigma\): \(\mathbf r^\top\Sigma^{-1}\mathbf r\) (distancia de Mahalanobis).</dd>
-<dt>\(\prod\), \(\sum\)</dt><dd data-hojas="11">Producto ordenado de rotaciones y suma de muestras de la IMU entre dos fotogramas.</dd>
-<dt>\(\min_{\mathcal X}\)</dt><dd data-hojas="10">Minimización sobre el conjunto de variables \(\mathcal X\) de la ventana (poses, puntos, sesgos).</dd>
-<dt>\(\mathbb R^3\)</dt><dd data-hojas="6">Espacio de vectores reales de 3 componentes.</dd>
-<dt>\(\chi^2\)</dt><dd data-hojas="23">Distribución chi cuadrado, de cuyo cuantil se saca el umbral del NIS.</dd>
+<dt>\(\delta\)</dt><dd data-hojas="19,22">Prefijo de «error pequeño» (\(\delta\mathbf x\), \(\delta\mathbf p_f\)) o de corrección (\(\delta\mathcal X\)), como en el ESKF de A4a.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="10">Traspuesta de una matriz. Para una rotación, \(R^\top=R^{-1}\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="12">Derivada parcial; \(\partial\pi/\partial\mathbf p_c\) es el jacobiano de la proyección.</dd>
+<dt>\(\operatorname{Exp}\)</dt><dd data-hojas="33,12">Exponencial de SO(3) (M1): vector de rotación de \(\mathbb R^3\) a matriz de rotación.</dd>
+<dt>\([\mathbf a]_\times\)</dt><dd data-hojas="12">Matriz \(3\times3\) antisimétrica de \(\mathbf a\): \([\mathbf a]_\times\mathbf b=\mathbf a\times\mathbf b\); en las hojas, \([\mathbf p_c]_\times\).</dd>
+<dt>\(\oplus\)</dt><dd data-hojas="27">Aplicar una corrección en el tangente (M1): suma para vectores, \(R\,\mathrm{Exp}(\boldsymbol\theta)\) para rotaciones.</dd>
+<dt>\(\|\mathbf r\|^2_\Sigma\)</dt><dd data-hojas="19,26">Norma al cuadrado ponderada por la inversa de la covarianza \(\Sigma\): \(\mathbf r^\top\Sigma^{-1}\mathbf r\) (distancia de Mahalanobis).</dd>
+<dt>\(\prod\), \(\sum\)</dt><dd data-hojas="33">Producto ordenado de rotaciones y suma de muestras de la IMU entre dos fotogramas.</dd>
+<dt>\(\min_{\mathcal X}\)</dt><dd data-hojas="26">Minimización sobre el conjunto de variables \(\mathcal X\) de la ventana (poses, puntos, sesgos).</dd>
+<dt>\(\chi^2\)</dt><dd data-hojas="57">Distribución chi cuadrado, de cuyo cuantil se saca el umbral del NIS.</dd>
+<dt>\(\lfloor\cdot\rfloor\)</dt><dd data-hojas="47">Parte entera por debajo: número de umbrales \(C\) que caben en un cambio de \(\log I\).</dd>
 </dl>
 <h3>Geometría de la cámara</h3>
 <dl>
-<dt>\(\mathbf p_w\)</dt><dd data-hojas="6">Punto 3D en el mundo, vector de \(\mathbb R^3\).</dd>
-<dt>\(R_{wc}\)</dt><dd data-hojas="6">Rotación \(3\times3\) de la cámara respecto al mundo (de ejes cámara a ejes mundo).</dd>
-<dt>\(\mathbf t_{wc}\)</dt><dd data-hojas="6">Posición de la cámara en el mundo, vector de \(\mathbb R^3\).</dd>
-<dt>\(\mathbf p_c\)</dt><dd data-hojas="6">El punto en ejes cámara: \(\mathbf p_c=R_{wc}^\top(\mathbf p_w-\mathbf t_{wc})=(X,Y,Z)\).</dd>
-<dt>\(X,Y,Z\)</dt><dd data-hojas="6">Componentes de \(\mathbf p_c\); \(Z\) es la profundidad, a lo largo del eje óptico.</dd>
-<dt>\(\pi(\cdot)\)</dt><dd data-hojas="6">Modelo de agujero: proyecta un punto en ejes cámara al píxel \(\mathbf u\).</dd>
-<dt>\(\mathbf u\)</dt><dd data-hojas="6">Píxel predicho, vector de \(\mathbb R^2\): \((f_xX/Z+c_x,\ f_yY/Z+c_y)\).</dd>
-<dt>\(f_x\), \(f_y\)</dt><dd data-hojas="6">Distancias focales en píxeles. En el resto del tema \(f\) es la focal cuando coinciden.</dd>
-<dt>\(c_x\), \(c_y\)</dt><dd data-hojas="6">Punto principal de la imagen, en píxeles.</dd>
-<dt>\(\mathbf z\)</dt><dd data-hojas="6">Medida del píxel, \(\mathbf z=\pi(\mathbf p_c)+\mathbf n\).</dd>
-<dt>\(\mathbf n\)</dt><dd data-hojas="6">Ruido de la medida del píxel (0,5–1 píxel tras la detección). En la hoja 9, ruido del residuo apilado.</dd>
-<dt>\(\mathbf z-\pi(\cdot)\)</dt><dd data-hojas="6">Error de reproyección: residuo que minimizan casi todos los VIO.</dd>
-<dt>\(\partial\pi/\partial\mathbf p_c\)</dt><dd data-hojas="6">Jacobiano \(2\times3\) de la proyección respecto al punto en ejes cámara; lleva un factor \(1/Z\).</dd>
-<dt>\(b\)</dt><dd data-hojas="6">Base del par estéreo: distancia entre las dos cámaras.</dd>
-<dt>\(d\)</dt><dd data-hojas="6">Disparidad estéreo en píxeles, con \(Z=fb/d\).</dd>
-<dt>\(Z\)</dt><dd data-hojas="6">Profundidad de un punto; en estéreo \(Z=fb/d\).</dd>
-<dt>\(\sigma_d\)</dt><dd data-hojas="6">Desviación típica del ruido de la disparidad, en píxeles (0,5 en el ejemplo).</dd>
-<dt>\(\sigma_Z\)</dt><dd data-hojas="6">Incertidumbre de la profundidad estéreo: \(\sigma_Z=Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
+<dt>\(\mathbf p_w\)</dt><dd data-hojas="7,10">Punto 3D de la escena en ejes del mundo, en m.</dd>
+<dt>\(R_{wc}\)</dt><dd data-hojas="7,10">Rotación \(3\times3\) de la cámara: pasa de ejes cámara a ejes mundo; sus columnas son los ejes de la cámara escritos en el mundo.</dd>
+<dt>\(R_{cw}\)</dt><dd data-hojas="10">Rotación de ejes mundo a ejes cámara: \(R_{cw}=R_{wc}^\top\).</dd>
+<dt>\(\mathbf t_{wc}\)</dt><dd data-hojas="7,10">Posición de la cámara en el mundo, en m.</dd>
+<dt>\(\mathbf x_c\), \(\mathbf y_c\), \(\mathbf z_c\)</dt><dd data-hojas="10">Ejes de la cámara (derecha, abajo, delante) escritos en el mundo: las columnas de \(R_{wc}\).</dd>
+<dt>\(\mathbf p_c\)</dt><dd data-hojas="7,10">El punto en ejes cámara: \(\mathbf p_c=R_{wc}^\top(\mathbf p_w-\mathbf t_{wc})=(X,Y,Z)\).</dd>
+<dt>\(X,Y,Z\)</dt><dd data-hojas="7,8">Componentes de \(\mathbf p_c\): derecha, abajo y delante; \(Z\) es la profundidad, a lo largo del eje óptico.</dd>
+<dt>\(x\)</dt><dd data-hojas="8">Posición del punto proyectado en el plano imagen, en metros: \(x=fX/Z\).</dd>
+<dt>\(s\) (píxel)</dt><dd data-hojas="8">Tamaño de un píxel del sensor; \(f_x=f/s\). En la hoja de la escala, \(s\) es el factor de escala.</dd>
+<dt>\(\pi(\cdot)\)</dt><dd data-hojas="7,8">Modelo estenopeico (de agujero): proyecta un punto en ejes cámara al píxel \(\mathbf u\).</dd>
+<dt>\(\mathbf u\)</dt><dd data-hojas="7,8">Píxel predicho, vector de \(\mathbb R^2\): \((f_xX/Z+c_x,\ f_yY/Z+c_y)\).</dd>
+<dt>\(u\), \(v\)</dt><dd data-hojas="7,8">Columna y fila del píxel, desde la esquina superior izquierda. Esta \(v\) no es la velocidad \(\mathbf v\).</dd>
+<dt>\(f_x\), \(f_y\)</dt><dd data-hojas="7,9">Distancias focales en píxeles (458,654 y 457,296 en cam0 de EuRoC). En el resto del tema \(f\) es la focal cuando coinciden.</dd>
+<dt>\(f\)</dt><dd data-hojas="8,39">Focal: en metros en la deducción del modelo; en píxeles (458,65) en las cuentas de estéreo y desfase.</dd>
+<dt>\(c_x\), \(c_y\)</dt><dd data-hojas="7,9">Punto principal: píxel donde corta el eje óptico (367,215 y 248,375 en cam0).</dd>
+<dt>\(\mathbf z\)</dt><dd data-hojas="7,11">Píxel medido por el detector, \(\mathbf z=\pi(\mathbf p_c)+\mathbf n\).</dd>
+<dt>\(\mathbf n\)</dt><dd data-hojas="11,22">Ruido de la medida del píxel (0,5–1 píxel tras la detección); en el MSCKF, ruido del residuo apilado.</dd>
+<dt>\(\mathbf r\)</dt><dd data-hojas="11,22">Residuo de reproyección \(\mathbf z-\pi(\hat{\mathbf p}_c)\); en el MSCKF, el residuo apilado de las \(m\) observaciones de un punto.</dd>
+<dt>\(J\) (proyección)</dt><dd data-hojas="12">Jacobiano \(2\times3\) de la proyección respecto a \(\mathbf p_c\); lleva un factor \(1/Z\). En la ventana deslizante, \(J\) es el jacobiano de todos los residuos.</dd>
+<dt>\(\boldsymbol\theta\)</dt><dd data-hojas="12">Giro pequeño de la cámara en el tangente: \(R_{wc}\,\mathrm{Exp}(\boldsymbol\theta)\).</dd>
+<dt>\(b\)</dt><dd data-hojas="7,13">Base del par estéreo: distancia entre las dos cámaras (11,0 cm en EuRoC).</dd>
+<dt>\(x_L\), \(x_R\)</dt><dd data-hojas="13">Columna del punto en la imagen izquierda y derecha, medida desde el eje de cada cámara.</dd>
+<dt>\(d\)</dt><dd data-hojas="7,13">Disparidad estéreo en píxeles, \(d=x_L-x_R=fb/Z\).</dd>
+<dt>\(\sigma_d\)</dt><dd data-hojas="7,14">Desviación típica del ruido de la disparidad, en píxeles (0,5 en el ejemplo).</dd>
+<dt>\(\sigma_Z\)</dt><dd data-hojas="14,15">Incertidumbre de la profundidad estéreo: \(\sigma_Z=Z^2\sigma_d/(fb)\); crece con el cuadrado de la distancia.</dd>
+<dt>\(s\) (escala)</dt><dd data-hojas="17">Factor de escala desconocido de la visión monocular: \(\mathbf p(t)=s\,\mathbf p_{\text{vis}}(t)\).</dd>
+<dt>\(\mathbf p_{\text{vis}}\)</dt><dd data-hojas="17">Trayectoria que da la visión monocular, a escala desconocida.</dd>
 </dl>
-<h3>Observabilidad y MSCKF</h3>
+<h3>MSCKF</h3>
 <dl>
-<dt>\(\mathbf r\)</dt><dd data-hojas="9">Residuo apilado de reproyección de un punto: \(\mathbf r=H_x\delta\mathbf x+H_f\delta\mathbf p_f+\mathbf n\).</dd>
-<dt>\(\delta\mathbf x\)</dt><dd data-hojas="9">Error del estado del filtro (IMU y clones de poses), el del ESKF de A4a.</dd>
-<dt>\(\delta\mathbf p_f\)</dt><dd data-hojas="9">Error de la posición del punto triangulado \(f\); no está en el estado.</dd>
-<dt>\(H_x\)</dt><dd data-hojas="9">Jacobiano del residuo respecto al error del estado.</dd>
-<dt>\(H_f\)</dt><dd data-hojas="9">Jacobiano del residuo respecto al punto: 3 columnas y \(2m\) filas.</dd>
-<dt>\(N\)</dt><dd data-hojas="9">Base del espacio nulo izquierdo de \(H_f\): \(N^\top H_f=0\).</dd>
-<dt>\(\mathbf r_o\)</dt><dd data-hojas="9">Residuo proyectado, \(\mathbf r_o=N^\top\mathbf r\), que solo depende de las poses.</dd>
-<dt>\(m\) (observaciones)</dt><dd data-hojas="9">Número de veces que se observa un punto; el espacio nulo tiene dimensión \(2m-3\).</dd>
-<dt>\(2m-3\)</dt><dd data-hojas="9">Dimensión del espacio nulo izquierdo de \(H_f\) y número de residuos que quedan tras proyectar.</dd>
+<dt>\(\mathbf x\)</dt><dd data-hojas="19">Estado del filtro: IMU (posición, velocidad, actitud, sesgos) y clones de poses pasadas de la cámara.</dd>
+<dt>\(\delta\mathbf x\)</dt><dd data-hojas="19,22">Error del estado del filtro, el del ESKF de A4a.</dd>
+<dt>\(\mathbf p_f\)</dt><dd data-hojas="19,21">Posición de un punto de la escena (\(f\) de <em>feature</em>); no está en el estado del MSCKF.</dd>
+<dt>\(\delta\mathbf p_f\)</dt><dd data-hojas="19,22">Error de la posición del punto triangulado.</dd>
+<dt>\(\hat{\mathbf p}_f\)</dt><dd data-hojas="22">Punto triangulado con las poses de los clones.</dd>
+<dt>\(H_x\)</dt><dd data-hojas="19,22">Jacobiano del residuo apilado respecto al error del estado: \(2m\) filas.</dd>
+<dt>\(H_f\)</dt><dd data-hojas="19,23">Jacobiano del residuo apilado respecto al punto: \(2m\) filas y 3 columnas, de rango 3.</dd>
+<dt>\(N\)</dt><dd data-hojas="23,24">Base ortonormal del espacio nulo izquierdo de \(H_f\): \(N^\top H_f=0\), de \(2m\times(2m-3)\).</dd>
+<dt>\(\mathbf r_o\)</dt><dd data-hojas="23">Residuo proyectado, \(\mathbf r_o=N^\top\mathbf r\), que solo depende de las poses.</dd>
+<dt>\(H_o\)</dt><dd data-hojas="23">Jacobiano proyectado \(N^\top H_x\) que usa la actualización del EKF.</dd>
+<dt>\(m\) (observaciones)</dt><dd data-hojas="19,24">Número de imágenes en que se ve un punto; tras proyectar quedan \(2m-3\) residuos.</dd>
+<dt>\(2m-3\)</dt><dd data-hojas="23,24">Dimensión del espacio nulo izquierdo de \(H_f\) y número de residuos que quedan tras proyectar.</dd>
 </dl>
-<h3>Ventana deslizante y preintegración</h3>
+<h3>Ventana deslizante y marginalización</h3>
 <dl>
-<dt>\(\mathcal X\)</dt><dd data-hojas="10">Conjunto de variables a optimizar: poses de la ventana, puntos visibles, velocidades y sesgos.</dd>
-<dt>\(\mathbf r_{\text{prior}}\)</dt><dd data-hojas="10">Residuo de la prioridad que resume lo marginalizado.</dd>
-<dt>\(\mathbf r_{\text{IMU},k}\)</dt><dd data-hojas="10">Residuo del factor de preintegración de la IMU entre dos fotogramas.</dd>
-<dt>\(\mathbf r_{ij}\)</dt><dd data-hojas="10">Residuo de reproyección del punto \(j\) en el fotograma \(i\).</dd>
-<dt>\(\Sigma_k\), \(\Sigma\)</dt><dd data-hojas="10">Covarianzas que ponderan los residuos de la IMU y de reproyección.</dd>
-<dt>\(\rho\)</dt><dd data-hojas="10">Función robusta (Huber, Cauchy) que limita el peso de las asociaciones erróneas.</dd>
-<dt>\(K\) (ventana)</dt><dd data-hojas="10">Número de últimas poses que se optimizan en la ventana deslizante.</dd>
-<dt>\(i\), \(j\) (fotogramas)</dt><dd data-hojas="11">Índices de dos fotogramas; entre ellos hay cientos de muestras de la IMU. En la hoja 10, \(i,j\) indexan fotograma y punto.</dd>
-<dt>\(k\) (muestra IMU)</dt><dd data-hojas="11">Índice de una muestra de la IMU entre los fotogramas \(i\) y \(j\).</dd>
-<dt>\(\Delta R_{ij}\)</dt><dd data-hojas="11">Rotación preintegrada entre \(i\) y \(j\), expresada en el marco del cuerpo en \(i\).</dd>
-<dt>\(\Delta\mathbf v_{ij}\)</dt><dd data-hojas="11">Incremento de velocidad preintegrado entre \(i\) y \(j\).</dd>
-<dt>\(\Delta\mathbf p_{ij}\)</dt><dd data-hojas="11">Incremento de posición preintegrado entre \(i\) y \(j\).</dd>
-<dt>\(\Delta R_{ik}\), \(\Delta\mathbf v_{ik}\)</dt><dd data-hojas="11">Incrementos acumulados desde \(i\) hasta la muestra \(k\), usados en la suma.</dd>
-<dt>\(\boldsymbol\omega_k\)</dt><dd data-hojas="11">Velocidad angular medida por el giróscopo en la muestra \(k\), en rad/s.</dd>
-<dt>\(\mathbf a_k\)</dt><dd data-hojas="11">Fuerza específica medida por el acelerómetro en la muestra \(k\).</dd>
-<dt>\(\mathbf b_g\)</dt><dd data-hojas="11">Sesgo del giróscopo.</dd>
-<dt>\(\mathbf b_a\)</dt><dd data-hojas="11">Sesgo del acelerómetro.</dd>
-<dt>\(\Delta t\)</dt><dd data-hojas="11">Periodo de muestreo de la IMU, en segundos.</dd>
-<dt>\(\Delta t_{ij}\)</dt><dd data-hojas="11">Tiempo transcurrido entre los fotogramas \(i\) y \(j\).</dd>
-<dt>\(R_i\), \(\mathbf v_i\), \(\mathbf v_j\)</dt><dd data-hojas="11">Rotación y velocidad del cuerpo en los fotogramas \(i\) y \(j\), en el mundo.</dd>
-<dt>\(R\), \(\mathbf v\), \(\mathbf p\)</dt><dd data-hojas="11">Actitud, velocidad y posición del cuerpo en las ecuaciones continuas: \(\dot R=R[\boldsymbol\omega]_\times\), \(\dot{\mathbf v}=R\mathbf a+\mathbf g\), \(\dot{\mathbf p}=\mathbf v\).</dd>
-<dt>\(\mathbf g\)</dt><dd data-hojas="11">Vector de gravedad en el mundo.</dd>
+<dt>\(\mathcal X\)</dt><dd data-hojas="19,26">Conjunto de variables a optimizar: poses de la ventana, puntos visibles, velocidades y sesgos.</dd>
+<dt>\(K\) (ventana)</dt><dd data-hojas="19,25">Número de últimas poses que se optimizan en la ventana deslizante; no es la ganancia de Kalman.</dd>
+<dt>\(\mathbf x_k\), \(\mathbf l\)</dt><dd data-hojas="25,28">Variables del grafo de factores: pose (con velocidad y sesgos) \(k\) de la ventana y punto de la escena.</dd>
+<dt>\(\mathbf r_{\text{prior}}\)</dt><dd data-hojas="26">Residuo de la prioridad que resume lo marginalizado.</dd>
+<dt>\(\mathbf r_{\text{IMU},k}\)</dt><dd data-hojas="26">Residuo del factor de preintegración de la IMU entre dos fotogramas.</dd>
+<dt>\(\mathbf r_{ij}\)</dt><dd data-hojas="26">Residuo de reproyección del punto \(j\) en el fotograma \(i\).</dd>
+<dt>\(\Sigma_k\), \(\Sigma\)</dt><dd data-hojas="26">Covarianzas que ponderan los residuos de la IMU y de reproyección.</dd>
+<dt>\(\rho\)</dt><dd data-hojas="26">Función robusta (Huber, Cauchy) que limita el peso de las asociaciones erróneas.</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="26">Umbral de la función de Huber, en unidades de \(\sigma\).</dd>
+<dt>\(s\) (Huber)</dt><dd data-hojas="26">Residuo al cuadrado pesado, \(s=\|\mathbf r\|^2_\Sigma\), argumento de \(\rho\).</dd>
+<dt>\(J\) (ventana)</dt><dd data-hojas="19,27">Jacobiano de todos los residuos de la ventana respecto a las variables.</dd>
+<dt>\(\Lambda\)</dt><dd data-hojas="19,27">Matriz de información de Gauss-Newton, \(J^\top\Sigma^{-1}J\): dispersa, con un bloque no nulo por cada par de variables que comparten factor.</dd>
+<dt>\(\boldsymbol\eta\)</dt><dd data-hojas="19,27">Vector de información, \(-J^\top\Sigma^{-1}\mathbf r\), lado derecho del sistema de Gauss-Newton.</dd>
+<dt>\(\delta\mathcal X\)</dt><dd data-hojas="19,27">Corrección de las variables de la ventana en una iteración: \(\Lambda\,\delta\mathcal X=\boldsymbol\eta\).</dd>
+<dt>\(\Lambda_{11}\), \(\Lambda_{12}\), \(\Lambda_{22}\)</dt><dd data-hojas="29,30">Bloques de \(\Lambda\): variables que salen (1) y que se quedan (2).</dd>
+<dt>\(\delta_1\), \(\delta_2\)</dt><dd data-hojas="29">Correcciones de las variables que salen y de las que se quedan.</dd>
+<dt>\(\Lambda_{\text{prior}}\)</dt><dd data-hojas="29,30">Complemento de Schur \(\Lambda_{22}-\Lambda_{21}\Lambda_{11}^{-1}\Lambda_{12}\): información que deja lo marginalizado sobre lo que queda.</dd>
+<dt>\(\boldsymbol\eta_{\text{prior}}\)</dt><dd data-hojas="29">\(\boldsymbol\eta_2-\Lambda_{21}\Lambda_{11}^{-1}\boldsymbol\eta_1\), vector de información de la prioridad.</dd>
+<dt>\(x_1, x_2, x_3\), \(l\)</dt><dd data-hojas="30">Posiciones 1D y punto del ejemplo de marginalización.</dd>
+<dt>\(\mathbf a\)</dt><dd data-hojas="30">Coeficientes de un factor lineal \(\mathbf a^\top\mathbf x-z\); suma \(\mathbf a\mathbf a^\top/\sigma^2\) a \(\Lambda\).</dd>
+</dl>
+<h3>Preintegración</h3>
+<dl>
+<dt>\(i\), \(j\) (fotogramas)</dt><dd data-hojas="33">Índices de dos fotogramas; entre ellos hay decenas o cientos de muestras de la IMU. En el coste de la ventana, \(i,j\) indexan fotograma y punto.</dd>
+<dt>\(k\) (muestra IMU)</dt><dd data-hojas="33">Índice de una muestra de la IMU entre los fotogramas \(i\) y \(j\).</dd>
+<dt>\(\Delta R_{ij}\)</dt><dd data-hojas="33,34">Rotación preintegrada entre \(i\) y \(j\), en los ejes del cuerpo en \(i\): \(R_i^\top R_j\).</dd>
+<dt>\(\Delta\mathbf v_{ij}\)</dt><dd data-hojas="33,34">Incremento de velocidad preintegrado entre \(i\) y \(j\).</dd>
+<dt>\(\Delta\mathbf p_{ij}\)</dt><dd data-hojas="33,34">Incremento de posición preintegrado entre \(i\) y \(j\).</dd>
+<dt>\(\Delta R_{ik}\), \(\Delta\mathbf v_{ik}\)</dt><dd data-hojas="33">Incrementos acumulados desde \(i\) hasta la muestra \(k\), usados en la suma.</dd>
+<dt>\(\boldsymbol\omega_k\)</dt><dd data-hojas="33,35">Velocidad angular medida por el giróscopo en la muestra \(k\), en rad/s (\(\tilde{\boldsymbol\omega}_k\) en M1).</dd>
+<dt>\(\mathbf a_k\)</dt><dd data-hojas="33,35">Fuerza específica medida por el acelerómetro en la muestra \(k\), en m/s² (\(\tilde{\mathbf a}_k\) en M1).</dd>
+<dt>\(\mathbf b_g\)</dt><dd data-hojas="33">Sesgo del giróscopo (\(\mathbf b^g\) en M1).</dd>
+<dt>\(\mathbf b_a\)</dt><dd data-hojas="33,35">Sesgo del acelerómetro (\(\mathbf b^a\) en M1).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="33">Periodo de muestreo de la IMU (5 ms a 200 Hz).</dd>
+<dt>\(\Delta t_{ij}\)</dt><dd data-hojas="33,34">Tiempo transcurrido entre los fotogramas \(i\) y \(j\) (50 ms a 20 Hz).</dd>
+<dt>\(R_i\), \(\mathbf v_i\), \(\mathbf p_i\)</dt><dd data-hojas="33,34">Actitud, velocidad y posición del cuerpo en el fotograma \(i\), en el mundo.</dd>
+<dt>\(R\), \(\mathbf v\), \(\mathbf p\)</dt><dd data-hojas="34">Actitud, velocidad y posición del cuerpo en las ecuaciones continuas: \(\dot R=R[\boldsymbol\omega]_\times\), \(\dot{\mathbf v}=R\mathbf a+\mathbf g\), \(\dot{\mathbf p}=\mathbf v\).</dd>
+<dt>\(\mathbf g\)</dt><dd data-hojas="33,34">Vector de gravedad en el mundo, \((0,0,-9{,}81)\) m/s².</dd>
+<dt>\(\mathbf r_{\Delta v}\)</dt><dd data-hojas="34">Residuo de velocidad del factor de IMU: \(R_i^\top(\mathbf v_j-\mathbf v_i-\mathbf g\Delta t_{ij})-\Delta\mathbf v_{ij}\).</dd>
+<dt>\(J_r\)</dt><dd data-hojas="34">Jacobiano derecho de SO(3) (M1), que aparece al corregir \(\Delta R_{ij}\) por el sesgo del giróscopo.</dd>
 </dl>
 <h3>Desfase temporal</h3>
 <dl>
-<dt>\(t_d\)</dt><dd data-hojas="14">Desfase temporal entre cámara e IMU: segundos que antes de su marca de tiempo se tomó la imagen.</dd>
-<dt>\(f\omega t_d\)</dt><dd data-hojas="14">Error en píxeles por la rotación: focal \(f\), velocidad angular \(\omega\) y desfase \(t_d\).</dd>
-<dt>\(\omega\)</dt><dd data-hojas="14">Módulo de la velocidad angular de la cámara, en rad/s.</dd>
-<dt>\(v\,t_d\)</dt><dd data-hojas="14">Error en metros por la traslación: velocidad \(v\) por desfase \(t_d\).</dd>
-<dt>\(\mathbf p(t-t_d)\)</dt><dd data-hojas="15">Posición en el instante real de la imagen, \(\approx\mathbf p(t)-\mathbf v(t)\,t_d\) a primer orden.</dd>
-<dt>\(\mathbf v(t)\)</dt><dd data-hojas="15">Velocidad del dron; su opuesto \(-\mathbf v\) es el jacobiano de la medida respecto a \(t_d\).</dd>
+<dt>\(t_d\)</dt><dd data-hojas="38,41">Desfase temporal entre cámara e IMU: segundos que antes de su marca de tiempo se tomó la imagen.</dd>
+<dt>\(\omega\)</dt><dd data-hojas="38,39">Módulo de la velocidad angular de la cámara, en rad/s.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="39">Ángulo que gira la cámara durante el desfase: \(\alpha=\omega t_d\).</dd>
+<dt>\(\beta\)</dt><dd data-hojas="39">Ángulo del rayo de un punto fuera del centro: \(\tan\beta=X/Z\).</dd>
+<dt>\(f\,\omega\,t_d\)</dt><dd data-hojas="39,40">Error en píxeles por la rotación en el centro de la imagen: focal \(f\), velocidad angular \(\omega\) y desfase \(t_d\).</dd>
+<dt>\(v\,t_d\)</dt><dd data-hojas="39">Error en metros por la traslación: velocidad \(v\) por desfase \(t_d\).</dd>
+<dt>\(\mathbf y\)</dt><dd data-hojas="41">Medida visual de posición del ejemplo, \(\mathbf y=\mathbf p(t-t_d)+\mathbf n\).</dd>
+<dt>\(\mathbf p(t-t_d)\)</dt><dd data-hojas="41">Posición en el instante real de la imagen, \(\approx\mathbf p(t)-\mathbf v(t)\,t_d\) a primer orden.</dd>
+<dt>\(\mathbf v(t)\)</dt><dd data-hojas="41,43">Velocidad del dron; su opuesto \(-\mathbf v\) es el jacobiano de la medida respecto a \(t_d\).</dd>
+<dt>\(h(\mathbf x)\)</dt><dd data-hojas="41">Modelo de medida con desfase, \(\mathbf p-\mathbf v\,t_d\). En TLIO, \(\mathbf h=\mathbf p_j-\mathbf p_i\).</dd>
 </dl>
 <h3>Cámaras de eventos</h3>
 <dl>
-<dt>\(e_k\)</dt><dd data-hojas="18">Evento \(k\): la tupla \((x_k,y_k,t_k,p_k)\).</dd>
-<dt>\(x_k\), \(y_k\)</dt><dd data-hojas="18">Coordenadas del píxel que dispara el evento.</dd>
-<dt>\(t_k\)</dt><dd data-hojas="18">Instante del evento, con resolución del orden de microsegundos.</dd>
-<dt>\(p_k\)</dt><dd data-hojas="18">Polaridad del evento, \(\pm1\): brillo que sube o baja.</dd>
-<dt>\(I(t)\)</dt><dd data-hojas="18">Brillo del píxel en el instante \(t\); el evento depende de \(\log I\).</dd>
-<dt>\(C\)</dt><dd data-hojas="18">Umbral de contraste: cambio de \(\log I\) que dispara un evento.</dd>
-<dt>\(\Delta t_k\)</dt><dd data-hojas="18">Tiempo desde el último evento del mismo píxel.</dd>
+<dt>\(e_k\)</dt><dd data-hojas="45">Evento \(k\): la tupla \((x_k,y_k,t_k,p_k)\).</dd>
+<dt>\(x_k\), \(y_k\)</dt><dd data-hojas="45">Coordenadas del píxel que dispara el evento.</dd>
+<dt>\(t_k\)</dt><dd data-hojas="45,46">Instante del evento, con resolución del orden de microsegundos.</dd>
+<dt>\(p_k\)</dt><dd data-hojas="45,46">Polaridad del evento, \(\pm1\): brillo que sube (ON) o baja (OFF).</dd>
+<dt>\(I(t)\)</dt><dd data-hojas="45,46">Brillo del píxel en el instante \(t\); el evento depende de \(\log I\).</dd>
+<dt>\(L\)</dt><dd data-hojas="45,47">Logaritmo del brillo, \(L=\log I\).</dd>
+<dt>\(C\)</dt><dd data-hojas="45,46">Umbral de contraste: cambio de \(\log I\) que dispara un evento (0,2 en el ejemplo).</dd>
+<dt>\(\Delta t_k\)</dt><dd data-hojas="45,46">Tiempo desde el último evento del mismo píxel.</dd>
+<dt>\(\dot{\mathbf u}\)</dt><dd data-hojas="47">Velocidad del punto en la imagen, en px/s.</dd>
+<dt>\(\nabla L\)</dt><dd data-hojas="47">Gradiente espacial de \(\log I\) en la imagen; con \(\dot{\mathbf u}\) da el caudal de eventos.</dd>
+</dl>
+<h3>Estimadores aprendidos y cierre de bucle</h3>
+<dl>
+<dt>\(g_\theta\)</dt><dd data-hojas="51">Red con parámetros \(\theta\) que convierte una observación en una medida y su ruido.</dd>
+<dt>\(\theta\)</dt><dd data-hojas="52">Parámetros aprendidos; en el ejemplo, \(\theta=\log r\).</dd>
+<dt>\(o_k\)</dt><dd data-hojas="51">Observación en bruto (imagen, IMU) que recibe la red.</dd>
+<dt>\(q\), \(r\)</dt><dd data-hojas="52">Varianzas del ruido de proceso y de medida del Kalman escalar del ejemplo.</dd>
+<dt>\(L(\theta)\)</dt><dd data-hojas="52">Pérdida de entrenamiento: error cuadrático medio de la estimación frente a la verdad.</dd>
+<dt>\(\hat{\mathbf d}\), \(\hat\Sigma\)</dt><dd data-hojas="53">Desplazamiento que predice la red de odometría inercial y su incertidumbre.</dd>
+<dt>\(\mathbf d_k\)</dt><dd data-hojas="56">Desplazamiento medido por la odometría en el paso \(k\) del ejemplo de cierre de bucle.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
 <dt>VIO</dt><dd data-hojas="3">Visual-inertial odometry: la IMU da el movimiento a alta frecuencia y la cámara corrige la deriva.</dd>
-<dt>RMS</dt><dd data-hojas="15">Root mean square: valor cuadrático medio del error; en la figura, 8,8 cm RMS ignorando el desfase frente a 1,3 cm estimándolo.</dd>
-<dt>KF</dt><dd data-hojas="20">Kalman filter, filtro de Kalman; en Backprop KF una red produce la medida y se entrena de extremo a extremo.</dd>
-<dt>GPU</dt><dd data-hojas="20">Graphics processing unit: lo mejor de la tabla de estimadores aprendidos necesita una GPU de sobremesa, que un dron no lleva.</dd>
-<dt>SLAM</dt><dd data-hojas="22">Simultaneous localization and mapping: guarda un mapa y cierra bucles.</dd>
+<dt>RMS</dt><dd data-hojas="42">Root mean square: valor cuadrático medio del error; en la figura, 8,8 cm RMS ignorando el desfase frente a 1,3 cm estimándolo.</dd>
+<dt>KF</dt><dd data-hojas="50">Kalman filter, filtro de Kalman; en Backprop KF una red produce la medida y se entrena de extremo a extremo.</dd>
+<dt>GPU</dt><dd data-hojas="50">Graphics processing unit: lo mejor de la tabla de estimadores aprendidos necesita una GPU de sobremesa, que un dron no lleva.</dd>
+<dt>SLAM</dt><dd data-hojas="55">Simultaneous localization and mapping: guarda un mapa y cierra bucles.</dd>
 <dt>IMU</dt><dd data-hojas="3">Inertial measurement unit: giróscopo y acelerómetro.</dd>
 <dt>GNSS</dt><dd data-hojas="3">Global navigation satellite system.</dd>
-<dt>ESKF</dt><dd data-hojas="9">Error-state Kalman filter (A4a), base del MSCKF.</dd>
-<dt>EKF</dt><dd data-hojas="10">Extended Kalman filter; aquí se compara con una iteración de Gauss-Newton.</dd>
-<dt>MSCKF</dt><dd data-hojas="9">Multi-state constraint Kalman filter: clones de poses y proyección al espacio nulo del punto.</dd>
-<dt>OpenVINS</dt><dd data-hojas="9">Plataforma abierta de VIO basada en el MSCKF extendido, con puntos SLAM y calibración en línea.</dd>
-<dt>OKVIS</dt><dd data-hojas="10">VIO por optimización con fotogramas clave.</dd>
-<dt>VINS-Mono</dt><dd data-hojas="10">VIO monocular por ventana deslizante con cierre de bucle y relocalización.</dd>
-<dt>Basalt</dt><dd data-hojas="10">VIO que extrae factores no lineales que resumen lo marginalizado y los reutiliza en un ajuste global.</dd>
+<dt>ESKF</dt><dd data-hojas="21">Error-state Kalman filter (A4a), base del MSCKF.</dd>
+<dt>EKF</dt><dd data-hojas="31">Extended Kalman filter; aquí se compara con una iteración de Gauss-Newton.</dd>
+<dt>MSCKF</dt><dd data-hojas="21">Multi-state constraint Kalman filter: clones de poses y proyección al espacio nulo del punto.</dd>
+<dt>EKF-SLAM</dt><dd data-hojas="22">EKF con los puntos del mapa en el estado: el estado crece con el mapa.</dd>
+<dt>SVD, QR</dt><dd data-hojas="23">Descomposiciones en valores singulares y ortogonal-triangular; dan una base del espacio nulo de \(H_f\).</dd>
+<dt>MSE</dt><dd data-hojas="52">Mean squared error, error cuadrático medio.</dd>
+<dt>NEES</dt><dd data-hojas="52">Normalized estimation error squared (A4a): prueba de consistencia de la covarianza.</dd>
+<dt>OpenVINS</dt><dd data-hojas="21">Plataforma abierta de VIO basada en el MSCKF extendido, con puntos SLAM y calibración en línea.</dd>
+<dt>OKVIS</dt><dd data-hojas="31">VIO por optimización con fotogramas clave.</dd>
+<dt>VINS-Mono</dt><dd data-hojas="31">VIO monocular por ventana deslizante con cierre de bucle y relocalización.</dd>
+<dt>Basalt</dt><dd data-hojas="31">VIO que extrae factores no lineales que resumen lo marginalizado y los reutiliza en un ajuste global.</dd>
 <dt>ORB-SLAM3</dt><dd data-hojas="3">Sistema de SLAM con optimización, mapa, cierre de bucle y varios mapas.</dd>
-<dt>SVO</dt><dd data-hojas="12">Semi-direct visual odometry: eficiente y, en la comparación citada, el menos preciso (con MSF).</dd>
-<dt>MSF</dt><dd data-hojas="12">Multi-sensor fusion: marco de fusión que acompaña a SVO en la comparación.</dd>
-<dt>ROVIO</dt><dd data-hojas="12">VIO por filtro que es el compromiso de la comparación.</dd>
-<dt>Kalibr</dt><dd data-hojas="15">Herramienta de calibración espacial y temporal cámara-IMU, fuera de línea.</dd>
-<dt>TLIO</dt><dd data-hojas="20">Tight learned inertial odometry: una red predice desplazamientos y un EKF los funde.</dd>
-<dt>DROID-SLAM</dt><dd data-hojas="20">SLAM aprendido: actualización recurrente de flujo óptico y ajuste de haces diferenciable.</dd>
-<dt>DPVO</dt><dd data-hojas="20">Odometría visual dispersa aprendida: menos memoria y más rápida que DROID-SLAM.</dd>
-<dt>MASt3R-SLAM</dt><dd data-hojas="20">SLAM denso monocular sobre un modelo 3D fundacional.</dd>
-<dt>PL-EVIO</dt><dd data-hojas="18">VIO con eventos, imágenes e IMU que cierra el lazo en volteretas.</dd>
-<dt>NIS</dt><dd data-hojas="23">Normalized innovation squared (A4a): indicador de que el estimador visual se pierde.</dd>
-<dt>ATE</dt><dd data-hojas="21">Absolute trajectory error: error de posición tras alinear la trayectoria.</dd>
-<dt>RPE</dt><dd data-hojas="24">Relative pose error: mide cosas distintas que el ATE.</dd>
-<dt>EuRoC</dt><dd data-hojas="3">Dataset de un microdrón con estéreo, IMU y referencia.</dd>
+<dt>SVO</dt><dd data-hojas="36">Semi-direct visual odometry: eficiente y, en la comparación citada, el menos preciso (con MSF).</dd>
+<dt>MSF</dt><dd data-hojas="36">Multi-sensor fusion: marco de fusión que acompaña a SVO en la comparación.</dd>
+<dt>ROVIO</dt><dd data-hojas="36">VIO por filtro que es el compromiso de la comparación.</dd>
+<dt>Kalibr</dt><dd data-hojas="42">Herramienta de calibración espacial y temporal cámara-IMU, fuera de línea.</dd>
+<dt>TLIO</dt><dd data-hojas="53">Tight learned inertial odometry: una red predice desplazamientos y su incertidumbre, y un EKF con clones los funde.</dd>
+<dt>DROID-SLAM</dt><dd data-hojas="50">SLAM aprendido: actualización recurrente de flujo óptico y ajuste de haces diferenciable.</dd>
+<dt>DPVO</dt><dd data-hojas="50">Odometría visual dispersa aprendida: menos memoria y más rápida que DROID-SLAM.</dd>
+<dt>MASt3R-SLAM</dt><dd data-hojas="50">SLAM denso monocular sobre un modelo 3D fundacional.</dd>
+<dt>PL-EVIO</dt><dd data-hojas="48">VIO con eventos, imágenes e IMU que cierra el lazo en volteretas.</dd>
+<dt>NIS</dt><dd data-hojas="57">Normalized innovation squared (A4a): indicador de que el estimador visual se pierde.</dd>
+<dt>ATE</dt><dd data-hojas="54">Absolute trajectory error: error de posición tras alinear la trayectoria.</dd>
+<dt>RPE</dt><dd data-hojas="58">Relative pose error: mide cosas distintas que el ATE.</dd>
+<dt>EuRoC</dt><dd data-hojas="3,9">Dataset de un microdrón con estéreo, IMU y referencia; sus intrínsecos son los del tema.</dd>
+<dt>radtan</dt><dd data-hojas="9">Modelo de distorsión radial-tangencial con el que EuRoC calibra sus cámaras.</dd>
 <dt>TUM-VI</dt><dd data-hojas="3">Dataset visual-inercial con sincronización por hardware.</dd>
-<dt>UZH-FPV</dt><dd data-hojas="24">Dataset de un dron de carreras con eventos.</dd>
-<dt>TartanAir</dt><dd data-hojas="20">Dataset sintético en el que se mide la mejora de DROID-SLAM.</dd>
-<dt>PAMPC</dt><dd data-hojas="7">MPC consciente de la percepción (A3a), que ya cuidaba la visibilidad.</dd>
-<dt>FPS</dt><dd data-hojas="20">Fotogramas por segundo.</dd>
-<dt>RTI</dt><dd data-hojas="10">Real-time iteration (A3a): una sola iteración de optimización por paso.</dd>
-<dt>SQP</dt><dd data-hojas="10">Sequential quadratic programming (A3a).</dd>
-<dt>RSSM</dt><dd data-hojas="20">Recurrent state-space model de Dreamer (A8).</dd>
-<dt>RTX 3090</dt><dd data-hojas="20">GPU de sobremesa con la que DROID-SLAM va en tiempo real.</dd>
-<dt>Jetson TX2</dt><dd data-hojas="21">Computador embarcado en el que corre el estimador de la carrera.</dd>
-<dt>evo</dt><dd data-hojas="24">Herramienta común para comparar trayectorias con ATE y RPE.</dd>
+<dt>UZH-FPV</dt><dd data-hojas="58">Dataset de un dron de carreras con eventos.</dd>
+<dt>TartanAir</dt><dd data-hojas="50">Dataset sintético en el que se mide la mejora de DROID-SLAM.</dd>
+<dt>PAMPC</dt><dd data-hojas="17">MPC consciente de la percepción (A3a), que ya cuidaba la visibilidad.</dd>
+<dt>FPS</dt><dd data-hojas="50">Fotogramas por segundo.</dd>
+<dt>RTI</dt><dd data-hojas="31">Real-time iteration (A3a): una sola iteración de optimización por paso.</dd>
+<dt>SQP</dt><dd data-hojas="31">Sequential quadratic programming (A3a).</dd>
+<dt>RSSM</dt><dd data-hojas="50">Recurrent state-space model de Dreamer (A8).</dd>
+<dt>RTX 3090</dt><dd data-hojas="50">GPU de sobremesa con la que DROID-SLAM va en tiempo real.</dd>
+<dt>Jetson TX2</dt><dd data-hojas="54">Computador embarcado en el que corre el estimador de la carrera.</dd>
+<dt>evo</dt><dd data-hojas="58">Herramienta común para comparar trayectorias con ATE y RPE.</dd>
+<dt>ON, OFF</dt><dd data-hojas="45">Polaridades de un evento: el brillo sube o baja.</dd>
 </dl>
 </aside>
 

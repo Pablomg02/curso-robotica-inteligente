@@ -14,7 +14,7 @@ Medir con tus propios números lo que la presentación calcula sobre el desfase 
 | Error de reproyección equivalente \(f\omega t_d\) con \(f\) = 458,65 px | 9,2 px a 2 rad/s y 10 ms | 3 |
 | Incertidumbre de profundidad estéreo de EuRoC a 10 m (\(\sigma_d\) = 0,5 px) | unos 99 cm | 3 |
 
-El script de las figuras está en `../figuras/figuras_a4b.py`.
+El script de las figuras está en `../figuras/figuras_a4b.py`; los ejemplos numéricos de las hojas (proyección con los intrínsecos de EuRoC, jacobiano, estéreo, espacio nulo del MSCKF, complemento de Schur, preintegración), en `../figuras/ejemplos_a4b.py`, con su salida en `../figuras/salida_ejemplos.txt`.
 
 ## 1. El desfase en tu ESKF (60 min)
 
