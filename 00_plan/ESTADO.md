@@ -136,6 +136,13 @@ Sustituye a la parada 🛑 de H3, según lo acordado el 2026-11-07.
 - **Queda como está, a sabiendas:** sedes ICLR de flow matching y rectified flow (citados por arXiv); el teorema de Bernstein et al. en su versión de revista (se cita el de UAI 2000 y el resumen de la revista); las 1024 unidades de los Kilobots y los 10 drones de Zhou et al. (solo en prensa, no se dan); cifras de preprints y de empresas marcadas como tales (π0, Geles et al., Wang et al.).
 - **Para los temas siguientes:** probar las políticas aprendidas fuera de las condiciones de entrenamiento (compañeros, canal, fallos) como parte del experimento, no como añadido; mantener las referencias heurísticas fuertes junto a lo aprendido.
 
+## Pendiente (2026-11-07)
+
+- **A11**: su carpeta existe pero no tiene commit y la fila sigue en ⬜. Comprobar con la sesión que lo hacía si está terminado antes de subirlo.
+- **Fase 4 (A11–A14)**: hecha por otra sesión antes de este repaso. Falta que Pablo la revise (parada 🛑 de A14) y aplicarle el mismo despliegue que a las fases 0–3 (`CONTINUAR.md` §4, «Segunda petición»), y subir `curso.css` a `?v=11` en sus páginas (siguen en 10).
+- **A15b**: la descripción de CBBA (dos fases, regla de soltar las tareas posteriores) no se pudo contrastar con el PDF de Choi et al.; verificarla cuando haya acceso.
+- **Fases 5 y 6**: todos sus temas, en el orden de las tablas de arriba, con el prompt de `00_plan/PROMPT_CONTINUAR.md`.
+
 ## Correcciones transversales
 
 | Fecha | Qué | Dónde |
