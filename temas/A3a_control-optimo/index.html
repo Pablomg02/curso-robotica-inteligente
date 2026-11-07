@@ -18,7 +18,6 @@
 </head>
 <body data-deck-id="A3a" data-deck-title="Control óptimo: LQR, NMPC, MPCC y RTI · Curso de robótica inteligente">
 <main class="deck">
-
 <!-- ============ APERTURA ============ -->
 <section class="slide title-slide" data-section="Apertura">
   <p class="kicker">Fase 1 · Jornada 5 · Curso de robótica inteligente</p>
@@ -49,7 +48,7 @@
   <h2>El MPC es planificar con un modelo y replanificar en cada muestra</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Restricciones explícitas:</strong> empuje de los motores, inclinación, obstáculos. Un PID o un LQR las violan o las tratan con saturaciones que pueden desestabilizar el lazo.</li>
         <li><strong>Anticipación:</strong> ve la referencia por delante y empieza a girar antes de la curva.</li>
         <li><strong>Es tu tesis con otra máscara:</strong> planificar con un world model (PETS, TD-MPC2, Dreamer en modo planificador) es MPC con un modelo aprendido. A3b lo desarrolla.</li>
@@ -93,6 +92,7 @@
   </div>
 </section>
 
+
 <!-- ============ PARTE 1 · LQR ============ -->
 <section class="slide divider" data-section="1 · LQR">
   <p class="num">Parte 1</p>
@@ -101,31 +101,243 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Programación dinámica</p>
-  <h2>La recursión de Riccati sale de minimizar una cuadrática paso a paso</h2>
-  <div class="cols">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:31%">En el x500</th></tr>
+      <tr><td>\(k\), \(N\)</td><td>Índice del paso de tiempo (\(k = 0, 1, \dots, N\)) y <strong>horizonte</strong>: cuántos pasos se miran hacia delante</td><td>A 100 Hz, \(N = 100\) es 1 s</td></tr>
+      <tr><td>\(x_k\in\mathbb R^n\)</td><td><strong>Estado</strong> en el paso \(k\): \(n\) números que resumen todo lo que importa del sistema</td><td>\(n = 12\): posición, velocidad, ángulos y velocidad angular</td></tr>
+      <tr><td>\(u_k\in\mathbb R^m\)</td><td><strong>Mando</strong> en el paso \(k\)</td><td>\(m = 4\): empuje y tres pares</td></tr>
+      <tr><td>\(A\) (\(n\times n\)), \(B\) (\(n\times m\))</td><td>Modelo lineal discreto: \(x_{k+1} = Ax_k + Bu_k\)</td><td>Linealización en vuelo estacionario</td></tr>
+      <tr><td>\(Q\succeq 0\), \(R\succ 0\)</td><td>Pesos del estado y del mando en el coste. \(Q\succeq 0\): semidefinida positiva, \(x^\top Qx\ge 0\). \(R\succ 0\): definida positiva, \(u^\top Ru > 0\) si \(u\ne 0\) (todo mando cuesta algo)</td><td>Regla de Bryson (hoja «El modelo lineal del x500»)</td></tr>
+      <tr><td>\(P_f\)</td><td>Peso del <strong>coste terminal</strong> \(x_N^\top P_fx_N\): lo que se paga por cómo queda el estado al final</td><td>0, o la solución de la DARE</td></tr>
+      <tr><td>\(V_k(x)\), \(\Pi_k\)</td><td><strong>Función de valor</strong>: coste mínimo que queda desde el estado \(x\) en el paso \(k\). Es cuadrática, \(V_k(x) = x^\top\Pi_kx\), con \(\Pi_k\) simétrica \(n\times n\)</td><td>El «coste por venir» del RL, con costes en vez de recompensas</td></tr>
+      <tr><td>\(K_k\) (\(m\times n\))</td><td><strong>Ganancia</strong> de realimentación: el mando óptimo es \(u_k = -K_kx_k\)</td><td>Una matriz 4×12</td></tr>
+      <tr><td>\(\Pi_\infty\), \(K_\infty\)</td><td>Límites de \(\Pi_k\) y \(K_k\) cuando el horizonte es infinito (solución de la DARE)</td><td>La ganancia que se implementa</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Esquema del LQR</p>
+  <h2>Qué problema resuelve el LQR: llevar el estado a cero gastando poco mando</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 330" role="img" aria-label="Arriba, lazo de realimentación entre la planta y la ganancia; abajo, línea de pasos del 0 al N con la recursión hacia atrás fuera de línea y la ejecución hacia delante en línea">
+        <defs>
+          <marker id="a3e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a3e1t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+          <marker id="a3e1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker>
+        </defs>
+        <rect class="box" x="340" y="24" width="220" height="56" rx="6"/>
+        <text x="450" y="48" text-anchor="middle" font-size="14" class="t-bold">Planta (el dron)</text>
+        <text x="450" y="68" text-anchor="middle" font-size="13" class="t-mono">xₖ₊₁ = A xₖ + B uₖ</text>
+        <rect class="box-accent" x="80" y="24" width="150" height="56" rx="6"/>
+        <text x="155" y="48" text-anchor="middle" font-size="14" class="t-bold">Ganancia</text>
+        <text x="155" y="68" text-anchor="middle" font-size="13" class="t-mono">uₖ = −Kₖ xₖ</text>
+        <path class="ln" d="M230 52 H336" marker-end="url(#a3e1)"/>
+        <text x="283" y="44" text-anchor="middle" font-size="13" class="t-mono">uₖ</text>
+        <path class="ln" d="M560 52 H585 V112 H40 V52 H76" marker-end="url(#a3e1)"/>
+        <text x="300" y="130" text-anchor="middle" font-size="13" class="t-mono t-muted">estado medido xₖ (en línea: un producto matriz-vector)</text>
+        <line class="ln-rule" x1="60" y1="230" x2="560" y2="230"/>
+        <g class="t-mono t-muted" font-size="13" text-anchor="middle">
+          <circle cx="60" cy="230" r="4" class="fill-ink3"/><text x="60" y="252">0</text>
+          <circle cx="160" cy="230" r="4" class="fill-ink3"/><text x="160" y="252">1</text>
+          <circle cx="260" cy="230" r="4" class="fill-ink3"/><text x="260" y="252">2</text>
+          <text x="360" y="234">…</text>
+          <circle cx="460" cy="230" r="4" class="fill-ink3"/><text x="460" y="252">N−1</text>
+          <circle cx="560" cy="230" r="4" class="fill-ink3"/><text x="560" y="252">N</text>
+        </g>
+        <path class="ln-tesis" d="M555 190 H66" stroke-width="2.2" marker-end="url(#a3e1t)"/>
+        <text x="310" y="168" text-anchor="middle" font-size="13" class="t-tesis">fuera de línea, hacia atrás: Π_N = P_f → Π_{N−1} → … → Π_0, y una K_k por paso</text>
+        <path class="ln-accent" d="M65 280 H554" stroke-width="2.2" marker-end="url(#a3e1a)"/>
+        <text x="310" y="306" text-anchor="middle" font-size="13" class="t-accent">en línea, hacia delante: x_0 → u_0 = −K_0 x_0 → x_1 → u_1 = −K_1 x_1 → …</text>
+      </svg>
+      <figcaption>Arriba, lo que corre en el dron: un lazo de realimentación con una ganancia. Abajo, cómo se calcula: hacia atrás desde el final del horizonte, antes de volar.</figcaption>
+    </figure>
     <div class="stack">
-      <p class="small">Sistema \(x_{k+1} = Ax_k + Bu_k\), coste \(\sum_{k=0}^{N-1}(x_k^\top Qx_k + u_k^\top Ru_k) + x_N^\top P_f x_N\), con \(Q \succeq 0\), \(R \succ 0\). El coste óptimo desde \(k\) es cuadrático, \(V_k(x) = x^\top\Pi_k x\), y la ley óptima es lineal:</p>
-      \[ u_k = -K_kx_k,\qquad K_k = (R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A \]
-      \[ \begin{aligned}\Pi_k = Q &+ A^\top\Pi_{k+1}A\\ &- A^\top\Pi_{k+1}B(R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\end{aligned} \]
-      <p class="small">con \(\Pi_N = P_f\), hacia atrás <a class="cite" data-ref="rmd2017"></a>.</p>
-    </div>
-    <div class="stack">
-      <details class="deriv"><summary>Derivación</summary>
-        <p class="small">Principio de optimalidad: \(V_k(x) = \min_u\,[x^\top Qx + u^\top Ru + V_{k+1}(Ax + Bu)]\). Si \(V_{k+1}(x) = x^\top\Pi_{k+1}x\), lo de dentro es una cuadrática estrictamente convexa en \(u\) (porque \(R \succ 0\)). Gradiente nulo: \(2Ru + 2B^\top\Pi_{k+1}(Ax + Bu) = 0\), de donde \(u = -(R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}Ax\). Sustituyendo, \(V_k\) vuelve a ser cuadrática con la matriz \(\Pi_k\) de la izquierda: por inducción desde \(\Pi_N = P_f\), vale para todo \(k\).</p>
-      </details>
-      <p class="small"><strong>Horizonte infinito:</strong> el punto fijo es la ecuación algebraica de Riccati discreta (DARE). Con \((A, B)\) estabilizable y \((A, Q^{1/2})\) detectable existe una solución estabilizante y \(A - BK\) tiene todos sus autovalores dentro del círculo unidad <a class="cite" data-ref="rmd2017"></a>.</p>
-      <div class="callout clave"><span class="tag">Idea clave</span>Todo el MPC lineal sin restricciones es esta recursión. Con restricciones deja de haber fórmula cerrada, pero los <em>solvers</em> rápidos siguen usando Riccati por dentro (parte 2).</div>
+      <p>El problema, para un horizonte de \(N\) pasos:</p>
+      \[ \min_{u_0,\dots,u_{N-1}}\ \sum_{k=0}^{N-1}\big(x_k^\top Qx_k + u_k^\top Ru_k\big) + x_N^\top P_fx_N \]
+      <p>sujeto a \(x_{k+1} = Ax_k + Bu_k\) y con \(x_0\) dado.</p>
+      <p><strong>Entra:</strong> el modelo \((A, B)\), los pesos \((Q, R, P_f)\) y \(N\). <strong>Sale:</strong> una ganancia \(K_k\) por paso.</p>
+      <div class="callout realidad"><span class="tag">Caso concreto</span>El dron está quieto 1 m a la izquierda de donde debe estar. \(x_k^\top Qx_k\) castiga la distancia que queda; \(u_k^\top Ru_k\), los pares que se piden. Con \(Q\) grande llega antes; con \(R\) grande, gasta menos.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">El LQR del x500</p>
+  <p class="kicker">Programación dinámica · 1</p>
+  <h2>La recursión de Riccati sale de minimizar una cuadrática paso a paso</h2>
+  <p><strong>Principio de optimalidad</strong> (Bellman): el tramo final de una trayectoria óptima es óptimo para el problema que empieza donde empieza ese tramo. Así, el coste óptimo desde el paso \(k\) se escribe con el del paso \(k+1\):</p>
+  \[ V_k(x) = \min_u\ \big[\,\underbrace{x^\top Qx + u^\top Ru}_{\text{coste de este paso}} + \underbrace{V_{k+1}(Ax + Bu)}_{\text{lo que costará el resto}}\,\big],\qquad V_N(x) = x^\top P_fx \]
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>Suponer \(V_{k+1}(x) = x^\top\Pi_{k+1}x\), con \(\Pi_{k+1}\) simétrica</td><td>Es cierto al final, con \(\Pi_N = P_f\); el paso 8 (hoja siguiente) lo prueba para todos los \(k\) por inducción</td></tr>
+      <tr><td><strong>2</strong></td><td>Hay que minimizar \(x^\top Qx + u^\top Ru + (Ax+Bu)^\top\Pi_{k+1}(Ax+Bu)\)</td><td>Sustituir el siguiente estado, \(Ax + Bu\), en \(V_{k+1}\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= u^\top(R + B^\top\Pi_{k+1}B)u + 2u^\top B^\top\Pi_{k+1}Ax + x^\top(Q + A^\top\Pi_{k+1}A)x\)</td><td>Desarrollar el producto: los dos términos cruzados son iguales porque \(\Pi_{k+1}\) es simétrica</td></tr>
+      <tr><td><strong>4</strong></td><td>Gradiente en \(u\) nulo: \(2(R + B^\top\Pi_{k+1}B)u + 2B^\top\Pi_{k+1}Ax = 0\)</td><td>Es una cuadrática estrictamente convexa en \(u\): \(R\succ 0\) y \(B^\top\Pi_{k+1}B\succeq 0\), así que hay un único mínimo</td></tr>
+      <tr><td><strong>5</strong></td><td>\(u^\star = -K_kx\), con \(K_k = (R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\)</td><td>Despejar (la matriz es invertible por el paso 4). Es <strong>lineal en el estado</strong>, y \(K_k\) se calcula antes de volar, sin conocer \(x\)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Programación dinámica · 2</p>
+  <h2>Meter el mando óptimo en el coste da la recursión de Riccati</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>6</strong></td><td>Llamamos \(S = R + B^\top\Pi_{k+1}B\), así que \(B^\top\Pi_{k+1}A = SK_k\)</td><td>Es la definición de \(K_k\) multiplicada por \(S\); \(S\) es simétrica</td></tr>
+      <tr><td><strong>7</strong></td><td>Con \(u = -K_kx\): \(u^\top Su + 2u^\top SK_kx = x^\top K_k^\top SK_kx - 2x^\top K_k^\top SK_kx\)</td><td>Los dos primeros términos del paso 3, con el término cruzado escrito con \(SK_k\)</td></tr>
+      <tr><td><strong>8</strong></td><td>\(V_k(x) = x^\top\big(Q + A^\top\Pi_{k+1}A - K_k^\top SK_k\big)x\)</td><td>Sumar el término en \(x\) del paso 3. Vuelve a ser cuadrática: queda probada la suposición del paso 1</td></tr>
+      <tr><td><strong>9</strong></td><td>\(K_k^\top SK_k = A^\top\Pi_{k+1}B\,S^{-1}B^\top\Pi_{k+1}A\)</td><td>Sustituir \(K_k = S^{-1}B^\top\Pi_{k+1}A\)</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <p>Resultado: la <strong>recursión de Riccati</strong>, hacia atrás desde \(\Pi_N = P_f\) <a class="cite" data-ref="rmd2017"></a>:</p>
+      \[ \begin{aligned}\Pi_k = Q &+ A^\top\Pi_{k+1}A\\ &- A^\top\Pi_{k+1}B(R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\end{aligned} \]
+      <p>\(Q\): lo que cuesta este paso. \(A^\top\Pi_{k+1}A\): lo que costaría el futuro sin mandar nada (\(u = 0\)). Lo que se resta: lo que se ahorra eligiendo bien \(u\). El coste óptimo desde \(x_0\) es \(x_0^\top\Pi_0x_0\).</p>
+    </div>
+    <div class="callout clave"><span class="tag">Idea clave</span>Todo el MPC lineal sin restricciones es esta recursión. Con restricciones deja de haber fórmula cerrada, pero los <em>solvers</em> rápidos siguen usando Riccati por dentro (parte 2).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ejemplo · Riccati a mano</p>
+  <h2>Tres pasos de Riccati con números que se siguen a mano</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El caso más pequeño: un estado y un mando, \(x_{k+1} = x_k + u_k\) (\(A = B = 1\): la posición de un dron cuyo mando es cuánto se desplaza en cada paso). \(Q = R = 1\), \(P_f = 0\) y \(N = 3\). En escalar la recursión queda</p>
+      \[ K_k = \frac{\Pi_{k+1}}{1 + \Pi_{k+1}},\qquad \Pi_k = 1 + \Pi_{k+1} - \frac{\Pi_{k+1}^2}{1 + \Pi_{k+1}} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Hacia atrás</th><th>\(\Pi_{k+1}\)</th><th>\(K_k\)</th><th>\(\Pi_k\)</th></tr>
+          <tr><td>\(k = 2\)</td><td class="n">0</td><td class="n">0</td><td class="n">1 + 0 − 0 = 1</td></tr>
+          <tr><td>\(k = 1\)</td><td class="n">1</td><td class="n">1/2 = 0,5</td><td class="n">1 + 1 − 1/2 = 1,5</td></tr>
+          <tr><td>\(k = 0\)</td><td class="n">1,5</td><td class="n">1,5/2,5 = 0,6</td><td class="n">1 + 1,5 − 2,25/2,5 = 1,6</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p>Y hacia delante desde \(x_0 = 1\), aplicando \(u_k = -K_kx_k\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(k\)</th><th>\(x_k\)</th><th>\(u_k\)</th><th>\(x_k^2 + u_k^2\)</th></tr>
+          <tr><td>0</td><td class="n">1</td><td class="n">−0,6</td><td class="n">1,36</td></tr>
+          <tr><td>1</td><td class="n">0,4</td><td class="n">−0,2</td><td class="n">0,20</td></tr>
+          <tr><td>2</td><td class="n">0,2</td><td class="n">0</td><td class="n">0,04</td></tr>
+          <tr><td>total</td><td></td><td></td><td class="n">1,60 = \(\Pi_0x_0^2\)</td></tr>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Compruébalo</span>Buscando por fuerza bruta en una rejilla de paso 0,01 sobre \((u_0, u_1, u_2)\) sale el mismo mínimo, 1,60, en (−0,6; −0,2; 0). Ejemplo 1 de <code>figuras/ejemplos_a3a.py</code>.</div>
+      <div class="aparte"><span class="rotulo">Por qué \(K_2 = 0\)</span>
+        <p>En el último paso no queda futuro que mejorar: mover el dron cuesta \(u^2\) y no ahorra nada, porque \(P_f = 0\). Es, en pequeño, la miopía del horizonte corto de la hoja «Horizonte finito».</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Horizonte infinito</p>
+  <h2>Si el horizonte crece, Riccati converge: la DARE y cuándo sirve</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 260" style="max-height:220px" role="img" aria-label="Valor de Pi en función del número de pasos desde el final, que sube de 0 a 1,618 y se queda ahí">
+          <line class="ln-rule" x1="60" y1="230" x2="500" y2="230"/>
+          <line class="ln-rule" x1="60" y1="30" x2="60" y2="230"/>
+          <line class="ln-dash" x1="60" y1="68.2" x2="500" y2="68.2"/>
+          <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,230.0 L96.7,130.0 L133.3,80.0 L170.0,70.0 L206.7,68.5 L243.3,68.2 L280.0,68.2 L316.7,68.2 L353.3,68.2 L390.0,68.2 L426.7,68.2 L463.3,68.2 L500.0,68.2"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="60" y="248" text-anchor="middle">0</text>
+            <text x="170" y="248" text-anchor="middle">3</text>
+            <text x="280" y="248" text-anchor="middle">6</text>
+            <text x="390" y="248" text-anchor="middle">9</text>
+            <text x="500" y="248" text-anchor="middle">12</text>
+            <text x="400" y="216" text-anchor="middle">pasos desde el final</text>
+            <text x="52" y="234" text-anchor="end">0</text>
+            <text x="52" y="134" text-anchor="end">1</text>
+            <text x="52" y="34" text-anchor="end">2</text>
+          </g>
+          <text x="300" y="58" class="t-faint" font-size="13">Π∞ = (1 + √5)/2 = 1,618</text>
+        </svg>
+        <figcaption>\(\Pi\) del ejemplo escalar a medida que se añaden pasos: 0; 1; 1,5; 1,6; 1,615; 1,618… Ejemplo 2 del script.</figcaption>
+      </figure>
+      <p>El límite \(\Pi_\infty\) es un <strong>punto fijo</strong>: cumple la recursión con \(\Pi_k = \Pi_{k+1}\). Esa ecuación es la <strong>DARE</strong> (ecuación algebraica de Riccati discreta). En el ejemplo, \(\pi = 1 + \pi - \pi^2/(1+\pi)\), es decir \(\pi^2 = 1 + \pi\): \(\pi = 1{,}618\), \(K_\infty = 0{,}618\) y el lazo cerrado \(x_{k+1} = 0{,}382\,x_k\) es estable.</p>
+    </div>
+    <div class="stack">
+      <p>Con \((A, B)\) <strong>estabilizable</strong> (los modos inestables se pueden mover con el mando) y \((A, Q^{1/2})\) <strong>detectable</strong> (los modos inestables se ven en el coste), existe una solución estabilizante: \(A - BK_\infty\) tiene todos sus autovalores dentro del círculo unidad <a class="cite" data-ref="rmd2017"></a>. \(Q^{1/2}\) es una raíz de \(Q\): \((Q^{1/2})^\top Q^{1/2} = Q\).</p>
+      <div class="aparte"><span class="rotulo">Contraejemplo: un coste ciego</span>
+        <p>Con \(x_{k+1} = 2x_k + u_k\), \(R = 1\) y \(Q = 0\), no hacer nada cuesta 0: el óptimo es \(K = 0\) y el estado se duplica en cada paso. La DARE tiene dos soluciones: \(\pi = 0\) (\(K = 0\), polo en 2) y \(\pi = 3\) (\(K = 1{,}5\), polo en 0,5). La recursión desde \(P_f = 0\) se queda en la primera.</p>
+        <p>Con cualquier \(Q > 0\), el modo inestable se ve en el coste y el problema desaparece. Ejemplo 2 del script.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El LQR del x500 · 1</p>
+  <h2>El modelo lineal del x500 es una cadena de integradores</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 560 190" role="img" aria-label="Cadena de integradores del eje x: par de cabeceo, velocidad de cabeceo, cabeceo, velocidad horizontal y posición">
+          <defs><marker id="a3ch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <g font-size="14" class="t-mono" text-anchor="middle">
+            <text x="22" y="64">τ_y</text>
+            <rect class="box-accent" x="44" y="40" width="60" height="40" rx="5"/><text x="74" y="65">1/J_y</text>
+            <rect class="box" x="140" y="40" width="40" height="40" rx="5"/><text x="160" y="65">∫</text>
+            <rect class="box" x="222" y="40" width="40" height="40" rx="5"/><text x="242" y="65">∫</text>
+            <rect class="box-accent" x="296" y="40" width="40" height="40" rx="5"/><text x="316" y="65">g</text>
+            <rect class="box" x="372" y="40" width="40" height="40" rx="5"/><text x="392" y="65">∫</text>
+            <rect class="box" x="448" y="40" width="40" height="40" rx="5"/><text x="468" y="65">∫</text>
+          </g>
+          <g class="ln">
+            <path d="M34 60 H40" marker-end="url(#a3ch)"/><path d="M104 60 H136" marker-end="url(#a3ch)"/>
+            <path d="M180 60 H218" marker-end="url(#a3ch)"/><path d="M262 60 H292" marker-end="url(#a3ch)"/>
+            <path d="M336 60 H368" marker-end="url(#a3ch)"/><path d="M412 60 H444" marker-end="url(#a3ch)"/>
+            <path d="M488 60 H536" marker-end="url(#a3ch)"/>
+          </g>
+          <g font-size="13" class="t-mono t-muted" text-anchor="middle">
+            <text x="120" y="32">q̇</text><text x="201" y="32">q</text><text x="277" y="32">θ</text>
+            <text x="352" y="32">v̇_x</text><text x="428" y="32">v_x</text><text x="512" y="32">x</text>
+          </g>
+          <g font-size="13" class="t-muted" text-anchor="middle">
+            <text x="74" y="104">1/J_y = 41,9</text><text x="316" y="104">g = 9,81</text>
+          </g>
+          <text x="280" y="150" text-anchor="middle" font-size="13" class="t-muted">par → velocidad de cabeceo → cabeceo → aceleración → velocidad → posición</text>
+          <text x="280" y="172" text-anchor="middle" font-size="13" class="t-faint">cuatro integradores entre el mando y lo que queremos controlar</text>
+        </svg>
+        <figcaption>Eje x linealizado: \(\dot q = \tau_y/J_y\), \(\dot\theta = q\), \(\dot v_x = g\theta\), \(\dot x = v_x\). Ejemplo 3 del script.</figcaption>
+      </figure>
+      <p>Linealización en estacionario con 12 estados (posición, velocidad, ángulos pequeños y velocidad angular) y 4 entradas (empuje y pares), discretizada a 100 Hz. Para ángulos pequeños, el empuje inclinado un ángulo \(\theta\) da una aceleración horizontal \(g\theta\). Los ejes y, z y la guiñada son cadenas parecidas.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Regla de Bryson</strong> para los pesos: \(Q = \operatorname{diag}(1/x_{i,\max}^2)\) y \(R = \operatorname{diag}(1/u_{j,\max}^2)\), con \(x_{i,\max}\) el error que se admite en el estado \(i\) y \(u_{j,\max}\) el mando que se admite en la entrada \(j\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Estado del eje x</th><th>Admisible</th><th>Peso \(1/x_{\max}^2\)</th></tr>
+          <tr><td>Posición \(x\)</td><td class="n">0,5 m</td><td class="n">4</td></tr>
+          <tr><td>Velocidad \(v_x\)</td><td class="n">1 m/s</td><td class="n">1</td></tr>
+          <tr><td>Cabeceo \(\theta\)</td><td class="n">0,3 rad (0,5 en guiñada)</td><td class="n">11,1</td></tr>
+          <tr><td>Velocidad de cabeceo \(q\)</td><td class="n">2 rad/s</td><td class="n">0,25</td></tr>
+          <tr><td>Mandos</td><td class="n">13,9 N y 1; 1; 0,1 N·m</td><td class="n">\(1/u_{\max}^2\)</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Por qué así</span>Con estos pesos, un error igual al admisible cuesta exactamente 1 en cualquier estado: se comparan metros con radianes sin pensar en unidades.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El LQR del x500 · 2</p>
   <h2>Un solo controlador, y sus polos se ordenan en tres escalas como la cascada</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Linealización en estacionario (12 estados: posición, velocidad, ángulos pequeños y velocidad angular; 4 entradas: empuje y pares), discretizada a 100 Hz. Pesos por la regla de Bryson, \(Q = \operatorname{diag}(1/x_{i,\max}^2)\), \(R = \operatorname{diag}(1/u_{j,\max}^2)\), con errores admisibles de 0,5 m, 1 m/s, 0,3 rad (0,5 en guiñada) y 2 rad/s, y mandos de 13,9 N y 1; 1; 0,1 N·m.</p>
+      <p>Con el modelo y los pesos de la hoja anterior, la DARE da la ganancia de 4×12. Sus polos en lazo cerrado, pasados a tiempo continuo (\(s = \ln z/T\), con \(z\) un autovalor de \(A - BK_\infty\) y \(T\) = 0,01 s), dicen lo rápido que es cada parte: \(|s|\) en rad/s.</p>
       <div class="table-wrap">
         <table class="t">
           <tr><th>Grupo de polos en lazo cerrado</th><th>\(|s|\)</th><th>PX4 (A2)</th></tr>
@@ -137,7 +349,7 @@
       <p class="xsmall muted">La altura queda en 2,1 y 6,4 rad/s y la guiñada en 2,1. Calculado en <code>figuras/figuras_a3a.py</code> con la inercia compuesta del x500 de A2.</p>
     </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Nadie ha pedido una cascada, pero el óptimo la reproduce: la planta es una cadena de integradores y los pesos dicen qué estados importan, así que el LQR reparte el ancho de banda de dentro afuera, con separaciones de 2,4 y 3,1 veces entre grupos.</li>
         <li>La ganancia acopla lo que la cascada separa: el par de cabeceo depende directamente de \(x\), \(v_x\), \(\theta\) y \(q\) a la vez.</li>
         <li>Lo que el LQR no ve: saturación de motores, límite de inclinación, retardos. Para eso hace falta la parte 2.</li>
@@ -174,7 +386,7 @@
       <figcaption>\(\|K_0(N) - K_\infty\|/\|K_\infty\|\) para el eje x del x500 a 100 Hz, con coste terminal nulo. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Al 50 % con 30 pasos (0,30 s), al 10 % con 96 (0,96 s) y al 1 % con 159 (1,59 s).</li>
         <li>El horizonte tiene que cubrir la dinámica lenta del lazo cerrado: aquí el par de polos horizontales, con \(|s|\) = 2,6 rad/s (constante de tiempo de unos 0,4 s).</li>
         <li>Con un coste terminal igual a la solución de la DARE, \(P_f = \Pi_\infty\), la ganancia es la infinita con cualquier \(N\): es la elección que usa la teoría de estabilidad del MPC.</li>
@@ -185,26 +397,77 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Márgenes</p>
+  <p class="kicker">Márgenes · 1</p>
+  <h2>Qué garantiza el LQR continuo: el diagrama de Nyquist no entra en un disco</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 400 300" style="max-height:290px" role="img" aria-label="Diagrama de Nyquist de la ganancia de lazo del LQR del eje x: la curva rodea sin entrar el disco de radio 1 centrado en menos 1">
+          <circle cx="190" cy="150" r="70" class="box-soft"/>
+          <circle cx="260" cy="150" r="70" fill="none" class="ln-dash"/>
+          <line class="ln-rule" x1="20" y1="150" x2="390" y2="150"/>
+          <line class="ln-rule" x1="260" y1="10" x2="260" y2="290"/>
+          <path class="ln-accent" fill="none" stroke-width="2.2" d="M159.5,289.9 L166.1,286.7 L172.3,283.4 L178.1,280.1 L183.5,276.8 L188.5,273.4 L193.2,270.1 L197.6,266.9 L201.7,263.6 L205.6,260.4 L209.2,257.3 L212.6,254.2 L215.7,251.1 L218.6,248.1 L221.4,245.2 L223.9,242.3 L226.3,239.5 L228.6,236.7 L230.6,234.0 L232.6,231.4 L234.4,228.9 L236.1,226.4 L237.7,223.9 L239.2,221.6 L240.6,219.3 L241.9,217.1 L243.1,214.9 L244.2,212.8 L245.3,210.8 L246.2,208.8 L247.2,206.9 L248.0,205.0 L248.8,203.2 L249.6,201.4 L250.2,199.7 L250.9,198.1 L251.5,196.5 L252.1,195.0 L252.6,193.5 L253.1,192.0 L253.6,190.6 L254.0,189.3 L254.4,187.9 L254.8,186.7 L255.1,185.4 L255.4,184.3 L255.7,183.1 L256.0,182.0 L256.3,180.9 L256.5,179.9 L256.8,178.9 L257.0,177.9 L257.2,177.0 L257.4,176.1 L257.5,175.2 L257.7,174.3 L257.9,173.5 L258.0,172.7 L258.1,171.9 L258.3,171.2 L258.4,170.5 L258.5,169.8 L258.6,169.1 L258.7,168.5 L258.8,167.9 L258.9,167.3 L258.9,166.7 L259.0,166.1 L259.1,165.6 L259.1,165.0 L259.2,164.5 L259.2,164.0 L259.3,163.6 L259.3,163.1 L259.4,162.6 L259.4,162.2 L259.5,161.8 L259.5,161.4 L259.5,161.0 L259.6,160.6 L259.6,160.3 L259.6,159.9 L259.6,159.6 L259.7,159.3 L259.7,159.0 L259.7,158.7 L259.7,158.4 L259.7,158.1 L259.8,157.8 L259.8,157.5 L259.8,157.3 L259.8,157.0 L259.8,156.8 L259.8,156.6 L259.8,156.3 L259.9,156.1 L259.9,155.9 L259.9,155.7 L259.9,155.5 L259.9,155.3 L259.9,155.2 L259.9,155.0 L259.9,154.8 L259.9,154.6 L259.9,154.5 L259.9,154.3 L259.9,154.2 L259.9,154.0 L259.9,153.9 L259.9,153.8 L259.9,153.6 L260.0,153.5 L260.0,153.4 L260.0,153.3 L260.0,153.2 L260.0,153.1 L260.0,153.0 L260.0,152.9 L260.0,152.8 L260.0,152.7 L260.0,152.6 L260.0,152.5 L260.0,152.4 L260.0,152.3 L260.0,152.3 L260.0,152.2"/>
+          <path class="ln-accent" fill="none" stroke-width="1.4" stroke-dasharray="4 3" d="M159.5,10.1 L166.1,13.3 L172.3,16.6 L178.1,19.9 L183.5,23.2 L188.5,26.6 L193.2,29.9 L197.6,33.1 L201.7,36.4 L205.6,39.6 L209.2,42.7 L212.6,45.8 L215.7,48.9 L218.6,51.9 L221.4,54.8 L223.9,57.7 L226.3,60.5 L228.6,63.3 L230.6,66.0 L232.6,68.6 L234.4,71.1 L236.1,73.6 L237.7,76.1 L239.2,78.4 L240.6,80.7 L241.9,82.9 L243.1,85.1 L244.2,87.2 L245.3,89.2 L246.2,91.2 L247.2,93.1 L248.0,95.0 L248.8,96.8 L249.6,98.6 L250.2,100.3 L250.9,101.9 L251.5,103.5 L252.1,105.0 L252.6,106.5 L253.1,108.0 L253.6,109.4 L254.0,110.7 L254.4,112.1 L254.8,113.3 L255.1,114.6 L255.4,115.7 L255.7,116.9 L256.0,118.0 L256.3,119.1 L256.5,120.1 L256.8,121.1 L257.0,122.1 L257.2,123.0 L257.4,123.9 L257.5,124.8 L257.7,125.7 L257.9,126.5 L258.0,127.3 L258.1,128.1 L258.3,128.8 L258.4,129.5 L258.5,130.2 L258.6,130.9 L258.7,131.5 L258.8,132.1 L258.9,132.7 L258.9,133.3 L259.0,133.9 L259.1,134.4 L259.1,135.0 L259.2,135.5 L259.2,136.0 L259.3,136.4 L259.3,136.9 L259.4,137.4 L259.4,137.8 L259.5,138.2 L259.5,138.6 L259.5,139.0 L259.6,139.4 L259.6,139.7 L259.6,140.1 L259.6,140.4 L259.7,140.7 L259.7,141.0 L259.7,141.3 L259.7,141.6 L259.7,141.9 L259.8,142.2 L259.8,142.5 L259.8,142.7 L259.8,143.0 L259.8,143.2 L259.8,143.4 L259.8,143.7 L259.9,143.9 L259.9,144.1 L259.9,144.3 L259.9,144.5 L259.9,144.7 L259.9,144.8 L259.9,145.0 L259.9,145.2 L259.9,145.4 L259.9,145.5 L259.9,145.7 L259.9,145.8 L259.9,146.0 L259.9,146.1 L259.9,146.2 L259.9,146.4 L260.0,146.5 L260.0,146.6 L260.0,146.7 L260.0,146.8 L260.0,146.9 L260.0,147.0 L260.0,147.1 L260.0,147.2 L260.0,147.3 L260.0,147.4 L260.0,147.5 L260.0,147.6 L260.0,147.7 L260.0,147.7 L260.0,147.8"/>
+          <circle cx="190" cy="150" r="4" class="fill-tesis"/>
+          <text x="186" y="168" class="t-tesis t-mono" font-size="13" text-anchor="end">−1</text>
+          <circle cx="241.6" cy="217.6" r="4.5" class="fill-time"/>
+          <text x="250" y="236" class="t-time" font-size="12">|L| = 1</text>
+          <text x="152" y="120" class="t-muted" font-size="12" text-anchor="middle">disco prohibido</text>
+          <text x="318" y="96" class="t-faint" font-size="12">|L| = 1</text>
+          <text x="384" y="166" class="t-mono t-muted" font-size="12" text-anchor="end">Re</text>
+          <text x="268" y="22" class="t-mono t-muted" font-size="12">Im</text>
+          <text x="40" y="282" class="t-accent" font-size="12">L(jω)</text>
+        </svg>
+        <figcaption>Eje x del x500 en continuo, pesos de Bryson: \(\min|1+L| = 1{,}0002\); \(|L| = 1\) a 31 rad/s con 74,7° de margen de fase. Discontinua, las frecuencias negativas. Ejemplo 4 del script.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <p>Se abre el lazo en la entrada: \(L(j\omega) = K(j\omega I - A)^{-1}B\) es lo que vuelve a la entrada, tras pasar por la planta y la ganancia, cuando entra una sinusoide de frecuencia \(\omega\). El lazo cerrado se desestabiliza si \(L\) pasa por −1 (A2, márgenes).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:42%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(|1 + L(j\omega)| \ge 1\) para todo \(\omega\)</td><td>Igualdad de retorno: sale de la ecuación de Riccati continua <a class="cite" data-ref="anderson1990"></a></td></tr>
+          <tr><td><strong>2</strong></td><td>La curva nunca entra en el disco de radio 1 centrado en −1</td><td>Es el paso 1: la distancia de \(L\) a −1 es al menos 1</td></tr>
+          <tr><td><strong>3</strong></td><td>Margen de ganancia \([\tfrac12, \infty)\)</td><td>Multiplicar \(L\) por \(\beta\) mueve el punto crítico a \(-1/\beta\); con \(\beta > \tfrac12\) cae en \((-2, 0)\), dentro del disco, y la curva no lo rodea más veces</td></tr>
+          <tr><td><strong>4</strong></td><td>Margen de fase de al menos 60°</td><td>Donde \(|L| = 1\), \(L\) está en la circunferencia unidad y fuera del disco; las dos circunferencias se cortan a ±120°, a 60° de −180°</td></tr>
+          <tr><td><strong>5</strong></td><td>Si solo se garantiza un disco de radio \(\gamma \lt 1\): margen \(2\arcsin(\gamma/2)\)</td><td>Un punto de la circunferencia unidad a un ángulo \(\alpha\) de −1 está a distancia \(2\sin(\alpha/2)\); igualarla a \(\gamma\). Con \(\gamma = 1\) salen los 60°</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Márgenes · 2</p>
   <h2>Los famosos 60° del LQR valen menos de lo que parece</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small"><strong>Lo que sí está demostrado.</strong> En tiempo continuo, con una entrada y realimentación del estado completo, el diagrama de Nyquist del LQR evita el círculo unidad centrado en −1. Eso da margen de ganancia \([\tfrac12, \infty)\) y de fase de al menos 60° <a class="cite" data-ref="anderson1990"></a>. Con varias entradas y \(R\) diagonal, lo mismo lazo a lazo <a class="cite" data-ref="safonov1977"></a>.</p>
-      <details class="deriv"><summary>De dónde sale</summary>
-        <p class="small">La igualdad de retorno da \(|1 + L(j\omega)| \ge 1\), con \(L = K(j\omega I - A)^{-1}B\): el diagrama de Nyquist nunca entra en el disco de radio 1 centrado en −1. Multiplicar \(L\) por \(\beta\) equivale a mover el punto crítico a \(-1/\beta\); para \(\beta > \tfrac12\), ese punto está en \((-2, 0)\), dentro del disco que la curva no toca, así que el número de vueltas no cambia y el lazo sigue estable. Para la fase: los puntos con \(|L| = 1\) están en la circunferencia unidad y fuera del disco, es decir, a ±120° o menos del eje real positivo, lo que deja al menos 60° hasta −180°.</p>
-      </details>
-    </div>
-    <div class="stack">
-      <p class="small"><strong>Lo que no:</strong></p>
-      <ul class="small">
-        <li><strong>En tiempo discreto, que es lo que implementas</strong>, el margen de fase garantizado es \(2\arcsin(\gamma/2) &lt; 60°\), con \(\gamma &lt; 1\) dependiente de la planta, y hay sistemas de primer orden con márgenes arbitrariamente pequeños <a class="cite" data-ref="anderson1990"></a>.</li>
+      <p><strong>Lo que sí está demostrado.</strong> En tiempo continuo, con una entrada y realimentación del estado completo, el margen de ganancia es \([\tfrac12, \infty)\) y el de fase de al menos 60° (hoja anterior) <a class="cite" data-ref="anderson1990"></a>. Con varias entradas y \(R\) diagonal, lo mismo lazo a lazo <a class="cite" data-ref="safonov1977"></a>.</p>
+      <p><strong>Lo que no:</strong></p>
+      <ul>
+        <li><strong>En tiempo discreto, que es lo que implementas</strong>, el margen de fase garantizado es \(2\arcsin(\gamma/2) \lt 60°\), con \(\gamma \lt 1\) dependiente de la planta, y hay sistemas de primer orden con márgenes arbitrariamente pequeños <a class="cite" data-ref="anderson1990"></a>.</li>
         <li><strong>Con retardo</strong> se pierde el margen de ganancia infinito <a class="cite" data-ref="anderson1990"></a>: A2 entero.</li>
         <li><strong>Sin estado completo</strong> (con un observador) las garantías no se heredan automáticamente.</li>
       </ul>
+    </div>
+    <div class="stack">
+      <p>El mismo eje x del x500, ahora discretizado con periodo \(T\). \(\gamma\) es el radio del disco alrededor de −1 que la curva no toca:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(T\)</th><th>\(\gamma = \min|1+L|\)</th><th>Cota \(2\arcsin(\gamma/2)\)</th><th>Margen real</th></tr>
+          <tr><td>continuo</td><td class="n">1,00</td><td class="n">60,0°</td><td class="n">74,7°</td></tr>
+          <tr><td>0,01 s</td><td class="n">0,86</td><td class="n">51,1°</td><td class="n">65,6°</td></tr>
+          <tr><td>0,05 s</td><td class="n">0,54</td><td class="n">31,0°</td><td class="n">42,8°</td></tr>
+          <tr><td>0,10 s</td><td class="n">0,36</td><td class="n">20,8°</td><td class="n">29,0°</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo 4 del script; en discreto, \(L = K(e^{j\omega T}I - A)^{-1}B\), con \(A\), \(B\) del modelo discretizado.</p>
       <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Las garantías clásicas del LQR suponen que mides todo el estado sin ruido ni retardo. En cuanto el estado sale de un filtro o de un belief, la robustez hay que comprobarla otra vez: es una de las razones de que A4 venga justo después.</div>
     </div>
   </div>
 </section>
+
 
 <!-- ============ PARTE 2 · MPC LINEAL ============ -->
 <section class="slide divider" data-section="2 · MPC lineal">
@@ -214,32 +477,268 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Las letras nuevas del MPC</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:30%">En el x500</th></tr>
+      <tr><td>\(x(t)\), \(x_0\)</td><td>Estado medido (o estimado) en el instante actual \(t\); fija el estado inicial del plan, \(x_0 = x(t)\). Los \(x_k\) con \(k\ge1\) son <strong>predicciones</strong></td><td>Lo da el estimador a 100 Hz</td></tr>
+      <tr><td>\(\ell(x,u)\), \(V_f(x)\)</td><td>Coste de etapa y coste terminal</td><td>\(x^\top Qx + u^\top Ru\) y \(x^\top P_fx\)</td></tr>
+      <tr><td>\(f(x,u)\)</td><td>Dinámica: \(x_{k+1} = f(x_k,u_k)\)</td><td>\(Ax + Bu\) en el MPC lineal</td></tr>
+      <tr><td>\(\mathbb Z\), \(\mathbb X_f\)</td><td>Pares \((x,u)\) admisibles (las restricciones) y <strong>conjunto terminal</strong>, donde debe acabar \(x_N\)</td><td>\(|\theta|\le 20°\), par entre sus límites</td></tr>
+      <tr><td>\(U\), \(X\)</td><td>Mandos y estados del horizonte apilados en un vector: \(U = (u_0,\dots,u_{N-1})\), \(X = (x_1,\dots,x_N)\)</td><td>\(Nm\) y \(Nn\) números</td></tr>
+      <tr><td>\(\Phi\), \(\Gamma\), \(\bar Q\), \(\bar R\), \(H\)</td><td>Matrices de la forma condensada (se construyen en la hoja «Forma condensada»). <strong>Aviso:</strong> \(H\) es aquí una hessiana; en A3b la misma letra será el horizonte</td><td>\(H\) es \(Nm\times Nm\)</td></tr>
+      <tr><td>\(G\), \(w\), \(E\)</td><td>Restricciones lineales del QP condensado, \(GU\le w + Ex_0\)</td><td>Una fila por restricción</td></tr>
+      <tr><td>\(\lambda_k\)</td><td><strong>Multiplicador de Lagrange</strong> de la dinámica del paso \(k\): el precio de mover \(x_k\) (coestado)</td><td>Uno por paso, de dimensión \(n\)</td></tr>
+      <tr><td>\(u^\star\), \(V_N^\star\)</td><td>Solución y coste óptimos del problema con horizonte \(N\)</td><td>\(u_0^\star\) es lo que se aplica</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Esquema del MPC</p>
+  <h2>Horizonte deslizante: planificar N pasos, aplicar uno y volver a planificar</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 290" role="img" aria-label="Tres filas, una por instante: en cada una una ventana de cuatro pasos con el plan predicho; solo el primer tramo de cada plan se aplica y la ventana se desplaza un paso">
+        <defs><marker id="a3hd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+        <rect class="box-soft" x="84" y="14" width="281" height="72" rx="6"/>
+        <rect class="box-soft" x="151" y="96" width="281" height="72" rx="6"/>
+        <rect class="box-soft" x="218" y="178" width="281" height="72" rx="6"/>
+        <g class="t-mono t-muted" font-size="13">
+          <text x="10" y="54">t = 0</text><text x="10" y="136">t = 1</text><text x="10" y="218">t = 2</text>
+        </g>
+        <path class="ln-dash" fill="none" d="M90.0,22.0 L157.1,36.0 L224.3,50.0 L291.4,64.0 L358.6,72.7"/>
+        <path class="ln-dash" fill="none" d="M157.1,118.0 L224.3,132.0 L291.4,146.0 L358.6,154.7 L425.7,158.0"/>
+        <path class="ln-dash" fill="none" d="M224.3,214.0 L291.4,228.0 L358.6,236.7 L425.7,240.0 L492.9,241.2"/>
+        <path class="ln-accent" stroke-width="2.6" d="M90.0,22.0 L157.1,36.0"/>
+        <path class="ln-accent" stroke-width="2.6" d="M157.1,118.0 L224.3,132.0"/>
+        <path class="ln-accent" stroke-width="2.6" d="M224.3,214.0 L291.4,228.0"/>
+        <g class="fill-ink3">
+          <circle cx="224.3" cy="50.0" r="3"/><circle cx="291.4" cy="64.0" r="3"/><circle cx="358.6" cy="72.7" r="3"/>
+          <circle cx="291.4" cy="146.0" r="3"/><circle cx="358.6" cy="154.7" r="3"/><circle cx="425.7" cy="158.0" r="3"/>
+          <circle cx="358.6" cy="236.7" r="3"/><circle cx="425.7" cy="240.0" r="3"/><circle cx="492.9" cy="241.2" r="3"/>
+        </g>
+        <g class="fill-tesis">
+          <circle cx="90.0" cy="22.0" r="5"/><circle cx="157.1" cy="118.0" r="5"/><circle cx="224.3" cy="214.0" r="5"/>
+        </g>
+        <path class="ln-accent" d="M157.1 40 V112" stroke-dasharray="3 3" marker-end="url(#a3hd)"/>
+        <path class="ln-accent" d="M224.3 136 V208" stroke-dasharray="3 3" marker-end="url(#a3hd)"/>
+        <line class="ln-rule" x1="90" y1="266" x2="560" y2="266"/>
+        <g class="t-mono t-muted" font-size="12" text-anchor="middle">
+          <text x="90" y="282">0</text><text x="157.1" y="282">1</text><text x="224.3" y="282">2</text><text x="291.4" y="282">3</text>
+          <text x="358.6" y="282">4</text><text x="425.7" y="282">5</text><text x="492.9" y="282">6</text><text x="560" y="282">7 pasos</text>
+        </g>
+        <text x="372" y="34" class="t-faint" font-size="12">ventana de N = 4 pasos</text>
+        <text x="240" y="114" class="t-accent" font-size="12">se aplica solo u₀</text>
+      </svg>
+      <figcaption>Integrador \(x_{k+1} = x_k + u_k\) con \(|u_k|\le 0{,}5\), \(N = 4\), desde \(x = 2\). Punto grande: estado medido; trazo grueso: el tramo que se aplica; discontinua: el resto del plan, que se descarta. Ejemplo 5 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Entra</strong> en cada muestra: el estado medido \(x(t)\), el modelo, el coste y las restricciones. <strong>Sale:</strong> el primer mando \(u_0^\star\). El resto del plan se descarta, o se guarda para arrancar la optimización siguiente.</p>
+      <p>En el ejemplo, en \(t = 0\) el plan es (−0,5; −0,5; −0,5; −0,31): el límite manda en los tres primeros pasos. Se aplica −0,5, el estado llega a 1,5 y se vuelve a resolver: (−0,5; −0,5; −0,31; −0,12).</p>
+      <div class="callout clave"><span class="tag">La realimentación</span>Si una ráfaga empuja al dron, la optimización siguiente parte del estado medido, no del previsto. Planificar en bucle abierto y replanificar en cada muestra da un lazo cerrado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Formulación</p>
   <h2>Optimizar el futuro, aplicar solo el primer mando y repetir</h2>
   <div class="cols">
     <div class="stack">
       \[ \begin{aligned} \min_{u_0,\dots,u_{N-1}}\ &\sum_{k=0}^{N-1}\ell(x_k,u_k) + V_f(x_N)\\ \text{s.a.}\ & x_{k+1} = f(x_k,u_k),\quad x_0 = x(t)\\ & (x_k,u_k)\in\mathbb Z,\quad x_N\in\mathbb X_f \end{aligned} \]
-      <p class="small">Se aplica \(u_0^\star\), se mide el nuevo estado y se vuelve a resolver: <strong>horizonte deslizante</strong>. La realimentación entra por \(x_0 = x(t)\).</p>
-      <p class="small">Con \(f\) lineal, \(\ell\) cuadrático y restricciones poliédricas, es un <strong>QP</strong> convexo.</p>
-    </div>
-    <div class="stack">
-      <p class="small"><strong>Forma condensada.</strong> Eliminando los estados, \(X = \Phi x_0 + \Gamma U\), y queda un QP solo en los mandos:</p>
-      \[ \min_U\ \tfrac12 U^\top HU + (\Gamma^\top\bar Q\Phi x_0)^\top U\quad\text{s.a.}\quad G U \le w + Ex_0 \]
-      <details class="deriv"><summary>Construcción</summary>
-        <p class="small">\(x_k = A^kx_0 + \sum_{j<k}A^{k-1-j}Bu_j\): apilando, \(\Phi\) tiene las potencias \(A^k\) y \(\Gamma\) es triangular inferior por bloques. Con \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\) y \(\bar R = \operatorname{diag}(R,\dots,R)\), \(H = \Gamma^\top\bar Q\Gamma + \bar R\). Las restricciones sobre estados se convierten en restricciones sobre \(U\) a través de las filas de \(\Gamma\).</p>
-      </details>
-      <p class="small"><strong>Forma dispersa.</strong> Se dejan estados y mandos como variables, con la dinámica como igualdades. El sistema KKT es de banda y se resuelve con una recursión tipo Riccati.</p>
+      <p>Se aplica \(u_0^\star\), se mide el nuevo estado y se vuelve a resolver: <strong>horizonte deslizante</strong>. La realimentación entra por \(x_0 = x(t)\).</p>
+      <p>Con \(f\) lineal, \(\ell\) cuadrático y restricciones poliédricas (desigualdades lineales), es un <strong>QP</strong> convexo: coste cuadrático, restricciones lineales y un único mínimo.</p>
       <div class="callout clave"><span class="tag">Idea clave</span>El MPC no es un controlador nuevo: es un LQR que además respeta restricciones, y que con restricciones activas deja de ser lineal.</div>
     </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:30%">Término</th><th>Qué hace</th><th style="width:30%">En el x500</th></tr>
+        <tr><td>\(\sum\ell(x_k,u_k)\)</td><td>Castiga error y mando a lo largo del plan</td><td>Errores de posición y pares</td></tr>
+        <tr><td>\(V_f(x_N)\)</td><td>Resume lo que costaría el futuro más allá de \(N\)</td><td>\(x_N^\top\Pi_\infty x_N\), el coste del LQR</td></tr>
+        <tr><td>\(x_{k+1} = f(x_k,u_k)\)</td><td>Ata los estados predichos a los mandos</td><td>Modelo linealizado o no lineal</td></tr>
+        <tr><td>\(x_0 = x(t)\)</td><td>Realimentación: el plan parte de lo medido</td><td>Estado del estimador</td></tr>
+        <tr><td>\((x_k,u_k)\in\mathbb Z\)</td><td>Lo que el LQR no sabe hacer</td><td>\(|\theta_k|\le 20°\), par entre sus límites</td></tr>
+        <tr><td>\(x_N\in\mathbb X_f\)</td><td>Para la garantía de estabilidad (hojas «Estabilidad»)</td><td>Casi nunca se impone en vuelo</td></tr>
+      </table>
+    </div>
   </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Forma condensada · 1</p>
+  <h2>Forma condensada: eliminar los estados y quedarse con los mandos</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(x_1 = Ax_0 + Bu_0\), \(x_2 = A^2x_0 + ABu_0 + Bu_1\)</td><td>Aplicar el modelo dos veces</td></tr>
+        <tr><td><strong>2</strong></td><td>\(x_k = A^kx_0 + \sum_{j=0}^{k-1}A^{k-1-j}Bu_j\)</td><td>Inducción: cada mando pasado \(u_j\) (\(j\lt k\)) llega a \(x_k\) tras \(k-1-j\) pasos sin mando</td></tr>
+        <tr><td><strong>3</strong></td><td>\(X = \Phi x_0 + \Gamma U\)</td><td>Apilar las \(N\) ecuaciones del paso 2</td></tr>
+        <tr><td><strong>4</strong></td><td>\(J = x_0^\top Qx_0 + X^\top\bar QX + U^\top\bar RU\)</td><td>El coste con vectores apilados: \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\), \(\bar R = \operatorname{diag}(R,\dots,R)\); el último bloque de \(\bar Q\) es el terminal</td></tr>
+        <tr><td><strong>5</strong></td><td>\(J = U^\top HU + 2(\Gamma^\top\bar Q\Phi x_0)^\top U + \text{cte}\), con \(H = \Gamma^\top\bar Q\Gamma + \bar R\)</td><td>Sustituir el paso 3 y agrupar; «cte» no depende de \(U\)</td></tr>
+        <tr><td><strong>6</strong></td><td>\(\min_U\ \tfrac12U^\top HU + (\Gamma^\top\bar Q\Phi x_0)^\top U\) s.a. \(GU\le w + Ex_0\)</td><td>Dividir por 2 no cambia el mínimo. Las restricciones de estado pasan a \(U\) a través de las filas de \(\Gamma\)</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Con un modelo lineal, cada estado futuro es una función lineal de \(x_0\) y de los mandos. Se sustituye en el coste y quedan solo los \(Nm\) mandos como variables. Para \(N = 3\):</p>
+      \[ \Phi = \begin{bmatrix}A\\ A^2\\ A^3\end{bmatrix},\qquad \Gamma = \begin{bmatrix}B & 0 & 0\\ AB & B & 0\\ A^2B & AB & B\end{bmatrix} \]
+      <p>\(\Gamma\) es triangular inferior por bloques: un mando no cambia el pasado.</p>
+      <div class="callout error"><span class="tag">El precio</span>\(H\) es densa y de lado \(Nm\): todos los mandos se acoplan con todos. Construirla y factorizarla es lo que cuesta (hoja «Coste computacional»).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Forma condensada · 2</p>
+  <h2>La forma condensada con números: el mismo mando que Riccati</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>El integrador de la hoja «Riccati a mano», ahora con \(N = 2\), \(Q = R = 1\), \(P_f = 0\) y \(x_0 = 1\):</p>
+      \[ \Phi = \begin{bmatrix}1\\ 1\end{bmatrix},\quad \Gamma = \begin{bmatrix}1&0\\ 1&1\end{bmatrix},\quad \bar Q = \begin{bmatrix}1&0\\ 0&0\end{bmatrix},\quad \bar R = I \]
+      \[ H = \Gamma^\top\bar Q\Gamma + \bar R = \begin{bmatrix}2&0\\ 0&1\end{bmatrix},\qquad \Gamma^\top\bar Q\Phi x_0 = \begin{bmatrix}1\\ 0\end{bmatrix} \]
+      \[ U^\star = -H^{-1}\begin{bmatrix}1\\ 0\end{bmatrix} = \begin{bmatrix}-0{,}5\\ 0\end{bmatrix} \]
+      <p>Riccati con \(N = 2\) da \(K_0 = 0{,}5\) y \(K_1 = 0\): \(u_0 = -0{,}5\), \(x_1 = 0{,}5\), \(u_1 = 0\). Lo mismo. Ejemplo 6 del script.</p>
+    </div>
+    <div class="stack">
+      <div class="aparte"><span class="rotulo">Cómo entra una restricción de estado</span>
+        <p>Queremos \(\theta_k\le\theta_{\max}\). \(\theta_k\) es una componente de \(X\): \(\theta_k = c^\top X = c^\top(\Phi x_0 + \Gamma U)\), con \(c\) el vector que selecciona esa componente.</p>
+        <p>La restricción queda \(c^\top\Gamma\,U \le \theta_{\max} - c^\top\Phi\,x_0\): una fila de \(G\) (\(c^\top\Gamma\)), una de \(w\) (\(\theta_{\max}\)) y una de \(E\) (\(-c^\top\Phi\)). Así se construyó el MPC del límite de inclinación de la hoja «MPC frente a un LQR saturado».</p>
+      </div>
+      <div class="callout clave"><span class="tag">Cuándo conviene</span>El QP en \(U\) es pequeño: con el x500 y \(N = 20\), 80 variables. Si el modelo no cambia, \(H\) se construye una vez fuera de línea.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Forma dispersa · 1</p>
+  <h2>Forma dispersa: la dinámica como restricción y las condiciones KKT</h2>
+  <p>No se elimina nada: las variables son mandos <em>y</em> estados, \(z = (u_0, x_1, u_1, x_2,\dots)\), y la dinámica se impone como igualdades. En el mínimo de un problema con igualdades se cumplen las condiciones de <strong>Karush-Kuhn-Tucker (KKT)</strong>: se añade un multiplicador por restricción y se anula el gradiente del lagrangiano.</p>
+  \[ \mathcal L = \sum_{k=0}^{N-1}\big(x_k^\top Qx_k + u_k^\top Ru_k\big) + x_N^\top P_fx_N + \sum_{k=0}^{N-1}\lambda_{k+1}^\top\big(Ax_k + Bu_k - x_{k+1}\big) \]
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:56%">Condición</th><th>Qué dice</th></tr>
+        <tr><td>\(\partial\mathcal L/\partial u_k = 2Ru_k + B^\top\lambda_{k+1} = 0\)</td><td>El mando equilibra su coste con el precio del estado al que lleva</td></tr>
+        <tr><td>\(\partial\mathcal L/\partial x_k = 2Qx_k + A^\top\lambda_{k+1} - \lambda_k = 0\), \(1\le k\lt N\)</td><td>Los precios se propagan hacia atrás: el coestado</td></tr>
+        <tr><td>\(\partial\mathcal L/\partial x_N = 2P_fx_N - \lambda_N = 0\)</td><td>Condición final</td></tr>
+        <tr><td>\(\partial\mathcal L/\partial\lambda_{k+1} = Ax_k + Bu_k - x_{k+1} = 0\)</td><td>Se cumple la dinámica</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números</span>El mismo ejemplo (\(N = 2\), \(x_0 = 1\)): \(\lambda_2 = 2\cdot0\cdot x_2 = 0\); \(\lambda_1 = 2x_1 + \lambda_2 = 2x_1\); \(u_0 = -\lambda_1/2 = -x_1\); y la dinámica \(x_1 = 1 + u_0\) da \(x_1 = 0{,}5\), \(u_0 = -0{,}5\), \(\lambda_1 = 1\). El sistema lineal de 6×6 del script da lo mismo (ejemplo 7).</div>
+      <p>\(\lambda_k = 2\Pi_kx_k\): el multiplicador es el gradiente de la función de valor. En el ejemplo, \(\lambda_1 = 2\cdot1\cdot0{,}5 = 1\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Forma dispersa · 2</p>
+  <h2>La matriz KKT es de banda, y eliminarla desde el final es Riccati</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 300 270" style="max-height:300px" role="img" aria-label="Patrón de elementos no nulos de la matriz KKT con horizonte 3, concentrados en una banda alrededor de la diagonal">
+        <rect x="64" y="40" width="216" height="216" fill="none" class="ln-rule"/>
+        <g class="fill-accent"><rect x="64" y="40" width="22" height="22" rx="2"/><rect x="88" y="40" width="22" height="22" rx="2"/><rect x="64" y="64" width="22" height="22" rx="2"/><rect x="112" y="64" width="22" height="22" rx="2"/><rect x="88" y="88" width="22" height="22" rx="2"/><rect x="112" y="88" width="22" height="22" rx="2"/><rect x="160" y="88" width="22" height="22" rx="2"/><rect x="136" y="112" width="22" height="22" rx="2"/><rect x="160" y="112" width="22" height="22" rx="2"/><rect x="112" y="136" width="22" height="22" rx="2"/><rect x="136" y="136" width="22" height="22" rx="2"/><rect x="184" y="136" width="22" height="22" rx="2"/><rect x="160" y="160" width="22" height="22" rx="2"/><rect x="184" y="160" width="22" height="22" rx="2"/><rect x="232" y="160" width="22" height="22" rx="2"/><rect x="208" y="184" width="22" height="22" rx="2"/><rect x="232" y="184" width="22" height="22" rx="2"/><rect x="184" y="208" width="22" height="22" rx="2"/><rect x="208" y="208" width="22" height="22" rx="2"/><rect x="256" y="208" width="22" height="22" rx="2"/><rect x="232" y="232" width="22" height="22" rx="2"/><rect x="256" y="232" width="22" height="22" rx="2"/></g>
+        <g class="t-mono t-muted" font-size="11" text-anchor="end">
+          <text x="58" y="56">u0</text><text x="58" y="80">λ1</text><text x="58" y="104">x1</text><text x="58" y="128">u1</text><text x="58" y="152">λ2</text>
+          <text x="58" y="176">x2</text><text x="58" y="200">u2</text><text x="58" y="224">λ3</text><text x="58" y="248">x3</text>
+        </g>
+        <g class="t-mono t-muted" font-size="11" text-anchor="middle">
+          <text x="76" y="32">u0</text><text x="100" y="32">λ1</text><text x="124" y="32">x1</text><text x="148" y="32">u1</text><text x="172" y="32">λ2</text>
+          <text x="196" y="32">x2</text><text x="220" y="32">u2</text><text x="244" y="32">λ3</text><text x="268" y="32">x3</text>
+        </g>
+      </svg>
+      <figcaption>No nulos de la matriz KKT del integrador con \(N = 3\), con las variables ordenadas por etapas. Ejemplo 7 del script.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Banda.</strong> Ordenadas por etapas, las variables de un paso solo se tocan con las de ese paso y el siguiente. El ancho de la banda depende de \(n\) y \(m\), no de \(N\).</li>
+        <li><strong>Eliminar desde el final.</strong> La última condición da \(\lambda_N = 2P_fx_N\). Metida en la de \(u_{N-1}\) con la dinámica, sale \((R + B^\top P_fB)u_{N-1} = -B^\top P_fAx_{N-1}\): \(u_{N-1} = -K_{N-1}x_{N-1}\). Y la de \(x_{N-1}\) da \(\lambda_{N-1} = 2\Pi_{N-1}x_{N-1}\). Seguir hasta \(k = 0\) son exactamente las cuentas de Riccati.</li>
+        <li><strong>Coste.</strong> Cada paso de la eliminación trabaja con matrices de tamaño \(n\) y \(m\): el total crece como \(N\), no como \(N^3\).</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Idea clave</span>Condensada y dispersa resuelven el mismo QP y dan el mismo mando. Cambia el sistema lineal: uno pequeño y denso, o uno grande y de banda.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Desigualdades</p>
+  <h2>Con desigualdades, el multiplicador dice qué restricción manda</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 500 260" style="max-height:230px" role="img" aria-label="Parábola con mínimo en u igual a 2 y zona prohibida a la derecha de u igual a 1; la solución está en el borde, u igual a 1">
+          <rect x="260" y="20" width="220" height="210" class="box-soft"/>
+          <text x="370" y="40" class="t-muted" font-size="12" text-anchor="middle">u > 1: no admisible</text>
+          <line class="ln-rule" x1="50" y1="230" x2="480" y2="230"/>
+          <line class="ln-dash" x1="260" y1="20" x2="260" y2="230"/>
+          <path class="ln-accent" fill="none" stroke-width="2.4" d="M50.0,21.7 L57.0,29.9 L64.0,38.0 L71.0,45.9 L78.0,53.7 L85.0,61.2 L92.0,68.7 L99.0,75.9 L106.0,83.0 L113.0,89.9 L120.0,96.7 L127.0,103.2 L134.0,109.7 L141.0,115.9 L148.0,122.0 L155.0,127.9 L162.0,133.7 L169.0,139.2 L176.0,144.7 L183.0,149.9 L190.0,155.0 L197.0,159.9 L204.0,164.7 L211.0,169.3 L218.0,173.7 L225.0,177.9 L232.0,182.0 L239.0,185.9 L246.0,189.7 L253.0,193.2 L260.0,196.7 L267.0,199.9 L274.0,203.0 L281.0,205.9 L288.0,208.7 L295.0,211.2 L302.0,213.7 L309.0,215.9 L316.0,218.0 L323.0,219.9 L330.0,221.7 L337.0,223.2 L344.0,224.7 L351.0,225.9 L358.0,227.0 L365.0,227.9 L372.0,228.7 L379.0,229.2 L386.0,229.7 L393.0,229.9 L400.0,230.0 L407.0,229.9 L414.0,229.7 L421.0,229.2 L428.0,228.7 L435.0,227.9 L442.0,227.0 L449.0,225.9 L456.0,224.7 L463.0,223.2 L470.0,221.7"/>
+          <circle cx="400" cy="230" r="5" fill="none" class="ln-tesis" stroke-width="2"/>
+          <text x="400" y="216" class="t-tesis" font-size="12" text-anchor="middle">u = 2 (sin restricción)</text>
+          <circle cx="260" cy="196.7" r="6" class="fill-accent"/>
+          <text x="268" y="186" class="t-accent" font-size="12">u* = 1, λ = 1</text>
+          <circle cx="173.5" cy="142.7" r="4" class="fill-time"/><text x="162" y="152" class="t-time t-mono" font-size="11" text-anchor="end">μ = 1</text>
+          <circle cx="247.2" cy="190.3" r="4" class="fill-time"/><text x="238" y="210" class="t-time t-mono" font-size="11" text-anchor="end">μ = 0,1</text>
+          <g class="t-mono t-muted" font-size="12" text-anchor="middle">
+            <text x="50" y="248">−0,5</text><text x="190" y="248">0,5</text><text x="260" y="248">1</text><text x="400" y="248">2</text><text x="470" y="248">u</text>
+          </g>
+        </svg>
+        <figcaption>\(\tfrac12(u-2)^2\) con \(u\le 1\). En naranja (color del tiempo), los puntos de la barrera del punto interior. Ejemplo 8 del script.</figcaption>
+      </figure>
+      <p>El problema más pequeño posible: \(\min_u\tfrac12(u-2)^2\) s.a. \(g(u) = u - 1\le 0\), con lagrangiano \(\tfrac12(u-2)^2 + \lambda(u - 1)\).</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Condición KKT</th><th>En el ejemplo</th></tr>
+          <tr><td>Estacionariedad: \(\nabla_u\mathcal L = 0\)</td><td>\(u - 2 + \lambda = 0\)</td></tr>
+          <tr><td>Factibilidad primal: \(g(u)\le 0\)</td><td>\(u\le 1\)</td></tr>
+          <tr><td>Factibilidad dual: \(\lambda\ge 0\)</td><td>La restricción solo puede empujar hacia dentro</td></tr>
+          <tr><td>Complementariedad: \(\lambda\,g(u) = 0\)</td><td>O no está activa (\(\lambda = 0\)) o lo está (\(u = 1\))</td></tr>
+        </table>
+      </div>
+      <p>Con \(\lambda = 0\) saldría \(u = 2\), que no es admisible. Con la restricción activa, \(u = 1\) y \(\lambda = 1\ge 0\): es el óptimo.</p>
+      <div class="callout clave"><span class="tag">Qué es \(\lambda\)</span>Lo que bajaría el coste óptimo por cada unidad que se relaje el límite: con el límite en \(b\), el óptimo vale \(\tfrac12(b-2)^2\), y su derivada en \(b = 1\) es \(-1\). Un \(\lambda\) grande señala la restricción que más le cuesta al MPC.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker"><em>Solvers</em> de QP · 1</p>
+  <h2>Tres maneras de averiguar qué restricciones están activas</h2>
+  <p>Lo difícil de un QP con desigualdades es la complementariedad: no se sabe de antemano qué restricciones van a estar activas. Las tres familias de <em>solvers</em> lo resuelven de forma distinta. En el ejemplo de la hoja anterior:</p>
+  <div class="cols c3 body">
+    <div class="card">
+      <span class="meta">CONJUNTO ACTIVO</span>
+      <h3>Adivinar y comprobar</h3>
+      <p>Supone un conjunto de restricciones activas, las trata como igualdades y resuelve un sistema lineal. Si algún \(\lambda\) sale negativo o se viola otra restricción, cambia el conjunto.</p>
+      <p>Aquí: sin restricciones, \(u = 2\) viola el límite; con \(u\le1\) activa, \(\lambda = 1\ge 0\). Dos sistemas lineales.</p>
+    </div>
+    <div class="card">
+      <span class="meta">PUNTO INTERIOR</span>
+      <h3>Una barrera que se afina</h3>
+      <p>Cambia la restricción por una barrera, \(\tfrac12(u-2)^2 - \mu\log(1 - u)\), que se hace infinita en el borde, y va bajando \(\mu\).</p>
+      <p>Aquí: \(u(\mu) = 0{,}38;\ 0{,}91;\ 0{,}990;\ 0{,}999\) para \(\mu = 1;\ 0{,}1;\ 0{,}01;\ 0{,}001\), y \(\mu/(1-u)\to 1 = \lambda\). Cada iteración es un sistema lineal de la misma forma.</p>
+    </div>
+    <div class="card">
+      <span class="meta">OPERADORES (ADMM)</span>
+      <h3>Resolver y proyectar</h3>
+      <p>Alterna un paso sin restricciones, una proyección sobre el conjunto admisible (aquí, recortar a \(z\le 1\)) y una actualización del multiplicador \(y\).</p>
+      <p>Aquí, con \(\rho = 1\): \(u = 1;\ 1{,}5;\ 1{,}25;\ 1{,}125;\ 1{,}06\dots\to 1\) e \(y\to 1 = \lambda\). Iteraciones baratísimas, convergencia lenta.</p>
+    </div>
+  </div>
+  <p class="xsmall muted">Ejemplo 8 del script. En ADMM, \(u\) minimiza el lagrangiano aumentado con penalización \(\rho\), \(z\) es la copia proyectada de \(u\) e \(y\) el multiplicador de \(u = z\).</p>
 </section>
 
 <section class="slide">
   <p class="kicker">Coste computacional</p>
   <h2>Condensar sale a cuenta con horizontes cortos; Riccati gana con los largos</h2>
   <div class="cols w60">
+    <div class="stack">
     <figure class="fig">
-      <svg viewBox="0 0 520 300" role="img" aria-label="Operaciones en coma flotante para resolver el QP del MPC con Riccati y con la forma condensada en función del horizonte">
+      <svg viewBox="0 0 520 300" style="max-height:250px" role="img" aria-label="Operaciones en coma flotante para resolver el QP del MPC con Riccati y con la forma condensada en función del horizonte">
         <line class="ln-rule" x1="60" y1="250" x2="500" y2="250"/>
         <line class="ln-rule" x1="60" y1="30" x2="60" y2="250"/>
         <path class="ln-accent" fill="none" stroke-width="2.4" d="M60.0,194.0 L148.0,182.9 L236.0,171.9 L324.0,160.9 L412.0,149.8 L500.0,138.8"/>
@@ -249,33 +748,34 @@
           <text x="60" y="268" text-anchor="middle">5</text>
           <text x="236" y="268" text-anchor="middle">20</text>
           <text x="500" y="268" text-anchor="end">160 = N</text>
-          <text x="52" y="254" text-anchor="end">1</text>
-          <text x="52" y="181" text-anchor="end">10³</text>
-          <text x="52" y="107" text-anchor="end">10⁶</text>
+          <text x="52" y="254" text-anchor="end">10³</text>
+          <text x="52" y="181" text-anchor="end">10⁵</text>
+          <text x="52" y="107" text-anchor="end">10⁷</text>
           <text x="52" y="34" text-anchor="end">10⁹</text>
           <text x="64" y="44" class="t-faint">flop</text>
         </g>
         <g font-size="13">
-          <text x="380" y="74" class="t-tesis">condensado ∝ N³</text>
+          <text x="250" y="80" class="t-tesis">condensado ∝ N³</text>
           <text x="380" y="168" class="t-accent">Riccati ∝ N</text>
         </g>
       </svg>
       <figcaption>Con \(n\) = 12 estados y \(m\) = 4 entradas, como el x500. Fórmulas de recuento de Rawlings, Mayne y Diehl <a class="cite" data-ref="rmd2017"></a>; cálculo en <code>figuras/figuras_a3a.py</code>.</figcaption>
     </figure>
+      <div class="callout realidad"><span class="tag">Cómputo limitado</span>0,7 Mflop por factorización son décimas de milisegundo en un PC, y un punto interior necesita una factorización por iteración. En un microcontrolador de 168 MHz sin unidad vectorial ya es otra historia: de ahí TinyMPC (parte 5).</div>
+    </div>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Riccati</strong> (forma dispersa): unos \(N(\tfrac73n^3 + 4n^2m + 2nm^2 + \tfrac13m^3)\) flop, lineal en \(N\).</li>
         <li><strong>Condensar y factorizar</strong>: unos \(\tfrac13N^3nm^2 + \tfrac13N^3m^3\), cúbico en \(N\).</li>
         <li>Condensando en cada muestra, como en un NMPC con linealizaciones que cambian: ×5 con \(N\) = 20 (0,13 frente a 0,68 Mflop) y ×324 con \(N\) = 160. En un MPC lineal invariante, \(H\) se construye fuera de línea y solo se factoriza: ×1,3 y ×81.</li>
         <li>La <strong>condensación parcial</strong> (bloques de varios pasos) queda en medio y es lo que suele usar acados con HPIPM <a class="cite" data-ref="frison2020,verschueren2022"></a>.</li>
       </ul>
-      <div class="callout realidad"><span class="tag">Cómputo limitado</span>0,7 Mflop por factorización son décimas de milisegundo en un PC, y un punto interior necesita una factorización por iteración. En un microcontrolador de 168 MHz sin unidad vectorial ya es otra historia: de ahí TinyMPC (parte 5).</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker"><em>Solvers</em> de QP</p>
+  <p class="kicker"><em>Solvers</em> de QP · 2</p>
   <h2>Tres familias, y cada una encaja en un sitio distinto</h2>
   <div class="table-wrap">
     <table class="t">
@@ -292,22 +792,72 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Estabilidad</p>
+  <p class="kicker">Estabilidad · 1</p>
   <h2>Coste terminal como función de Lyapunov y conjunto terminal invariante</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Optimizar a horizonte finito no garantiza estabilizar. Condiciones suficientes <a class="cite" data-ref="rmd2017,mayne2000"></a>:</p>
-      <ol class="small">
-        <li>En \(\mathbb X_f\) existe un mando admisible con \(f(x,u)\in\mathbb X_f\) y \(V_f(f(x,u)) - V_f(x) \le -\ell(x,u)\): \(\mathbb X_f\) es invariante controlado y \(V_f\) es una función de Lyapunov de control local.</li>
+      <p>Optimizar a horizonte finito no garantiza estabilizar: con \(N\) corto y sin coste terminal, el MPC es miope (hoja «Horizonte finito»). Condiciones suficientes <a class="cite" data-ref="rmd2017,mayne2000"></a>:</p>
+      <ol>
+        <li>En \(\mathbb X_f\) existe un mando admisible \(u = \kappa_f(x)\) con \(f(x,u)\in\mathbb X_f\) y \(V_f(f(x,u)) - V_f(x) \le -\ell(x,u)\).</li>
         <li>\(\ell\) y \(V_f\) están acotados por funciones de clase \(\mathcal K_\infty\) del estado.</li>
       </ol>
-      <p class="small">Entonces el origen es asintóticamente estable en la región donde el problema es factible. Elección típica en el caso lineal: \(V_f\) = coste del LQR (la DARE) y \(\mathbb X_f\) invariante bajo la ley LQR.</p>
+      <p>Entonces el origen es asintóticamente estable en la región donde el problema es factible. Elección típica en el caso lineal: \(V_f\) = coste del LQR (la DARE) y \(\mathbb X_f\) invariante bajo la ley LQR.</p>
+      <div class="callout realidad"><span class="tag">En drones</span>Casi ningún NMPC de vuelo impone \(\mathbb X_f\): se usa un coste terminal razonable y un horizonte que cubre la dinámica lenta. Funciona, pero la garantía formal se pierde, y con perturbaciones la factibilidad tampoco está asegurada.</div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Desplazar y añadir: la demostración en tres líneas</summary>
-        <p class="small">Sea \(u^\star = (u_0^\star,\dots,u_{N-1}^\star)\) óptimo en \(x\) y \(x^+ = f(x,u_0^\star)\). La secuencia \(\tilde u = (u_1^\star,\dots,u_{N-1}^\star,\kappa_f(x_N^\star))\) es factible en \(x^+\), porque \(x_N^\star\in\mathbb X_f\) y la ley terminal lo mantiene ahí: eso es la <strong>factibilidad recursiva</strong>. Su coste es \(V_N^\star(x) - \ell(x,u_0^\star) + [\ell(x_N^\star,\kappa_f) + V_f(x_{N+1}) - V_f(x_N^\star)]\), y el corchete es \(\le 0\) por la condición 1. Así que \(V_N^\star(x^+) \le V_N^\star(x) - \ell(x,u_0^\star)\): el coste óptimo es una función de Lyapunov.</p>
-      </details>
-      <div class="callout realidad"><span class="tag">En drones</span>Casi ningún NMPC de vuelo impone \(\mathbb X_f\): se usa un coste terminal razonable y un horizonte que cubre la dinámica lenta. Funciona, pero la garantía formal se pierde, y con perturbaciones la factibilidad tampoco está asegurada.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:34%">Término</th><th>En palabras</th></tr>
+          <tr><td>\(\kappa_f\), ley terminal</td><td>Una ley que se sabe que funciona cerca del objetivo: el LQR</td></tr>
+          <tr><td>\(\mathbb X_f\) invariante controlado</td><td>Si empiezas dentro y usas \(\kappa_f\), sigues dentro y respetas las restricciones</td></tr>
+          <tr><td>\(V_f(f) - V_f \le -\ell\)</td><td>Con esa ley, el coste terminal baja al menos lo que se paga en ese paso: \(V_f\) es una <strong>función de Lyapunov de control local</strong>, una «energía» que solo puede bajar</td></tr>
+          <tr><td>Clase \(\mathcal K_\infty\)</td><td>Funciones de una variable que valen 0 en 0, crecen y no están acotadas: el coste es pequeño solo cerca del origen</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Compruébalo en el integrador</span>
+        <p>Con \(|u|\le 0{,}5\), \(\kappa_f(x) = -0{,}618x\) y \(V_f = 2x^2\): \(V_f(x^+) - V_f(x) = 2(0{,}382^2 - 1)x^2 = -1{,}71x^2\), por debajo de \(-\ell = -(1 + 0{,}618^2)x^2 = -1{,}38x^2\). Vale cualquier \(V_f = px^2\) con \(p\ge 1{,}618 = \Pi_\infty\). \(\mathbb X_f = [-0{,}809;\ 0{,}809]\): ahí \(|\kappa_f(x)|\le 0{,}5\), y \(x^+ = 0{,}382x\) no sale. Ejemplo 9.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estabilidad · 2</p>
+  <h2>Desplazar y añadir: el coste óptimo hace de función de Lyapunov</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 420 220" role="img" aria-label="Arriba el plan óptimo en x con mandos u0 a u N menos 1; abajo el plan candidato en x más, que reutiliza u1 a u N menos 1 y añade la ley terminal al final">
+          <g font-size="13" class="t-mono" text-anchor="middle">
+            <text x="10" y="20" text-anchor="start" class="t-muted" font-size="12">plan óptimo en x</text>
+            <rect class="box-accent" x="10" y="30" width="70" height="34" rx="4"/><text x="45" y="52">u₀*</text>
+            <rect class="box" x="90" y="30" width="70" height="34" rx="4"/><text x="125" y="52">u₁*</text>
+            <rect class="box" x="170" y="30" width="70" height="34" rx="4"/><text x="205" y="52">…</text>
+            <rect class="box" x="250" y="30" width="70" height="34" rx="4"/><text x="285" y="52">u*_N−1</text>
+            <text x="370" y="52" class="t-tesis">x*_N ∈ X_f</text>
+            <text x="10" y="128" text-anchor="start" class="t-muted" font-size="12">candidato en x⁺ (desplazado)</text>
+            <rect class="box" x="90" y="138" width="70" height="34" rx="4"/><text x="125" y="160">u₁*</text>
+            <rect class="box" x="170" y="138" width="70" height="34" rx="4"/><text x="205" y="160">…</text>
+            <rect class="box" x="250" y="138" width="70" height="34" rx="4"/><text x="285" y="160">u*_N−1</text>
+            <rect class="box-tesis" x="330" y="138" width="80" height="34" rx="4"/><text x="370" y="160">κ_f(x*_N)</text>
+          </g>
+          <g class="ln-dash"><path d="M125 66 V134"/><path d="M205 66 V134"/><path d="M285 66 V134"/></g>
+          <text x="45" y="100" font-size="12" class="t-accent" text-anchor="middle">se aplica</text>
+          <text x="370" y="200" font-size="12" class="t-tesis" text-anchor="middle">se añade al final</text>
+          <text x="205" y="210" font-size="12" class="t-muted" text-anchor="middle">el candidato es factible, aunque no óptimo</text>
+        </svg>
+      </figure>
+      <div class="callout realidad"><span class="tag">Con números</span>Integrador, \(|u|\le 0{,}5\), \(V_f = 2x^2\), \(N = 2\), en \(x = 1\): \(U^\star\) = (−0,5; −0,333), \(V^\star = 1{,}667\), \(\ell = 1{,}25\). Candidato en \(x^+ = 0{,}5\): (−0,333; −0,103), coste 0,408 ≤ 1,667 − 1,25 = 0,417. El óptimo en \(x^+\) vale 0,406. Ejemplo 9.</div>
+    </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(u^\star = (u_0^\star,\dots,u_{N-1}^\star)\) óptimo en \(x\); \(x^+ = f(x,u_0^\star)\)</td><td>Lo que hace el MPC: aplicar el primer mando</td></tr>
+        <tr><td><strong>2</strong></td><td>\(\tilde u = (u_1^\star,\dots,u_{N-1}^\star,\kappa_f(x_N^\star))\) es factible en \(x^+\)</td><td>Los \(N-1\) primeros ya eran admisibles; \(x_N^\star\in\mathbb X_f\), donde \(\kappa_f\) es admisible y no deja salir: <strong>factibilidad recursiva</strong></td></tr>
+        <tr><td><strong>3</strong></td><td>\(\begin{aligned}\text{coste}(\tilde u) = {} & V_N^\star(x) - \ell(x,u_0^\star)\\ & + [\ell(x_N^\star,\kappa_f) + V_f(x_{N+1}) - V_f(x_N^\star)]\end{aligned}\)</td><td>Comparten las etapas 1 a \(N-1\); sale la etapa 0, entra una nueva y cambia el coste terminal</td></tr>
+        <tr><td><strong>4</strong></td><td>El corchete es \(\le 0\)</td><td>Condición 1 de la hoja anterior</td></tr>
+        <tr><td><strong>5</strong></td><td>\(V_N^\star(x^+)\le\text{coste}(\tilde u)\le V_N^\star(x) - \ell(x,u_0^\star)\)</td><td>El óptimo en \(x^+\) no puede ser peor que un candidato factible. El coste óptimo baja en cada muestra al menos \(\ell\): es una función de Lyapunov</td></tr>
+      </table>
     </div>
   </div>
 </section>
@@ -347,7 +897,7 @@
       <figcaption>Eje x del x500 linealizado a 50 Hz, salto de 1 m, mismos pesos. MPC con \(N\) = 50 (1 s), coste terminal de la DARE y \(|\theta| \le 20°\), resuelto con un ADMM al estilo de OSQP. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>El LQR con el par saturado llega a 53° de inclinación, muy por encima del límite y fuera de donde vale la linealización. El MPC se queda en 20,0°.</li>
         <li>El MPC tarda algo más (1,32 s frente a 1,16 s para quedarse en el 5 %): es el precio de respetar la restricción. Ambos usan los mismos pesos, \(Q = \operatorname{diag}(10; 1; 1; 0{,}01)\) y \(R = 0{,}05\), distintos de los de Bryson de la parte 1.</li>
         <li>Con un salto de 2 m, el LQR saturado <strong>diverge</strong> en el modelo lineal: saturar una cadena de cuatro integradores puede desestabilizar el lazo.</li>
@@ -362,51 +912,145 @@
   <h2>Resolver el QP fuera de línea, para todos los estados posibles</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Para un MPC lineal, la solución es una función <strong>afín a trozos y continua</strong> del estado: el espacio de estados se parte en regiones poliédricas, y en cada una el mando es \(u = F_ix + g_i\) <a class="cite" data-ref="bemporad2002"></a>.</p>
-      <ul class="small">
+      <p>Para un MPC lineal, la solución es una función <strong>afín a trozos y continua</strong> del estado: el espacio de estados se parte en regiones poliédricas, una por cada conjunto de restricciones activas, y en cada una el mando es \(u = F_ix + g_i\) <a class="cite" data-ref="bemporad2002"></a>.</p>
+      <ul>
         <li>En línea solo hay que localizar la región y evaluar un afín: microsegundos y sin <em>solver</em>.</li>
         <li>El número de regiones crece de forma combinatoria con el horizonte y las restricciones. Hay problemas de dos estados que necesitan más de 10⁵ regiones, y en la práctica solo es razonable con unos pocos estados <a class="cite" data-ref="rmd2017"></a>.</li>
       </ul>
     </div>
     <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 240" style="max-height:220px" role="img" aria-label="Mando óptimo en función del estado: recta de pendiente negativa en el centro y saturado a más y menos 0,5 fuera, con siete regiones marcadas">
+          <line class="ln-rule" x1="60" y1="120" x2="500" y2="120"/>
+          <line class="ln-rule" x1="280" y1="20" x2="280" y2="220"/>
+          <g class="ln-dash">
+            <line x1="180.5" y1="20" x2="180.5" y2="220"/><line x1="208.0" y1="20" x2="208.0" y2="220"/><line x1="235.5" y1="20" x2="235.5" y2="220"/>
+            <line x1="324.5" y1="20" x2="324.5" y2="220"/><line x1="352.0" y1="20" x2="352.0" y2="220"/><line x1="379.5" y1="20" x2="379.5" y2="220"/>
+          </g>
+          <path class="ln-accent" fill="none" stroke-width="2.6" d="M60.0,45.0 L62.7,45.0 L65.5,45.0 L68.2,45.0 L71.0,45.0 L73.8,45.0 L76.5,45.0 L79.2,45.0 L82.0,45.0 L84.8,45.0 L87.5,45.0 L90.3,45.0 L93.0,45.0 L95.8,45.0 L98.5,45.0 L101.2,45.0 L104.0,45.0 L106.8,45.0 L109.5,45.0 L112.2,45.0 L115.0,45.0 L117.8,45.0 L120.5,45.0 L123.2,45.0 L126.0,45.0 L128.8,45.0 L131.5,45.0 L134.2,45.0 L137.0,45.0 L139.8,45.0 L142.5,45.0 L145.2,45.0 L148.0,45.0 L150.8,45.0 L153.5,45.0 L156.2,45.0 L159.0,45.0 L161.8,45.0 L164.5,45.0 L167.2,45.0 L170.0,45.0 L172.8,45.0 L175.5,45.0 L178.2,45.0 L181.0,45.0 L183.8,45.0 L186.5,45.0 L189.3,45.0 L192.0,45.0 L194.8,45.0 L197.5,45.0 L200.2,45.0 L203.0,45.0 L205.8,45.0 L208.5,45.0 L211.2,45.0 L214.0,45.0 L216.8,45.0 L219.5,45.0 L222.2,45.0 L225.0,45.0 L227.8,45.0 L230.5,45.0 L233.3,45.0 L236.0,45.8 L238.8,50.5 L241.5,55.1 L244.3,59.7 L247.0,64.4 L249.8,69.0 L252.5,73.6 L255.2,78.3 L258.0,82.9 L260.8,87.6 L263.5,92.2 L266.2,96.8 L269.0,101.5 L271.8,106.1 L274.5,110.7 L277.2,115.4 L280.0,120.0 L282.8,124.6 L285.5,129.3 L288.2,133.9 L291.0,138.5 L293.8,143.2 L296.5,147.8 L299.2,152.4 L302.0,157.1 L304.8,161.7 L307.5,166.4 L310.2,171.0 L313.0,175.6 L315.8,180.3 L318.5,184.9 L321.2,189.5 L324.0,194.2 L326.8,195.0 L329.5,195.0 L332.2,195.0 L335.0,195.0 L337.8,195.0 L340.5,195.0 L343.2,195.0 L346.0,195.0 L348.8,195.0 L351.5,195.0 L354.3,195.0 L357.0,195.0 L359.8,195.0 L362.5,195.0 L365.2,195.0 L368.0,195.0 L370.8,195.0 L373.5,195.0 L376.2,195.0 L379.0,195.0 L381.8,195.0 L384.5,195.0 L387.2,195.0 L390.0,195.0 L392.8,195.0 L395.5,195.0 L398.2,195.0 L401.0,195.0 L403.8,195.0 L406.5,195.0 L409.2,195.0 L412.0,195.0 L414.7,195.0 L417.5,195.0 L420.3,195.0 L423.0,195.0 L425.8,195.0 L428.5,195.0 L431.2,195.0 L434.0,195.0 L436.8,195.0 L439.5,195.0 L442.3,195.0 L445.0,195.0 L447.8,195.0 L450.5,195.0 L453.2,195.0 L456.0,195.0 L458.8,195.0 L461.5,195.0 L464.2,195.0 L467.0,195.0 L469.8,195.0 L472.5,195.0 L475.3,195.0 L478.0,195.0 L480.8,195.0 L483.5,195.0 L486.2,195.0 L489.0,195.0 L491.8,195.0 L494.5,195.0 L497.3,195.0 L500.0,195.0"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="60" y="236" text-anchor="middle">−4</text><text x="280" y="236" text-anchor="middle">0</text><text x="500" y="236" text-anchor="end">4 = x</text>
+            <text x="52" y="49" text-anchor="end">0,5</text><text x="52" y="199" text-anchor="end">−0,5</text>
+          </g>
+          <text x="290" y="100" class="t-accent" font-size="12">u = −0,618 x</text>
+          <text x="120" y="38" class="t-muted" font-size="12" text-anchor="middle">u₀ saturado</text>
+        </svg>
+        <figcaption>\(u_0^\star(x)\) del integrador con \(|u|\le0{,}5\), \(N = 3\), \(P_f = \Pi_\infty\): 7 regiones. En la central, el LQR; en las otras, \(u_0\) saturado y las regiones se distinguen por cuántos mandos futuros del plan están también en el límite. Con \(N\) = 1…5 salen 3, 5, 7, 9 y 11. Ejemplo 10.</figcaption>
+      </figure>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Destilar un MPC en una red (A10) es una versión aproximada y sin explosión combinatoria de esta misma idea: aprender la ley \(x\mapsto u^\star(x)\) fuera de línea y evaluarla en microsegundos. Pierdes la garantía de respetar las restricciones, que tendrá que devolverte un filtro de seguridad (A14).</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Seguimiento sin error estacionario</p>
+  <p class="kicker">Seguimiento sin error estacionario · 1</p>
+  <h2>Con un modelo imperfecto, el MPC se queda corto: el error estacionario</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 230" role="img" aria-label="Diagrama de bloques: estimador, cálculo de objetivo, MPC y planta en lazo; la perturbación entra en la planta">
+          <defs><marker id="a3of" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <rect class="box" x="10" y="30" width="120" height="50" rx="6"/><text x="70" y="52" text-anchor="middle" font-size="13" class="t-bold">Estimador</text><text x="70" y="70" text-anchor="middle" font-size="12" class="t-mono">x̂, d̂</text>
+          <rect class="box-tesis" x="190" y="30" width="140" height="50" rx="6"/><text x="260" y="52" text-anchor="middle" font-size="13" class="t-bold">Objetivo</text><text x="260" y="70" text-anchor="middle" font-size="12" class="t-mono">x_s, u_s</text>
+          <rect class="box-accent" x="390" y="30" width="120" height="50" rx="6"/><text x="450" y="60" text-anchor="middle" font-size="13" class="t-bold">MPC</text>
+          <rect class="box" x="300" y="150" width="140" height="50" rx="6"/><text x="370" y="180" text-anchor="middle" font-size="13" class="t-bold">Planta</text>
+          <g class="ln">
+            <path d="M130 55 H186" marker-end="url(#a3of)"/><path d="M330 55 H386" marker-end="url(#a3of)"/>
+            <path d="M450 80 V175 H444" marker-end="url(#a3of)"/>
+            <path d="M300 175 H70 V84" marker-end="url(#a3of)"/>
+            <path d="M260 4 V26" marker-end="url(#a3of)"/>
+            <path d="M370 222 V204" marker-end="url(#a3of)"/>
+            <path d="M100 80 C120 110 380 110 420 84" marker-end="url(#a3of)" stroke-dasharray="3 3"/>
+          </g>
+          <text x="270" y="16" font-size="12" class="t-mono">r</text>
+          <text x="462" y="130" font-size="12" class="t-mono">u</text>
+          <text x="180" y="192" font-size="12" class="t-mono">y (medida)</text>
+          <text x="382" y="222" font-size="12" class="t-mono t-time">d (viento, masa)</text>
+          <text x="260" y="122" font-size="12" class="t-mono t-muted" text-anchor="middle">x̂ (estado inicial del plan)</text>
+        </svg>
+        <figcaption>El estimador da estado y perturbación; el cálculo de objetivo busca el equilibrio que compensa la perturbación; el MPC lleva el estado a ese equilibrio.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">En drones</span>Es lo que hace el integrador del lazo de velocidad de PX4 o la medida de aceleración de INDI (A2): estimar una perturbación constante y compensarla. Torrente et al. van más allá y aprenden con un proceso gaussiano la parte del modelo que falta <a class="cite" data-ref="torrente2021"></a>.</div>
+    </div>
+    <div class="stack">
+      <p>Planta \(x_{k+1} = x_k + u_k + d\) con un empuje constante \(d = 0{,}2\) que el modelo no tiene. Con la ley \(u = -0{,}618\,x\) de la hoja «Horizonte infinito», el equilibrio cumple \(x = x - 0{,}618\,x + 0{,}2\): el dron se queda en \(x = 0{,}2/0{,}618 = 0{,}324\), no en 0.</p>
+      <p>Arreglo: estimar \(d\) junto al estado y apuntar a un equilibrio que la compense, \(u_s = -\hat d\). Con un estimador que corrige \(\hat d\) con la mitad del error de predicción de cada paso:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Paso</th><th>1</th><th>2</th><th>5</th><th>10</th><th>20</th></tr>
+          <tr><td>\(x\)</td><td class="n">0,200</td><td class="n">0,176</td><td class="n">0,039</td><td class="n">0,002</td><td class="n">0,000</td></tr>
+          <tr><td>\(\hat d\)</td><td class="n">0,100</td><td class="n">0,150</td><td class="n">0,194</td><td class="n">0,200</td><td class="n">0,200</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Ejemplo 11 del script, desde \(x = 0\) y \(\hat d = 0\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Seguimiento sin error estacionario · 2</p>
   <h2>Un MPC solo llega a la referencia si su modelo explica las perturbaciones</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Con un modelo imperfecto (masa mal estimada, viento constante), el MPC de regulación se queda a una distancia fija de la referencia. La solución clásica es un <strong>modelo de perturbación integradora</strong> estimado junto al estado <a class="cite" data-ref="rmd2017"></a>:</p>
+      <p>La solución clásica es un <strong>modelo de perturbación integradora</strong> estimado junto al estado <a class="cite" data-ref="rmd2017"></a>:</p>
       \[ \begin{aligned} x_{k+1} &= Ax_k + Bu_k + B_d d_k,\qquad d_{k+1} = d_k\\ y_k &= Cx_k + C_d d_k \end{aligned} \]
-      <p class="small">El estimador da \((\hat x, \hat d)\) y un cálculo de objetivo busca el equilibrio \((x_s, u_s)\) que lleva la salida a la referencia con esa perturbación:</p>
+      <p>\(d_k\): perturbación constante; \(B_d\), \(C_d\): por dónde entra en la dinámica y en la medida; \(y_k\): lo que se mide, con matriz \(C\); \(r\): referencia de la salida. El objetivo \((x_s, u_s)\) es el equilibrio que deja la salida en \(r\) con la perturbación estimada:</p>
       \[ \begin{bmatrix} A - I & B\\ C & 0\end{bmatrix}\begin{bmatrix} x_s\\ u_s\end{bmatrix} = \begin{bmatrix} -B_d\hat d\\ r - C_d\hat d\end{bmatrix} \]
-      <p class="small">El MPC penaliza \(x - x_s\) y \(u - u_s\) en lugar de \(x\) y \(u\).</p>
+      <p>Primera fila: \(x_s = Ax_s + Bu_s + B_d\hat d\), un equilibrio. Segunda: su salida es \(r\). El MPC penaliza \(x - x_s\) y \(u - u_s\). En el ejemplo de la hoja anterior (\(A = B = B_d = C = 1\), \(C_d = 0\)): \(u_s = -\hat d\), \(x_s = r\).</p>
     </div>
     <div class="stack">
-      <details class="deriv"><summary>Por qué desaparece el error</summary>
-        <p class="small">En régimen estacionario, el estimador deja de corregir cuando la salida predicha coincide con la medida, y eso solo ocurre si \(\hat d\) explica exactamente la diferencia entre modelo y planta. El objetivo se calcula con ese \(\hat d\), así que el equilibrio al que lleva el MPC produce \(y = r\) en la planta real. Hace falta que el sistema aumentado sea detectable, que haya tantas perturbaciones como salidas medidas, que no se pidan más salidas que mandos y que el lazo cerrado converja.</p>
-      </details>
-      <div class="callout realidad"><span class="tag">En drones</span>Es lo que hace el integrador del lazo de velocidad de PX4 o la medida de aceleración de INDI (A2): estimar una perturbación constante y compensarla. Torrente et al. van más allá y aprenden con un proceso gaussiano la parte del modelo que falta <a class="cite" data-ref="torrente2021"></a>.</div>
+      <div class="aparte"><span class="rotulo">Por qué desaparece el error</span>
+        <p>En régimen estacionario, el estimador deja de corregir cuando la salida predicha coincide con la medida, y eso solo ocurre si \(\hat d\) explica exactamente la diferencia entre modelo y planta. El objetivo se calcula con ese \(\hat d\), así que el equilibrio al que lleva el MPC produce \(y = r\) en la planta real.</p>
+        <p>Hace falta que el sistema aumentado sea detectable, que haya tantas perturbaciones como salidas medidas, que no se pidan más salidas que mandos y que el lazo cerrado converja.</p>
+      </div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>El estado aumentado \((x, d)\) es un belief muy simple sobre lo que el modelo no sabe. Un world model con latentes de perturbación (A9) generaliza la misma idea.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Incertidumbre</p>
+  <p class="kicker">Incertidumbre · 1</p>
   <h2>MPC robusto, de tubo y estocástico: planificar sabiendo que el modelo falla</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Robustez inherente:</strong> un MPC nominal estable tolera perturbaciones pequeñas, pero sin garantía de mantener las restricciones.</li>
         <li><strong>Min-max:</strong> optimizar el peor caso de la perturbación. Riguroso y caro.</li>
-        <li><strong>MPC de tubo:</strong> se planifica una trayectoria nominal y una ley auxiliar \(u = \bar u + K(x - \bar x)\) mantiene el estado real dentro de un «tubo» alrededor de ella. Las restricciones de la nominal se estrechan en el tamaño del tubo.</li>
-        <li><strong>MPC estocástico:</strong> restricciones en probabilidad, \(\Pr(x_k\in\mathbb X) \ge 1-\varepsilon\), en lugar de para todo caso.</li>
+        <li><strong>MPC de tubo:</strong> se planifica una trayectoria nominal \((\bar x, \bar u)\) y una ley auxiliar \(u = \bar u + K(x - \bar x)\) mantiene el estado real dentro de un «tubo» alrededor de ella. Las restricciones de la nominal se estrechan en el tamaño del tubo.</li>
+        <li><strong>MPC estocástico:</strong> restricciones en probabilidad (hoja siguiente).</li>
       </ul>
       <p class="xsmall muted">Las cuatro familias están desarrolladas en el capítulo 3 de Rawlings, Mayne y Diehl <a class="cite" data-ref="rmd2017"></a>.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 500 290" role="img" aria-label="Trayectoria nominal con un tubo alrededor, la trayectoria real dentro del tubo y la restricción estrechada por debajo del límite real">
+        <line class="ln-tesis" x1="40" y1="40" x2="480" y2="40" stroke-width="2"/>
+        <text x="40" y="32" class="t-tesis" font-size="12">límite real, θ_max</text>
+        <line class="ln-dash" x1="40" y1="74" x2="480" y2="74"/>
+        <text x="40" y="94" class="t-muted" font-size="12">límite estrechado</text>
+        <path class="box-soft" d="M40,170 C140,170 190,40 280,40 C370,40 420,150 480,150 L480,218 C420,218 370,108 280,108 C190,108 140,238 40,238 Z"/>
+        <path class="ln-accent" fill="none" stroke-width="2.4" d="M40,204 C140,204 190,74 280,74 C370,74 420,184 480,184"/>
+        <path class="ln" fill="none" stroke-width="1.6" d="M40,204 C80,196 110,214 150,172 S200,96 240,88 S300,62 330,86 S400,170 430,170 S470,192 480,188"/>
+        <text x="40" y="264" class="t-accent" font-size="12">azul: nominal x̄, lo que se planifica</text>
+        <text x="40" y="284" class="t-muted" font-size="12">gris: estado real x, que la ley auxiliar mantiene dentro del tubo (sombreado)</text>
+        
+      </svg>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Incertidumbre · 2</p>
+  <h2>MPC estocástico: restricciones en probabilidad y el estado como distribución</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En lugar de exigir la restricción en todo caso, se exige con probabilidad alta: \(\Pr(x_k\in\mathbb X)\ge 1-\varepsilon\), con \(\mathbb X\) el conjunto de estados admisibles y \(\varepsilon\) la probabilidad de violarla que se tolera <a class="cite" data-ref="rmd2017"></a>.</p>
+      <p>Con un estimador, el estado es una gaussiana \(\mathcal N(\hat x,\Sigma)\): media \(\hat x\) y covarianza \(\Sigma\) (A4). Para una sola componente, \(\Pr(\theta\le\theta_{\max})\ge 1-\varepsilon\) equivale a \(\hat\theta\le\theta_{\max} - z_\varepsilon\sigma_\theta\), con \(\sigma_\theta\) la desviación típica y \(z_\varepsilon\) un cuantil de la normal: con \(z = 2\) queda fuera un 2,3 % por cada lado.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\sigma_\theta\)</th><th>1°</th><th>2°</th><th>4°</th></tr>
+          <tr><td>Límite para \(|\hat\theta|\) con \(\theta_{\max}\) = 20°</td><td class="n">18°</td><td class="n">16°</td><td class="n">12°</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
       <div class="callout tesis"><span class="tag">Observabilidad parcial</span>Con un estimador, el estado es una distribución \(\mathcal N(\hat x, \Sigma)\). Estrechar las restricciones con \(\Sigma\), por ejemplo exigir \(|\hat\theta| \le \theta_{\max} - 2\sigma_\theta\), es la forma más simple de planificar en el espacio de beliefs. A7 lo formaliza con los POMDP.</div>
@@ -414,6 +1058,7 @@
     </div>
   </div>
 </section>
+
 
 <!-- ============ PARTE 3 · NMPC Y RTI ============ -->
 <section class="slide divider" data-section="3 · NMPC y RTI">
@@ -423,9 +1068,29 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 3</p>
+  <h2>Las letras del NMPC, y dos que cambian de sentido</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Símbolo</th><th>Qué es</th><th style="width:28%">Ejemplo</th></tr>
+      <tr><td>\(s_k\)</td><td>Estado del nodo \(k\) <strong>como variable del optimizador</strong> (en disparo múltiple); \(s_0 = x(t)\)</td><td>12 números por nodo en el x500</td></tr>
+      <tr><td>\(q_k\)</td><td>Mando del intervalo \(k\) como variable. <strong>Aviso:</strong> no es la velocidad de cabeceo \(q\) de la parte 1</td><td>Empujes de los motores</td></tr>
+      <tr><td>\(\phi(s,q)\)</td><td>Integrador numérico: estado al final de un intervalo que empieza en \(s\) con mando \(q\)</td><td>Un paso de RK4 de 0,02–0,1 s</td></tr>
+      <tr><td>\(r(s_k,q_k)\), \(r_N(s_N)\)</td><td>Residuos: el coste es \(\tfrac12\|r\|^2\), la suma de sus cuadrados</td><td>Errores de posición y de mando ponderados</td></tr>
+      <tr><td>\(h(s,q)\le 0\)</td><td>Restricciones de desigualdad</td><td>Empuje entre 0 y el máximo</td></tr>
+      <tr><td>\(J_r\)</td><td>Jacobiano de los residuos respecto a las variables</td><td></td></tr>
+      <tr><td>\(\mathcal L\), \(\nabla^2\mathcal L\)</td><td>Lagrangiano (coste más multiplicadores por restricciones) y su hessiana</td><td></td></tr>
+      <tr><td>\(A_k\), \(B_k\)</td><td>Jacobianos de \(\phi\) en el nodo \(k\): el modelo lineal a lo largo de la trayectoria actual</td><td>Cambian en cada iteración</td></tr>
+      <tr><td>\(y^k\), \(\Delta y^k\)</td><td>En RTI: todas las variables (estados, mandos y multiplicadores) en la muestra \(k\), y el paso de tipo Newton que se da en esa muestra</td><td>\(k\) cuenta muestras, no iteraciones</td></tr>
+      <tr><td>\(\kappa\), \(\omega\), \(\delta_0\)</td><td>Constantes del teorema de contracción: error de la hessiana aproximada, no linealidad y factor de contracción inicial. <strong>Aviso:</strong> aquí \(\omega\) no es una frecuencia</td><td>\(\kappa = 0\) con Newton exacto</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Tres familias de métodos</p>
   <h2>Primero discretizar y después optimizar: por qué el MPC usa métodos directos</h2>
-  <div class="cols c3 body cards-sm">
+  <div class="cols c3 body">
     <div class="card">
       <span class="meta">PROGRAMACIÓN DINÁMICA</span>
       <h3>Hamilton-Jacobi-Bellman</h3>
@@ -446,45 +1111,175 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Transcripción</p>
-  <h2><em>Multiple shooting</em>: el estado de cada nodo también es variable</h2>
-  <div class="cols">
+  <p class="kicker">Transcripción · 1</p>
+  <h2>Disparo simple o múltiple: integrar todo de una vez o por tramos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 300" role="img" aria-label="Arriba, una sola trayectoria integrada desde el estado inicial; abajo, cinco nodos con tramos integrados desde cada uno y huecos entre el final de cada tramo y el nodo siguiente">
+        <text x="10" y="20" class="t-bold" font-size="13">Disparo simple: variables q₀ … q_{N−1}</text>
+        <path class="ln-accent" fill="none" stroke-width="2.2" d="M40,110 C120,60 200,50 280,80 S440,140 560,60"/>
+        <circle cx="40" cy="110" r="5" class="fill-tesis"/>
+        <text x="48" y="128" class="t-tesis t-mono" font-size="12">x(t)</text>
+        <text x="380" y="40" class="t-muted" font-size="12">todo el horizonte sale de integrar desde x(t)</text>
+        <text x="10" y="170" class="t-bold" font-size="13">Disparo múltiple: variables s₀ … s_N y q₀ … q_{N−1}</text>
+        <g fill="none" class="ln-accent" stroke-width="2.2">
+          <path d="M40,260 C70,240 100,232 140,236"/>
+          <path d="M150,220 C180,206 210,204 250,214"/>
+          <path d="M260,240 C290,236 320,246 360,250"/>
+          <path d="M370,226 C400,210 430,196 470,190"/>
+          <path d="M480,210 C500,196 530,186 560,186"/>
+        </g>
+        <g class="ln-tesis" stroke-width="1.6" stroke-dasharray="3 3">
+          <line x1="140" y1="236" x2="150" y2="220"/><line x1="250" y1="214" x2="260" y2="240"/>
+          <line x1="360" y1="250" x2="370" y2="226"/><line x1="470" y1="190" x2="480" y2="210"/>
+        </g>
+        <g class="fill-tesis">
+          <circle cx="40" cy="260" r="5"/><circle cx="150" cy="220" r="5"/><circle cx="260" cy="240" r="5"/><circle cx="370" cy="226" r="5"/><circle cx="480" cy="210" r="5"/>
+        </g>
+        <g class="t-mono t-tesis" font-size="12" text-anchor="middle">
+          <text x="40" y="284">s₀ = x(t)</text><text x="150" y="208">s₁</text><text x="260" y="270">s₂</text><text x="370" y="214">s₃</text><text x="480" y="234">s₄</text>
+        </g>
+        <text x="300" y="296" class="t-muted" font-size="12" text-anchor="middle">huecos (punteado): s_{k+1} − φ(s_k, q_k); la restricción los cierra al converger</text>
+      </svg>
+    </figure>
     <div class="stack">
-      <p class="small">Con integrador \(\phi\) (RK4 en cada intervalo), las variables son \(s_0,\dots,s_N\) y \(q_0,\dots,q_{N-1}\):</p>
-      \[ \begin{aligned} \min_{s,q}\ &\sum_{k}\tfrac12\|r(s_k,q_k)\|^2 + \tfrac12\|r_N(s_N)\|^2\\ \text{s.a.}\ & s_0 = x(t),\quad s_{k+1} = \phi(s_k,q_k),\quad h(s_k,q_k)\le 0 \end{aligned} \]
-      <ul class="small">
-        <li><strong>Frente al disparo simple</strong> (solo \(q\) como variables): se puede inicializar con una trayectoria de estados aunque no sea factible, se integra cada intervalo en paralelo y no se propagan inestabilidades a lo largo de todo el horizonte <a class="cite" data-ref="bock1984,rmd2017"></a>.</li>
-        <li>La restricción \(s_0 = x(t)\) es la <strong>inmersión del valor inicial</strong>: el estado medido entra como una igualdad lineal más.</li>
-      </ul>
-    </div>
-    <div class="stack">
-      <p class="small"><strong>SQP con Gauss-Newton.</strong> Con coste de mínimos cuadrados, la hessiana del lagrangiano se aproxima por \(J_r^\top J_r\), con \(J_r\) el jacobiano de los residuos:</p>
-      \[ \nabla^2\mathcal L \approx J_r^\top J_r \succeq 0 \]
-      <details class="deriv"><summary>Por qué es buena idea</summary>
-        <p class="small">\(\nabla^2(\tfrac12\|r\|^2) = J_r^\top J_r + \sum_i r_i\nabla^2 r_i\). Cerca de una buena solución los residuos son pequeños y el segundo término también. La aproximación es semidefinida positiva por construcción (el QP es convexo) y no depende de los multiplicadores <a class="cite" data-ref="diehl2005"></a>. El precio: convergencia lineal en lugar de cuadrática, despreciable si se arranca cerca.</p>
-      </details>
-      <p class="small">Cada iteración linealiza dinámica y restricciones alrededor de la trayectoria actual y resuelve un QP con la misma estructura de banda de la parte 2.</p>
+      <p><strong>Disparo simple:</strong> las variables son solo los mandos; los estados salen de integrar desde \(x(t)\). <strong>Disparo múltiple</strong> <a class="cite" data-ref="bock1984"></a>: el estado de cada nodo también es variable, y la continuidad \(s_{k+1} = \phi(s_k,q_k)\) es una restricción más.</p>
+      <div class="callout realidad"><span class="tag">Por qué importa</span>Sistema inestable \(x_{k+1} = 2x_k + u_k\). En disparo simple, \(\partial x_N/\partial u_0 = 2^{N-1}\): 16 con \(N = 5\) y 524 288 con \(N = 20\). Un error de 10⁻³ en \(u_0\) mueve \(x_{20}\) en 524. En disparo múltiple cada restricción une un nodo con el siguiente, con derivadas 2 y 1: nada se multiplica a lo largo del horizonte. Ejemplo 13.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Iteración en tiempo real (RTI)</p>
-  <h2>Una sola iteración por muestra, y casi toda antes de conocer el estado</h2>
+  <p class="kicker">Transcripción · 2</p>
+  <h2><em>Multiple shooting</em>: el estado de cada nodo también es variable</h2>
   <div class="cols">
     <div class="stack">
-      <ol class="small">
+      <p>Con integrador \(\phi\) (RK4 en cada intervalo), las variables son \(s_0,\dots,s_N\) y \(q_0,\dots,q_{N-1}\):</p>
+      \[ \begin{aligned} \min_{s,q}\ &\sum_{k}\tfrac12\|r(s_k,q_k)\|^2 + \tfrac12\|r_N(s_N)\|^2\\ \text{s.a.}\ & s_0 = x(t),\quad s_{k+1} = \phi(s_k,q_k),\quad h(s_k,q_k)\le 0 \end{aligned} \]
+      <p>Coste de mínimos cuadrados (residuos \(r\), \(r_N\)), continuidad entre nodos y desigualdades \(h\). Es el MPC de la parte 2 con un modelo no lineal: ya no es un QP, sino un problema no lineal (NLP).</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Frente al disparo simple</strong> (solo \(q\) como variables): se puede inicializar con una trayectoria de estados aunque no sea factible, se integra cada intervalo en paralelo y no se propagan inestabilidades a lo largo de todo el horizonte <a class="cite" data-ref="bock1984,rmd2017"></a>.</li>
+        <li>La restricción \(s_0 = x(t)\) es la <strong>inmersión del valor inicial</strong>: el estado medido entra como una igualdad lineal más. Todo lo demás del problema se puede preparar antes de conocerlo, y de ahí sale el RTI.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Qué falta</span>Resolver el NLP. En cada iteración se linealiza alrededor de la trayectoria actual y queda un QP con la misma estructura de banda de la parte 2 (hoja siguiente).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">SQP</p>
+  <h2>SQP: en cada iteración, un QP que aproxima el problema no lineal</h2>
+  <p>La programación cuadrática secuencial (SQP) es el método de Newton aplicado a las condiciones KKT del problema no lineal. Desde la trayectoria actual \((s, q)\):</p>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>Linealizar la dinámica: \(s_{k+1} + \Delta s_{k+1} \approx \phi(s_k,q_k) + A_k\Delta s_k + B_k\Delta q_k\)</td><td>Taylor de primer orden; \(A_k\), \(B_k\) hacen el papel de \(A\), \(B\) de la parte 2, pero cambian de nodo a nodo</td></tr>
+        <tr><td><strong>2</strong></td><td>Linealizar las desigualdades: \(h + \nabla h^\top(\Delta s, \Delta q)\le 0\)</td><td>Lo mismo</td></tr>
+        <tr><td><strong>3</strong></td><td>Coste cuadrático con una hessiana \(\approx\nabla^2\mathcal L\)</td><td>Newton necesita la curvatura del lagrangiano, no solo la del coste</td></tr>
+        <tr><td><strong>4</strong></td><td>Resolver el QP en \((\Delta s, \Delta q)\)</td><td>Tiene la estructura de banda de la parte 2: Riccati o condensación</td></tr>
+        <tr><td><strong>5</strong></td><td>\(s\leftarrow s + \Delta s\), \(q\leftarrow q + \Delta q\) y repetir</td><td>Hasta que el paso sea despreciable</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p><strong>Gauss-Newton.</strong> Con coste de mínimos cuadrados, \(\tfrac12\|r\|^2\), la hessiana es</p>
+      \[ \nabla^2\big(\tfrac12\|r\|^2\big) = J_r^\top J_r + \sum_i r_i\,\nabla^2r_i \]
+      <p>y se aproxima por el primer término, \(J_r^\top J_r\succeq 0\). Cerca de una buena solución los residuos \(r_i\) son pequeños y el segundo término también. La aproximación es semidefinida positiva por construcción (el QP es convexo) y no depende de los multiplicadores <a class="cite" data-ref="diehl2005"></a>. El precio: convergencia lineal en lugar de cuadrática.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gauss-Newton con números</p>
+  <h2>Gauss-Newton converge con una tasa que fijan los residuos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Problema de una variable: \(\min_w\tfrac12\|r(w)\|^2\), con \(r(w) = \big(w - 1,\ \tfrac12(w^2 - 4)\big)\). Quiere a la vez \(w = 1\) y \(w = 2\): en el óptimo los residuos no se anulan.</p>
+      <p>\(J_r = (1, w)\) y \(\nabla^2r_2 = 1\), así que los dos pasos son</p>
+      \[ \text{Newton: } w \leftarrow w - \frac{J_r^\top r}{J_r^\top J_r + r_2},\qquad \text{GN: } w \leftarrow w - \frac{J_r^\top r}{J_r^\top J_r} \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Iteración</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>
+          <tr><td>\(|w - w^\star|\), Gauss-Newton</td><td class="n">0,28</td><td class="n">0,039</td><td class="n">4,3·10⁻³</td><td class="n">4,5·10⁻⁴</td><td class="n">4,8·10⁻⁵</td></tr>
+          <tr><td>\(|w - w^\star|\), Newton</td><td class="n">0,47</td><td class="n">0,11</td><td class="n">7,3·10⁻³</td><td class="n">3,8·10⁻⁵</td><td class="n">1,0·10⁻⁹</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Desde \(w = 3\). Ejemplo 14 del script.</p>
+    </div>
+    <div class="stack">
+      <p>En el óptimo, \(w^\star = 1{,}769\): \(J_r^\top J_r = 4{,}13\) y el término que Gauss-Newton olvida vale \(r_2\nabla^2r_2 = -0{,}43\). Su cociente, 0,105, es la tasa: cada iteración multiplica el error por unos 0,1 (en la tabla: 0,14; 0,11; 0,106; 0,105).</p>
+      <p>Newton dobla los decimales correctos en cada paso (cuadrático), pero aquí arranca peor y necesita la curvatura de los residuos.</p>
+      <div class="callout clave"><span class="tag">En un MPC</span>Los residuos en el óptimo son errores de seguimiento pequeños: la tasa es casi 0 y Gauss-Newton se comporta casi como Newton. Ese cociente es el tipo de error que mide la \(\kappa\) del teorema de contracción de RTI.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Iteración en tiempo real (RTI) · 1</p>
+  <h2>Una sola iteración por muestra, y casi toda antes de conocer el estado</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 250" role="img" aria-label="Línea temporal de dos muestras: una fase de preparación larga antes de que llegue el estado, una fase de realimentación corta después y la transición; debajo, un SQP completo que empieza al llegar el estado y tarda mucho más">
+        <defs><marker id="a3rt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+        <line class="ln-rule" x1="20" y1="120" x2="590" y2="120"/>
+        <line class="ln-dash" x1="250" y1="20" x2="250" y2="210"/>
+        <line class="ln-dash" x1="530" y1="20" x2="530" y2="210"/>
+        <text x="250" y="16" class="t-mono t-time" font-size="12" text-anchor="middle">t_k: llega x(t_k)</text>
+        <text x="530" y="16" class="t-mono t-time" font-size="12" text-anchor="middle">t_{k+1}</text>
+        <rect class="box-soft" x="40" y="60" width="200" height="44" rx="5"/>
+        <text x="140" y="80" font-size="13" text-anchor="middle" class="t-bold">preparación</text>
+        <text x="140" y="97" font-size="11" text-anchor="middle" class="t-muted">integrar, linealizar, condensar</text>
+        <rect class="box-accent" x="252" y="60" width="40" height="44" rx="5"/>
+        <text x="272" y="50" font-size="12" text-anchor="middle" class="t-accent">realim.</text>
+        <path class="ln" d="M292 82 V140" marker-end="url(#a3rt)"/>
+        <text x="300" y="156" font-size="12" class="t-accent">u₀ al dron: latencia corta</text>
+        <rect class="box" x="300" y="60" width="40" height="44" rx="5"/>
+        <text x="320" y="50" font-size="12" text-anchor="middle" class="t-muted">trans.</text>
+        <rect class="box-soft" x="345" y="60" width="180" height="44" rx="5"/>
+        <text x="435" y="86" font-size="13" text-anchor="middle" class="t-bold">preparación</text>
+        <rect class="box-accent" x="532" y="60" width="40" height="44" rx="5"/>
+        <rect class="box-tesis" x="252" y="176" width="250" height="30" rx="5"/>
+        <text x="377" y="196" font-size="12" text-anchor="middle" class="t-tesis">SQP completo: varias iteraciones tras t_k</text>
+        <text x="40" y="196" font-size="12" class="t-muted">sin RTI:</text>
+        <text x="40" y="240" font-size="12" class="t-muted">la preparación usa la predicción del estado; la realimentación, el estado medido</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <ol>
         <li><strong>Preparación</strong>, mientras se espera la medida: integrar y linealizar alrededor de la predicción, condensar y factorizar. No depende de \(x(t)\).</li>
         <li><strong>Realimentación</strong>, en cuanto llega \(x(t)\): resolver el QP ya preparado y aplicar \(u_0\) de inmediato.</li>
         <li><strong>Transición:</strong> desplazar la solución un paso para arrancar la siguiente.</li>
       </ol>
-      <p class="small">Contracción (teorema 4.1 de Diehl et al.): si el error de la aproximación de la hessiana \(\kappa\) y la no linealidad \(\omega\) cumplen \(\delta_0 = \kappa + \tfrac\omega2\|\Delta y^0\| &lt; 1\), las iteradas se acercan geométricamente a la solución exacta <a class="cite" data-ref="diehl2005"></a>:</p>
+      <div class="callout realidad"><span class="tag">Latencia</span>En el ejemplo de la cometa de Diehl et al., el óptimo convergido tardaba unos 8 s en su estación de trabajo; con RTI, el primer mando llegaba a los 0,05 s, con muestreo de 1 s y menos de 0,8 s de preparación <a class="cite" data-ref="diehl2005"></a>.</div>
+    </div>
+  </div>
+  <div class="callout clave"><span class="tag">Por qué funciona</span>El problema de la muestra siguiente se parece mucho al anterior: la solución desplazada ya está cerca, y una iteración de tipo Newton desde cerca basta (hoja siguiente).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Iteración en tiempo real (RTI) · 2</p>
+  <h2>Por qué basta una iteración: entre dos muestras la solución se mueve poco</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Contracción (teorema 4.1 de Diehl et al.): si el error de la aproximación de la hessiana \(\kappa\) y la no linealidad \(\omega\) cumplen \(\delta_0 = \kappa + \tfrac\omega2\|\Delta y^0\| \lt 1\), los pasos de muestra a muestra se contraen y las iteradas se acercan geométricamente a la solución exacta de cada problema <a class="cite" data-ref="diehl2005"></a>:</p>
       \[ \|\Delta y^{k+1}\| \le \big(\kappa + \tfrac\omega2\|\Delta y^k\|\big)\|\Delta y^k\| \le \delta_0\|\Delta y^k\| \]
+      <p>\(\Delta y^k\) es el paso de la muestra \(k\), una sola iteración. El factor tiene una parte lineal, \(\kappa\) (la hessiana aproximada: 0 con Newton exacto), y una cuadrática, \(\tfrac\omega2\|\Delta y^k\|\) (Newton desde cerca). Si se arranca cerca, el paso es pequeño y la contracción, fuerte.</p>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Latencia</span>En el ejemplo de la cometa de Diehl et al., el óptimo convergido tardaba unos 8 s en su estación de trabajo; con RTI, el primer mando llegaba a los 0,05 s, con muestreo de 1 s y menos de 0,8 s de preparación <a class="cite" data-ref="diehl2005"></a>.</div>
+      <p><strong>Un juguete.</strong> Seguir la solución de \(w^3 + w = p(t)\), con \(p(t) = 2\sin(0{,}5t)\), dando un solo paso de Newton por muestra desde la solución anterior:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Periodo</th><th>Cuánto se mueve la solución</th><th>Error tras un paso (máx.)</th></tr>
+          <tr><td class="n">0,4</td><td class="n">0,46</td><td class="n">8,4·10⁻²</td></tr>
+          <tr><td class="n">0,2</td><td class="n">0,22</td><td class="n">2,1·10⁻²</td></tr>
+          <tr><td class="n">0,1</td><td class="n">0,10</td><td class="n">4,9·10⁻³</td></tr>
+          <tr><td class="n">0,05</td><td class="n">0,05</td><td class="n">1,2·10⁻³</td></tr>
+        </table>
+      </div>
+      <p>Al dividir el periodo entre 2, el error se divide entre 4: es cuadrático en lo que se mueve la solución. Ejemplo 15.</p>
       <div class="callout error"><span class="tag">Letra pequeña</span>La prueba de 2005 cubre horizonte decreciente, sin desigualdades y con comportamiento nominal tras una perturbación. La estabilidad con horizonte deslizante está en otro artículo del mismo año <a class="cite" data-ref="diehl2005b"></a>. Y las restricciones activas que cambian se tratan en la práctica, no en la prueba.</div>
-      <div class="callout clave"><span class="tag">Por qué funciona</span>El problema de la muestra siguiente se parece mucho al anterior: la solución desplazada ya está cerca, y una iteración de tipo Newton desde cerca basta.</div>
     </div>
   </div>
 </section>
@@ -517,7 +1312,7 @@
       <figcaption>Cuadricóptero plano con los parámetros del x500 siguiendo una lemniscata de amplitudes 3 m y 1 m, con NMPC a 50 Hz, horizonte de 1 s (50 nodos), sin restricciones de desigualdad (el empuje queda entre 2,3 y 16,1 N por par, dentro del límite de 17,1 N) y un empujón imprevisto de 2 rad/s a los 3 s. «SQP convergido»: Gauss-Newton con disparo simple iterado hasta converger, al estilo iLQR. Calculado en <code>figuras/figuras_a3a.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Error RMS de posición (desde 1 s): 3,80 cm con RTI y con SQP convergido. La mayor diferencia entre ambos en todo el vuelo: 0,03 cm.</li>
         <li>El SQP necesita 6,8 iteraciones de media para converger (12 tras el empujón); el tiempo total de cálculo es unas 7 veces mayor.</li>
         <li>En el RTI, la linealización se hace sobre la predicción y, cuando llega el estado, el mando es una ley afín ya calculada: la latencia es un producto matriz-vector.</li>
@@ -532,7 +1327,7 @@
   <h2>acados: lo que hay dentro de un NMPC que corre a 100 Hz</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Modelo</strong> simbólico en CasADi <a class="cite" data-ref="andersson2019"></a>, con generación de código C para dinámica, jacobianos e integradores (ERK, IRK).</li>
         <li><strong>Transcripción</strong> por <em>multiple shooting</em>.</li>
         <li><strong>NLP</strong> por SQP con hessiana de Gauss-Newton o exacta, y una rutina específica de RTI.</li>
@@ -547,6 +1342,7 @@
   </div>
 </section>
 
+
 <!-- ============ PARTE 4 · MPCC ============ -->
 <section class="slide divider" data-section="4 · MPCC">
   <p class="num">Parte 4</p>
@@ -555,17 +1351,51 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Formulación</p>
-  <h2>Errores de contorno y de retraso, y una variable de progreso que se premia</h2>
+  <p class="kicker">Esquema y notación de la parte 4</p>
+  <h2>Seguir el reloj o seguir el camino</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">El camino \(\mathbf p_d(\vartheta)\) se parametriza por longitud de arco \(\vartheta\) (no confundir con el cabeceo \(\theta\)), que pasa a ser un estado más, con \(\vartheta_{k+1} = \vartheta_k + v_kT_s\) y \(v_k\) un mando virtual. Con la tangente unitaria \(\mathbf t(\vartheta)\):</p>
-      \[ e_l = \mathbf t(\vartheta)^\top(\mathbf p - \mathbf p_d(\vartheta)),\qquad \mathbf e_c = (\mathbf p - \mathbf p_d(\vartheta)) - e_l\,\mathbf t(\vartheta) \]
-      \[ J = \sum_k \big(q_c\|\mathbf e_c\|^2 + q_l e_l^2 - \rho\,v_k + \|\Delta u_k\|_R^2\big) \]
-      <details class="deriv"><summary>Por qué hacen falta dos errores</summary>
-        <p class="small">El \(\vartheta^\star\) que minimiza la distancia al camino es una proyección, y meterla como restricción haría el problema mucho más caro. Se deja \(\vartheta\) libre y se penaliza el error de retraso \(e_l\) (desfase a lo largo de la tangente) con mucho peso: así \(\vartheta \approx \vartheta^\star\) y \(\mathbf e_c\) aproxima la distancia normal al camino. El término \(-\rho\,v_k\) premia avanzar: el optimizador decide la velocidad. Formulación de Lam et al. y Liniger et al. <a class="cite" data-ref="lam2010,liniger2015"></a>; el artículo de Liniger trae una errata en la actualización del progreso, que debe ser \(+v_kT_s\).</p>
-      </details>
+      <figure class="fig">
+        <svg viewBox="0 0 520 250" role="img" aria-label="Un camino curvo con puntos de referencia marcados por tiempo; el dron va sobre el camino pero por detrás del punto que le toca, y el error de seguimiento apunta a lo largo del camino">
+          <defs><marker id="a3rc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker></defs>
+          <path class="ln-rule" fill="none" stroke-width="2" d="M30,210 C130,200 190,150 250,120 S380,60 500,40"/>
+          <g class="fill-time">
+            <circle cx="85.5" cy="199.7" r="4"/><circle cx="155" cy="172.5" r="4"/><circle cx="213.7" cy="139.9" r="4"/><circle cx="307.8" cy="93.3" r="4"/><circle cx="390.7" cy="64.2" r="4"/>
+          </g>
+          <g class="t-mono t-time" font-size="12" text-anchor="middle">
+            <text x="85" y="222">t = 0</text><text x="155" y="194">1</text><text x="200" y="162">2</text><text x="308" y="80">3</text><text x="391" y="52">4</text>
+          </g>
+          <circle cx="250" cy="120" r="7" class="fill-tesis"/>
+          <text x="262" y="140" class="t-tesis" font-size="12">dron en t = 3</text>
+          <path class="ln-tesis" d="M258 116 L298 98" stroke-width="2" marker-end="url(#a3rc)"/>
+          <text x="330" y="176" class="t-tesis" font-size="12">error de seguimiento:</text>
+          <text x="330" y="192" class="t-tesis" font-size="12">está en el camino, pero tarde</text>
+          <text x="40" y="30" class="t-muted" font-size="12">seguimiento: un punto que se mueve con el reloj, p_ref(t)</text>
+          <text x="40" y="48" class="t-muted" font-size="12">contorno: solo el camino p_d(ϑ), sin horario</text>
+        </svg>
+        <figcaption>Con seguimiento, ir sobre el camino pero tarde cuesta igual que salirse de él. Con contorno, solo cuesta salirse.</figcaption>
+      </figure>
+      <p><strong>Seguimiento:</strong> el coste castiga \(\|\mathbf p - \mathbf p_{\text{ref}}(t)\|^2\). A 20 m/s (72 km/h), 25 ms de retraso son 0,5 m de error, todo a lo largo del camino (ejemplo 16). <strong>Contorno (MPCC):</strong> el dron elige cuánto avanza.</p>
     </div>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:24%">Símbolo</th><th>Qué es</th></tr>
+        <tr><td>\(\mathbf p\)</td><td>Posición del dron (negrita: vector de \(\mathbb R^3\))</td></tr>
+        <tr><td>\(\vartheta\)</td><td><strong>Progreso</strong>: longitud de arco recorrida sobre el camino. Es un estado más. No es el cabeceo \(\theta\)</td></tr>
+        <tr><td>\(\mathbf p_d(\vartheta)\)</td><td>Punto del camino a longitud de arco \(\vartheta\)</td></tr>
+        <tr><td>\(\mathbf t(\vartheta)\)</td><td>Tangente unitaria, \(d\mathbf p_d/d\vartheta\): mide 1 porque \(\vartheta\) es longitud de arco</td></tr>
+        <tr><td>\(v_k\), \(T_s\)</td><td>Velocidad de progreso (un mando virtual que elige el optimizador) y periodo de muestreo: \(\vartheta_{k+1} = \vartheta_k + v_kT_s\)</td></tr>
+        <tr><td>\(e_l\), \(\mathbf e_c\)</td><td>Errores de retraso (a lo largo de la tangente) y de contorno (perpendicular)</td></tr>
+        <tr><td>\(q_c\), \(q_l\), \(\rho\)</td><td>Pesos del error de contorno, del de retraso y del premio al avance. \(q_c\) y \(q_l\) no tienen que ver con el \(q_k\) de la parte 3</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Formulación · 1</p>
+  <h2>Errores de contorno y de retraso: proyectar el error sobre la tangente</h2>
+  <div class="cols">
     <div class="stack">
       <figure class="fig">
         <svg viewBox="0 0 420 220" role="img" aria-label="Geometría de los errores de contorno y de retraso respecto a un camino">
@@ -584,6 +1414,44 @@
         </svg>
         <figcaption>El error se descompone a lo largo de la tangente (retraso) y en perpendicular (contorno).</figcaption>
       </figure>
+      <div class="callout realidad"><span class="tag">Con números</span>Camino circular de radio 1, \(\mathbf p_d(\vartheta) = (\cos\vartheta, \sin\vartheta)\), con \(\vartheta = 0{,}8\) y el dron en \(\mathbf p = (0{,}6;\ 1{,}0)\): \(\mathbf p_d = (0{,}697;\ 0{,}717)\), \(\mathbf t = (-0{,}717;\ 0{,}697)\), \(\mathbf e = (-0{,}097;\ 0{,}283)\), \(e_l = 0{,}266\) y \(\|\mathbf e_c\| = 0{,}135\). Comprobación: \(0{,}266^2 + 0{,}135^2 = 0{,}089 = \|\mathbf e\|^2\). Ejemplo 16.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:5%">#</th><th style="width:42%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbf e = \mathbf p - \mathbf p_d(\vartheta)\)</td><td>Vector del punto del camino al dron</td></tr>
+          <tr><td><strong>2</strong></td><td>\(e_l = \mathbf t(\vartheta)^\top\mathbf e\)</td><td>Componente a lo largo de la tangente (\(\|\mathbf t\| = 1\)): cuánto va el dron por delante de \(\mathbf p_d(\vartheta)\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbf e_c = \mathbf e - e_l\,\mathbf t(\vartheta)\)</td><td>Lo que queda es perpendicular: \(\mathbf t^\top\mathbf e_c = e_l - e_l = 0\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\|\mathbf e\|^2 = e_l^2 + \|\mathbf e_c\|^2\)</td><td>Pitágoras: las dos componentes son perpendiculares</td></tr>
+          <tr><td><strong>5</strong></td><td>Si \(\vartheta = \vartheta^\star\), el punto más cercano, \(e_l = 0\) y \(\|\mathbf e_c\|\) es la distancia al camino</td><td>En el punto más cercano el error es perpendicular a la tangente</td></tr>
+        </table>
+      </div>
+      <p>En el ejemplo, la proyección exacta es \(\vartheta^\star = 1{,}030\) y la distancia al camino, 0,166. Con \(\vartheta = 0{,}8\), lejos de \(\vartheta^\star\), \(\|\mathbf e_c\| = 0{,}135\) no es la distancia; con \(\vartheta = 0{,}98\) ya vale 0,165. Por eso hay que castigar \(e_l\) (hoja siguiente).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Formulación · 2</p>
+  <h2>El coste del MPCC: pegarse al camino y premiar el avance</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ J = \sum_k \big(q_c\|\mathbf e_c\|^2 + q_l e_l^2 - \rho\,v_k + \|\Delta u_k\|_R^2\big) \]
+      <p>con el progreso como un estado más, \(\vartheta_{k+1} = \vartheta_k + v_kT_s\), y la dinámica del dron como restricción.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:30%">Término</th><th>Qué hace</th></tr>
+          <tr><td>\(q_c\|\mathbf e_c\|^2\)</td><td>Castiga separarse del camino</td></tr>
+          <tr><td>\(q_le_l^2\), con \(q_l\) grande</td><td>Mantiene \(\vartheta\) cerca de la proyección \(\vartheta^\star\), para que \(\mathbf e_c\) sea de verdad la distancia</td></tr>
+          <tr><td>\(-\rho\,v_k\)</td><td>Premia avanzar: con \(\rho\) mayor, más rápido y más cerca de los límites</td></tr>
+          <tr><td>\(\|\Delta u_k\|_R^2 = \Delta u_k^\top R\,\Delta u_k\)</td><td>Castiga cambios bruscos de mando, \(\Delta u_k = u_k - u_{k-1}\). <strong>Aviso:</strong> aquí \(R\) pondera cambios de mando</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Por qué hacen falta dos errores.</strong> El \(\vartheta^\star\) que minimiza la distancia al camino es una proyección, y meterla como restricción haría el problema mucho más caro. Se deja \(\vartheta\) libre y se penaliza el error de retraso \(e_l\) con mucho peso: así \(\vartheta\approx\vartheta^\star\) y \(\mathbf e_c\) aproxima la distancia normal al camino. El término \(-\rho\,v_k\) premia avanzar: el optimizador decide la velocidad.</p>
+      <p>Formulación de Lam et al. y Liniger et al. <a class="cite" data-ref="lam2010,liniger2015"></a>; el artículo de Liniger trae una errata en la actualización del progreso, que debe ser \(+v_kT_s\).</p>
       <div class="callout realidad"><span class="tag">Origen</span>Coches de carreras a escala 1:43: \(N\) = 40 a <span class="hz">50 Hz</span>, QP de <span class="hz">15 ms</span> de media y 21 ms de máximo; el plazo de 20 ms se incumplía un 4,4 % de las veces <a class="cite" data-ref="liniger2015"></a>.</div>
     </div>
   </div>
@@ -605,6 +1473,7 @@
     <div class="callout realidad"><span class="tag">Latencia</span>Por qué el MPCC aguanta más retardo que el seguimiento: no tiene que estar en un sitio a una hora; si va con retraso, simplemente avanza el progreso algo más tarde.</div>
   </div>
 </section>
+
 
 <!-- ============ PARTE 5 · MPC EN DRONES REALES ============ -->
 <section class="slide divider" data-section="5 · MPC en drones">
@@ -637,16 +1506,16 @@
   <h2>MPC en un microcontrolador de 27 g y en un avión a 10 Hz</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small"><strong>Microcontroladores.</strong></p>
-      <ul class="small">
+      <p><strong>Microcontroladores.</strong></p>
+      <ul>
         <li><strong>TinyMPC:</strong> ADMM con la recursión de Riccati precalculada. En el STM32F405 del Crazyflie (168 MHz, 192 kB de RAM), \(N\) = 15 a <span class="hz">500 Hz</span>, como mucho 7 iteraciones en menos de <span class="hz">2 ms</span>; OSQP no cabe en esa memoria <a class="cite" data-ref="nguyen2024"></a>.</li>
         <li><strong>Conjunto activo con peor caso certificado:</strong> DAQP en el mismo procesador, 500 Hz con un peor caso de <span class="hz">1375 µs</span> (preprint) <a class="cite" data-ref="wikner2026"></a>.</li>
       </ul>
       <div class="callout tesis"><span class="tag">Cómputo limitado</span>Un MPC lineal cabe en el microcontrolador de un microdrón; un NMPC necesita un ordenador de a bordo. Esa frontera decide dónde puede vivir el planificador de tu tesis (C1).</div>
     </div>
     <div class="stack">
-      <p class="small"><strong>Ala fija.</strong> Horizontes largos y frecuencias bajas, porque la dinámica de trayectoria es lenta:</p>
-      <ul class="small">
+      <p><strong>Ala fija.</strong> Horizontes largos y frecuencias bajas, porque la dinámica de trayectoria es lenta:</p>
+      <ul>
         <li>Stastny y Siegwart: guiado por NMPC con 70 × 0,1 s (7 s) a <span class="hz">10 Hz</span> en un ordenador de a bordo junto a una Pixhawk; errores de unos ±2 m en horizontal y ±0,5 m en vertical <a class="cite" data-ref="stastny2018"></a>.</li>
         <li>Hirst et al.: acados con RTI, 50 × 0,1 s a <span class="hz">10 Hz</span> en una Jetson Xavier NX; 15–23 ms de media por mando, hasta 36 m/s respecto al suelo (preprint) <a class="cite" data-ref="hirst2025"></a>.</li>
       </ul>
@@ -659,12 +1528,12 @@
   <p class="kicker">Errores frecuentes</p>
   <h2>Seis formas de que un MPC funcione en simulación y no en vuelo</h2>
   <div class="cols">
-    <ul class="small">
+    <ul>
       <li><strong>Ignorar el retardo</strong> entre la medida y el mando: el MPC optimiza desde un estado que ya no existe. Se compensa prediciendo el estado al instante de actuación.</li>
       <li><strong>Horizonte demasiado corto sin coste terminal:</strong> comportamiento miope o inestable.</li>
       <li><strong>Modelo de empuje sin dinámica de motor</strong>, o mandos que el lazo interno no puede seguir: el MPC pide lo que el dron no puede dar (A1, A2).</li>
     </ul>
-    <ul class="small">
+    <ul>
       <li><strong>Restricciones duras sobre estados con ruido:</strong> el QP se vuelve infactible por una medida mala. Se usan restricciones blandas con penalización.</li>
       <li><strong>No acotar el tiempo de cálculo:</strong> sin un número fijo de iteraciones, el peor caso decide la frecuencia real.</li>
       <li><strong>Pesos sin unidades:</strong> sin normalizar (regla de Bryson), ajustar \(Q\) y \(R\) es buscar a ciegas.</li>
@@ -673,12 +1542,13 @@
   <div class="callout tesis"><span class="tag">Sim-to-real</span>Las tres primeras son las mismas que hacen fallar a una política entrenada en simulación (B4, B7). Un MPC tiene la ventaja de que el modelo está a la vista y se puede corregir; una política, no.</div>
 </section>
 
+
 <!-- ============ CIERRE ============ -->
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
   <h2>MPC más barato, más aprendido y como guardián</h2>
   <div class="cols">
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Lo que ya se ve en 2024–2026:</strong></p>
       <ul>
         <li>MPC con modelos aprendidos (procesos gaussianos, redes) dentro del NMPC a 50 Hz <a class="cite" data-ref="torrente2021"></a>: lo verás en A3b.</li>
@@ -686,7 +1556,7 @@
         <li>MPCC con restricciones de seguridad que se acerca a RL en tiempo por vuelta y lo supera en tasa de éxito <a class="cite" data-ref="krinner2024"></a>.</li>
       </ul>
     </div>
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Previsión nuestra para 2027 y después:</strong></p>
       <ul>
         <li>Políticas aprendidas con un MPC corto debajo, que garantiza las restricciones (A14).</li>
@@ -703,11 +1573,11 @@
   <div class="cols">
     <div class="stack">
       <div class="callout tesis"><span class="tag">Tu tesis</span>Un world model con belief, usado como planificador, es un MPC cuyo estado es el belief y cuyo modelo es aprendido. Todo lo de este tema se traslada: horizonte, coste terminal (en Dreamer o TD-MPC2, una función de valor), arranque en caliente, presupuesto de cómputo por paso y latencia.</div>
-      <p class="small">Lo que cambia: el modelo no es diferenciable de forma barata o no es fiable lejos de los datos, y el estado es una distribución. Por eso A3b se dedica a MPC por muestreo y con aprendizaje.</p>
+      <p>Lo que cambia: el modelo no es diferenciable de forma barata o no es fiable lejos de los datos, y el estado es una distribución. Por eso A3b se dedica a MPC por muestreo y con aprendizaje.</p>
     </div>
     <div class="stack">
-      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
-      <ol class="small">
+      <p><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol>
         <li>¿Qué hace de coste terminal en tu planificador: una función de valor aprendida, una heurística, nada?</li>
         <li>¿Cómo meter la incertidumbre del belief en las restricciones (restricciones probabilísticas, márgenes)?</li>
         <li>¿Te basta con una iteración por paso, como el RTI, o tu modelo aprendido necesita más para no explotar errores?</li>
@@ -724,7 +1594,7 @@
   <ul class="body" style="font-size:19px; gap:9px;">
     <li>LQR por programación dinámica: \(K_k = (R + B^\top\Pi_{k+1}B)^{-1}B^\top\Pi_{k+1}A\) y la recursión de Riccati; la DARE es su punto fijo.</li>
     <li>Los márgenes de 60° y \([\tfrac12, \infty)\) son del LQR continuo con estado completo; en discreto y con estimador, no están garantizados.</li>
-    <li>MPC: un QP por muestra. Riccati cuesta \(O(N)\); condensar en cada muestra, \(O(N^3)\) (×5 con \(N\) = 20 en el x500).</li>
+    <li>MPC: un QP por muestra, en forma condensada (denso, solo mandos) o dispersa (KKT de banda que se resuelve con Riccati). Riccati cuesta \(O(N)\); condensar en cada muestra, \(O(N^3)\) (×5 con \(N\) = 20 en el x500).</li>
     <li>Estabilidad: coste terminal que sea función de Lyapunov y conjunto terminal invariante; la prueba es «desplazar y añadir».</li>
     <li>Las restricciones se respetan por construcción: 20° frente a los 53° del LQR saturado en el ejemplo del x500.</li>
     <li>NMPC: <em>multiple shooting</em>, SQP con Gauss-Newton y RTI. Una iteración por muestra, preparada antes de la medida, sigue igual que el óptimo convergido.</li>
@@ -804,7 +1674,7 @@
     <div class="stack">
       <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña el NMPC de tu dron de tesis. Elige horizonte, número de nodos, frecuencia y <em>solver</em>, di dónde corre y qué lazo de la cascada de A2 deja debajo. Justifica cada cifra.</p>
       <details class="deriv"><summary>Ver respuesta</summary>
-        <p class="small">Una elección defendible: horizonte de 1–1,5 s (cubre la dinámica lenta del lazo cerrado de posición, unos 2,6 rad/s), 20–30 nodos de 0,05 s, RTI a 100 Hz con acados y HPIPM en el ordenador de a bordo (2–5 ms por iteración en una placa tipo Jetson). Mandos CTBR o consignas de actitud, con el lazo de <em>rate</em> de PX4 (o INDI) debajo a 800 Hz. Coste terminal de un LQR del modelo linealizado, restricciones blandas de inclinación y empuje, y compensación del retardo prediciendo el estado al instante de actuación.</p>
+        <p>Una elección defendible: horizonte de 1–1,5 s (cubre la dinámica lenta del lazo cerrado de posición, unos 2,6 rad/s), 20–30 nodos de 0,05 s, RTI a 100 Hz con acados y HPIPM en el ordenador de a bordo (2–5 ms por iteración en una placa tipo Jetson). Mandos CTBR o consignas de actitud, con el lazo de <em>rate</em> de PX4 (o INDI) debajo a 800 Hz. Coste terminal de un LQR del modelo linealizado, restricciones blandas de inclinación y empuje, y compensación del retardo prediciendo el estado al instante de actuación.</p>
       </details>
     </div>
   </div>
@@ -836,7 +1706,7 @@
       <p><strong>Responde:</strong> ¿qué parte del rendimiento se debe al objetivo (contorno) y cuál al modelo?</p>
     </div>
   </div>
-  <p class="small"><strong>Para profundizar:</strong> acados <a class="cite" data-ref="verschueren2022"></a>; HPIPM <a class="cite" data-ref="frison2020"></a>; NMPC frente a planitud <a class="cite" data-ref="sun2022"></a>; TinyMPC <a class="cite" data-ref="nguyen2024"></a>; MPCC++ <a class="cite" data-ref="krinner2024"></a>.</p>
+  <p><strong>Para profundizar:</strong> acados <a class="cite" data-ref="verschueren2022"></a>; HPIPM <a class="cite" data-ref="frison2020"></a>; NMPC frente a planitud <a class="cite" data-ref="sun2022"></a>; TinyMPC <a class="cite" data-ref="nguyen2024"></a>; MPCC++ <a class="cite" data-ref="krinner2024"></a>.</p>
 </section>
 
 <section class="slide">
@@ -844,8 +1714,8 @@
   <h2>NMPC con acados para el x500, y las cuentas del tema</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>LQR del x500</strong> con la DARE: polos y comparación con la cascada de PX4.</li>
         <li><strong>MPC lineal con restricción de inclinación</strong> con OSQP: el ejemplo del salto de 1 m.</li>
         <li><strong>NMPC con acados</strong> (CasADi + RTI + HPIPM) siguiendo una lemniscata con el modelo de A1, con tiempos de cálculo medidos.</li>
@@ -856,7 +1726,7 @@
     <div class="stack">
       <div class="callout clave"><span class="tag">Qué verificas</span>Polos del LQR en 2,6, 6,3 y 19,7 rad/s; ganancia al 10 % de la infinita con \(N\) = 96; 20° frente a 53° de inclinación; RTI con el mismo error que el SQP y unas siete veces menos cálculo; coste ×5 con \(N\) = 20 condensando en cada muestra.</div>
       <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU. acados se compila desde el código fuente (Linux, macOS o WSL); si no puedes instalarlo, el paso 3 tiene una alternativa en JAX con el Gauss-Newton del script de figuras.</div>
-      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a3a.py</code>.</p>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a3a.py</code>; los ejemplos numéricos de las hojas, en <code>figuras/ejemplos_a3a.py</code>.</p>
     </div>
   </div>
 </section>
@@ -915,120 +1785,140 @@
 <h3>Notación general</h3>
 <p>Negrita: vector (\(\mathbf p\), \(\mathbf e_c\)); mayúscula: matriz o conjunto. Subíndice \(k\): paso de tiempo discreto. En este tema la jornada A3b mantiene las mismas letras para estado, mando, horizonte y costes (se avisa donde una letra cambia de sentido).</p>
 <dl>
-<dt>\(^\top\)</dt><dd data-hojas="6">Traspuesta de una matriz o vector, como en \(x^\top Qx\).</dd>
-<dt>\(\|\cdot\|\)</dt><dd data-hojas="21">Norma euclídea de un vector. \(\|r\|^2\) es la suma de los cuadrados de sus componentes.</dd>
-<dt>\(\|\Delta u_k\|_R^2\)</dt><dd data-hojas="26">Norma al cuadrado ponderada por la matriz \(R\): \(\Delta u_k^\top R\,\Delta u_k\). Penaliza los cambios de mando.</dd>
-<dt>\(\succeq 0\), \(\succ 0\)</dt><dd data-hojas="6">Semidefinida positiva y definida positiva. \(Q\succeq 0\) y \(R\succ 0\) garantizan que el coste es convexo en el mando.</dd>
-<dt>\(\operatorname{diag}\)</dt><dd data-hojas="7">Matriz diagonal con los elementos o bloques indicados, p. ej. \(Q = \operatorname{diag}(1/x_{i,\max}^2)\).</dd>
-<dt>\(\star\) (superíndice)</dt><dd data-hojas="14">Valor óptimo: \(u_0^\star\), \(x_N^\star\), \(V_N^\star\).</dd>
-<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="17">Estimación procedente de un estimador: \(\hat x\), \(\hat d\), \(\hat\theta\).</dd>
-<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="11,18">Dos usos: en la forma condensada, matrices por bloques \(\bar Q\), \(\bar R\); en el MPC de tubo, la trayectoria nominal \(\bar x\), \(\bar u\).</dd>
-<dt>\(\tilde u\)</dt><dd data-hojas="14">Secuencia de mandos desplazada, usada en la demostración de estabilidad.</dd>
-<dt>\(\Delta\)</dt><dd data-hojas="26">Incremento: \(\Delta u_k\) es el cambio de mando entre pasos; \(\Delta y^k\), en la parte de RTI, la distancia de la iterada \(k\) a la solución.</dd>
-<dt>\(\nabla\), \(\nabla^2\)</dt><dd data-hojas="21">Gradiente y hessiana (matriz de segundas derivadas) de una función escalar.</dd>
-<dt>\(\approx\)</dt><dd data-hojas="21">«Aproximadamente igual», p. ej. la hessiana del lagrangiano \(\approx J_r^\top J_r\).</dd>
-<dt>\(\Pr\)</dt><dd data-hojas="18">Probabilidad; en MPC estocástico, \(\Pr(x_k\in\mathbb X)\ge 1-\varepsilon\).</dd>
-<dt>\(\mathcal N(\hat x,\Sigma)\)</dt><dd data-hojas="18">Gaussiana de media \(\hat x\) y covarianza \(\Sigma\): el estado visto por un estimador.</dd>
-<dt>\(\arcsin\)</dt><dd data-hojas="9">Arcoseno; aparece en el margen de fase discreto \(2\arcsin(\gamma/2)\).</dd>
-<dt>\(\min\)</dt><dd data-hojas="6">Mínimo; \(\min_u\) significa minimizar sobre la variable del subíndice.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="8">Traspuesta de una matriz o vector, como en \(x^\top Qx\).</dd>
+<dt>\(\|\cdot\|\)</dt><dd data-hojas="41">Norma euclídea de un vector. \(\|r\|^2\) es la suma de los cuadrados de sus componentes.</dd>
+<dt>\(\|\Delta u_k\|_R^2\)</dt><dd data-hojas="51">Norma al cuadrado ponderada por la matriz \(R\): \(\Delta u_k^\top R\,\Delta u_k\). Penaliza los cambios de mando.</dd>
+<dt>\(\succeq 0\), \(\succ 0\)</dt><dd data-hojas="6,8">Semidefinida positiva y definida positiva. \(Q\succeq 0\) y \(R\succ 0\) garantizan que el coste es convexo en el mando.</dd>
+<dt>\(\operatorname{diag}\)</dt><dd data-hojas="12">Matriz diagonal con los elementos o bloques indicados, p. ej. \(Q = \operatorname{diag}(1/x_{i,\max}^2)\).</dd>
+<dt>\(\star\) (superíndice)</dt><dd data-hojas="18,30">Valor óptimo: \(u_0^\star\), \(x_N^\star\), \(V_N^\star\).</dd>
+<dt>\(\hat{\ }\) (sombrero)</dt><dd data-hojas="34">Estimación procedente de un estimador: \(\hat x\), \(\hat d\), \(\hat\theta\).</dd>
+<dt>\(\bar{\ }\) (barra)</dt><dd data-hojas="21,35">Dos usos: en la forma condensada, matrices por bloques \(\bar Q\), \(\bar R\); en el MPC de tubo, la trayectoria nominal \(\bar x\), \(\bar u\).</dd>
+<dt>\(\tilde u\)</dt><dd data-hojas="30">Secuencia de mandos desplazada, usada en la demostración de estabilidad.</dd>
+<dt>\(\Delta\)</dt><dd data-hojas="42,51">Incremento: \(\Delta u_k\) es el cambio de mando entre pasos; \(\Delta s\), \(\Delta q\), el paso del SQP; \(\Delta y^k\), en la parte de RTI, el paso de la muestra \(k\).</dd>
+<dt>\(\nabla\), \(\nabla^2\)</dt><dd data-hojas="42">Gradiente y hessiana (matriz de segundas derivadas) de una función escalar.</dd>
+<dt>\(\approx\)</dt><dd data-hojas="42">«Aproximadamente igual», p. ej. la hessiana del lagrangiano \(\approx J_r^\top J_r\).</dd>
+<dt>\(\Pr\)</dt><dd data-hojas="36">Probabilidad; en MPC estocástico, \(\Pr(x_k\in\mathbb X)\ge 1-\varepsilon\).</dd>
+<dt>\(\mathcal N(\hat x,\Sigma)\)</dt><dd data-hojas="36">Gaussiana de media \(\hat x\) y covarianza \(\Sigma\): el estado visto por un estimador.</dd>
+<dt>\(\arcsin\)</dt><dd data-hojas="15,16">Arcoseno; aparece en el margen de fase discreto \(2\arcsin(\gamma/2)\).</dd>
+<dt>\(\min\)</dt><dd data-hojas="8">Mínimo; \(\min_u\) significa minimizar sobre la variable del subíndice.</dd>
 </dl>
 <h3>LQR y programación dinámica</h3>
 <dl>
-<dt>\(x_k\), \(x\)</dt><dd data-hojas="6">Estado del sistema en el paso \(k\): vector de \(\mathbb R^n\). En el x500 son 12 estados (posición, velocidad, ángulos y velocidad angular). Sin índice, es el estado genérico en una función.</dd>
-<dt>\(u_k\), \(u\)</dt><dd data-hojas="6">Mando en el paso \(k\): vector de \(\mathbb R^m\) (en el x500, empuje y tres pares).</dd>
-<dt>\(A\), \(B\)</dt><dd data-hojas="6">Matrices de la dinámica lineal discreta \(x_{k+1} = Ax_k + Bu_k\): \(A\) es \(n\times n\), \(B\) es \(n\times m\).</dd>
-<dt>\(n\), \(m\)</dt><dd data-hojas="12">Número de estados y de mandos. Para el x500, \(n = 12\) y \(m = 4\).</dd>
-<dt>\(N\)</dt><dd data-hojas="6">Longitud del horizonte en pasos. Cuenta cuántos mandos se optimizan; el horizonte en segundos es \(N\) por el periodo de muestreo.</dd>
-<dt>\(Q\)</dt><dd data-hojas="6">Matriz de pesos del estado en el coste, simétrica \(n\times n\) y \(\succeq 0\). Se elige por la regla de Bryson (hoja 7).</dd>
-<dt>\(R\)</dt><dd data-hojas="6">Matriz de pesos del mando en el coste, \(m\times m\) y \(\succ 0\). En la parte de contorno, \(R\) pondera los cambios de mando \(\Delta u_k\).</dd>
-<dt>\(P_f\)</dt><dd data-hojas="6">Peso del coste terminal cuadrático \(x_N^\top P_f x_N\). Con \(P_f = \Pi_\infty\) la ganancia es la infinita con cualquier \(N\).</dd>
-<dt>\(V_k(x)\)</dt><dd data-hojas="6">Función de valor: coste óptimo para ir de \(x\) al final del horizonte empezando en el paso \(k\). Es cuadrática, \(x^\top\Pi_kx\).</dd>
-<dt>\(\Pi_k\)</dt><dd data-hojas="6">Matriz de la función de valor en el paso \(k\) (\(n\times n\)). Se calcula hacia atrás por la recursión de Riccati desde \(\Pi_N = P_f\).</dd>
-<dt>\(K_k\)</dt><dd data-hojas="6">Ganancia de realimentación del LQR en el paso \(k\), matriz \(m\times n\): \(u_k = -K_kx_k\).</dd>
-<dt>\(\Pi_\infty\), \(K_\infty\)</dt><dd data-hojas="8">Solución de la DARE y ganancia correspondiente de horizonte infinito (el punto fijo de la recursión).</dd>
-<dt>\(K_0(N)\)</dt><dd data-hojas="8">Ganancia en el paso 0 de un LQR de horizonte finito \(N\). La figura mide \(\|K_0(N)-K_\infty\|/\|K_\infty\|\).</dd>
-<dt>\(Q^{1/2}\)</dt><dd data-hojas="6">Raíz cuadrada matricial de \(Q\); la condición «\((A,Q^{1/2})\) detectable» asegura que el coste ve los estados inestables.</dd>
-<dt>\(x_{i,\max}\)</dt><dd data-hojas="7">Error máximo admisible del estado \(i\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
-<dt>\(u_{j,\max}\)</dt><dd data-hojas="7">Mando máximo del mando \(j\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
-<dt>\(|s|\)</dt><dd data-hojas="7">Módulo de un polo en lazo cerrado, en rad/s: da la rapidez de cada grupo de polos (2,6; 6,3; 19,7).</dd>
-<dt>\(L(j\omega)\)</dt><dd data-hojas="9">Ganancia de lazo del LQR en frecuencia, \(L = K(j\omega I - A)^{-1}B\). La igualdad de retorno da \(|1+L|\ge 1\).</dd>
-<dt>\(j\)</dt><dd data-hojas="9">Unidad imaginaria, en la evaluación en frecuencia \(j\omega\).</dd>
-<dt>\(\omega\) (frecuencia)</dt><dd data-hojas="9">Frecuencia en rad/s del diagrama de Nyquist. En la parte de RTI, \(\omega\) cambia de sentido (ver más abajo).</dd>
-<dt>\(\beta\)</dt><dd data-hojas="9">Factor por el que se multiplica la ganancia de lazo \(L\) al estudiar el margen de ganancia; equivale a mover el punto crítico a \(-1/\beta\).</dd>
-<dt>\(\gamma\) (margen discreto)</dt><dd data-hojas="9">Constante \(\lt 1\), dependiente de la planta, del margen de fase discreto \(2\arcsin(\gamma/2)\). Tiende a 1 si el periodo de muestreo se reduce.</dd>
-<dt>\(\theta\) (cabeceo)</dt><dd data-hojas="7">Ángulo de cabeceo del dron. \(\theta_{\max}\) es su límite (20° en el ejemplo de la hoja 15).</dd>
-<dt>\(q\) (velocidad de cabeceo)</dt><dd data-hojas="7">Velocidad angular de cabeceo, estado del que depende el par de cabeceo junto a \(x\), \(v_x\) y \(\theta\).</dd>
-<dt>\(v_x\)</dt><dd data-hojas="7">Velocidad horizontal en el eje \(x\).</dd>
+<dt>\(x_k\), \(x\)</dt><dd data-hojas="6,8">Estado del sistema en el paso \(k\): vector de \(\mathbb R^n\). En el x500 son 12 estados (posición, velocidad, ángulos y velocidad angular). Sin índice, es el estado genérico en una función.</dd>
+<dt>\(u_k\), \(u\)</dt><dd data-hojas="6,8">Mando en el paso \(k\): vector de \(\mathbb R^m\) (en el x500, empuje y tres pares).</dd>
+<dt>\(A\), \(B\)</dt><dd data-hojas="6,8">Matrices de la dinámica lineal discreta \(x_{k+1} = Ax_k + Bu_k\): \(A\) es \(n\times n\), \(B\) es \(n\times m\).</dd>
+<dt>\(n\), \(m\)</dt><dd data-hojas="6,27">Número de estados y de mandos. Para el x500, \(n = 12\) y \(m = 4\).</dd>
+<dt>\(N\)</dt><dd data-hojas="6,7">Longitud del horizonte en pasos. Cuenta cuántos mandos se optimizan; el horizonte en segundos es \(N\) por el periodo de muestreo.</dd>
+<dt>\(Q\)</dt><dd data-hojas="6,8">Matriz de pesos del estado en el coste, simétrica \(n\times n\) y \(\succeq 0\). Se elige por la regla de Bryson (hoja 12).</dd>
+<dt>\(R\)</dt><dd data-hojas="6,8">Matriz de pesos del mando en el coste, \(m\times m\) y \(\succ 0\). En la parte de contorno, \(R\) pondera los cambios de mando \(\Delta u_k\).</dd>
+<dt>\(P_f\)</dt><dd data-hojas="6,8">Peso del coste terminal cuadrático \(x_N^\top P_f x_N\). Con \(P_f = \Pi_\infty\) la ganancia es la infinita con cualquier \(N\).</dd>
+<dt>\(V_k(x)\)</dt><dd data-hojas="6,8">Función de valor: coste óptimo para ir de \(x\) al final del horizonte empezando en el paso \(k\). Es cuadrática, \(x^\top\Pi_kx\).</dd>
+<dt>\(\Pi_k\)</dt><dd data-hojas="6,9">Matriz de la función de valor en el paso \(k\) (\(n\times n\)). Se calcula hacia atrás por la recursión de Riccati desde \(\Pi_N = P_f\).</dd>
+<dt>\(K_k\)</dt><dd data-hojas="6,8">Ganancia de realimentación del LQR en el paso \(k\), matriz \(m\times n\): \(u_k = -K_kx_k\).</dd>
+<dt>\(\Pi_\infty\), \(K_\infty\)</dt><dd data-hojas="11,14">Solución de la DARE y ganancia correspondiente de horizonte infinito (el punto fijo de la recursión).</dd>
+<dt>\(K_0(N)\)</dt><dd data-hojas="14">Ganancia en el paso 0 de un LQR de horizonte finito \(N\). La figura mide \(\|K_0(N)-K_\infty\|/\|K_\infty\|\).</dd>
+<dt>\(S\)</dt><dd data-hojas="9">Abreviatura de \(R + B^\top\Pi_{k+1}B\) en la derivación de Riccati (matriz \(m\times m\), simétrica y definida positiva).</dd>
+<dt>\(\pi\)</dt><dd data-hojas="11">\(\Pi\) del ejemplo escalar (no el número pi). Su punto fijo es \(\pi = (1+\sqrt5)/2 = 1{,}618\).</dd>
+<dt>\(Q^{1/2}\)</dt><dd data-hojas="11">Raíz cuadrada matricial de \(Q\); la condición «\((A,Q^{1/2})\) detectable» asegura que el coste ve los estados inestables.</dd>
+<dt>\(x_{i,\max}\)</dt><dd data-hojas="12">Error máximo admisible del estado \(i\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
+<dt>\(u_{j,\max}\)</dt><dd data-hojas="12">Mando máximo del mando \(j\) en la regla de Bryson; el peso es su inversa al cuadrado.</dd>
+<dt>\(|s|\)</dt><dd data-hojas="13">Módulo de un polo en lazo cerrado, en rad/s: da la rapidez de cada grupo de polos (2,6; 6,3; 19,7).</dd>
+<dt>\(T\)</dt><dd data-hojas="13,16">Periodo de muestreo del modelo discreto en la parte de LQR (0,01 s en el x500); pasa los polos discretos \(z\) a continuos con \(s = \ln z/T\).</dd>
+<dt>\(z\) (autovalor)</dt><dd data-hojas="13">Autovalor de \(A - BK_\infty\) en tiempo discreto. Más adelante \(z\) tiene otros dos usos (ver abajo).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="15">Ángulo entre un punto de la circunferencia unidad y −1 en la geometría del margen de fase: la cuerda mide \(2\sin(\alpha/2)\).</dd>
+<dt>\(L(j\omega)\)</dt><dd data-hojas="15">Ganancia de lazo del LQR en frecuencia, \(L = K(j\omega I - A)^{-1}B\). La igualdad de retorno da \(|1+L|\ge 1\).</dd>
+<dt>\(j\)</dt><dd data-hojas="15">Unidad imaginaria, en la evaluación en frecuencia \(j\omega\).</dd>
+<dt>\(\omega\) (frecuencia)</dt><dd data-hojas="15">Frecuencia en rad/s del diagrama de Nyquist. En la parte de RTI, \(\omega\) cambia de sentido (ver más abajo).</dd>
+<dt>\(\beta\)</dt><dd data-hojas="15">Factor por el que se multiplica la ganancia de lazo \(L\) al estudiar el margen de ganancia; equivale a mover el punto crítico a \(-1/\beta\).</dd>
+<dt>\(\gamma\) (margen discreto)</dt><dd data-hojas="15,16">Constante \(\lt 1\), dependiente de la planta, del margen de fase discreto \(2\arcsin(\gamma/2)\). Tiende a 1 si el periodo de muestreo se reduce.</dd>
+<dt>\(\theta\) (cabeceo)</dt><dd data-hojas="12,31">Ángulo de cabeceo del dron. \(\theta_{\max}\) es su límite (20° en el ejemplo de la hoja 31).</dd>
+<dt>\(q\) (velocidad de cabeceo)</dt><dd data-hojas="12,13">Velocidad angular de cabeceo, estado del que depende el par de cabeceo junto a \(x\), \(v_x\) y \(\theta\).</dd>
+<dt>\(v_x\)</dt><dd data-hojas="12,13">Velocidad horizontal en el eje \(x\).</dd>
 </dl>
 <h3>MPC lineal: formulación y coste</h3>
 <dl>
-<dt>\(\ell(x_k,u_k)\)</dt><dd data-hojas="11">Coste de etapa del MPC. En el caso lineal-cuadrático es \(x^\top Qx + u^\top Ru\).</dd>
-<dt>\(V_f(x_N)\)</dt><dd data-hojas="11">Coste terminal: se suma al final del horizonte. En el caso lineal, el coste del LQR (la DARE).</dd>
-<dt>\(f(x_k,u_k)\)</dt><dd data-hojas="11">Función de la dinámica, \(x_{k+1} = f(x_k,u_k)\); lineal \(Ax+Bu\) en MPC lineal.</dd>
-<dt>\(x(t)\), \(x_0\)</dt><dd data-hojas="11">Estado medido o estimado en el instante actual, que fija el estado inicial \(x_0 = x(t)\) del problema. Por aquí entra la realimentación.</dd>
-<dt>\(\mathbb Z\)</dt><dd data-hojas="11">Conjunto de pares estado-mando admisibles (las restricciones del problema).</dd>
-<dt>\(\mathbb X_f\)</dt><dd data-hojas="11">Conjunto terminal: región a la que debe llegar \(x_N\) y que es invariante bajo la ley terminal.</dd>
-<dt>\(\mathbb X\)</dt><dd data-hojas="18">Conjunto de estados admisibles, usado en las restricciones del MPC estocástico.</dd>
-<dt>\(X\), \(U\)</dt><dd data-hojas="11">Estados y mandos de todo el horizonte apilados en un vector. Forma condensada: \(X = \Phi x_0 + \Gamma U\).</dd>
-<dt>\(\Phi\), \(\Gamma\)</dt><dd data-hojas="11">Matrices de predicción: \(\Phi\) apila las potencias \(A^k\); \(\Gamma\) es triangular inferior por bloques con los términos \(A^{k-1-j}B\).</dd>
-<dt>\(\bar Q\), \(\bar R\)</dt><dd data-hojas="11">Matrices diagonales por bloques con los pesos de todo el horizonte: \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\), \(\bar R = \operatorname{diag}(R,\dots,R)\).</dd>
-<dt>\(H\) (hessiana)</dt><dd data-hojas="11">Hessiana del QP condensado, \(H = \Gamma^\top\bar Q\Gamma + \bar R\). En A3b, \(H\) es el horizonte del planificador.</dd>
-<dt>\(G\), \(w\), \(E\)</dt><dd data-hojas="11">Matrices y vector de las restricciones lineales del QP condensado: \(GU \le w + Ex_0\).</dd>
-<dt>flop</dt><dd data-hojas="12">Operación de coma flotante; unidad con que se compara el coste de Riccati (\(\propto N\)) y de condensar (\(\propto N^3\)).</dd>
-<dt>\(\kappa_f\)</dt><dd data-hojas="14">Ley de control terminal admisible dentro de \(\mathbb X_f\), \(u = \kappa_f(x)\).</dd>
-<dt>\(x^+\)</dt><dd data-hojas="14">Estado siguiente tras aplicar el primer mando óptimo, \(x^+ = f(x,u_0^\star)\).</dd>
-<dt>\(V_N^\star(x)\)</dt><dd data-hojas="14">Coste óptimo del MPC con horizonte \(N\) desde \(x\); actúa como función de Lyapunov.</dd>
-<dt>\(\mathcal K_\infty\)</dt><dd data-hojas="14">Clase de funciones de una variable crecientes, nulas en cero y no acotadas; cotas \(\ell\) y \(V_f\) por funciones de esta clase.</dd>
-<dt>\(F_i\), \(g_i\)</dt><dd data-hojas="16">Matriz y vector de la ley afín del MPC explícito en la región \(i\): \(u = F_ix + g_i\).</dd>
+<dt>\(\ell(x_k,u_k)\)</dt><dd data-hojas="18,20">Coste de etapa del MPC. En el caso lineal-cuadrático es \(x^\top Qx + u^\top Ru\).</dd>
+<dt>\(V_f(x_N)\)</dt><dd data-hojas="18,20">Coste terminal: se suma al final del horizonte. En el caso lineal, el coste del LQR (la DARE).</dd>
+<dt>\(f(x_k,u_k)\)</dt><dd data-hojas="18,20">Función de la dinámica, \(x_{k+1} = f(x_k,u_k)\); lineal \(Ax+Bu\) en MPC lineal.</dd>
+<dt>\(x(t)\), \(x_0\)</dt><dd data-hojas="18,19">Estado medido o estimado en el instante actual, que fija el estado inicial \(x_0 = x(t)\) del problema. Por aquí entra la realimentación.</dd>
+<dt>\(\mathbb Z\)</dt><dd data-hojas="18,20">Conjunto de pares estado-mando admisibles (las restricciones del problema).</dd>
+<dt>\(\mathbb X_f\)</dt><dd data-hojas="18,29">Conjunto terminal: región a la que debe llegar \(x_N\) y que es invariante bajo la ley terminal.</dd>
+<dt>\(\mathbb X\)</dt><dd data-hojas="36">Conjunto de estados admisibles, usado en las restricciones del MPC estocástico.</dd>
+<dt>\(X\), \(U\)</dt><dd data-hojas="18,21">Estados y mandos de todo el horizonte apilados en un vector. Forma condensada: \(X = \Phi x_0 + \Gamma U\).</dd>
+<dt>\(\Phi\), \(\Gamma\)</dt><dd data-hojas="21,22">Matrices de predicción: \(\Phi\) apila las potencias \(A^k\); \(\Gamma\) es triangular inferior por bloques con los términos \(A^{k-1-j}B\).</dd>
+<dt>\(\bar Q\), \(\bar R\)</dt><dd data-hojas="21,22">Matrices diagonales por bloques con los pesos de todo el horizonte: \(\bar Q = \operatorname{diag}(Q,\dots,Q,P_f)\), \(\bar R = \operatorname{diag}(R,\dots,R)\).</dd>
+<dt>\(H\) (hessiana)</dt><dd data-hojas="21,22">Hessiana del QP condensado, \(H = \Gamma^\top\bar Q\Gamma + \bar R\). En A3b, \(H\) es el horizonte del planificador.</dd>
+<dt>\(G\), \(w\), \(E\)</dt><dd data-hojas="21,22">Matrices y vector de las restricciones lineales del QP condensado: \(GU \le w + Ex_0\).</dd>
+<dt>flop</dt><dd data-hojas="27">Operación de coma flotante; unidad con que se compara el coste de Riccati (\(\propto N\)) y de condensar (\(\propto N^3\)).</dd>
+<dt>\(\kappa_f\)</dt><dd data-hojas="29,30">Ley de control terminal admisible dentro de \(\mathbb X_f\), \(u = \kappa_f(x)\).</dd>
+<dt>\(x^+\)</dt><dd data-hojas="29,30">Estado siguiente tras aplicar el primer mando óptimo, \(x^+ = f(x,u_0^\star)\).</dd>
+<dt>\(V_N^\star(x)\)</dt><dd data-hojas="18,30">Coste óptimo del MPC con horizonte \(N\) desde \(x\); actúa como función de Lyapunov.</dd>
+<dt>\(c\)</dt><dd data-hojas="22">Vector que selecciona una componente de \(X\) (por ejemplo \(\theta_k\)) para escribir una restricción de estado en la forma condensada.</dd>
+<dt>\(z\) (variables)</dt><dd data-hojas="23">Vector de todas las variables de la forma dispersa, \(z = (u_0, x_1, u_1, \dots)\).</dd>
+<dt>\(\lambda_k\)</dt><dd data-hojas="18,23">Multiplicador de Lagrange (coestado) de la dinámica del paso \(k\); en el LQR, \(\lambda_k = 2\Pi_kx_k\), el gradiente de la función de valor. En la hoja de desigualdades, \(\lambda\) es el multiplicador de \(u\le1\).</dd>
+<dt>\(\mathcal L\) (MPC)</dt><dd data-hojas="23,25">Lagrangiano de la forma dispersa: coste más \(\lambda_{k+1}^\top(Ax_k + Bu_k - x_{k+1})\).</dd>
+<dt>\(g(u)\)</dt><dd data-hojas="25">Restricción de desigualdad escrita como \(g(u)\le 0\); en el ejemplo, \(g(u) = u - 1\).</dd>
+<dt>\(b\)</dt><dd data-hojas="25">Valor del límite en el ejemplo \(u\le b\); la derivada del coste óptimo respecto a \(b\) es \(-\lambda\).</dd>
+<dt>\(\mu\)</dt><dd data-hojas="26">Peso de la barrera logarítmica del punto interior, \(-\mu\log(1-u)\); se va bajando hacia 0.</dd>
+<dt>\(\rho\) (ADMM), \(y\), \(z\) (ADMM)</dt><dd data-hojas="26">En ADMM: penalización del lagrangiano aumentado, multiplicador y copia proyectada de \(u\). No confundir con el \(\rho\) del MPCC ni con los \(y\), \(z\) de otras hojas.</dd>
+<dt>\(\mathcal K_\infty\)</dt><dd data-hojas="29">Clase de funciones de una variable crecientes, nulas en cero y no acotadas; cotas \(\ell\) y \(V_f\) por funciones de esta clase.</dd>
+<dt>\(F_i\), \(g_i\)</dt><dd data-hojas="32">Matriz y vector de la ley afín del MPC explícito en la región \(i\): \(u = F_ix + g_i\).</dd>
 </dl>
 <h3>Seguimiento, perturbaciones y robustez</h3>
 <dl>
-<dt>\(d_k\)</dt><dd data-hojas="17">Perturbación constante estimada junto al estado, con \(d_{k+1} = d_k\).</dd>
-<dt>\(B_d\), \(C_d\)</dt><dd data-hojas="17">Matrices por las que la perturbación \(d\) entra en la dinámica y en la salida.</dd>
-<dt>\(y_k\), \(C\)</dt><dd data-hojas="17">Salida medida, \(y = Cx + C_dd\), y su matriz de salida \(C\).</dd>
-<dt>\(r\)</dt><dd data-hojas="17">Referencia que debe alcanzar la salida. Sin negrita, a diferencia de los residuos \(r(s_k,q_k)\) del NMPC (hoja 21).</dd>
-<dt>\(\hat x\), \(\hat d\)</dt><dd data-hojas="17">Estado y perturbación estimados por el estimador del modelo aumentado.</dd>
-<dt>\(x_s\), \(u_s\)</dt><dd data-hojas="17">Estado y mando de equilibrio objetivo que llevan la salida a la referencia con la perturbación estimada. El MPC penaliza \(x-x_s\) y \(u-u_s\).</dd>
-<dt>\(\bar x\), \(\bar u\)</dt><dd data-hojas="18">Trayectoria nominal planificada en el MPC de tubo; la ley auxiliar es \(u = \bar u + K(x-\bar x)\).</dd>
-<dt>\(K\) (tubo)</dt><dd data-hojas="18">Ganancia de la ley auxiliar que mantiene el estado real dentro del tubo alrededor de la nominal.</dd>
-<dt>\(\varepsilon\)</dt><dd data-hojas="18">Probabilidad máxima admitida de violar la restricción en MPC estocástico.</dd>
-<dt>\(\Sigma\)</dt><dd data-hojas="18">Covarianza de la incertidumbre del estado en \(\mathcal N(\hat x,\Sigma)\).</dd>
-<dt>\(\sigma_\theta\)</dt><dd data-hojas="18">Desviación típica de la incertidumbre sobre el cabeceo; se usa para estrechar la restricción: \(|\hat\theta|\le\theta_{\max}-2\sigma_\theta\).</dd>
-<dt>\(\hat\theta\)</dt><dd data-hojas="18">Cabeceo estimado.</dd>
+<dt>\(d_k\)</dt><dd data-hojas="34">Perturbación constante estimada junto al estado, con \(d_{k+1} = d_k\).</dd>
+<dt>\(B_d\), \(C_d\)</dt><dd data-hojas="34">Matrices por las que la perturbación \(d\) entra en la dinámica y en la salida.</dd>
+<dt>\(y_k\), \(C\)</dt><dd data-hojas="34">Salida medida, \(y = Cx + C_dd\), y su matriz de salida \(C\).</dd>
+<dt>\(r\)</dt><dd data-hojas="34">Referencia que debe alcanzar la salida. Sin negrita, a diferencia de los residuos \(r(s_k,q_k)\) del NMPC (hoja 41).</dd>
+<dt>\(\hat x\), \(\hat d\)</dt><dd data-hojas="34">Estado y perturbación estimados por el estimador del modelo aumentado.</dd>
+<dt>\(x_s\), \(u_s\)</dt><dd data-hojas="34">Estado y mando de equilibrio objetivo que llevan la salida a la referencia con la perturbación estimada. El MPC penaliza \(x-x_s\) y \(u-u_s\).</dd>
+<dt>\(z_\varepsilon\)</dt><dd data-hojas="36">Cuantil de la normal que convierte una restricción en probabilidad en una restricción estrechada: \(\hat\theta\le\theta_{\max} - z_\varepsilon\sigma_\theta\).</dd>
+<dt>\(\bar x\), \(\bar u\)</dt><dd data-hojas="35">Trayectoria nominal planificada en el MPC de tubo; la ley auxiliar es \(u = \bar u + K(x-\bar x)\).</dd>
+<dt>\(K\) (tubo)</dt><dd data-hojas="35">Ganancia de la ley auxiliar que mantiene el estado real dentro del tubo alrededor de la nominal.</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="36">Probabilidad máxima admitida de violar la restricción en MPC estocástico.</dd>
+<dt>\(\Sigma\)</dt><dd data-hojas="36">Covarianza de la incertidumbre del estado en \(\mathcal N(\hat x,\Sigma)\).</dd>
+<dt>\(\sigma_\theta\)</dt><dd data-hojas="36">Desviación típica de la incertidumbre sobre el cabeceo; se usa para estrechar la restricción: \(|\hat\theta|\le\theta_{\max}-2\sigma_\theta\).</dd>
+<dt>\(\hat\theta\)</dt><dd data-hojas="36">Cabeceo estimado.</dd>
 </dl>
 <h3>NMPC, multiple shooting y RTI</h3>
 <dl>
-<dt>\(s_k\)</dt><dd data-hojas="21">Estado del nodo \(k\) como variable de optimización en multiple shooting (\(s_0 = x(t)\)).</dd>
-<dt>\(q_k\)</dt><dd data-hojas="21">Mando del intervalo \(k\) como variable de optimización. Para el MPCC, \(q_c\) y \(q_l\) son pesos distintos.</dd>
-<dt>\(\phi(s_k,q_k)\)</dt><dd data-hojas="21">Integrador numérico (RK4 en cada intervalo) que da el estado del nodo siguiente.</dd>
-<dt>\(r(s_k,q_k)\), \(r_N(s_N)\)</dt><dd data-hojas="21">Residuos del coste de mínimos cuadrados en cada nodo y en el terminal: el coste es \(\tfrac12\|r\|^2\).</dd>
-<dt>\(h(s_k,q_k)\)</dt><dd data-hojas="21">Restricciones de desigualdad, \(h\le 0\).</dd>
-<dt>\(J_r\)</dt><dd data-hojas="21">Jacobiano de los residuos respecto a las variables; la hessiana de Gauss-Newton es \(J_r^\top J_r\).</dd>
-<dt>\(\mathcal L\)</dt><dd data-hojas="21">Lagrangiano del problema; \(\nabla^2\mathcal L\) es su hessiana.</dd>
-<dt>\(r_i\)</dt><dd data-hojas="21">Componente \(i\) del vector de residuos \(r\).</dd>
-<dt>\(\Delta y^k\)</dt><dd data-hojas="22">Distancia (error) de la iterada \(k\) a la solución exacta del problema.</dd>
-<dt>\(\kappa\)</dt><dd data-hojas="22">Medida del error de la aproximación de la hessiana en el teorema de contracción de RTI.</dd>
-<dt>\(\omega\) (no linealidad)</dt><dd data-hojas="22">Constante de no linealidad del teorema de contracción de RTI; no es la frecuencia de la parte de LQR.</dd>
-<dt>\(\delta_0\)</dt><dd data-hojas="22">\(\kappa + \tfrac\omega2\|\Delta y^0\|\): si es \(\lt 1\), las iteradas se acercan geométricamente a la solución.</dd>
+<dt>\(s_k\)</dt><dd data-hojas="38,41">Estado del nodo \(k\) como variable de optimización en multiple shooting (\(s_0 = x(t)\)).</dd>
+<dt>\(q_k\)</dt><dd data-hojas="38,41">Mando del intervalo \(k\) como variable de optimización. Para el MPCC, \(q_c\) y \(q_l\) son pesos distintos.</dd>
+<dt>\(\phi(s_k,q_k)\)</dt><dd data-hojas="38,40">Integrador numérico (RK4 en cada intervalo) que da el estado del nodo siguiente.</dd>
+<dt>\(r(s_k,q_k)\), \(r_N(s_N)\)</dt><dd data-hojas="38,41">Residuos del coste de mínimos cuadrados en cada nodo y en el terminal: el coste es \(\tfrac12\|r\|^2\).</dd>
+<dt>\(h(s_k,q_k)\)</dt><dd data-hojas="38,41">Restricciones de desigualdad, \(h\le 0\).</dd>
+<dt>\(J_r\)</dt><dd data-hojas="38,42">Jacobiano de los residuos respecto a las variables; la hessiana de Gauss-Newton es \(J_r^\top J_r\).</dd>
+<dt>\(\mathcal L\)</dt><dd data-hojas="38,42">Lagrangiano del problema; \(\nabla^2\mathcal L\) es su hessiana.</dd>
+<dt>\(r_i\)</dt><dd data-hojas="42">Componente \(i\) del vector de residuos \(r\).</dd>
+<dt>\(A_k\), \(B_k\)</dt><dd data-hojas="38,42">Jacobianos del integrador \(\phi\) en el nodo \(k\): el modelo lineal a lo largo de la trayectoria actual, que cambia en cada iteración del SQP.</dd>
+<dt>\(w\), \(r_2\)</dt><dd data-hojas="43">Variable y segundo residuo del ejemplo de Gauss-Newton, \(r(w) = (w-1, \tfrac12(w^2-4))\).</dd>
+<dt>\(y^k\)</dt><dd data-hojas="38,45">En RTI, todas las variables del problema de la muestra \(k\) (estados, mandos y multiplicadores).</dd>
+<dt>\(p(t)\)</dt><dd data-hojas="45">Parámetro que cambia con el tiempo en el ejemplo de juguete \(w^3 + w = p(t)\).</dd>
+<dt>\(\Delta y^k\)</dt><dd data-hojas="38,45">Paso de tipo Newton que da el RTI en la muestra \(k\) (una sola iteración por muestra). Su norma se contrae de muestra en muestra, y la distancia de la iterada a la solución exacta de su problema está acotada por \(\|\Delta y^k\|/(1-\delta_k)\).</dd>
+<dt>\(\kappa\)</dt><dd data-hojas="38,45">Medida del error de la aproximación de la hessiana en el teorema de contracción de RTI.</dd>
+<dt>\(\omega\) (no linealidad)</dt><dd data-hojas="38,45">Constante de no linealidad del teorema de contracción de RTI; no es la frecuencia de la parte de LQR.</dd>
+<dt>\(\delta_0\)</dt><dd data-hojas="38,45">\(\kappa + \tfrac\omega2\|\Delta y^0\|\), con el primer paso: si es \(\lt 1\), los pasos se contraen y las iteradas se acercan geométricamente a la solución.</dd>
 </dl>
 <h3>Control de contorno (MPCC)</h3>
 <dl>
-<dt>\(\mathbf p\)</dt><dd data-hojas="26">Posición del dron, vector de \(\mathbb R^3\) (en la figura, «p (dron)»).</dd>
-<dt>\(\vartheta\)</dt><dd data-hojas="26">Parámetro de longitud de arco del camino; pasa a ser un estado más. No es el cabeceo \(\theta\).</dd>
-<dt>\(\mathbf p_d(\vartheta)\)</dt><dd data-hojas="26">Punto del camino deseado a longitud de arco \(\vartheta\).</dd>
-<dt>\(\mathbf t(\vartheta)\)</dt><dd data-hojas="26">Tangente unitaria del camino en \(\vartheta\).</dd>
-<dt>\(v_k\)</dt><dd data-hojas="26">Mando virtual de progreso: \(\vartheta_{k+1} = \vartheta_k + v_kT_s\).</dd>
-<dt>\(T_s\)</dt><dd data-hojas="26">Periodo de muestreo del modelo discreto.</dd>
-<dt>\(e_l\)</dt><dd data-hojas="26">Error de retraso: componente del error de posición a lo largo de la tangente.</dd>
-<dt>\(\mathbf e_c\)</dt><dd data-hojas="26">Error de contorno: componente del error de posición perpendicular al camino.</dd>
-<dt>\(J\)</dt><dd data-hojas="26">Coste total del MPCC, suma de \(q_c\|\mathbf e_c\|^2 + q_le_l^2 - \rho v_k + \|\Delta u_k\|_R^2\).</dd>
-<dt>\(q_c\), \(q_l\)</dt><dd data-hojas="26">Pesos del error de contorno y del de retraso (\(q_l\) alto para que \(\vartheta\approx\vartheta^\star\)).</dd>
-<dt>\(\rho\)</dt><dd data-hojas="26">Peso del premio al avance \(-\rho v_k\).</dd>
-<dt>\(\vartheta^\star\)</dt><dd data-hojas="26">Valor de \(\vartheta\) que minimiza la distancia al camino (la proyección), que el MPCC aproxima sin imponerla.</dd>
+<dt>\(\mathbf p\)</dt><dd data-hojas="49,50">Posición del dron, vector de \(\mathbb R^3\) (en la figura, «p (dron)»).</dd>
+<dt>\(\vartheta\)</dt><dd data-hojas="49,50">Parámetro de longitud de arco del camino; pasa a ser un estado más. No es el cabeceo \(\theta\).</dd>
+<dt>\(\mathbf p_d(\vartheta)\)</dt><dd data-hojas="49,50">Punto del camino deseado a longitud de arco \(\vartheta\).</dd>
+<dt>\(\mathbf t(\vartheta)\)</dt><dd data-hojas="49,50">Tangente unitaria del camino en \(\vartheta\).</dd>
+<dt>\(v_k\)</dt><dd data-hojas="49,51">Mando virtual de progreso: \(\vartheta_{k+1} = \vartheta_k + v_kT_s\).</dd>
+<dt>\(T_s\)</dt><dd data-hojas="49,51">Periodo de muestreo del modelo discreto.</dd>
+<dt>\(\mathbf p_{\text{ref}}(t)\)</dt><dd data-hojas="49">Referencia de un MPC de seguimiento: un punto que se mueve con el reloj.</dd>
+<dt>\(\mathbf e\)</dt><dd data-hojas="50">Vector del punto del camino al dron, \(\mathbf p - \mathbf p_d(\vartheta)\); se descompone en \(e_l\) y \(\mathbf e_c\).</dd>
+<dt>\(e_l\)</dt><dd data-hojas="49,50">Error de retraso: componente del error de posición a lo largo de la tangente.</dd>
+<dt>\(\mathbf e_c\)</dt><dd data-hojas="49,50">Error de contorno: componente del error de posición perpendicular al camino.</dd>
+<dt>\(J\)</dt><dd data-hojas="51">Coste total del MPCC, suma de \(q_c\|\mathbf e_c\|^2 + q_le_l^2 - \rho v_k + \|\Delta u_k\|_R^2\).</dd>
+<dt>\(q_c\), \(q_l\)</dt><dd data-hojas="49,51">Pesos del error de contorno y del de retraso (\(q_l\) alto para que \(\vartheta\approx\vartheta^\star\)).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="49,51">Peso del premio al avance \(-\rho v_k\).</dd>
+<dt>\(\vartheta^\star\)</dt><dd data-hojas="50,51">Valor de \(\vartheta\) que minimiza la distancia al camino (la proyección), que el MPCC aproxima sin imponerla.</dd>
 </dl>
 <h3>MPC en drones reales</h3>
 <dl>
-<dt>\(N\) (nodos)</dt><dd data-hojas="29">En las tablas, número de nodos de la malla de predicción (p. ej. \(N = 20\), \(N = 10\), \(N = 15\)).</dd>
+<dt>\(N\) (nodos)</dt><dd data-hojas="54">En las tablas, número de nodos de la malla de predicción (p. ej. \(N = 20\), \(N = 10\), \(N = 15\)).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
@@ -1040,39 +1930,39 @@
 <dt>RTI</dt><dd data-hojas="1">Real-time iteration: una sola iteración de SQP por muestra, preparada antes de conocer el estado.</dd>
 <dt>DMC</dt><dd data-hojas="4">Dynamic matrix control: uno de los primeros MPC industriales (Shell), de 1978–80.</dd>
 <dt>IDCOM</dt><dd data-hojas="4">Identification and command: primer MPC industrial de Richalet et al., de 1978–80.</dd>
-<dt>DARE</dt><dd data-hojas="6">Discrete algebraic Riccati equation: punto fijo de la recursión de Riccati, da la solución de horizonte infinito.</dd>
-<dt>QP</dt><dd data-hojas="11">Quadratic program: problema con coste cuadrático y restricciones lineales.</dd>
-<dt>KKT</dt><dd data-hojas="11">Karush-Kuhn-Tucker: condiciones de optimalidad; el sistema de banda del QP disperso.</dd>
-<dt>POMDP</dt><dd data-hojas="18">Partially observable Markov decision process: problema de decisión con estado no observado; con un estimador, el estado es una distribución.</dd>
-<dt>Hamilton-Jacobi-Bellman, HJB</dt><dd data-hojas="20">Hamilton-Jacobi-Bellman: ecuación en derivadas parciales de la función de valor en todo el espacio de estados; solo es práctica con pocos estados o en el caso lineal cuadrático.</dd>
-<dt>EDP</dt><dd data-hojas="20">Ecuación en derivadas parciales; la de Hamilton-Jacobi-Bellman es una para la función de valor.</dd>
-<dt>SQP</dt><dd data-hojas="21">Sequential quadratic programming: resuelve un NLP con una secuencia de QP.</dd>
-<dt>MPPI</dt><dd data-hojas="23">Model predictive path integral: MPC por muestreo de trayectorias; TD-MPC2 lo usa con una política que propone el arranque.</dd>
-<dt>NLP</dt><dd data-hojas="24">Nonlinear program: problema de optimización no lineal.</dd>
-<dt>ADMM</dt><dd data-hojas="13">Alternating direction method of multipliers: método de operadores usado por OSQP y TinyMPC.</dd>
-<dt>RK4</dt><dd data-hojas="21">Runge-Kutta de cuarto orden, el integrador de cada intervalo.</dd>
-<dt>ERK, IRK</dt><dd data-hojas="24">Integradores Runge-Kutta explícitos e implícitos disponibles en acados.</dd>
-<dt>acados</dt><dd data-hojas="24">Marco de código abierto para control óptimo rápido con generación de código C, SQP y RTI.</dd>
-<dt>HPIPM</dt><dd data-hojas="13">Solver de QP de punto interior con Riccati, usado dentro de acados.</dd>
-<dt>qpOASES</dt><dd data-hojas="13">Solver de QP de conjunto activo paramétrico.</dd>
-<dt>OSQP</dt><dd data-hojas="13">Solver de QP por operadores (ADMM).</dd>
-<dt>TinyMPC</dt><dd data-hojas="13">Solver ADMM con Riccati precalculada para microcontroladores.</dd>
-<dt>GP</dt><dd data-hojas="29">Gaussian process: proceso gaussiano; en la tabla de MPC en drones, el modelo aprendido de la parte que falta, con un coste de 4–5 ms.</dd>
-<dt>PAMPC</dt><dd data-hojas="29">Perception-aware MPC: MPC que tiene en cuenta la percepción en un cuadricóptero; aparece en la tabla de MPC en drones.</dd>
-<dt>HPA-MPC</dt><dd data-hojas="29">Hybrid perception-aware nonlinear MPC: MPC no lineal consciente de la percepción para cuadricópteros con carga suspendida; aparece en la tabla de MPC en drones.</dd>
-<dt>DAQP</dt><dd data-hojas="30">Solver de conjunto activo con peor caso certificado.</dd>
-<dt>IPOPT</dt><dd data-hojas="13">Solver genérico de NLP de punto interior.</dd>
-<dt>CasADi</dt><dd data-hojas="24">Biblioteca de modelado simbólico y diferenciación automática para optimización.</dd>
-<dt>ACADO</dt><dd data-hojas="24">Herramienta de control óptimo en tiempo real que aparece en las tablas de MPC en drones y en la comparación de tiempos con acados.</dd>
-<dt>CVXGEN</dt><dd data-hojas="29">Solver de QP con el que Kamel et al. resuelven su MPC lineal (tabla).</dd>
+<dt>DARE</dt><dd data-hojas="11">Discrete algebraic Riccati equation: punto fijo de la recursión de Riccati, da la solución de horizonte infinito.</dd>
+<dt>QP</dt><dd data-hojas="20">Quadratic program: problema con coste cuadrático y restricciones lineales.</dd>
+<dt>KKT</dt><dd data-hojas="23,24">Karush-Kuhn-Tucker: condiciones de optimalidad; el sistema de banda del QP disperso.</dd>
+<dt>POMDP</dt><dd data-hojas="36">Partially observable Markov decision process: problema de decisión con estado no observado; con un estimador, el estado es una distribución.</dd>
+<dt>Hamilton-Jacobi-Bellman, HJB</dt><dd data-hojas="39">Hamilton-Jacobi-Bellman: ecuación en derivadas parciales de la función de valor en todo el espacio de estados; solo es práctica con pocos estados o en el caso lineal cuadrático.</dd>
+<dt>EDP</dt><dd data-hojas="39">Ecuación en derivadas parciales; la de Hamilton-Jacobi-Bellman es una para la función de valor.</dd>
+<dt>SQP</dt><dd data-hojas="42">Sequential quadratic programming: resuelve un NLP con una secuencia de QP.</dd>
+<dt>MPPI</dt><dd data-hojas="46">Model predictive path integral: MPC por muestreo de trayectorias; TD-MPC2 lo usa con una política que propone el arranque.</dd>
+<dt>NLP</dt><dd data-hojas="47">Nonlinear program: problema de optimización no lineal.</dd>
+<dt>ADMM</dt><dd data-hojas="26,28">Alternating direction method of multipliers: método de operadores usado por OSQP y TinyMPC.</dd>
+<dt>RK4</dt><dd data-hojas="41">Runge-Kutta de cuarto orden, el integrador de cada intervalo.</dd>
+<dt>ERK, IRK</dt><dd data-hojas="47">Integradores Runge-Kutta explícitos e implícitos disponibles en acados.</dd>
+<dt>acados</dt><dd data-hojas="47">Marco de código abierto para control óptimo rápido con generación de código C, SQP y RTI.</dd>
+<dt>HPIPM</dt><dd data-hojas="28">Solver de QP de punto interior con Riccati, usado dentro de acados.</dd>
+<dt>qpOASES</dt><dd data-hojas="28">Solver de QP de conjunto activo paramétrico.</dd>
+<dt>OSQP</dt><dd data-hojas="28">Solver de QP por operadores (ADMM).</dd>
+<dt>TinyMPC</dt><dd data-hojas="28">Solver ADMM con Riccati precalculada para microcontroladores.</dd>
+<dt>GP</dt><dd data-hojas="54">Gaussian process: proceso gaussiano; en la tabla de MPC en drones, el modelo aprendido de la parte que falta, con un coste de 4–5 ms.</dd>
+<dt>PAMPC</dt><dd data-hojas="54">Perception-aware MPC: MPC que tiene en cuenta la percepción en un cuadricóptero; aparece en la tabla de MPC en drones.</dd>
+<dt>HPA-MPC</dt><dd data-hojas="54">Hybrid perception-aware nonlinear MPC: MPC no lineal consciente de la percepción para cuadricópteros con carga suspendida; aparece en la tabla de MPC en drones.</dd>
+<dt>DAQP</dt><dd data-hojas="55">Solver de conjunto activo con peor caso certificado.</dd>
+<dt>IPOPT</dt><dd data-hojas="28">Solver genérico de NLP de punto interior.</dd>
+<dt>CasADi</dt><dd data-hojas="47">Biblioteca de modelado simbólico y diferenciación automática para optimización.</dd>
+<dt>ACADO</dt><dd data-hojas="47">Herramienta de control óptimo en tiempo real que aparece en las tablas de MPC en drones y en la comparación de tiempos con acados.</dd>
+<dt>CVXGEN</dt><dd data-hojas="54">Solver de QP con el que Kamel et al. resuelven su MPC lineal (tabla).</dd>
 <dt>INDI</dt><dd data-hojas="3">Incremental nonlinear dynamic inversion: control de actitud con medida de aceleración (de A2).</dd>
-<dt>CTBR</dt><dd data-hojas="37">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
+<dt>CTBR</dt><dd data-hojas="62">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
 <dt>PETS, TD-MPC2, Dreamer</dt><dd data-hojas="3">Agentes basados en modelo que planifican con un modelo aprendido (se desarrollan en A3b).</dd>
-<dt>PX4</dt><dd data-hojas="7">Piloto automático de código abierto, con la cascada de control de A2.</dd>
-<dt>TECS</dt><dd data-hojas="30">Total energy control system: control de altura y velocidad en ala fija.</dd>
+<dt>PX4</dt><dd data-hojas="13">Piloto automático de código abierto, con la cascada de control de A2.</dd>
+<dt>TECS</dt><dd data-hojas="55">Total energy control system: control de altura y velocidad en ala fija.</dd>
 <dt>RL</dt><dd data-hojas="4">Reinforcement learning, aprendizaje por refuerzo.</dd>
 <dt>MCU</dt><dd data-hojas="3">Microcontroller unit, microcontrolador.</dd>
-<dt>RMS</dt><dd data-hojas="23">Root mean square, valor cuadrático medio, usado para el error de posición.</dd>
+<dt>RMS</dt><dd data-hojas="46">Root mean square, valor cuadrático medio, usado para el error de posición.</dd>
 </dl>
 </aside>
 

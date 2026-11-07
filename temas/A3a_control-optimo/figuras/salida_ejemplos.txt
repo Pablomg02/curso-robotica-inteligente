@@ -1,0 +1,190 @@
+========================================================================
+EJEMPLO 1. LQR ESCALAR A MANO: x_{k+1} = x_k + u_k, q = r = 1, P_f = 0, N = 3
+  Pi_3 = 0.0000
+  Pi_2 = 1.0000,  K_2 = 0.0000
+  Pi_1 = 1.5000,  K_1 = 0.5000
+  Pi_0 = 1.6000,  K_0 = 0.6000
+  k = 0: x = 1.0000, u = -K_0 x = -0.6000, coste de etapa x^2 + u^2 = 1.3600
+  k = 1: x = 0.4000, u = -K_1 x = -0.2000, coste de etapa x^2 + u^2 = 0.2000
+  k = 2: x = 0.2000, u = -K_2 x = -0.0000, coste de etapa x^2 + u^2 = 0.0400
+  x_3 = 0.2000; coste total = 1.6000; Pi_0 * x_0^2 = 1.6000  (coinciden)
+  fuerza bruta en rejilla de paso 0,01: mínimo 1.6000 en u = (-0.60, -0.20, 0.00)
+========================================================================
+EJEMPLO 2. DARE ESCALAR: la recursión converge al punto fijo; detectabilidad
+  Pi hacia atrás (j pasos desde el final): 0.0000, 1.0000, 1.5000, 1.6000, 1.6154, 1.6176, 1.6180, 1.6180, 1.6180, 1.6180, 1.6180, 1.6180, 1.6180
+  DARE escalar con a = b = q = r = 1: pi^2 - pi - 1 = 0 -> pi = (1 + sqrt 5)/2 = 1.6180
+  K_inf = pi/(1 + pi) = 0.6180; polo en lazo cerrado a - b K = 0.3820
+  a = 2, b = r = 1, q = 0: soluciones de la DARE pi = 0 y pi = (a^2 - 1) r / b^2 = 3.0
+    pi = 0: K = 0.00, polo a - bK = 2.00
+    pi = 3: K = 1.50, polo a - bK = 0.50
+    la recursión desde P_f = 0 se queda en Pi = 0.00: no hacer nada cuesta 0 y el óptimo no estabiliza
+path pi: M60.0,230.0 L96.7,130.0 L133.3,80.0 L170.0,70.0 L206.7,68.5 L243.3,68.2 L280.0,68.2 L316.7,68.2 L353.3,68.2 L390.0,68.2 L426.7,68.2 L463.3,68.2 L500.0,68.2
+  y(phi) = 68.2
+========================================================================
+EJEMPLO 3. PESOS DE BRYSON Y CADENA DE INTEGRADORES DEL EJE x DEL x500
+  Q_ii para x (0,5 m): 1/x_max^2 = 4.00; un error igual al admisible cuesta 1
+  Q_ii para v_x (1 m/s): 1/x_max^2 = 1.00; un error igual al admisible cuesta 1
+  Q_ii para theta (0,3 rad): 1/x_max^2 = 11.11; un error igual al admisible cuesta 1
+  Q_ii para q (2 rad/s): 1/x_max^2 = 0.25; un error igual al admisible cuesta 1
+  R para el par de cabeceo (1 N m): 1.00
+  cadena: tau_y --1/J_y = 41.9--> q' ; q --> theta' ; theta --g = 9.81--> v_x' ; v_x --> x'
+========================================================================
+EJEMPLO 4. MÁRGENES DEL LQR: Nyquist del eje x del x500 en continuo y en discreto
+  continuo: min |1 + L(jw)| = 1.0002  (la teoría dice >= 1); cota 2 arcsin(1/2) = 60.0°
+  continuo: |L| = 1 en w = 31.05 rad/s, margen de fase = 74.7°
+  discreto, T = 0.01 s: gamma = min |1 + L| = 0.862, cota 2 arcsin(gamma/2) = 51.1°, margen de fase real = 65.6°
+  discreto, T = 0.05 s: gamma = min |1 + L| = 0.535, cota 2 arcsin(gamma/2) = 31.0°, margen de fase real = 42.8°
+  discreto, T = 0.10 s: gamma = min |1 + L| = 0.360, cota 2 arcsin(gamma/2) = 20.8°, margen de fase real = 29.0°
+path nyquist: M159.5,289.9 L166.1,286.7 L172.3,283.4 L178.1,280.1 L183.5,276.8 L188.5,273.4 L193.2,270.1 L197.6,266.9 L201.7,263.6 L205.6,260.4 L209.2,257.3 L212.6,254.2 L215.7,251.1 L218.6,248.1 L221.4,245.2 L223.9,242.3 L226.3,239.5 L228.6,236.7 L230.6,234.0 L232.6,231.4 L234.4,228.9 L236.1,226.4 L237.7,223.9 L239.2,221.6 L240.6,219.3 L241.9,217.1 L243.1,214.9 L244.2,212.8 L245.3,210.8 L246.2,208.8 L247.2,206.9 L248.0,205.0 L248.8,203.2 L249.6,201.4 L250.2,199.7 L250.9,198.1 L251.5,196.5 L252.1,195.0 L252.6,193.5 L253.1,192.0 L253.6,190.6 L254.0,189.3 L254.4,187.9 L254.8,186.7 L255.1,185.4 L255.4,184.3 L255.7,183.1 L256.0,182.0 L256.3,180.9 L256.5,179.9 L256.8,178.9 L257.0,177.9 L257.2,177.0 L257.4,176.1 L257.5,175.2 L257.7,174.3 L257.9,173.5 L258.0,172.7 L258.1,171.9 L258.3,171.2 L258.4,170.5 L258.5,169.8 L258.6,169.1 L258.7,168.5 L258.8,167.9 L258.9,167.3 L258.9,166.7 L259.0,166.1 L259.1,165.6 L259.1,165.0 L259.2,164.5 L259.2,164.0 L259.3,163.6 L259.3,163.1 L259.4,162.6 L259.4,162.2 L259.5,161.8 L259.5,161.4 L259.5,161.0 L259.6,160.6 L259.6,160.3 L259.6,159.9 L259.6,159.6 L259.7,159.3 L259.7,159.0 L259.7,158.7 L259.7,158.4 L259.7,158.1 L259.8,157.8 L259.8,157.5 L259.8,157.3 L259.8,157.0 L259.8,156.8 L259.8,156.6 L259.8,156.3 L259.9,156.1 L259.9,155.9 L259.9,155.7 L259.9,155.5 L259.9,155.3 L259.9,155.2 L259.9,155.0 L259.9,154.8 L259.9,154.6 L259.9,154.5 L259.9,154.3 L259.9,154.2 L259.9,154.0 L259.9,153.9 L259.9,153.8 L259.9,153.6 L260.0,153.5 L260.0,153.4 L260.0,153.3 L260.0,153.2 L260.0,153.1 L260.0,153.0 L260.0,152.9 L260.0,152.8 L260.0,152.7 L260.0,152.6 L260.0,152.5 L260.0,152.4 L260.0,152.3 L260.0,152.3 L260.0,152.2
+path nyquist espejo: M159.5,10.1 L166.1,13.3 L172.3,16.6 L178.1,19.9 L183.5,23.2 L188.5,26.6 L193.2,29.9 L197.6,33.1 L201.7,36.4 L205.6,39.6 L209.2,42.7 L212.6,45.8 L215.7,48.9 L218.6,51.9 L221.4,54.8 L223.9,57.7 L226.3,60.5 L228.6,63.3 L230.6,66.0 L232.6,68.6 L234.4,71.1 L236.1,73.6 L237.7,76.1 L239.2,78.4 L240.6,80.7 L241.9,82.9 L243.1,85.1 L244.2,87.2 L245.3,89.2 L246.2,91.2 L247.2,93.1 L248.0,95.0 L248.8,96.8 L249.6,98.6 L250.2,100.3 L250.9,101.9 L251.5,103.5 L252.1,105.0 L252.6,106.5 L253.1,108.0 L253.6,109.4 L254.0,110.7 L254.4,112.1 L254.8,113.3 L255.1,114.6 L255.4,115.7 L255.7,116.9 L256.0,118.0 L256.3,119.1 L256.5,120.1 L256.8,121.1 L257.0,122.1 L257.2,123.0 L257.4,123.9 L257.5,124.8 L257.7,125.7 L257.9,126.5 L258.0,127.3 L258.1,128.1 L258.3,128.8 L258.4,129.5 L258.5,130.2 L258.6,130.9 L258.7,131.5 L258.8,132.1 L258.9,132.7 L258.9,133.3 L259.0,133.9 L259.1,134.4 L259.1,135.0 L259.2,135.5 L259.2,136.0 L259.3,136.4 L259.3,136.9 L259.4,137.4 L259.4,137.8 L259.5,138.2 L259.5,138.6 L259.5,139.0 L259.6,139.4 L259.6,139.7 L259.6,140.1 L259.6,140.4 L259.7,140.7 L259.7,141.0 L259.7,141.3 L259.7,141.6 L259.7,141.9 L259.8,142.2 L259.8,142.5 L259.8,142.7 L259.8,143.0 L259.8,143.2 L259.8,143.4 L259.8,143.7 L259.9,143.9 L259.9,144.1 L259.9,144.3 L259.9,144.5 L259.9,144.7 L259.9,144.8 L259.9,145.0 L259.9,145.2 L259.9,145.4 L259.9,145.5 L259.9,145.7 L259.9,145.8 L259.9,146.0 L259.9,146.1 L259.9,146.2 L259.9,146.4 L260.0,146.5 L260.0,146.6 L260.0,146.7 L260.0,146.8 L260.0,146.9 L260.0,147.0 L260.0,147.1 L260.0,147.2 L260.0,147.3 L260.0,147.4 L260.0,147.5 L260.0,147.6 L260.0,147.7 L260.0,147.7 L260.0,147.8
+  punto |L| = 1: (241.6, 217.6)
+========================================================================
+EJEMPLO 5. HORIZONTE DESLIZANTE: integrador escalar con |u| <= 0,5, N = 4, P_f = Pi_inf, desde x = 2
+  t = 0: x(t) = 2.0000; plan U = [-0.5, -0.5, -0.5, -0.309]; estados predichos = [2.0, 1.5, 1.0, 0.5, 0.191]; se aplica u_0 = -0.5000
+  t = 1: x(t) = 1.5000; plan U = [-0.5, -0.5, -0.309, -0.118]; estados predichos = [1.5, 1.0, 0.5, 0.191, 0.0729]; se aplica u_0 = -0.5000
+  t = 2: x(t) = 1.0000; plan U = [-0.5, -0.309, -0.118, -0.0451]; estados predichos = [1.0, 0.5, 0.191, 0.0729, 0.0279]; se aplica u_0 = -0.5000
+  t = 3: x(t) = 0.5000; plan U = [-0.309, -0.118, -0.0451, -0.0172]; estados predichos = [0.5, 0.191, 0.0729, 0.0279, 0.0106]; se aplica u_0 = -0.3090
+fila t = 0 (y de 22 a 78):
+  path plan t0: M90.0,22.0 L157.1,36.0 L224.3,50.0 L291.4,64.0 L358.6,72.7
+  puntos: (90.0,22.0) (157.1,36.0) (224.3,50.0) (291.4,64.0) (358.6,72.7)
+fila t = 1 (y de 104 a 160):
+  path plan t1: M157.1,118.0 L224.3,132.0 L291.4,146.0 L358.6,154.7 L425.7,158.0
+  puntos: (157.1,118.0) (224.3,132.0) (291.4,146.0) (358.6,154.7) (425.7,158.0)
+fila t = 2 (y de 186 a 242):
+  path plan t2: M224.3,214.0 L291.4,228.0 L358.6,236.7 L425.7,240.0 L492.9,241.2
+  puntos: (224.3,214.0) (291.4,228.0) (358.6,236.7) (425.7,240.0) (492.9,241.2)
+========================================================================
+EJEMPLO 6. FORMA CONDENSADA, N = 2: integrador escalar, q = r = 1, P_f = 0, x_0 = 1
+  Phi = [1.0, 1.0]   Gamma = [[1.0, 0.0], [1.0, 1.0]]
+  Qbar = diag [1.0, 0.0]   Rbar = diag [1.0, 1.0]
+  H = Gamma' Qbar Gamma + Rbar = [[2.0, 0.0], [0.0, 1.0]]
+  término lineal Gamma' Qbar Phi x_0 = [1.0, 0.0]
+  U* = -H^{-1} f = [-0.5, 0.0]
+  Riccati con N = 2: K_0 = 0.50, K_1 = 0.00 -> u_0 = -0.50, x_1 = 0.50, u_1 = -0.00
+========================================================================
+EJEMPLO 7. FORMA DISPERSA Y KKT, el mismo problema: variables (u0, x1, u1, x2), multiplicadores (lam1, lam2)
+  matriz KKT (orden u0, x1, u1, x2, lam1, lam2):
+      2.0   0.0   0.0   0.0   1.0  -0.0
+      0.0   2.0   0.0   0.0  -1.0   1.0
+      0.0   0.0   2.0   0.0  -0.0   1.0
+      0.0   0.0   0.0   0.0  -0.0  -1.0
+     -1.0   1.0   0.0   0.0   0.0   0.0
+      0.0  -1.0  -1.0   1.0   0.0   0.0
+  solución: [-0.5, 0.5, 0.0, 0.5, 1.0, -0.0]
+  comprobación lam_k = 2 Pi_k x_k: lam1 = 2*1*0.50 = 1.00, lam2 = 2*0*x2 = 0
+  patrón de no nulos de la KKT con N = 3 (orden por etapas):
+    u0  ■■·······
+    λ1  ■·■······
+    x1  ·■■·■····
+    u1  ···■■····
+    λ2  ··■■·■···
+    x2  ····■■·■·
+    u2  ······■■·
+    λ3  ·····■■·■
+    x3  ·······■■
+  rects kkt (celda 24 px, origen (64, 40)): 64,40 88,40 64,64 112,64 88,88 112,88 160,88 136,112 160,112 112,136 136,136 184,136 160,160 184,160 232,160 208,184 232,184 184,208 208,208 256,208 232,232 256,232
+  semiancho de banda = 2: no crece con N
+========================================================================
+EJEMPLO 8. KKT CON UNA DESIGUALDAD Y LAS TRES FAMILIAS DE SOLVERS: min 1/2 (u - 2)^2  s.a.  u <= 1
+  sin restricción: u = 2 (viola u <= 1)
+  conjunto activo: se supone activa -> u = 1; estacionariedad (u - 2) + lam = 0 -> lam = 1 >= 0: óptimo
+  punto interior, mu = 1: u(mu) = 0.3820; multiplicador estimado mu/(1 - u) = 1.6180
+  punto interior, mu = 0.1: u(mu) = 0.9084; multiplicador estimado mu/(1 - u) = 1.0916
+  punto interior, mu = 0.01: u(mu) = 0.9901; multiplicador estimado mu/(1 - u) = 1.0099
+  punto interior, mu = 0.001: u(mu) = 0.9990; multiplicador estimado mu/(1 - u) = 1.0010
+path parabola: M50.0,21.7 L57.0,29.9 L64.0,38.0 L71.0,45.9 L78.0,53.7 L85.0,61.2 L92.0,68.7 L99.0,75.9 L106.0,83.0 L113.0,89.9 L120.0,96.7 L127.0,103.2 L134.0,109.7 L141.0,115.9 L148.0,122.0 L155.0,127.9 L162.0,133.7 L169.0,139.2 L176.0,144.7 L183.0,149.9 L190.0,155.0 L197.0,159.9 L204.0,164.7 L211.0,169.3 L218.0,173.7 L225.0,177.9 L232.0,182.0 L239.0,185.9 L246.0,189.7 L253.0,193.2 L260.0,196.7 L267.0,199.9 L274.0,203.0 L281.0,205.9 L288.0,208.7 L295.0,211.2 L302.0,213.7 L309.0,215.9 L316.0,218.0 L323.0,219.9 L330.0,221.7 L337.0,223.2 L344.0,224.7 L351.0,225.9 L358.0,227.0 L365.0,227.9 L372.0,228.7 L379.0,229.2 L386.0,229.7 L393.0,229.9 L400.0,230.0 L407.0,229.9 L414.0,229.7 L421.0,229.2 L428.0,228.7 L435.0,227.9 L442.0,227.0 L449.0,225.9 L456.0,224.7 L463.0,223.2 L470.0,221.7
+  u = 1 en x = 260.0; u = 2 en x = 400.0; f(1) = 0,5 en y = 196.7; f(2) = 0 en y = 230.0
+  punto interior mu = 1: (173.5, 142.7)
+  punto interior mu = 0.1: (247.2, 190.3)
+  ADMM con rho = 1 (u libre, z proyectada en z <= 1, y multiplicador):
+    it 1: u = 1.0000, z = 1.0000, y = 0.0000
+    it 2: u = 1.5000, z = 1.0000, y = 0.5000
+    it 3: u = 1.2500, z = 1.0000, y = 0.7500
+    it 4: u = 1.1250, z = 1.0000, y = 0.8750
+    it 5: u = 1.0625, z = 1.0000, y = 0.9375
+    it 6: u = 1.0312, z = 1.0000, y = 0.9688
+    it 7: u = 1.0156, z = 1.0000, y = 0.9844
+    it 8: u = 1.0078, z = 1.0000, y = 0.9922
+========================================================================
+EJEMPLO 9. ESTABILIDAD: desplazar y añadir con números (integrador, |u| <= 0,5, V_f = 2 x^2, N = 2)
+  condición terminal con kappa_f = -K_inf x: V_f(x+) - V_f(x) = -1.7082 x^2 <= -l = -1.3820 x^2 -> se cumple
+  (se cumple para todo p >= 1.6180 = Pi_inf)
+  X_f = [-0.8090, 0.8090]: ahí |K_inf x| <= 0,5 y el lazo x+ = 0.3820 x lo mantiene dentro
+  en x = 1: U* = [-0.5, -0.3333], x predichos = [0.5, 0.1667], V*(x) = 1.6667
+  l(x, u0*) = 1.2500; x+ = 0.5000
+  secuencia desplazada en x+: (u1*, kappa_f(x2*)) = (-0.3333, -0.1030); estados [0.5, 0.1667, 0.0637]; coste 0.4076
+  V*(x) - l(x, u0*) = 0.4167 >= coste desplazado 0.4076
+  óptimo en x+: U* = [-0.3125, -0.125], V*(x+) = 0.4062 <= 0.4076 <= 0.4167
+  V* a lo largo del lazo cerrado desde x = 1: 1.6667, 0.4062, 0.0571, 0.0080, 0.0011, 0.0002
+========================================================================
+EJEMPLO 10. MPC EXPLÍCITO: integrador, |u| <= 0,5, P_f = Pi_inf; regiones del espacio de estados
+  N = 1: 3 conjuntos activos, 3 regiones en [-6, 6]; fronteras en x = [-0.809, 0.809]
+  N = 2: 5 conjuntos activos, 5 regiones en [-6, 6]; fronteras en x = [-1.309, -0.809, 0.809, 1.309]
+  N = 3: 7 conjuntos activos, 7 regiones en [-6, 6]; fronteras en x = [-1.809, -1.309, -0.809, 0.809, 1.309, 1.809]
+    región (-6.000, -1.809): u0 = 0.0000 x + 0.5000
+    región (-1.809, -1.309): u0 = -0.0000 x + 0.5000
+    región (-1.309, -0.809): u0 = 0.0000 x + 0.5000
+    región (-0.809, 0.809): u0 = -0.6180 x + 0.0000
+    región (0.809, 1.309): u0 = -0.0000 x + -0.5000
+    región (1.309, 1.809): u0 = 0.0000 x + -0.5000
+    región (1.809, 6.000): u0 = 0.0000 x + -0.5000
+  N = 4: 9 conjuntos activos, 9 regiones en [-6, 6]; fronteras en x = [-2.309, -1.809, -1.309, -0.809, 0.809, 1.309, 1.809, 2.309]
+  N = 5: 11 conjuntos activos, 11 regiones en [-6, 6]; fronteras en x = [-2.809, -2.309, -1.809, -1.309, -0.809, 0.809, 1.309, 1.809, 2.309, 2.809]
+path explicito N3: M60.0,45.0 L62.7,45.0 L65.5,45.0 L68.2,45.0 L71.0,45.0 L73.8,45.0 L76.5,45.0 L79.2,45.0 L82.0,45.0 L84.8,45.0 L87.5,45.0 L90.3,45.0 L93.0,45.0 L95.8,45.0 L98.5,45.0 L101.2,45.0 L104.0,45.0 L106.8,45.0 L109.5,45.0 L112.2,45.0 L115.0,45.0 L117.8,45.0 L120.5,45.0 L123.2,45.0 L126.0,45.0 L128.8,45.0 L131.5,45.0 L134.2,45.0 L137.0,45.0 L139.8,45.0 L142.5,45.0 L145.2,45.0 L148.0,45.0 L150.8,45.0 L153.5,45.0 L156.2,45.0 L159.0,45.0 L161.8,45.0 L164.5,45.0 L167.2,45.0 L170.0,45.0 L172.8,45.0 L175.5,45.0 L178.2,45.0 L181.0,45.0 L183.8,45.0 L186.5,45.0 L189.3,45.0 L192.0,45.0 L194.8,45.0 L197.5,45.0 L200.2,45.0 L203.0,45.0 L205.8,45.0 L208.5,45.0 L211.2,45.0 L214.0,45.0 L216.8,45.0 L219.5,45.0 L222.2,45.0 L225.0,45.0 L227.8,45.0 L230.5,45.0 L233.3,45.0 L236.0,45.8 L238.8,50.5 L241.5,55.1 L244.3,59.7 L247.0,64.4 L249.8,69.0 L252.5,73.6 L255.2,78.3 L258.0,82.9 L260.8,87.6 L263.5,92.2 L266.2,96.8 L269.0,101.5 L271.8,106.1 L274.5,110.7 L277.2,115.4 L280.0,120.0 L282.8,124.6 L285.5,129.3 L288.2,133.9 L291.0,138.5 L293.8,143.2 L296.5,147.8 L299.2,152.4 L302.0,157.1 L304.8,161.7 L307.5,166.4 L310.2,171.0 L313.0,175.6 L315.8,180.3 L318.5,184.9 L321.2,189.5 L324.0,194.2 L326.8,195.0 L329.5,195.0 L332.2,195.0 L335.0,195.0 L337.8,195.0 L340.5,195.0 L343.2,195.0 L346.0,195.0 L348.8,195.0 L351.5,195.0 L354.3,195.0 L357.0,195.0 L359.8,195.0 L362.5,195.0 L365.2,195.0 L368.0,195.0 L370.8,195.0 L373.5,195.0 L376.2,195.0 L379.0,195.0 L381.8,195.0 L384.5,195.0 L387.2,195.0 L390.0,195.0 L392.8,195.0 L395.5,195.0 L398.2,195.0 L401.0,195.0 L403.8,195.0 L406.5,195.0 L409.2,195.0 L412.0,195.0 L414.7,195.0 L417.5,195.0 L420.3,195.0 L423.0,195.0 L425.8,195.0 L428.5,195.0 L431.2,195.0 L434.0,195.0 L436.8,195.0 L439.5,195.0 L442.3,195.0 L445.0,195.0 L447.8,195.0 L450.5,195.0 L453.2,195.0 L456.0,195.0 L458.8,195.0 L461.5,195.0 L464.2,195.0 L467.0,195.0 L469.8,195.0 L472.5,195.0 L475.3,195.0 L478.0,195.0 L480.8,195.0 L483.5,195.0 L486.2,195.0 L489.0,195.0 L491.8,195.0 L494.5,195.0 L497.3,195.0 L500.0,195.0
+  fronteras (px): [180.5, 208.0, 235.5, 324.5, 352.0, 379.5]
+========================================================================
+EJEMPLO 11. SEGUIMIENTO SIN ERROR ESTACIONARIO: x+ = x + u + d con d = 0,2 desconocida, r = 0
+  sin modelo de perturbación (u = -K x, K = 0.6180): x se queda en 0.3236 = d/K = 0.3236
+  con d estimada (ganancia del estimador 0,5) y objetivo u_s = -d_hat:
+    k = 1: x = 0.2000, d_hat = 0.1000
+    k = 2: x = 0.1764, d_hat = 0.1500
+    k = 3: x = 0.1174, d_hat = 0.1750
+    k = 5: x = 0.0392, d_hat = 0.1938
+    k = 10: x = 0.0015, d_hat = 0.1998
+    k = 20: x = 0.0000, d_hat = 0.2000
+    k = 40: x = 0.0000, d_hat = 0.2000
+========================================================================
+EJEMPLO 12. RESTRICCIÓN ESTRECHADA CON LA INCERTIDUMBRE DEL ESTIMADOR
+  theta_max = 20°, sigma_theta = 1°: |theta_hat| <= 18°  (margen de 2 sigma)
+  theta_max = 20°, sigma_theta = 2°: |theta_hat| <= 16°  (margen de 2 sigma)
+  theta_max = 20°, sigma_theta = 4°: |theta_hat| <= 12°  (margen de 2 sigma)
+========================================================================
+EJEMPLO 13. DISPARO SIMPLE FRENTE A MÚLTIPLE CON UN SISTEMA INESTABLE: x+ = 2 x + u
+  N = 5: dx_N/du_0 = 2^(N-1) = 16  (disparo simple); en disparo múltiple cada nodo solo ve un paso: ds_(k+1)/dq_k = 1
+  N = 10: dx_N/du_0 = 2^(N-1) = 512  (disparo simple); en disparo múltiple cada nodo solo ve un paso: ds_(k+1)/dq_k = 1
+  N = 20: dx_N/du_0 = 2^(N-1) = 524288  (disparo simple); en disparo múltiple cada nodo solo ve un paso: ds_(k+1)/dq_k = 1
+  una desviación de 1e-3 en u_0 mueve x_20 en 524.288
+========================================================================
+EJEMPLO 14. GAUSS-NEWTON FRENTE A NEWTON: r(w) = (w - 1, 0,5 (w^2 - 4)), min 1/2 |r|^2
+  óptimo w* = 1.769292; residuos en el óptimo r(w*) = [0.7693, -0.4348]
+  Gauss-Newton: |w_k - w*| = 2.81e-01, 3.90e-02, 4.29e-03, 4.54e-04, 4.78e-05, 5.03e-06
+  Newton      : |w_k - w*| = 4.71e-01, 1.06e-01, 7.26e-03, 3.76e-05, 1.02e-09, 0.00e+00
+  en w*: J'J = 4.1304; término olvidado r2 * d2r2/dw2 = -0.4348; razón = -0.105 (tasa lineal de GN)
+========================================================================
+EJEMPLO 15. POR QUÉ BASTA UNA ITERACIÓN: seguir la solución de w^3 + w = p(t) con un paso de Newton por muestra
+  T = 0.40 s: la solución se mueve hasta 0.4571 por muestra; error tras un paso: máx 8.43e-02, medio 1.85e-02
+  T = 0.20 s: la solución se mueve hasta 0.2185 por muestra; error tras un paso: máx 2.08e-02, medio 4.57e-03
+  T = 0.10 s: la solución se mueve hasta 0.1034 por muestra; error tras un paso: máx 4.88e-03, medio 1.15e-03
+  T = 0.05 s: la solución se mueve hasta 0.0505 por muestra; error tras un paso: máx 1.16e-03, medio 2.88e-04
+========================================================================
+EJEMPLO 16. GEOMETRÍA DEL MPCC: camino circular de radio 1, p_d(th) = (cos th, sin th)
+  vartheta = 0.8: p_d = [0.6967, 0.7174], t = [-0.7174, 0.6967]; dron en p = [0.6, 1.0]
+  p - p_d = [-0.0967, 0.2826]; e_l = t'(p - p_d) = 0.2663; e_c = [0.0943, 0.0971], |e_c| = 0.1354
+  comprobación: e_l^2 + |e_c|^2 = 0.0892 = |p - p_d|^2 = 0.0892; t'e_c = 2.8e-17
+  proyección exacta: vartheta* = atan2(p_y, p_x) = 1.0304; distancia al camino = |p| - 1 = 0.1662
+    con vartheta = 0.9804: e_l = +0.0583, |e_c| = 0.1647
+    con vartheta = 1.0304: e_l = -0.0000, |e_c| = 0.1662
+    con vartheta = 1.2304: e_l = -0.2317, |e_c| = 0.1429
+  seguimiento con retraso: a 20 m/s (72 km/h), 25 ms de retraso son 0.50 m de error a lo largo del camino
+========================================================================
+EJEMPLO 17. COSTE DE RICCATI FRENTE A CONDENSADO: de dónde salen los recuentos y escala de la figura
+  N = 20: Riccati 0.135 Mflop, condensado 0.683 Mflop, x5.1
+     QP condensado: 80 variables; Cholesky de una matriz p x p ~ p^3/3 = 0.171 Mflop
+  N = 40: Riccati 0.270 Mflop, condensado 5.461 Mflop, x20.3
+     QP condensado: 160 variables; Cholesky de una matriz p x p ~ p^3/3 = 1.365 Mflop
+  N = 160: Riccati 1.079 Mflop, condensado 349.525 Mflop, x324.1
+     QP condensado: 640 variables; Cholesky de una matriz p x p ~ p^3/3 = 87.381 Mflop
+  marca de 10^3 flop en la figura (eje en kflop de 1 a 10^6): y = 250.0
+  marca de 10^5 flop en la figura (eje en kflop de 1 a 10^6): y = 176.7
+  marca de 10^7 flop en la figura (eje en kflop de 1 a 10^6): y = 103.3
+  marca de 10^9 flop en la figura (eje en kflop de 1 a 10^6): y = 30.0
