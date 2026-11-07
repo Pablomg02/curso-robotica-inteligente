@@ -13,6 +13,7 @@ OUT = Path(tempfile.gettempdir()) / "capturas_glosario"
 OUT.mkdir(exist_ok=True)
 folder = sys.argv[1]
 shots = "--shots" in sys.argv
+port = next((a.split("=",1)[1] for a in sys.argv if a.startswith("--port=")), "8765")
 src = (REPO / "temas" / folder / "index.html").read_text()
 
 # ---------- Comprobación estática: ¿aparece el símbolo en las hojas citadas? ----------
@@ -62,7 +63,7 @@ async def main():
         msgs = []
         pg.on("console", lambda mm: msgs.append((mm.type, mm.text)) if mm.type in ("error", "warning") else None)
         pg.on("pageerror", lambda e: msgs.append(("pageerror", str(e))))
-        url = f"http://localhost:8765/temas/{folder}/index.html"
+        url = f"http://localhost:{port}/temas/{folder}/index.html"
         await pg.goto(url)
         await pg.wait_for_function("window.MathJax && MathJax.startup && MathJax.startup.promise", timeout=20000)
         await pg.evaluate("MathJax.startup.promise"); await pg.wait_for_timeout(1200)
