@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A7a · Teoría de POMDPs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A7a" data-deck-title="Teoría de POMDPs · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 19 · Curso de robótica inteligente</p>
+  <h1>Teoría de POMDPs</h1>
+  <p class="subtitle">Cuando el estado no se ve: el belief como estado, una función de valor lineal a trozos y convexa, por qué planificar es tan difícil y cómo se hace en la práctica con puntos, árboles y escenarios. Con el tigre resuelto exactamente, un pasillo en el que QMDP se queda parado y un dron que busca un objetivo.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A4a, A6a, A6b</span>
+    <span><b>Prepara</b> A7b, A8a, A15a</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A7a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Formular un problema como POMDP y actualizar el belief con Bayes.</li>
+    <li>Explicar por qué el belief es un estado suficiente, y qué es un estado de información (aproximado).</li>
+    <li>Derivar que la función de valor es lineal a trozos y convexa, y de ahí que la información nunca empeora en esperanza.</li>
+    <li>Situar la dificultad: PSPACE, indecidibilidad, maldiciones de la dimensión y de la historia.</li>
+    <li>Elegir entre QMDP, métodos por puntos (PBVI, HSVI, SARSOP) y planificación en línea (POMCP, DESPOT, POMCPOW), y saber cuándo falla cada uno.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>El dron de tu tesis nunca sabe dónde está el objetivo</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>«Sensores con ruido, control imperfecto y cambios en el entorno son características que definen muchas tareas robóticas reales», y los POMDP se han aplicado con éxito a localización y navegación, búsqueda y seguimiento, conducción autónoma, sistemas multirrobot, manipulación e interacción con personas <a class="cite" data-ref="lauri2023"></a>.</li>
+        <li>En A6b el actor no veía la velocidad y la deducía de la historia. En una búsqueda, lo oculto (dónde está el objetivo) solo se descubre <em>actuando</em>: hay que decidir dónde mirar.</li>
+        <li>Un POMDP es el marco que dice qué es actuar bien en esas condiciones: optimizar sobre lo que se sabe, incluido lo que se puede llegar a saber.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>«Belief state» está en el título. Este tema da la definición exacta, las propiedades que vas a usar (suficiencia, convexidad, valor de la información) y la referencia contra la que comparar cualquier belief aprendido de A7b y A8a.</div>
+      <div class="callout realidad"><span class="tag">Este tema, calculado</span>El tigre resuelto exactamente con vectores α; un pasillo donde QMDP no decide nunca; POMCP frente a la solución exacta; y un dron que busca un objetivo en una rejilla con detección imperfecta. Todo en <code>figuras_a7a.py</code>, en CPU.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>Del estado de información a planificar con 10⁵⁶ estados</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1965–1987</span>Control óptimo de procesos de Markov con información incompleta <a class="cite" data-ref="astrom1965"></a>. Valor lineal a trozos y convexo en horizonte finito <a class="cite" data-ref="smallwood1973"></a>, e infinito con descuento <a class="cite" data-ref="sondik1978"></a>. La versión con estado parcialmente observado es PSPACE-completa <a class="cite" data-ref="papadimitriou1987"></a>.</div>
+    <div class="ev"><span class="yr">1998–1999</span>Los POMDP llegan a la IA: belief MDP, árboles de política, algoritmo witness y el problema del tigre <a class="cite" data-ref="kaelbling1998"></a>. La existencia de política en horizonte infinito es indecidible <a class="cite" data-ref="madani1999"></a>.</div>
+    <div class="ev"><span class="yr">2003–2008</span>Métodos por puntos: PBVI <a class="cite" data-ref="pineau2003"></a>, HSVI <a class="cite" data-ref="smith2004"></a>, Perseus <a class="cite" data-ref="spaan2005"></a>, SARSOP <a class="cite" data-ref="kurniawati2008"></a>.</div>
+    <div class="ev"><span class="yr">2010–2018</span>Planificación en línea con Monte Carlo: POMCP <a class="cite" data-ref="silver2010"></a>, DESPOT <a class="cite" data-ref="ye2017"></a>, POMCPOW para observaciones continuas <a class="cite" data-ref="sunberg2018"></a>. Recompensas que dependen del belief <a class="cite" data-ref="araya2010"></a>.</div>
+    <div class="ev"><span class="yr">2022–2024</span>Estados de información aproximados <a class="cite" data-ref="subramanian2022"></a>; cuándo aprender un POMDP no es exponencial <a class="cite" data-ref="liu2022"></a>; revisión en robótica <a class="cite" data-ref="lauri2023"></a>; redes aprendidas guiando la búsqueda en belief <a class="cite" data-ref="moss2024"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Modelo y belief">
+  <p class="num">Parte 1</p>
+  <h2>El modelo y el belief</h2>
+  <p>Qué es un POMDP, cómo se actualiza lo que se sabe y por qué basta con eso para decidir.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · definición</p>
+  <h2>Un MDP en el que el estado llega a través de un sensor</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Un POMDP es \((\mathcal S, \mathcal A, \mathcal Z, T, O, R, \gamma, b_0)\):</p>
+      <ul class="small">
+        <li>transición \(T(s,a,s') = P(s'\mid s,a)\) y recompensa \(R(s,a)\), como en un MDP;</li>
+        <li>observación \(O(s',a,z) = P(z\mid s',a)\): lo único que ve el agente;</li>
+        <li>belief inicial \(b_0\), una distribución sobre \(\mathcal S\).</li>
+      </ul>
+      <p class="small">El agente conoce la historia \(h_t = (a_0, z_1, a_1, \dots, z_t)\), no \(s_t\). Una política es una función de la historia, y el número de historias crece como \((|\mathcal A||\mathcal Z|)^t\).</p>
+      <div class="callout clave"><span class="tag">En robótica</span>\(T\) es tu simulador de dinámica (B2), \(O\) tu modelo de sensores (B3a), \(R\) la tarea. Lo nuevo es que la política no recibe \(s\).</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>El tigre <a class="cite" data-ref="kaelbling1998"></a></th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Estados</td><td>tigre tras la puerta izquierda o la derecha</td></tr>
+            <tr><td>Acciones</td><td>escuchar, abrir izquierda, abrir derecha</td></tr>
+            <tr><td>Recompensas</td><td>escuchar −1; puerta correcta +10; la del tigre −100</td></tr>
+            <tr><td>Observación al escuchar</td><td>el lado correcto con probabilidad 0,85</td></tr>
+            <tr><td>Al abrir</td><td>el problema se reinicia: tigre a cada lado con ½, observación sin información</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Kaelbling, Littman y Cassandra, §5.1. El descuento \(\gamma = 0{,}95\) de los cálculos de este tema es elección nuestra.</p>
+      <div class="callout realidad"><span class="tag">Por qué un juguete</span>Dos estados: el belief es un número, \(p = b(\text{izquierda})\), y todo se puede dibujar. Lo que se ve aquí (convexidad, umbrales, valor de escuchar) vale en cualquier dimensión.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · belief</p>
+  <h2>El belief se actualiza con Bayes, como en A4a</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Tras hacer \(a\) y observar \(z\) <a class="cite" data-ref="kaelbling1998"></a>:</p>
+      \[ b'(s') = \frac{O(s',a,z)\sum_{s}T(s,a,s')\,b(s)}{P(z\mid a,b)}. \]
+      <details class="deriv"><summary>Derivación: predicción y corrección</summary>
+        <p class="small">Predicción: \(\bar b(s') = P(s'\mid h, a) = \sum_s T(s,a,s')\,b(s)\). Corrección con Bayes, porque \(z\) solo depende de \(s'\) y \(a\): \(b'(s') = P(s'\mid h,a,z) \propto O(s',a,z)\,\bar b(s')\). El denominador \(P(z\mid a,b) = \sum_{s'}O(s',a,z)\,\bar b(s')\) normaliza y es, además, la probabilidad de cada rama del árbol de decisión.</p>
+      </details>
+      <p class="small">En el tigre, oír «izquierda» \(n\) veces más que «derecha» da \(b = 0{,}85^n/(0{,}85^n + 0{,}15^n)\): 0,85, 0,970, 0,9945…</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Evolución del belief en el tigre con la secuencia izquierda, derecha, izquierda, izquierda">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="217" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="52" y="89" text-anchor="end" class="t-mono t-faint" font-size="12">0,85</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <path d="M60.0,44.5 L520.0,44.5" class="ln-dash"/>
+        <text x="70" y="40" class="t-muted" font-size="12">umbral de la política: 0,960</text>
+        <path d="M60.0,213.3 L175.0,85.0 L290.0,213.3 L405.0,85.0 L520.0,41.1" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <circle cx="60" cy="213.3" r="5" class="fill-accent"/>
+        <circle cx="175" cy="85" r="5" class="fill-accent"/>
+        <circle cx="290" cy="213.3" r="5" class="fill-accent"/>
+        <circle cx="405" cy="85" r="5" class="fill-accent"/>
+        <circle cx="520" cy="41.1" r="6" class="fill-time"/>
+        <text x="175" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">izq.</text>
+        <text x="290" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">der.</text>
+        <text x="405" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">izq.</text>
+        <text x="520" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">izq.</text>
+        <text x="60" y="270" text-anchor="middle" class="t-mono t-muted" font-size="12">inicio</text>
+        <text x="506" y="72" text-anchor="end" class="t-time" font-size="12">0,970: abre la derecha</text>
+      </svg>
+      <figcaption>\(b(\text{tigre a la izquierda})\) tras cada observación al escuchar. Por encima del umbral, la política óptima abre la puerta derecha. <code>figuras_a7a.py</code>, secciones 1 y 2.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · suficiencia</p>
+  <h2>El belief resume toda la historia: un MDP sobre distribuciones</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">«Como el belief es un estadístico suficiente, la política óptima es la solución de un "belief MDP" de espacio continuo» <a class="cite" data-ref="kaelbling1998"></a>:</p>
+      <ul class="small">
+        <li>estados: el símplex \(\Delta(\mathcal S)\), de dimensión \(|\mathcal S|-1\);</li>
+        <li>recompensa: \(\rho(b,a) = \sum_s b(s)R(s,a)\);</li>
+        <li>transición: de \(b\) a \(b^{a,z}\) con probabilidad \(P(z\mid a,b)\), una por observación.</li>
+      </ul>
+      <p class="small">Una política óptima del belief MDP, con el estimador correcto, es óptima para el POMDP (horizonte infinito con descuento) <a class="cite" data-ref="kaelbling1998"></a>, resultado que se remonta a Åström y Sondik <a class="cite" data-ref="astrom1965,sondik1978"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: por qué basta \(b_t\)</summary>
+        <p class="small">La recompensa esperada en \(t\) depende de la historia solo a través de \(P(s_t\mid h_t) = b_t\): \(\mathbb E[R\mid h_t, a_t] = \rho(b_t, a_t)\). La siguiente observación tiene probabilidad \(P(z\mid h_t,a_t) = P(z\mid a_t, b_t)\), y el belief siguiente es \(b_{t+1} = \mathrm{SE}(b_t, a_t, z)\), función solo de \(b_t\), \(a_t\) y \(z\). Así que \((b_t)\) es un proceso de Markov controlado con recompensa propia: un MDP. Todo lo demás de la historia es irrelevante para el futuro.</p>
+      </details>
+      <div class="callout error"><span class="tag">El precio</span>El belief MDP es continuo aunque el POMDP sea finito: un problema con 870 estados (Tag) tiene beliefs en un espacio de 869 dimensiones <a class="cite" data-ref="pineau2003"></a>. Es la maldición de la dimensión.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Cualquier belief aprendido (el estado oculto de una red recurrente, el latente de un world model) es un intento de comprimir la historia sin perder lo que el belief exacto conserva. La siguiente hoja dice qué hay que conservar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelo · estados de información</p>
+  <h2>Qué debe cumplir un resumen de la historia para poder planificar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Subramanian et al. definen un <strong>estado de información</strong> \(z_t = \sigma_t(h_t)\) por dos propiedades <a class="cite" data-ref="subramanian2022"></a>:</p>
+      <ul class="small">
+        <li><strong>(P1) suficiente para evaluar:</strong> \(\mathbb E[R_t\mid h_t, a_t] = \mathbb E[R_t\mid z_t, a_t]\);</li>
+        <li><strong>(P2) suficiente para predecirse:</strong> \(P(z_{t+1}\mid h_t, a_t) = P(z_{t+1}\mid z_t, a_t)\).</li>
+      </ul>
+      <p class="small">Todo estado de información da una descomposición de programación dinámica. El belief es uno; no el único.</p>
+      <p class="small"><strong>Aproximado (AIS):</strong> si la recompensa se predice con error \(\varepsilon_t\) y la distribución del siguiente resumen con error \(\delta_t\) (en una métrica de probabilidades), el valor calculado sobre el resumen se equivoca como mucho en</p>
+      \[ \alpha_t = \varepsilon_t + \rho(\hat V_{t+1})\,\delta_t + \alpha_{t+1}, \]
+      <p class="small">y la política voraz pierde como mucho \(2\alpha_t\) <a class="cite" data-ref="subramanian2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lectura</span>Un resumen aprendido es bueno si predice la recompensa y su propio futuro. No necesita reconstruir la imagen ni el estado: necesita lo que importa para decidir.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es la justificación teórica de entrenar el estado de una red recurrente o de un world model con pérdidas de predicción de recompensa y del siguiente latente (A7b, A8a). La cota te dice qué errores acumulan: los de cada paso, sumados a lo largo del horizonte.</div>
+      <p class="xsmall muted">Numeración de definiciones y teoremas de la versión de arXiv (v2); puede diferir en la de JMLR.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Valor y complejidad">
+  <p class="num">Parte 2</p>
+  <h2>La forma del valor y el precio de calcularlo</h2>
+  <p>Lineal a trozos y convexa: la estructura que hace posible resolver, y la explosión que lo hace casi imposible.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · PWLC</p>
+  <h2>El valor es el máximo de funciones lineales del belief</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con horizonte finito, el valor óptimo es lineal a trozos y convexo en el belief <a class="cite" data-ref="smallwood1973"></a>:</p>
+      \[ V_t(b) = \max_{\alpha\in\Gamma_t}\ \sum_s \alpha(s)\,b(s). \]
+      <p class="small">Cada vector \(\alpha\) es el valor de un plan condicional (un árbol de política: qué hacer ante cada observación) empezando en cada estado; \(V_t\) es su envolvente superior <a class="cite" data-ref="kaelbling1998"></a>. En horizonte infinito sigue siendo convexo, pero puede tener infinitas caras <a class="cite" data-ref="kaelbling1998"></a>.</p>
+      <div class="callout clave"><span class="tag">Iteración de valor exacta</span>De \(\Gamma_{t-1}\) a \(\Gamma_t\): para cada acción, elegir un vector de \(\Gamma_{t-1}\) por observación. Son \(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|}\) candidatos, y después hay que podar los que no están en la envolvente.</div>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: por inducción</summary>
+        <p class="small">\(V_0 = 0\) es lineal. Si \(V_{t-1}(b) = \max_\alpha \alpha\cdot b\), entonces</p>
+        \[ V_t(b) = \max_a\Big[\rho(b,a) + \gamma\sum_z P(z\mid a,b)\,V_{t-1}(b^{a,z})\Big]. \]
+        <p class="small">El factor \(P(z\mid a,b)\) cancela el denominador de Bayes:</p>
+        \[ P(z\mid a,b)\,\alpha\cdot b^{a,z} = \sum_{s}b(s)\underbrace{\textstyle\sum_{s'}T(s,a,s')\,O(s',a,z)\,\alpha(s')}_{g^{a,z}_\alpha(s)}, \]
+        <p class="small">lineal en \(b\). Un máximo de sumas de máximos de funciones lineales es un máximo de funciones lineales: \(\alpha_{\text{nuevo}} = R(\cdot,a) + \gamma\sum_z g^{a,z}_{\alpha_z}\).</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · el tigre</p>
+  <h2>El tigre resuelto: nueve rectas y dos umbrales</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Función de valor del tigre para horizontes 1, 2, 3 e infinito, con sus vectores alfa">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="218.6" x2="520" y2="218.6" class="ln-dash"/>
+        <text x="52" y="222" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="160" text-anchor="end" class="t-mono t-faint" font-size="12">10</text>
+        <text x="52" y="97" text-anchor="end" class="t-mono t-faint" font-size="12">20</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">30</text>
+        <path d="M60.0,40.0 L199.2,249.2" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,61.4 L520.0,214.2" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,63.3 L520.0,199.6" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,83.2 L520.0,114.9" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,96.8 L520.0,96.8" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,114.9 L520.0,83.2" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,199.6 L520.0,63.3" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,214.2 L520.0,61.4" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M380.9,249.2 L520.0,40.0" class="ln" stroke-width="0.8" fill="none"/>
+        <path d="M60.0,155.7 L61.1,157.4 L62.3,159.2 L63.5,160.9 L64.6,162.6 L65.8,164.4 L66.9,166.1 L68.0,167.8 L69.2,169.5 L70.3,171.3 L71.5,173.0 L72.7,174.7 L73.8,176.5 L75.0,178.2 L76.1,179.9 L77.2,181.6 L78.4,183.4 L79.5,185.1 L80.7,186.8 L81.8,188.6 L83.0,190.3 L84.2,192.0 L85.3,193.7 L86.5,195.5 L87.6,197.2 L88.8,198.9 L89.9,200.7 L91.0,202.4 L92.2,204.1 L93.3,205.8 L94.5,207.6 L95.7,209.3 L96.8,211.0 L98.0,212.8 L99.1,214.5 L100.2,216.2 L101.4,217.9 L102.5,219.7 L103.7,221.4 L104.8,223.1 L106.0,224.9 L107.2,224.9 L108.3,224.9 L109.4,224.9 L110.6,224.9 L111.8,224.9 L112.9,224.9 L114.1,224.9 L115.2,224.9 L116.3,224.9 L117.5,224.9 L118.7,224.9 L119.8,224.9 L121.0,224.9 L122.1,224.9 L123.2,224.9 L124.4,224.9 L125.6,224.9 L126.7,224.9 L127.8,224.9 L129.0,224.9 L130.1,224.9 L131.3,224.9 L132.4,224.9 L133.6,224.9 L134.8,224.9 L135.9,224.9 L137.1,224.9 L138.2,224.9 L139.4,224.9 L140.5,224.9 L141.6,224.9 L142.8,224.9 L143.9,224.9 L145.1,224.9 L146.2,224.9 L147.4,224.9 L148.6,224.9 L149.7,224.9 L150.9,224.9 L152.0,224.9 L153.2,224.9 L154.3,224.9 L155.4,224.9 L156.6,224.9 L157.8,224.9 L158.9,224.9 L160.1,224.9 L161.2,224.9 L162.4,224.9 L163.5,224.9 L164.7,224.9 L165.8,224.9 L166.9,224.9 L168.1,224.9 L169.2,224.9 L170.4,224.9 L171.6,224.9 L172.7,224.9 L173.8,224.9 L175.0,224.9 L176.2,224.9 L177.3,224.9 L178.4,224.9 L179.6,224.9 L180.8,224.9 L181.9,224.9 L183.1,224.9 L184.2,224.9 L185.4,224.9 L186.5,224.9 L187.7,224.9 L188.8,224.9 L190.0,224.9 L191.1,224.9 L192.3,224.9 L193.4,224.9 L194.5,224.9 L195.7,224.9 L196.8,224.9 L198.0,224.9 L199.2,224.9 L200.3,224.9 L201.4,224.9 L202.6,224.9 L203.8,224.9 L204.9,224.9 L206.1,224.9 L207.2,224.9 L208.3,224.9 L209.5,224.9 L210.7,224.9 L211.8,224.9 L213.0,224.9 L214.1,224.9 L215.2,224.9 L216.4,224.9 L217.6,224.9 L218.7,224.9 L219.9,224.9 L221.0,224.9 L222.1,224.9 L223.3,224.9 L224.4,224.9 L225.6,224.9 L226.8,224.9 L227.9,224.9 L229.0,224.9 L230.2,224.9 L231.3,224.9 L232.5,224.9 L233.7,224.9 L234.8,224.9 L236.0,224.9 L237.1,224.9 L238.2,224.9 L239.4,224.9 L240.6,224.9 L241.7,224.9 L242.9,224.9 L244.0,224.9 L245.2,224.9 L246.3,224.9 L247.5,224.9 L248.6,224.9 L249.8,224.9 L250.9,224.9 L252.0,224.9 L253.2,224.9 L254.3,224.9 L255.5,224.9 L256.6,224.9 L257.8,224.9 L258.9,224.9 L260.1,224.9 L261.2,224.9 L262.4,224.9 L263.6,224.9 L264.7,224.9 L265.9,224.9 L267.0,224.9 L268.1,224.9 L269.3,224.9 L270.5,224.9 L271.6,224.9 L272.8,224.9 L273.9,224.9 L275.1,224.9 L276.2,224.9 L277.4,224.9 L278.5,224.9 L279.6,224.9 L280.8,224.9 L281.9,224.9 L283.1,224.9 L284.2,224.9 L285.4,224.9 L286.5,224.9 L287.7,224.9 L288.9,224.9 L290.0,224.9 L291.2,224.9 L292.3,224.9 L293.5,224.9 L294.6,224.9 L295.8,224.9 L296.9,224.9 L298.0,224.9 L299.2,224.9 L300.4,224.9 L301.5,224.9 L302.6,224.9 L303.8,224.9 L304.9,224.9 L306.1,224.9 L307.2,224.9 L308.4,224.9 L309.5,224.9 L310.7,224.9 L311.9,224.9 L313.0,224.9 L314.1,224.9 L315.3,224.9 L316.4,224.9 L317.6,224.9 L318.8,224.9 L319.9,224.9 L321.1,224.9 L322.2,224.9 L323.4,224.9 L324.5,224.9 L325.7,224.9 L326.8,224.9 L327.9,224.9 L329.1,224.9 L330.2,224.9 L331.4,224.9 L332.6,224.9 L333.7,224.9 L334.9,224.9 L336.0,224.9 L337.2,224.9 L338.3,224.9 L339.5,224.9 L340.6,224.9 L341.8,224.9 L342.9,224.9 L344.1,224.9 L345.2,224.9 L346.4,224.9 L347.5,224.9 L348.7,224.9 L349.8,224.9 L351.0,224.9 L352.1,224.9 L353.3,224.9 L354.4,224.9 L355.5,224.9 L356.7,224.9 L357.8,224.9 L359.0,224.9 L360.1,224.9 L361.3,224.9 L362.4,224.9 L363.6,224.9 L364.8,224.9 L365.9,224.9 L367.1,224.9 L368.2,224.9 L369.3,224.9 L370.5,224.9 L371.6,224.9 L372.8,224.9 L373.9,224.9 L375.1,224.9 L376.2,224.9 L377.4,224.9 L378.6,224.9 L379.7,224.9 L380.9,224.9 L382.0,224.9 L383.2,224.9 L384.3,224.9 L385.4,224.9 L386.6,224.9 L387.8,224.9 L388.9,224.9 L390.1,224.9 L391.2,224.9 L392.4,224.9 L393.5,224.9 L394.7,224.9 L395.8,224.9 L397.0,224.9 L398.1,224.9 L399.2,224.9 L400.4,224.9 L401.6,224.9 L402.7,224.9 L403.9,224.9 L405.0,224.9 L406.2,224.9 L407.3,224.9 L408.5,224.9 L409.6,224.9 L410.8,224.9 L411.9,224.9 L413.1,224.9 L414.2,224.9 L415.3,224.9 L416.5,224.9 L417.6,224.9 L418.8,224.9 L419.9,224.9 L421.1,224.9 L422.2,224.9 L423.4,224.9 L424.6,224.9 L425.7,224.9 L426.8,224.9 L428.0,224.9 L429.1,224.9 L430.3,224.9 L431.4,224.9 L432.6,224.9 L433.8,224.9 L434.9,224.9 L436.1,224.9 L437.2,224.9 L438.4,224.9 L439.5,224.9 L440.7,224.9 L441.8,224.9 L442.9,224.9 L444.1,224.9 L445.2,224.9 L446.4,224.9 L447.6,224.9 L448.7,224.9 L449.9,224.9 L451.0,224.9 L452.2,224.9 L453.3,224.9 L454.5,224.9 L455.6,224.9 L456.8,224.9 L457.9,224.9 L459.1,224.9 L460.2,224.9 L461.4,224.9 L462.5,224.9 L463.7,224.9 L464.8,224.9 L466.0,224.9 L467.1,224.9 L468.3,224.9 L469.4,224.9 L470.6,224.9 L471.7,224.9 L472.8,224.9 L474.0,224.9 L475.1,223.1 L476.3,221.4 L477.4,219.7 L478.6,217.9 L479.8,216.2 L480.9,214.5 L482.1,212.8 L483.2,211.0 L484.3,209.3 L485.5,207.6 L486.6,205.8 L487.8,204.1 L488.9,202.4 L490.1,200.7 L491.2,198.9 L492.4,197.2 L493.6,195.5 L494.7,193.7 L495.9,192.0 L497.0,190.3 L498.2,188.6 L499.3,186.8 L500.4,185.1 L501.6,183.4 L502.8,181.6 L503.9,179.9 L505.1,178.2 L506.2,176.5 L507.4,174.7 L508.5,173.0 L509.7,171.3 L510.8,169.5 L512.0,167.8 L513.1,166.1 L514.2,164.4 L515.4,162.6 L516.5,160.9 L517.7,159.2 L518.9,157.4 L520.0,155.7" fill="none" class="ln-time" stroke-width="1.8"/>
+        <path d="M60.0,161.7 L61.1,163.4 L62.3,165.1 L63.5,166.9 L64.6,168.6 L65.8,170.3 L66.9,172.1 L68.0,173.8 L69.2,175.5 L70.3,177.2 L71.5,178.6 L72.7,179.0 L73.8,179.3 L75.0,179.7 L76.1,180.1 L77.2,180.4 L78.4,180.8 L79.5,181.1 L80.7,181.5 L81.8,181.9 L83.0,182.2 L84.2,182.6 L85.3,182.9 L86.5,183.3 L87.6,183.7 L88.8,184.0 L89.9,184.4 L91.0,184.8 L92.2,185.1 L93.3,185.5 L94.5,185.8 L95.7,186.2 L96.8,186.6 L98.0,186.9 L99.1,187.3 L100.2,187.6 L101.4,188.0 L102.5,188.4 L103.7,188.7 L104.8,189.1 L106.0,189.4 L107.2,189.8 L108.3,190.2 L109.4,190.5 L110.6,190.9 L111.8,191.3 L112.9,191.6 L114.1,192.0 L115.2,192.3 L116.3,192.7 L117.5,193.1 L118.7,193.4 L119.8,193.8 L121.0,194.1 L122.1,194.5 L123.2,194.9 L124.4,195.2 L125.6,195.6 L126.7,195.9 L127.8,196.3 L129.0,196.7 L130.1,197.0 L131.3,197.4 L132.4,197.8 L133.6,198.1 L134.8,198.5 L135.9,198.8 L137.1,199.2 L138.2,199.6 L139.4,199.9 L140.5,200.3 L141.6,200.6 L142.8,201.0 L143.9,201.4 L145.1,201.7 L146.2,202.1 L147.4,202.5 L148.6,202.8 L149.7,203.2 L150.9,203.5 L152.0,203.9 L153.2,204.3 L154.3,204.6 L155.4,205.0 L156.6,205.3 L157.8,205.7 L158.9,206.1 L160.1,206.4 L161.2,206.8 L162.4,207.1 L163.5,207.5 L164.7,207.9 L165.8,208.2 L166.9,208.6 L168.1,209.0 L169.2,209.3 L170.4,209.7 L171.6,210.0 L172.7,210.4 L173.8,210.8 L175.0,211.1 L176.2,211.5 L177.3,211.8 L178.4,212.2 L179.6,212.6 L180.8,212.9 L181.9,213.3 L183.1,213.7 L184.2,214.0 L185.4,214.4 L186.5,214.7 L187.7,215.1 L188.8,215.5 L190.0,215.8 L191.1,216.2 L192.3,216.5 L193.4,216.9 L194.5,217.3 L195.7,217.6 L196.8,218.0 L198.0,218.3 L199.2,218.7 L200.3,219.1 L201.4,219.4 L202.6,219.8 L203.8,220.2 L204.9,220.5 L206.1,220.9 L207.2,221.2 L208.3,221.6 L209.5,222.0 L210.7,222.3 L211.8,222.7 L213.0,223.0 L214.1,223.4 L215.2,223.8 L216.4,224.1 L217.6,224.5 L218.7,224.9 L219.9,225.2 L221.0,225.6 L222.1,225.9 L223.3,226.3 L224.4,226.7 L225.6,227.0 L226.8,227.4 L227.9,227.7 L229.0,228.1 L230.2,228.5 L231.3,228.8 L232.5,229.2 L233.7,229.5 L234.8,229.9 L236.0,230.3 L237.1,230.6 L238.2,230.8 L239.4,230.8 L240.6,230.8 L241.7,230.8 L242.9,230.8 L244.0,230.8 L245.2,230.8 L246.3,230.8 L247.5,230.8 L248.6,230.8 L249.8,230.8 L250.9,230.8 L252.0,230.8 L253.2,230.8 L254.3,230.8 L255.5,230.8 L256.6,230.8 L257.8,230.8 L258.9,230.8 L260.1,230.8 L261.2,230.8 L262.4,230.8 L263.6,230.8 L264.7,230.8 L265.9,230.8 L267.0,230.8 L268.1,230.8 L269.3,230.8 L270.5,230.8 L271.6,230.8 L272.8,230.8 L273.9,230.8 L275.1,230.8 L276.2,230.8 L277.4,230.8 L278.5,230.8 L279.6,230.8 L280.8,230.8 L281.9,230.8 L283.1,230.8 L284.2,230.8 L285.4,230.8 L286.5,230.8 L287.7,230.8 L288.9,230.8 L290.0,230.8 L291.2,230.8 L292.3,230.8 L293.5,230.8 L294.6,230.8 L295.8,230.8 L296.9,230.8 L298.0,230.8 L299.2,230.8 L300.4,230.8 L301.5,230.8 L302.6,230.8 L303.8,230.8 L304.9,230.8 L306.1,230.8 L307.2,230.8 L308.4,230.8 L309.5,230.8 L310.7,230.8 L311.9,230.8 L313.0,230.8 L314.1,230.8 L315.3,230.8 L316.4,230.8 L317.6,230.8 L318.8,230.8 L319.9,230.8 L321.1,230.8 L322.2,230.8 L323.4,230.8 L324.5,230.8 L325.7,230.8 L326.8,230.8 L327.9,230.8 L329.1,230.8 L330.2,230.8 L331.4,230.8 L332.6,230.8 L333.7,230.8 L334.9,230.8 L336.0,230.8 L337.2,230.8 L338.3,230.8 L339.5,230.8 L340.6,230.8 L341.8,230.8 L342.9,230.6 L344.1,230.3 L345.2,229.9 L346.4,229.5 L347.5,229.2 L348.7,228.8 L349.8,228.5 L351.0,228.1 L352.1,227.7 L353.3,227.4 L354.4,227.0 L355.5,226.7 L356.7,226.3 L357.8,225.9 L359.0,225.6 L360.1,225.2 L361.3,224.9 L362.4,224.5 L363.6,224.1 L364.8,223.8 L365.9,223.4 L367.1,223.0 L368.2,222.7 L369.3,222.3 L370.5,222.0 L371.6,221.6 L372.8,221.2 L373.9,220.9 L375.1,220.5 L376.2,220.2 L377.4,219.8 L378.6,219.4 L379.7,219.1 L380.9,218.7 L382.0,218.3 L383.2,218.0 L384.3,217.6 L385.4,217.3 L386.6,216.9 L387.8,216.5 L388.9,216.2 L390.1,215.8 L391.2,215.5 L392.4,215.1 L393.5,214.7 L394.7,214.4 L395.8,214.0 L397.0,213.7 L398.1,213.3 L399.2,212.9 L400.4,212.6 L401.6,212.2 L402.7,211.8 L403.9,211.5 L405.0,211.1 L406.2,210.8 L407.3,210.4 L408.5,210.0 L409.6,209.7 L410.8,209.3 L411.9,209.0 L413.1,208.6 L414.2,208.2 L415.3,207.9 L416.5,207.5 L417.6,207.1 L418.8,206.8 L419.9,206.4 L421.1,206.1 L422.2,205.7 L423.4,205.3 L424.6,205.0 L425.7,204.6 L426.8,204.3 L428.0,203.9 L429.1,203.5 L430.3,203.2 L431.4,202.8 L432.6,202.5 L433.8,202.1 L434.9,201.7 L436.1,201.4 L437.2,201.0 L438.4,200.6 L439.5,200.3 L440.7,199.9 L441.8,199.6 L442.9,199.2 L444.1,198.8 L445.2,198.5 L446.4,198.1 L447.6,197.8 L448.7,197.4 L449.9,197.0 L451.0,196.7 L452.2,196.3 L453.3,195.9 L454.5,195.6 L455.6,195.2 L456.8,194.9 L457.9,194.5 L459.1,194.1 L460.2,193.8 L461.4,193.4 L462.5,193.1 L463.7,192.7 L464.8,192.3 L466.0,192.0 L467.1,191.6 L468.3,191.3 L469.4,190.9 L470.6,190.5 L471.7,190.2 L472.8,189.8 L474.0,189.4 L475.1,189.1 L476.3,188.7 L477.4,188.4 L478.6,188.0 L479.8,187.6 L480.9,187.3 L482.1,186.9 L483.2,186.6 L484.3,186.2 L485.5,185.8 L486.6,185.5 L487.8,185.1 L488.9,184.8 L490.1,184.4 L491.2,184.0 L492.4,183.7 L493.6,183.3 L494.7,182.9 L495.9,182.6 L497.0,182.2 L498.2,181.9 L499.3,181.5 L500.4,181.1 L501.6,180.8 L502.8,180.4 L503.9,180.1 L505.1,179.7 L506.2,179.3 L507.4,179.0 L508.5,178.6 L509.7,177.2 L510.8,175.5 L512.0,173.8 L513.1,172.1 L514.2,170.3 L515.4,168.6 L516.5,166.9 L517.7,165.1 L518.9,163.4 L520.0,161.7" fill="none" class="ln-time" stroke-width="1.8" stroke-dasharray="6 3"/>
+        <path d="M60.0,167.4 L61.1,169.1 L62.3,170.8 L63.5,172.5 L64.6,174.3 L65.8,175.5 L66.9,176.1 L68.0,176.6 L69.2,177.2 L70.3,177.8 L71.5,178.3 L72.7,178.9 L73.8,179.4 L75.0,180.0 L76.1,180.6 L77.2,181.1 L78.4,181.7 L79.5,182.2 L80.7,182.8 L81.8,183.4 L83.0,183.9 L84.2,184.5 L85.3,185.0 L86.5,185.6 L87.6,186.2 L88.8,186.7 L89.9,187.3 L91.0,187.8 L92.2,188.4 L93.3,189.0 L94.5,189.5 L95.7,190.1 L96.8,190.6 L98.0,191.2 L99.1,191.8 L100.2,192.3 L101.4,192.9 L102.5,193.4 L103.7,194.0 L104.8,194.6 L106.0,195.1 L107.2,195.5 L108.3,195.8 L109.4,196.2 L110.6,196.6 L111.8,196.9 L112.9,197.3 L114.1,197.6 L115.2,198.0 L116.3,198.4 L117.5,198.6 L118.7,198.8 L119.8,198.9 L121.0,199.1 L122.1,199.2 L123.2,199.4 L124.4,199.5 L125.6,199.6 L126.7,199.8 L127.8,199.9 L129.0,200.1 L130.1,200.2 L131.3,200.4 L132.4,200.5 L133.6,200.7 L134.8,200.8 L135.9,200.9 L137.1,201.1 L138.2,201.2 L139.4,201.4 L140.5,201.5 L141.6,201.7 L142.8,201.8 L143.9,202.0 L145.1,202.1 L146.2,202.2 L147.4,202.4 L148.6,202.5 L149.7,202.7 L150.9,202.8 L152.0,203.0 L153.2,203.1 L154.3,203.2 L155.4,203.4 L156.6,203.5 L157.8,203.7 L158.9,203.8 L160.1,204.0 L161.2,204.1 L162.4,204.1 L163.5,204.1 L164.7,204.1 L165.8,204.1 L166.9,204.1 L168.1,204.1 L169.2,204.1 L170.4,204.1 L171.6,204.1 L172.7,204.1 L173.8,204.1 L175.0,204.1 L176.2,204.1 L177.3,204.1 L178.4,204.1 L179.6,204.1 L180.8,204.1 L181.9,204.1 L183.1,204.1 L184.2,204.1 L185.4,204.1 L186.5,204.1 L187.7,204.1 L188.8,204.1 L190.0,204.1 L191.1,204.1 L192.3,204.1 L193.4,204.1 L194.5,204.1 L195.7,204.1 L196.8,204.1 L198.0,204.1 L199.2,204.1 L200.3,204.1 L201.4,204.1 L202.6,204.1 L203.8,204.1 L204.9,204.1 L206.1,204.1 L207.2,204.1 L208.3,204.1 L209.5,204.1 L210.7,204.1 L211.8,204.1 L213.0,204.1 L214.1,204.1 L215.2,204.1 L216.4,204.1 L217.6,204.1 L218.7,204.1 L219.9,204.1 L221.0,204.1 L222.1,204.1 L223.3,204.1 L224.4,204.1 L225.6,204.1 L226.8,204.1 L227.9,204.1 L229.0,204.1 L230.2,204.1 L231.3,204.1 L232.5,204.1 L233.7,204.1 L234.8,204.1 L236.0,204.1 L237.1,204.1 L238.2,204.1 L239.4,204.1 L240.6,204.1 L241.7,204.1 L242.9,204.1 L244.0,204.1 L245.2,204.1 L246.3,204.1 L247.5,204.1 L248.6,204.1 L249.8,204.1 L250.9,204.1 L252.0,204.1 L253.2,204.1 L254.3,204.1 L255.5,204.1 L256.6,204.1 L257.8,204.1 L258.9,204.1 L260.1,204.1 L261.2,204.1 L262.4,204.1 L263.6,204.1 L264.7,204.1 L265.9,204.1 L267.0,204.1 L268.1,204.1 L269.3,204.1 L270.5,204.1 L271.6,204.1 L272.8,204.1 L273.9,204.1 L275.1,204.1 L276.2,204.1 L277.4,204.1 L278.5,204.1 L279.6,204.1 L280.8,204.1 L281.9,204.1 L283.1,204.1 L284.2,204.1 L285.4,204.1 L286.5,204.1 L287.7,204.1 L288.9,204.1 L290.0,204.1 L291.2,204.1 L292.3,204.1 L293.5,204.1 L294.6,204.1 L295.8,204.1 L296.9,204.1 L298.0,204.1 L299.2,204.1 L300.4,204.1 L301.5,204.1 L302.6,204.1 L303.8,204.1 L304.9,204.1 L306.1,204.1 L307.2,204.1 L308.4,204.1 L309.5,204.1 L310.7,204.1 L311.9,204.1 L313.0,204.1 L314.1,204.1 L315.3,204.1 L316.4,204.1 L317.6,204.1 L318.8,204.1 L319.9,204.1 L321.1,204.1 L322.2,204.1 L323.4,204.1 L324.5,204.1 L325.7,204.1 L326.8,204.1 L327.9,204.1 L329.1,204.1 L330.2,204.1 L331.4,204.1 L332.6,204.1 L333.7,204.1 L334.9,204.1 L336.0,204.1 L337.2,204.1 L338.3,204.1 L339.5,204.1 L340.6,204.1 L341.8,204.1 L342.9,204.1 L344.1,204.1 L345.2,204.1 L346.4,204.1 L347.5,204.1 L348.7,204.1 L349.8,204.1 L351.0,204.1 L352.1,204.1 L353.3,204.1 L354.4,204.1 L355.5,204.1 L356.7,204.1 L357.8,204.1 L359.0,204.1 L360.1,204.1 L361.3,204.1 L362.4,204.1 L363.6,204.1 L364.8,204.1 L365.9,204.1 L367.1,204.1 L368.2,204.1 L369.3,204.1 L370.5,204.1 L371.6,204.1 L372.8,204.1 L373.9,204.1 L375.1,204.1 L376.2,204.1 L377.4,204.1 L378.6,204.1 L379.7,204.1 L380.9,204.1 L382.0,204.1 L383.2,204.1 L384.3,204.1 L385.4,204.1 L386.6,204.1 L387.8,204.1 L388.9,204.1 L390.1,204.1 L391.2,204.1 L392.4,204.1 L393.5,204.1 L394.7,204.1 L395.8,204.1 L397.0,204.1 L398.1,204.1 L399.2,204.1 L400.4,204.1 L401.6,204.1 L402.7,204.1 L403.9,204.1 L405.0,204.1 L406.2,204.1 L407.3,204.1 L408.5,204.1 L409.6,204.1 L410.8,204.1 L411.9,204.1 L413.1,204.1 L414.2,204.1 L415.3,204.1 L416.5,204.1 L417.6,204.1 L418.8,204.1 L419.9,204.0 L421.1,203.8 L422.2,203.7 L423.4,203.5 L424.6,203.4 L425.7,203.2 L426.8,203.1 L428.0,203.0 L429.1,202.8 L430.3,202.7 L431.4,202.5 L432.6,202.4 L433.8,202.2 L434.9,202.1 L436.1,202.0 L437.2,201.8 L438.4,201.7 L439.5,201.5 L440.7,201.4 L441.8,201.2 L442.9,201.1 L444.1,200.9 L445.2,200.8 L446.4,200.7 L447.6,200.5 L448.7,200.4 L449.9,200.2 L451.0,200.1 L452.2,199.9 L453.3,199.8 L454.5,199.6 L455.6,199.5 L456.8,199.4 L457.9,199.2 L459.1,199.1 L460.2,198.9 L461.4,198.8 L462.5,198.6 L463.7,198.4 L464.8,198.0 L466.0,197.6 L467.1,197.3 L468.3,196.9 L469.4,196.6 L470.6,196.2 L471.7,195.8 L472.8,195.5 L474.0,195.1 L475.1,194.6 L476.3,194.0 L477.4,193.4 L478.6,192.9 L479.8,192.3 L480.9,191.8 L482.1,191.2 L483.2,190.6 L484.3,190.1 L485.5,189.5 L486.6,189.0 L487.8,188.4 L488.9,187.8 L490.1,187.3 L491.2,186.7 L492.4,186.2 L493.6,185.6 L494.7,185.0 L495.9,184.5 L497.0,183.9 L498.2,183.4 L499.3,182.8 L500.4,182.2 L501.6,181.7 L502.8,181.1 L503.9,180.6 L505.1,180.0 L506.2,179.4 L507.4,178.9 L508.5,178.3 L509.7,177.8 L510.8,177.2 L512.0,176.6 L513.1,176.1 L514.2,175.5 L515.4,174.3 L516.5,172.5 L517.7,170.8 L518.9,169.1 L520.0,167.4" fill="none" class="ln-tesis" stroke-width="1.8"/>
+        <path d="M60.0,40.0 L61.1,41.8 L62.3,43.5 L63.5,45.2 L64.6,47.0 L65.8,48.7 L66.9,50.4 L68.0,52.1 L69.2,53.9 L70.3,55.6 L71.5,57.3 L72.7,59.1 L73.8,60.8 L75.0,62.5 L76.1,64.2 L77.2,66.0 L78.4,67.5 L79.5,67.9 L80.7,68.3 L81.8,68.7 L83.0,69.0 L84.2,69.4 L85.3,69.8 L86.5,70.2 L87.6,70.6 L88.8,70.9 L89.9,71.3 L91.0,71.7 L92.2,72.1 L93.3,72.5 L94.5,72.9 L95.7,73.2 L96.8,73.6 L98.0,74.0 L99.1,74.4 L100.2,74.8 L101.4,75.2 L102.5,75.5 L103.7,75.9 L104.8,76.3 L106.0,76.7 L107.2,77.1 L108.3,77.4 L109.4,77.8 L110.6,78.2 L111.8,78.6 L112.9,79.0 L114.1,79.4 L115.2,79.7 L116.3,80.0 L117.5,80.4 L118.7,80.7 L119.8,81.1 L121.0,81.4 L122.1,81.7 L123.2,82.1 L124.4,82.4 L125.6,82.8 L126.7,83.1 L127.8,83.4 L129.0,83.8 L130.1,84.1 L131.3,84.5 L132.4,84.8 L133.6,85.1 L134.8,85.5 L135.9,85.8 L137.1,86.2 L138.2,86.5 L139.4,86.8 L140.5,87.2 L141.6,87.5 L142.8,87.9 L143.9,88.2 L145.1,88.6 L146.2,88.9 L147.4,89.2 L148.6,89.3 L149.7,89.4 L150.9,89.4 L152.0,89.5 L153.2,89.6 L154.3,89.7 L155.4,89.8 L156.6,89.8 L157.8,89.9 L158.9,90.0 L160.1,90.1 L161.2,90.1 L162.4,90.2 L163.5,90.3 L164.7,90.4 L165.8,90.5 L166.9,90.5 L168.1,90.6 L169.2,90.7 L170.4,90.8 L171.6,90.9 L172.7,90.9 L173.8,91.0 L175.0,91.1 L176.2,91.2 L177.3,91.3 L178.4,91.3 L179.6,91.4 L180.8,91.5 L181.9,91.6 L183.1,91.7 L184.2,91.7 L185.4,91.8 L186.5,91.9 L187.7,92.0 L188.8,92.1 L190.0,92.1 L191.1,92.2 L192.3,92.3 L193.4,92.4 L194.5,92.4 L195.7,92.5 L196.8,92.6 L198.0,92.7 L199.2,92.8 L200.3,92.8 L201.4,92.9 L202.6,93.0 L203.8,93.1 L204.9,93.2 L206.1,93.2 L207.2,93.3 L208.3,93.4 L209.5,93.5 L210.7,93.6 L211.8,93.6 L213.0,93.7 L214.1,93.8 L215.2,93.9 L216.4,94.0 L217.6,94.0 L218.7,94.1 L219.9,94.2 L221.0,94.3 L222.1,94.4 L223.3,94.4 L224.4,94.5 L225.6,94.6 L226.8,94.7 L227.9,94.7 L229.0,94.8 L230.2,94.9 L231.3,95.0 L232.5,95.1 L233.7,95.1 L234.8,95.2 L236.0,95.3 L237.1,95.4 L238.2,95.5 L239.4,95.5 L240.6,95.6 L241.7,95.7 L242.9,95.8 L244.0,95.9 L245.2,95.9 L246.3,96.0 L247.5,96.1 L248.6,96.2 L249.8,96.3 L250.9,96.3 L252.0,96.4 L253.2,96.5 L254.3,96.6 L255.5,96.7 L256.6,96.7 L257.8,96.8 L258.9,96.8 L260.1,96.8 L261.2,96.8 L262.4,96.8 L263.6,96.8 L264.7,96.8 L265.9,96.8 L267.0,96.8 L268.1,96.8 L269.3,96.8 L270.5,96.8 L271.6,96.8 L272.8,96.8 L273.9,96.8 L275.1,96.8 L276.2,96.8 L277.4,96.8 L278.5,96.8 L279.6,96.8 L280.8,96.8 L281.9,96.8 L283.1,96.8 L284.2,96.8 L285.4,96.8 L286.5,96.8 L287.7,96.8 L288.9,96.8 L290.0,96.8 L291.2,96.8 L292.3,96.8 L293.5,96.8 L294.6,96.8 L295.8,96.8 L296.9,96.8 L298.0,96.8 L299.2,96.8 L300.4,96.8 L301.5,96.8 L302.6,96.8 L303.8,96.8 L304.9,96.8 L306.1,96.8 L307.2,96.8 L308.4,96.8 L309.5,96.8 L310.7,96.8 L311.9,96.8 L313.0,96.8 L314.1,96.8 L315.3,96.8 L316.4,96.8 L317.6,96.8 L318.8,96.8 L319.9,96.8 L321.1,96.8 L322.2,96.8 L323.4,96.7 L324.5,96.7 L325.7,96.6 L326.8,96.5 L327.9,96.4 L329.1,96.3 L330.2,96.3 L331.4,96.2 L332.6,96.1 L333.7,96.0 L334.9,95.9 L336.0,95.9 L337.2,95.8 L338.3,95.7 L339.5,95.6 L340.6,95.5 L341.8,95.5 L342.9,95.4 L344.1,95.3 L345.2,95.2 L346.4,95.1 L347.5,95.1 L348.7,95.0 L349.8,94.9 L351.0,94.8 L352.1,94.7 L353.3,94.7 L354.4,94.6 L355.5,94.5 L356.7,94.4 L357.8,94.4 L359.0,94.3 L360.1,94.2 L361.3,94.1 L362.4,94.0 L363.6,94.0 L364.8,93.9 L365.9,93.8 L367.1,93.7 L368.2,93.6 L369.3,93.6 L370.5,93.5 L371.6,93.4 L372.8,93.3 L373.9,93.2 L375.1,93.2 L376.2,93.1 L377.4,93.0 L378.6,92.9 L379.7,92.8 L380.9,92.8 L382.0,92.7 L383.2,92.6 L384.3,92.5 L385.4,92.4 L386.6,92.4 L387.8,92.3 L388.9,92.2 L390.1,92.1 L391.2,92.1 L392.4,92.0 L393.5,91.9 L394.7,91.8 L395.8,91.7 L397.0,91.7 L398.1,91.6 L399.2,91.5 L400.4,91.4 L401.6,91.3 L402.7,91.3 L403.9,91.2 L405.0,91.1 L406.2,91.0 L407.3,90.9 L408.5,90.9 L409.6,90.8 L410.8,90.7 L411.9,90.6 L413.1,90.5 L414.2,90.5 L415.3,90.4 L416.5,90.3 L417.6,90.2 L418.8,90.1 L419.9,90.1 L421.1,90.0 L422.2,89.9 L423.4,89.8 L424.6,89.8 L425.7,89.7 L426.8,89.6 L428.0,89.5 L429.1,89.4 L430.3,89.4 L431.4,89.3 L432.6,89.2 L433.8,88.9 L434.9,88.6 L436.1,88.2 L437.2,87.9 L438.4,87.5 L439.5,87.2 L440.7,86.8 L441.8,86.5 L442.9,86.2 L444.1,85.8 L445.2,85.5 L446.4,85.1 L447.6,84.8 L448.7,84.5 L449.9,84.1 L451.0,83.8 L452.2,83.4 L453.3,83.1 L454.5,82.8 L455.6,82.4 L456.8,82.1 L457.9,81.7 L459.1,81.4 L460.2,81.1 L461.4,80.7 L462.5,80.4 L463.7,80.0 L464.8,79.7 L466.0,79.4 L467.1,79.0 L468.3,78.6 L469.4,78.2 L470.6,77.8 L471.7,77.4 L472.8,77.1 L474.0,76.7 L475.1,76.3 L476.3,75.9 L477.4,75.5 L478.6,75.2 L479.8,74.8 L480.9,74.4 L482.1,74.0 L483.2,73.6 L484.3,73.2 L485.5,72.9 L486.6,72.5 L487.8,72.1 L488.9,71.7 L490.1,71.3 L491.2,70.9 L492.4,70.6 L493.6,70.2 L494.7,69.8 L495.9,69.4 L497.0,69.0 L498.2,68.7 L499.3,68.3 L500.4,67.9 L501.6,67.5 L502.8,66.0 L503.9,64.2 L505.1,62.5 L506.2,60.8 L507.4,59.1 L508.5,57.3 L509.7,55.6 L510.8,53.9 L512.0,52.1 L513.1,50.4 L514.2,48.7 L515.4,47.0 L516.5,45.2 L517.7,43.5 L518.9,41.8 L520.0,40.0" fill="none" class="ln-accent" stroke-width="3"/>
+        <line x1="78.3" y1="30" x2="78.3" y2="250" class="ln-dash"/>
+        <line x1="501.7" y1="30" x2="501.7" y2="250" class="ln-dash"/>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">p = b(tigre a la izquierda)</text>
+        <text x="290" y="88" text-anchor="middle" class="t-accent" font-size="13">V∞: escuchar</text>
+        <text x="290" y="246" text-anchor="middle" class="t-time" font-size="12">V₁, V₂</text>
+        <text x="100" y="192" class="t-tesis" font-size="12">V₃</text>
+      </svg>
+      <figcaption>Valor óptimo del tigre con \(\gamma = 0{,}95\) para horizontes 1, 2 y 3 y en el límite (400 iteraciones), con los 9 vectores α del límite en gris. Líneas verticales: umbrales en \(p\) = 0,040 y 0,960. <code>figuras_a7a.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Horizonte</th><th>Candidatos</th><th>En la envolvente</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="n">3</td><td class="n">3</td></tr>
+            <tr><td>2</td><td class="n">27</td><td class="n">5</td></tr>
+            <tr><td>3</td><td class="n">75</td><td class="n">9</td></tr>
+            <tr><td>5</td><td class="n">147</td><td class="n">13</td></tr>
+            <tr><td>8</td><td class="n">1452</td><td class="n">26</td></tr>
+            <tr><td>50</td><td class="n">—</td><td class="n">202</td></tr>
+            <tr><td>200 y 400</td><td class="n">—</td><td class="n">9</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li>Sin poda, los candidatos crecen como \(3\,|\Gamma_{t-1}|^2\); la poda es la que lo hace tratable.</li>
+        <li>Durante la convergencia aparecen muchas caras casi iguales; en el límite quedan 9.</li>
+        <li>\(V_1\): escuchar vale −1 en \(p = 0{,}5\) y abrir a ciegas, \((-100+10)/2 = -45\) <a class="cite" data-ref="kaelbling1998"></a>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · información</p>
+  <h2>La convexidad es el valor de la información</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">En \(p = 0{,}5\), escuchar vale 19,37 y abrir, −26,60, aunque escuchar cuesta −1 y no acerca a ninguna puerta. Escuchar paga porque <em>mueve el belief</em> hacia zonas donde el valor es alto.</p>
+      <ul class="small">
+        <li>La política óptima escucha hasta que \(b\) pasa de 0,960 (o baja de 0,040). Con 0,85 de acierto eso es oír un lado <strong>dos veces más</strong> que el otro: la regla «sigue escuchando hasta oír al tigre dos veces más en un lado que en el otro» de Kaelbling et al. <a class="cite" data-ref="kaelbling1998"></a>.</li>
+        <li>Con \(\gamma = 0{,}95\), jugar indefinidamente desde la ignorancia total vale 19,37. Saber dónde está el tigre en esta ronda vale 28,40: 10 por abrir bien más 0,95 × 19,37 de seguir jugando.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: la información no empeora en esperanza</summary>
+        <p class="small">Si una acción no cambia el estado, como escuchar, el belief es una martingala: \(\sum_z P(z\mid a,b)\,b^{a,z} = b\). Como \(V\) es convexa, por Jensen:</p>
+        \[ \sum_z P(z\mid a,b)\,V(b^{a,z}) \ \ge\ V\Big(\sum_z P(z\mid a,b)\,b^{a,z}\Big) = V(b). \]
+        <p class="small">Observar antes de decidir nunca vale menos en esperanza; la diferencia es el valor de la información, que hay que comparar con lo que cuesta obtenerla (aquí, −1 y un paso de descuento).</p>
+      </details>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>«Dónde mirar» es exactamente esta cuenta: el valor esperado tras la observación menos el actual, frente al coste de ir a mirar. Un POMDP lo hace solo; una heurística de entropía (parte 4) lo aproxima.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Valor · complejidad</p>
+  <h2>Por qué no se puede resolver en general</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Complejidad:</strong> los MDP son P-completos; «la versión con estados parcialmente observados es PSPACE-completa», y «lo más probable es que no se pueda implementar en línea de forma eficiente una política óptima, aunque se permita una cantidad arbitraria de precomputación» <a class="cite" data-ref="papadimitriou1987"></a>. (El resultado se suele citar para horizonte finito; el resumen no lo dice explícitamente.)</li>
+        <li><strong>Indecidibilidad:</strong> decidir si existe una política que supere un umbral en un POMDP de horizonte infinito (con descuento, total, medio o evitando estados) es indecidible, también en sus versiones aproximadas <a class="cite" data-ref="madani1999"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Maldición</th><th>De dónde viene</th><th>Quién la ataca</th></tr></thead>
+          <tbody>
+            <tr><td>de la dimensión</td><td>el belief vive en \(|\mathcal S|-1\) dimensiones</td><td>muestrear solo beliefs alcanzables (SARSOP), partículas</td></tr>
+            <tr><td>de la historia</td><td>\((|\mathcal A||\mathcal Z|)^t\) historias; \(|\mathcal A||\Gamma|^{|\mathcal Z|}\) candidatos por iteración</td><td>un vector por punto (PBVI), árboles con muestreo (POMCP), escenarios (DESPOT)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">«Maldición de la historia», en la terminología de Pineau et al. <a class="cite" data-ref="pineau2003"></a>.</p>
+      <div class="callout clave"><span class="tag">Consecuencia práctica</span>No se resuelve el POMDP: se resuelve bien desde el belief en el que estás, o en los beliefs que vas a visitar. Toda la parte 3 sale de esa idea.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Planificación offline">
+  <p class="num">Parte 3</p>
+  <h2>Aproximar el valor: de QMDP a los métodos por puntos</h2>
+  <p>Atajos baratos que ignoran la información, y métodos que calculan el valor solo donde hace falta.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Offline · QMDP</p>
+  <h2>QMDP supone que mañana lo sabrá todo, así que nunca va a mirar</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">QMDP resuelve el MDP con estado visible y actúa con \(\arg\max_a\sum_s b(s)\,Q_{\text{MDP}}(s,a)\). Es barato y a menudo razonable, pero da valor cero a la información: supone que tras un paso la incertidumbre desaparece.</p>
+      <figure class="fig">
+        <svg viewBox="0 0 560 200" role="img" aria-label="Pasillo con un cartel: trayectorias de la política exacta y de QMDP">
+          <rect x="40" y="80" width="480" height="44" rx="4" class="box box-soft"/>
+          <line x1="100" y1="80" x2="100" y2="124" class="ln-rule"/>
+          <line x1="160" y1="80" x2="160" y2="124" class="ln-rule"/>
+          <line x1="220" y1="80" x2="220" y2="124" class="ln-rule"/>
+          <line x1="280" y1="80" x2="280" y2="124" class="ln-rule"/>
+          <line x1="340" y1="80" x2="340" y2="124" class="ln-rule"/>
+          <line x1="400" y1="80" x2="400" y2="124" class="ln-rule"/>
+          <line x1="460" y1="80" x2="460" y2="124" class="ln-rule"/>
+          <text x="70" y="107" text-anchor="middle" class="t-bold" font-size="13">cartel</text>
+          <text x="250" y="107" text-anchor="middle" class="t-bold" font-size="13">salida</text>
+          <text x="490" y="100" text-anchor="middle" class="t-bold" font-size="12">bifur-</text>
+          <text x="490" y="114" text-anchor="middle" class="t-bold" font-size="12">cación</text>
+          <path d="M250,72 L250,52 L70,52 L70,40 L490,40 L490,72" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <path d="M484,64 L490,74 L496,64" fill="none" class="ln-accent" stroke-width="2.2"/>
+          <text x="280" y="30" text-anchor="middle" class="t-accent" font-size="12">exacta: al cartel (3 pasos), a la bifurcación (7), elige bien: 5,19</text>
+          <path d="M250,132 L250,150 L478,150" fill="none" class="ln-time" stroke-width="2.2"/>
+          <circle cx="490" cy="150" r="10" fill="none" class="ln-time" stroke-width="2"/>
+          <text x="280" y="176" text-anchor="middle" class="t-time" font-size="12">QMDP: va a la bifurcación y se queda allí para siempre: −1,91</text>
+        </svg>
+        <figcaption>Pasillo de 8 casillas, premio de +10 a un lado de la bifurcación y −20 al otro, −0,1 por paso, \(\gamma = 0{,}95\). El cartel dice el lado. <code>figuras_a7a.py</code>, sección 3.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Desde la salida, con \(b = \tfrac12\)</th><th>Valor</th></tr></thead>
+          <tbody>
+            <tr><td>Conociendo el lado (cota superior)</td><td class="n">7,77</td></tr>
+            <tr><td>Belief MDP exacto: ir al cartel primero</td><td class="n">5,19</td></tr>
+            <tr><td>Ir directo a la bifurcación y adivinar</td><td class="n">−4,44</td></tr>
+            <tr><td>QMDP (no elige nunca)</td><td class="n">−1,91</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li>En la bifurcación con \(b = \tfrac12\), QMDP valora quedarse en 9,40 y elegir en −5: cree que en el siguiente paso sabrá el lado. Nunca lo sabe, y repite.</li>
+        <li>La política exacta da tres pasos en dirección contraria al premio. Solo un planificador que razona sobre el belief hace eso.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Cuándo falla QMDP</span>Cuando hay que hacer algo solo para informarse (mirar, ir a un punto de vista, esperar a medir). En robótica: localizarse antes de entrar en un pasillo estrecho, o subir para ver mejor antes de buscar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Offline · por puntos</p>
+  <h2>Calcular el valor solo en los beliefs que importan</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Método</th><th>Idea</th><th>Una cifra</th></tr></thead>
+          <tbody>
+            <tr><td>PBVI 2003 <a class="cite" data-ref="pineau2003"></a></td><td>un conjunto de beliefs representativos y un vector α por punto</td><td>Tag, 870 estados: un orden de magnitud mayor que los problemas anteriores</td></tr>
+            <tr><td>Perseus 2005 <a class="cite" data-ref="spaan2005"></a></td><td>actualizar solo un subconjunto aleatorio que mejore todos los puntos</td><td>Tag: 280 vectores con 10 000 beliefs, frente a 1334 de PBVI</td></tr>
+            <tr><td>HSVI 2004 <a class="cite" data-ref="smith2004"></a></td><td>cotas inferior (vectores α) y superior; búsqueda heurística desde \(b_0\)</td><td>aceleraciones de más de 100 veces; RockSample con 12 545 estados</td></tr>
+            <tr><td>SARSOP 2008 <a class="cite" data-ref="kurniawati2008"></a></td><td>muestrear cerca de los beliefs alcanzables con acciones óptimas</td><td>Tag: −6,13 en 6 s, frente a −7,43 (6 s) y −6,40 (7200 s) de HSVI2</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Cifras de cada artículo, en sus máquinas de entonces.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: la actualización en un punto y su cota</summary>
+        <p class="small">En un belief \(b\), en lugar de enumerar \(|\mathcal A||\Gamma|^{|\mathcal Z|}\) combinaciones, se elige para cada \(a\) y \(z\) el vector que maximiza en \(b\): \(\alpha_{a,z} = \arg\max_{\alpha\in\Gamma}\ g^{a,z}_\alpha\cdot b\), y se queda el mejor \(R(\cdot,a) + \gamma\sum_z\alpha_{a,z}\). Coste lineal en \(|\Gamma|\) por punto. Si los puntos cubren el símplex con densidad \(\varepsilon_B\), el error es como mucho <a class="cite" data-ref="pineau2003"></a></p>
+        \[ \|V^B - V^*\|_\infty \le \frac{(R_{\max}-R_{\min})\,\varepsilon_B}{(1-\gamma)^2}. \]
+      </details>
+      <div class="callout clave"><span class="tag">La idea de SARSOP</span>El conjunto de beliefs alcanzables desde \(b_0\) es mucho menor que el símplex, y el alcanzable con acciones óptimas, menor aún <a class="cite" data-ref="kurniawati2008"></a>. Una rejilla de 10 × 10 da un belief de 100 dimensiones, pero un robot que empieza en un sitio conocido solo visita una parte pequeña.</div>
+      <div class="callout realidad"><span class="tag">Hoy</span>Siguen siendo la referencia para POMDP discretos de tamaño medio (miles de estados); el ecosistema de POMDPs.jl reúne varios resolvedores del estado del arte <a class="cite" data-ref="egorov2017"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Planificación en línea">
+  <p class="num">Parte 4</p>
+  <h2>Planificar en línea desde el belief actual</h2>
+  <p>No calcular la política entera: buscar en el árbol de lo que puede pasar desde aquí, con un simulador y un presupuesto de tiempo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · POMCP</p>
+  <h2>POMCP: árbol de Monte Carlo sobre historias y belief de partículas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Combina «una actualización de Monte Carlo del belief con una búsqueda en árbol de Monte Carlo desde el belief actual»; solo necesita un simulador de caja negra <a class="cite" data-ref="silver2010"></a>.</li>
+        <li>Cada simulación muestrea un estado de las partículas, baja por el árbol de historias eligiendo acciones con UCB y termina con una política de despliegue.</li>
+        <li>El belief es un filtro de partículas sin pesos actualizado por rechazo; con el tiempo pueden agotarse, y se «reinvigoran».</li>
+        <li>Converge en probabilidad al valor óptimo, con sesgo \(O(\log N/N)\) en \(N\) simulaciones <a class="cite" data-ref="silver2010"></a>.</li>
+        <li>Battleship (~10¹⁸ estados) y PocMan (~10⁵⁶). En RockSample(11, 11), con 4 s en línea igualó a SARSOP con 1000 s de cálculo previo <a class="cite" data-ref="silver2010"></a>.</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Retorno de POMCP en el tigre frente al número de simulaciones, comparado con la política exacta">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="216.8" text-anchor="end" class="t-mono t-faint" font-size="12">−200</text>
+        <text x="52" y="172.9" text-anchor="end" class="t-mono t-faint" font-size="12">−150</text>
+        <text x="52" y="129.0" text-anchor="end" class="t-mono t-faint" font-size="12">−100</text>
+        <text x="52" y="85.1" text-anchor="end" class="t-mono t-faint" font-size="12">−50</text>
+        <text x="52" y="41.2" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <path d="M60.0,31.8 L520.0,31.8" class="ln-dash"/>
+        <path d="M60.0,209.5 L60.0,184.5 M175.0,155.0 L175.0,132.0 M290.0,96.7 L290.0,79.1 M405.0,69.8 L405.0,56.9 M520.0,82.5 L520.0,62.8" class="ln-time" stroke-width="1.5" fill="none"/>
+        <path d="M60.0,197.0 L175.0,143.5 L290.0,87.9 L405.0,63.4 L520.0,72.6" fill="none" class="ln-time" stroke-width="2.4"/>
+        <path d="M60.0,248.2 L60.0,221.8 M175.0,58.7 L175.0,47.4 M290.0,39.6 L290.0,35.2 M405.0,38.7 L405.0,35.6 M520.0,35.8 L520.0,34.4" class="ln-accent" stroke-width="1.5" fill="none"/>
+        <path d="M60.0,235.0 L175.0,53.1 L290.0,37.4 L405.0,37.1 L520.0,35.1" fill="none" class="ln-accent" stroke-width="2.4"/>
+        <text x="512.0" y="53.1" text-anchor="end" class="t-accent" font-size="12">despliegue «escuchar»</text><text x="512.0" y="90.6" text-anchor="end" class="t-time" font-size="12">despliegue aleatorio</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+        <text x="175" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">16</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">64</text>
+        <text x="405" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">256</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1024</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">simulaciones por paso (escala logarítmica)</text>
+        <text x="516" y="25.8" text-anchor="end" class="t-muted" font-size="12">política exacta: 6,16</text>
+      </svg>
+      <figcaption>Retorno descontado en episodios de 10 pasos del tigre: POMCP con despliegue aleatorio (naranja) y con un despliegue que solo escucha (azul), con dos errores típicos, frente a la política exacta de los vectores α. Árbol nuevo en cada paso. <code>figuras_a7a.py</code>, sección 4.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · lo que mide el tigre</p>
+  <h2>POMCP en el tigre, frente a la solución exacta</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Simulaciones por paso</th><th>Despliegue aleatorio</th><th>Despliegue «escuchar»</th></tr></thead>
+          <tbody>
+            <tr><td>4</td><td class="n">−182,00 ± 7,13</td><td class="n">−225,29 ± 7,52</td></tr>
+            <tr><td>16</td><td class="n">−121,12 ± 6,54</td><td class="n">−18,12 ± 3,23</td></tr>
+            <tr><td>64</td><td class="n">−57,78 ± 5,01</td><td class="n">−0,30 ± 1,26</td></tr>
+            <tr><td>256</td><td class="n">−29,85 ± 3,67</td><td class="n">0,03 ± 0,87</td></tr>
+            <tr><td>1024</td><td class="n">−40,38 ± 5,60</td><td class="n">2,32 ± 0,41</td></tr>
+            <tr><td><strong>Política exacta</strong></td><td class="n" colspan="2"><strong>6,16 ± 0,12</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Retorno descontado en 10 pasos, media ± error típico (300 episodios; 150 con 1024 simulaciones). Política exacta: 40 000 episodios. <code>figuras_a7a.py</code>, sección 4.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Despliegue aleatorio:</strong> cada hoja nueva se valora con una partida al azar en la que se abren puertas sin saber (−45 de media por puerta). Valores muy negativos y muy ruidosos: con 1024 simulaciones, −40,4, lejos del 6,16 de la política exacta.</li>
+        <li><strong>Despliegue que solo escucha:</strong> con 64 simulaciones el retorno ya ronda −0,3, y con 1024 llega a 2,32: mejor, pero todavía por debajo.</li>
+        <li><strong>Nuestra explicación:</strong> ese despliegue valora seguir jugando tras abrir como escuchar para siempre (unos −20), cuando su valor real es de unos +19. Abrir parece peor de lo que es y la búsqueda tiende a esperar una observación más; con más simulaciones el árbol se hace más profundo y lo corrige.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué el despliegue importa</span>Con despliegues aleatorios, abrir una puerta al azar cuesta −45 de media: las hojas nuevas del árbol se valoran muy mal y la búsqueda necesita muchas simulaciones para descubrir que escuchar compensa. Una política de despliegue con conocimiento del problema (o una red aprendida, como en BetaZero <a class="cite" data-ref="moss2024"></a>) lo acelera.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · DESPOT y POMCPOW</p>
+  <h2>Escenarios para no sobreajustar, y pesos para observaciones continuas</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0;">DESPOT</h3>
+      <ul class="small">
+        <li>Fija \(K\) escenarios (secuencias de números aleatorios que determinan el simulador) y evalúa todas las políticas sobre los mismos: el árbol pasa de \(O(|\mathcal A|^D|\mathcal Z|^D)\) a \(O(|\mathcal A|^D K)\) nodos <a class="cite" data-ref="ye2017"></a>.</li>
+        <li>Regulariza por el tamaño de la política para no sobreajustar a los escenarios; cota de arrepentimiento que depende del tamaño de la política óptima. A menudo bastan \(K = 500\).</li>
+        <li>Control en tiempo real de un carrito de golf autónomo entre peatones <a class="cite" data-ref="ye2017"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">POMCPOW</h3>
+      <ul class="small">
+        <li>Con observaciones continuas, cada simulación crea un nodo de observación nuevo: el árbol no profundiza y los beliefs de los nodos «colapsan a una sola partícula» <a class="cite" data-ref="sunberg2018"></a>.</li>
+        <li>Resultado: el planificador converge a la política de QMDP, sea cual sea el tiempo de cálculo (teorema de la versión larga en arXiv).</li>
+        <li>Solución: ensanchamiento progresivo en acciones y observaciones, y beliefs de partículas <em>con pesos</em> \(O(z\mid s,a,s')\) en cada nodo.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Las observaciones de un dron (detecciones con posición, imágenes) son continuas. POMCP tal cual degenera en QMDP: justo el planificador que no va a mirar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">En línea · recompensas del belief</p>
+  <h2>Cuando el objetivo es saber: ρ-POMDP</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Hay tareas cuya recompensa es reducir la incertidumbre (cartografiar, vigilar, localizar), que no se escriben con \(R(s,a)\). Un ρ-POMDP usa una recompensa \(\rho(b,a)\) del belief <a class="cite" data-ref="araya2010"></a>:</p>
+      \[ \rho_{\text{ent}}(b) = \log_2|\mathcal S| + \sum_s b(s)\log_2 b(s), \]
+      <p class="small">la entropía negativa, desplazada para que valga 0 con el belief uniforme.</p>
+      <ul class="small">
+        <li><strong>Teorema 3.1:</strong> si \(\rho\) y \(V_0\) son convexas en el símplex, \(V_n\) es convexa para todo \(n\). Se aproxima \(\rho\) con funciones lineales a trozos y se reutilizan los algoritmos de vectores α.</li>
+        <li>La entropía negativa no es Lipschitz (pendiente infinita cuando \(b(s)\to0\)): las cotas de error necesitan un tratamiento aparte <a class="cite" data-ref="araya2010"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: la entropía negativa es convexa</summary>
+        <p class="small">\(f(x) = x\log x\) tiene \(f''(x) = 1/x &gt; 0\) en \((0,1]\): es convexa, y una suma de funciones convexas de cada coordenada también lo es. Así que \(\rho_{\text{ent}}\) cumple la hipótesis del teorema 3.1 y el valor sigue siendo convexo: la estructura de la parte 2 se conserva.</p>
+      </details>
+      <div class="callout error"><span class="tag">Matiz</span>Premiar la información por sí misma puede desviar de la tarea: un dron que busca un objetivo quiere <em>encontrarlo</em>, no conocer cada casilla. La recompensa de la tarea ya contiene el valor de la información (parte 2); la entropía es útil cuando saber <em>es</em> la tarea.</div>
+      <div class="callout tesis"><span class="tag">Percepción activa</span>Elegir dónde mirar para reducir la incertidumbre es la percepción activa de A7b. Este es su planteamiento formal.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="Buscar con un dron">
+  <p class="num">Parte 5</p>
+  <h2>Un dron que busca un objetivo</h2>
+  <p>El problema de tu tesis en miniatura: una rejilla, un objetivo oculto y un sensor que a veces no lo ve.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Búsqueda · el belief</p>
+  <h2>No ver el objetivo también es información</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Rejilla de 6 × 6, objetivo quieto en una casilla con un prior que favorece una zona; el dron sale de una esquina y mira la casilla en la que está. Si el objetivo está allí, lo detecta con probabilidad \(P_D = 0{,}6\); no hay falsas alarmas.</p>
+      \[ b'(c) = \frac{b(c)\,(1 - P_D\,[c = c_{\text{dron}}])}{1 - P_D\,b(c_{\text{dron}})}. \]
+      <ul class="small">
+        <li>Mirar y no detectar baja la casilla mirada a un 40 % de lo que era y sube todas las demás.</li>
+        <li>El belief no llega nunca a cero en una casilla: con \(P_D &lt; 1\) puede que estuviera y no lo viera. Volver a mirar puede compensar.</li>
+        <li>Con varios objetivos, el estado es el producto de las rejillas: crece exponencialmente con su número <a class="cite" data-ref="lauri2023"></a>.</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 220" role="img" aria-label="Mapas de belief del objetivo: prior y tras 5 y 15 pasos sin detectar">
+        <text x="86" y="20" text-anchor="middle" class="t-muted" font-size="13">prior</text>
+        <rect x="8" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.186"/>
+        <rect x="8" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.204"/>
+        <rect x="8" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.223"/>
+        <rect x="8" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.231"/>
+        <rect x="8" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.223"/>
+        <rect x="8" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.204"/>
+        <rect x="34" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.215"/>
+        <rect x="34" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="34" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.331"/>
+        <rect x="34" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="34" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.331"/>
+        <rect x="34" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="60" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="60" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.391"/>
+        <rect x="60" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="60" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.599"/>
+        <rect x="60" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="60" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.391"/>
+        <rect x="86" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.331"/>
+        <rect x="86" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="86" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="86" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="86" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="86" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="112" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="112" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.599"/>
+        <rect x="112" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="112" y="108" width="25" height="25" class="fill-accent" fill-opacity="1.000"/>
+        <rect x="112" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="112" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.599"/>
+        <rect x="138" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.331"/>
+        <rect x="138" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="138" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="138" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.873"/>
+        <rect x="138" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="138" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.534"/>
+        <rect x="11" y="33" width="19" height="19" fill="none" class="ln-time" stroke-width="2.5"/>
+        <rect x="42" y="168" width="9" height="9" class="fill-tesis"/>
+        <text x="274" y="20" text-anchor="middle" class="t-muted" font-size="13">tras 5 pasos sin verlo</text>
+        <rect x="196" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.104"/>
+        <rect x="196" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.112"/>
+        <rect x="196" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.119"/>
+        <rect x="196" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.231"/>
+        <rect x="196" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.222"/>
+        <rect x="196" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.203"/>
+        <rect x="222" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.214"/>
+        <rect x="222" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="222" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.162"/>
+        <rect x="222" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="222" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.330"/>
+        <rect x="222" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="248" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.269"/>
+        <rect x="248" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.392"/>
+        <rect x="248" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.242"/>
+        <rect x="248" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="248" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="248" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.392"/>
+        <rect x="274" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.330"/>
+        <rect x="274" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="274" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.336"/>
+        <rect x="274" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.872"/>
+        <rect x="274" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="274" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="300" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.358"/>
+        <rect x="300" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="300" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.872"/>
+        <rect x="300" y="108" width="25" height="25" class="fill-accent" fill-opacity="1.000"/>
+        <rect x="300" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.872"/>
+        <rect x="300" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.598"/>
+        <rect x="326" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.330"/>
+        <rect x="326" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="326" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="326" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.872"/>
+        <rect x="326" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.765"/>
+        <rect x="326" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.533"/>
+        <rect x="277" y="85" width="19" height="19" fill="none" class="ln-time" stroke-width="2.5"/>
+        <rect x="230" y="168" width="9" height="9" class="fill-tesis"/>
+        <text x="462" y="20" text-anchor="middle" class="t-muted" font-size="13">tras 15 pasos sin verlo</text>
+        <rect x="384" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.144"/>
+        <rect x="384" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.157"/>
+        <rect x="384" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.169"/>
+        <rect x="384" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.364"/>
+        <rect x="384" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.348"/>
+        <rect x="384" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.316"/>
+        <rect x="410" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.336"/>
+        <rect x="410" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.428"/>
+        <rect x="410" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.244"/>
+        <rect x="410" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.584"/>
+        <rect x="410" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.535"/>
+        <rect x="410" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.428"/>
+        <rect x="436" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.428"/>
+        <rect x="436" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.643"/>
+        <rect x="436" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.386"/>
+        <rect x="436" y="108" width="25" height="25" class="fill-accent" fill-opacity="1.000"/>
+        <rect x="436" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.888"/>
+        <rect x="436" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.643"/>
+        <rect x="462" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.535"/>
+        <rect x="462" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.888"/>
+        <rect x="462" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.547"/>
+        <rect x="462" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.622"/>
+        <rect x="462" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.547"/>
+        <rect x="462" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.386"/>
+        <rect x="488" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.584"/>
+        <rect x="488" y="56" width="25" height="25" class="fill-accent" fill-opacity="1.000"/>
+        <rect x="488" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.622"/>
+        <rect x="488" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.709"/>
+        <rect x="488" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.622"/>
+        <rect x="488" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.430"/>
+        <rect x="514" y="30" width="25" height="25" class="fill-accent" fill-opacity="0.535"/>
+        <rect x="514" y="56" width="25" height="25" class="fill-accent" fill-opacity="0.888"/>
+        <rect x="514" y="82" width="25" height="25" class="fill-accent" fill-opacity="0.547"/>
+        <rect x="514" y="108" width="25" height="25" class="fill-accent" fill-opacity="0.622"/>
+        <rect x="514" y="134" width="25" height="25" class="fill-accent" fill-opacity="0.547"/>
+        <rect x="514" y="160" width="25" height="25" class="fill-accent" fill-opacity="0.888"/>
+        <rect x="491" y="163" width="19" height="19" fill="none" class="ln-time" stroke-width="2.5"/>
+        <rect x="418" y="168" width="9" height="9" class="fill-tesis"/>
+        <text x="280" y="214" text-anchor="middle" class="t-muted" font-size="12">cuadrado naranja: el dron; cuadrado morado: el objetivo (desconocido para el dron)</text>
+      </svg>
+      <figcaption>Belief sobre la posición del objetivo (más oscuro, más probable; escala propia en cada mapa) con la política de ganancia por distancia y el objetivo en una casilla poco probable. Cuadrado: el dron. <code>figuras_a7a.py</code>, sección 5.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Búsqueda · políticas</p>
+  <h2>Cuatro formas de buscar, medidas</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Política</th><th>Pasos hasta detectar</th><th>Mediana</th><th>Sin encontrar en 80</th></tr></thead>
+          <tbody>
+            <tr><td>barrido en serpentina</td><td class="n">37,9 ± 1,0</td><td class="n">30</td><td class="n">12,5 %</td></tr>
+            <tr><td>ir al máximo del belief</td><td class="n">34,0 ± 1,1</td><td class="n">27</td><td class="n">14,0 %</td></tr>
+            <tr><td>ganancia por distancia</td><td class="n">32,4 ± 1,1</td><td class="n">24</td><td class="n">12,5 %</td></tr>
+            <tr><td>POMCP, 100 simulaciones, despliegue aleatorio</td><td class="n">41,0 ± 2,0</td><td class="n">34</td><td class="n">22,5 %</td></tr>
+            <tr><td>POMCP, 500 simulaciones, despliegue aleatorio</td><td class="n">34,4 ± 1,8</td><td class="n">26</td><td class="n">13,5 %</td></tr>
+            <tr><td>POMCP, 100 simulaciones, despliegue con la heurística</td><td class="n">47,8 ± 2,2</td><td class="n">46</td><td class="n">25,3 %</td></tr>
+            <tr><td>POMCP, 300 simulaciones, despliegue con la heurística</td><td class="n">39,6 ± 2,3</td><td class="n">32</td><td class="n">18,7 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Mismos objetivos, muestreados del prior; media ± error típico. Heurísticas con 600 episodios; POMCP con 200 (despliegue aleatorio) o 150 (despliegue con la heurística de ganancia), partículas muestreadas del belief exacto y profundidad 30. <code>figuras_a7a.py</code>, sección 5.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Usar el belief compensa:</strong> ir al máximo del belief (34,0) o a la mejor ganancia por distancia (32,4) gana al barrido fijo (37,9 pasos).</li>
+        <li><strong>POMCP con despliegue aleatorio:</strong> con 500 simulaciones iguala a las heurísticas (34,4); con 100, 41,0.</li>
+        <li><strong>Con la heurística como despliegue, empeora</strong> con pocas simulaciones: 47,8 con 100 y 39,6 con 300.</li>
+        <li><strong>Diagnóstico:</strong> desde la salida, con ese despliegue las dos mejores primeras acciones difieren en 0,6 pasos y un despliegue tiene una desviación de 7,3. Con 100 simulaciones, ninguna acción pasa del 32 % de las elecciones (ni del 32 % con despliegue aleatorio): POMCP elige casi al azar en cada paso y el dron no se compromete con un rumbo. <code>figuras_a7a.py</code>, sección 6.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Lección</span>Con poco presupuesto, una buena heurística sobre el belief es difícil de batir. Más simulaciones, reutilizar el árbol entre pasos o evaluar todas las acciones con los mismos escenarios (la idea de DESPOT <a class="cite" data-ref="ye2017"></a>) son las respuestas.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Redes que guían la búsqueda, y teoría de cuándo aprender es posible</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Planificar en línea con simulador</h3><p>POMCP, DESPOT y POMCPOW son la base de la planificación con POMDP en robótica, con algoritmos por puntos, de búsqueda en árbol, de búsqueda de política y heurísticos como grandes familias <a class="cite" data-ref="lauri2023"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Aprender a guiar la búsqueda</h3><p>BetaZero sustituye las heurísticas de la búsqueda por redes de valor y política entrenadas fuera de línea sobre beliefs, para problemas de horizonte largo como la exploración de minerales <a class="cite" data-ref="moss2024"></a>. Recuerda a AlphaZero, llevado al espacio de beliefs.</p></div>
+    <div class="card"><span class="meta">TEORÍA</span><h3>Cuándo no es exponencial</h3><p>Aprender un POMDP exige, en el peor caso, un número exponencial de muestras; si las observaciones son informativas («débilmente reveladoras»), optimismo con máxima verosimilitud basta para una complejidad polinómica <a class="cite" data-ref="liu2022"></a>.</p></div>
+  </div>
+  <div class="callout error"><span class="tag">Lo que sigue abierto</span>Los planificadores exactos o por puntos necesitan el modelo \((T, O, R)\); el RL profundo aprende sin él pero sin garantías. Unir las dos cosas (un modelo aprendido sobre el que planificar en belief) es el programa de A8a y de tu tesis.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Lo que este tema le da a tu tesis</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Definición:</strong> el belief es el estado del problema; una política sobre beliefs puede ser óptima, una sobre la última observación en general no.</li>
+        <li><strong>Criterio:</strong> un belief aprendido es bueno si es (aproximadamente) un estado de información: predice la recompensa y su propio futuro. La cota del AIS dice cuánto cuesta equivocarse.</li>
+        <li><strong>Estructura:</strong> la convexidad del valor es el valor de la información; es lo que hace que buscar, mirar o subir para ver mejor compense.</li>
+        <li><strong>Herramientas:</strong> POMCP y DESPOT como referencia de planificación con modelo; POMCPOW si las observaciones son continuas; QMDP como el contraejemplo que no busca.</li>
+        <li><strong>Latencia y cómputo:</strong> un planificador en línea gasta su presupuesto por paso; en un dron, ese presupuesto son decenas de milisegundos.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>En la búsqueda de la parte 5 con observaciones continuas (detecciones con posición), ¿cuánto se acerca una política de RL con belief aprendido (A7b) a POMCPOW con el modelo verdadero, y con cuánto cómputo a bordo?</div>
+      <div class="callout clave"><span class="tag">Para el hito H3</span>Tu entorno de búsqueda con el dron (rejilla, objetivo oculto, detector imperfecto) será la tarea común de A7b, A8a y A15a. Constrúyelo en el laboratorio de este tema con el belief exacto como referencia.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A7a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un POMDP es un MDP visto a través de \(O(z\mid s',a)\); el belief se actualiza con Bayes.</li>
+    <li>El belief es un estado suficiente: el POMDP es un MDP continuo sobre el símplex.</li>
+    <li>Un estado de información predice la recompensa y su propio futuro; el AIS acota el error de usar uno aproximado.</li>
+    <li>El valor es lineal a trozos y convexo; por Jensen, observar no empeora en esperanza.</li>
+    <li>PSPACE en horizonte finito, indecidible en infinito; maldiciones de la dimensión y de la historia.</li>
+    <li>QMDP no valora la información: no va a mirar. Los métodos por puntos calculan donde hace falta.</li>
+    <li>POMCP y DESPOT planifican en línea con un simulador; con observaciones continuas, POMCPOW.</li>
+    <li>Buscar es actualizar el belief también con lo que no se ve.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Belief y estados de información</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. En el tigre has oído «izquierda», «izquierda», «derecha». ¿Cuál es \(b(\text{tigre a la izquierda})\)?</p>
+      <ol class="opts">
+        <li><button type="button">0,97</button></li>
+        <li><button type="button">0,85: una «derecha» anula una «izquierda»</button></li>
+        <li><button type="button">0,67</button></li>
+        <li><button type="button">0,5</button></li>
+      </ol>
+      <p class="explain">Las verosimilitudes se multiplican: \(0{,}85^2\cdot0{,}15\) frente a \(0{,}15^2\cdot0{,}85\), cociente \(0{,}85/0{,}15\): es lo mismo que haber oído una sola «izquierda».</p>
+    </div>
+    <div class="quiz" data-answer="3">
+      <p class="q">2. El estado oculto de tu red recurrente reconstruye bien la imagen pero predice mal la recompensa. ¿Es un buen estado de información?</p>
+      <ol class="opts">
+        <li><button type="button">Sí: reconstruir es lo que importa</button></li>
+        <li><button type="button">Sí, si la red es grande</button></li>
+        <li><button type="button">Depende solo de la dimensión del estado</button></li>
+        <li><button type="button">No: falla la propiedad (P1); el error \(\varepsilon_t\) entra en la cota del valor en cada paso</button></li>
+      </ol>
+      <p class="explain">Un estado de información debe predecir la recompensa y su propio futuro; reconstruir la observación no es ninguna de las dos cosas.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Valor y complejidad</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">3. ¿Por qué la convexidad del valor implica que observar no empeora en esperanza?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el belief tras observar es, en media, el de antes, y por Jensen la media de \(V\) es mayor o igual que \(V\) de la media</button></li>
+        <li><button type="button">Porque observar no cuesta nada</button></li>
+        <li><button type="button">Porque \(V\) es lineal</button></li>
+        <li><button type="button">No lo implica</button></li>
+      </ol>
+      <p class="explain">\(\sum_z P(z)V(b^z)\ge V(\sum_z P(z)b^z) = V(b)\) si la acción no cambia el estado.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">4. Con 2 observaciones, 3 acciones y 20 vectores en \(\Gamma_{t-1}\), ¿cuántos candidatos genera una iteración exacta antes de podar?</p>
+      <ol class="opts">
+        <li><button type="button">60</button></li>
+        <li><button type="button">120</button></li>
+        <li><button type="button">1200</button></li>
+        <li><button type="button">8000</button></li>
+      </ol>
+      <p class="explain">\(|\mathcal A|\,|\Gamma_{t-1}|^{|\mathcal Z|} = 3\cdot20^2 = 1200\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Planificación</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">5. Tu dron debe subir a 30 m para ver una zona antes de buscar en ella. ¿Qué planificador nunca lo hará por sí mismo?</p>
+      <ol class="opts">
+        <li><button type="button">POMCP con suficientes simulaciones</button></li>
+        <li><button type="button">QMDP</button></li>
+        <li><button type="button">SARSOP</button></li>
+        <li><button type="button">El belief MDP exacto</button></li>
+      </ol>
+      <p class="explain">QMDP supone que tras un paso conocerá el estado, así que subir solo para ver no tiene valor para él.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu detector da la posición del objetivo con ruido gaussiano. ¿Qué le pasa a POMCP tal cual y qué cambiarías?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Con observaciones continuas, cada simulación produce una observación distinta: cada nodo de observación recibe una sola visita y una sola partícula. El árbol no profundiza más allá de la primera observación y los beliefs de los nodos colapsan; el planificador acaba comportándose como QMDP y deja de valorar la información. Cambios: POMCPOW o PFT-DPW, con ensanchamiento progresivo en las observaciones (reutilizar nodos existentes) y beliefs de partículas ponderadas por \(O(z\mid s,a,s')\); o discretizar las observaciones si el problema lo permite; o DESPOT con escenarios.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 90 MIN · ARTIFICIAL INTELLIGENCE</span>
+      <h3>Planificar y actuar en dominios parcialmente observables <a class="cite" data-ref="kaelbling1998"></a></h3>
+      <p><strong>Lee:</strong> §3 (belief), §4.1–4.4 (vectores α, witness) y §5 (el tigre).</p>
+      <p><strong>Responde:</strong> ¿por qué el valor es convexo?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 45 MIN · NEURIPS</span>
+      <h3>POMCP <a class="cite" data-ref="silver2010"></a></h3>
+      <p><strong>Lee:</strong> el algoritmo, el teorema 1 y la tabla 1.</p>
+      <p><strong>Responde:</strong> ¿qué pasa con las partículas en un problema largo, y cómo lo arreglan?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 60 MIN · T-RO</span>
+      <h3>POMDP en robótica <a class="cite" data-ref="lauri2023"></a></h3>
+      <p><strong>Lee:</strong> §III (algoritmos) y §IV-C (búsqueda y seguimiento).</p>
+      <p><strong>Responde:</strong> ¿qué familia usarías para tu búsqueda con un dron y por qué?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> estados de información aproximados <a class="cite" data-ref="subramanian2022"></a>; SARSOP <a class="cite" data-ref="kurniawati2008"></a>; DESPOT <a class="cite" data-ref="ye2017"></a>; POMCPOW <a class="cite" data-ref="sunberg2018"></a>; ρ-POMDP <a class="cite" data-ref="araya2010"></a>; BetaZero <a class="cite" data-ref="moss2024"></a>. Software: POMDPs.jl <a class="cite" data-ref="egorov2017"></a> y pomdp_py (preprint) <a class="cite" data-ref="zheng2020"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Belief exacto frente a POMCP, y tu entorno de búsqueda</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h, en CPU. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Tigre exacto:</strong> actualización del belief, iteración de valor con vectores α y poda; reproduce los 9 vectores y el umbral de 0,960.</li>
+        <li><strong>QMDP y el cartel:</strong> reproduce el bloqueo y busca otro ejemplo propio.</li>
+        <li><strong>POMCP:</strong> impleméntalo, compáralo con la política exacta y cambia la política de despliegue.</li>
+        <li><strong>Búsqueda con el dron:</strong> el entorno de la parte 5 como base para A7b.</li>
+        <li><strong>Observaciones continuas:</strong> detección con posición ruidosa; POMCP frente a una versión con pesos.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Que la solución exacta escucha hasta oír dos veces más un lado; que QMDP no va al cartel; que POMCP se acerca a la exacta con más simulaciones; y que planificar con el belief encuentra antes el objetivo que un barrido fijo.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Solo CPU y numpy. El script completo tarda decenas de minutos en Python puro; si lo vectorizas en JAX (B6), mucho menos.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a7a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-lauri2023">Lauri, M., Hsu, D., Pajarinen, J. (2023). Partially observable Markov decision processes in robotics: A survey. <span class="venue">IEEE Transactions on Robotics</span>, 39(1), 21–40. <a href="https://doi.org/10.1109/TRO.2022.3200138">doi:10.1109/TRO.2022.3200138</a>. <a href="https://arxiv.org/abs/2209.10342">arXiv:2209.10342</a></li>
+    <li id="ref-astrom1965">Åström, K. J. (1965). Optimal control of Markov processes with incomplete state information. <span class="venue">Journal of Mathematical Analysis and Applications</span>, 10(1), 174–205. <a href="https://doi.org/10.1016/0022-247X(65)90154-X">doi:10.1016/0022-247X(65)90154-X</a></li>
+    <li id="ref-smallwood1973">Smallwood, R. D., Sondik, E. J. (1973). The optimal control of partially observable Markov processes over a finite horizon. <span class="venue">Operations Research</span>, 21(5), 1071–1088. <a href="https://doi.org/10.1287/opre.21.5.1071">doi:10.1287/opre.21.5.1071</a></li>
+    <li id="ref-sondik1978">Sondik, E. J. (1978). The optimal control of partially observable Markov processes over the infinite horizon: Discounted costs. <span class="venue">Operations Research</span>, 26(2), 282–304. <a href="https://doi.org/10.1287/opre.26.2.282">doi:10.1287/opre.26.2.282</a></li>
+    <li id="ref-papadimitriou1987">Papadimitriou, C. H., Tsitsiklis, J. N. (1987). The complexity of Markov decision processes. <span class="venue">Mathematics of Operations Research</span>, 12(3), 441–450. <a href="https://doi.org/10.1287/moor.12.3.441">doi:10.1287/moor.12.3.441</a></li>
+    <li id="ref-kaelbling1998">Kaelbling, L. P., Littman, M. L., Cassandra, A. R. (1998). Planning and acting in partially observable stochastic domains. <span class="venue">Artificial Intelligence</span>, 101(1–2), 99–134. <a href="https://doi.org/10.1016/S0004-3702(98)00023-X">doi:10.1016/S0004-3702(98)00023-X</a></li>
+    <li id="ref-madani1999">Madani, O., Hanks, S., Condon, A. (1999). On the undecidability of probabilistic planning and infinite-horizon partially observable Markov decision problems. <span class="venue">AAAI-99</span>. Versión extendida: On the undecidability of probabilistic planning and related stochastic optimization problems, <span class="venue">Artificial Intelligence</span>, 147(1–2), 5–34 (2003). <a href="https://doi.org/10.1016/S0004-3702(02)00378-8">doi:10.1016/S0004-3702(02)00378-8</a></li>
+    <li id="ref-pineau2003">Pineau, J., Gordon, G., Thrun, S. (2003). Point-based value iteration: An anytime algorithm for POMDPs. <span class="venue">IJCAI 2003</span>. <a href="https://www.ijcai.org/Proceedings/03/Papers/147.pdf">ijcai.org</a></li>
+    <li id="ref-smith2004">Smith, T., Simmons, R. (2004). Heuristic search value iteration for POMDPs. <span class="venue">UAI 2004</span>. <a href="https://arxiv.org/abs/1207.4166">arXiv:1207.4166</a></li>
+    <li id="ref-spaan2005">Spaan, M. T. J., Vlassis, N. (2005). Perseus: Randomized point-based value iteration for POMDPs. <span class="venue">Journal of Artificial Intelligence Research</span>, 24, 195–220. <a href="https://doi.org/10.1613/jair.1659">doi:10.1613/jair.1659</a>. <a href="https://arxiv.org/abs/1109.2145">arXiv:1109.2145</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="11">
+    <li id="ref-kurniawati2008">Kurniawati, H., Hsu, D., Lee, W. S. (2008). SARSOP: Efficient point-based POMDP planning by approximating optimally reachable belief spaces. <span class="venue">Robotics: Science and Systems IV</span>. <a href="https://doi.org/10.15607/RSS.2008.IV.009">doi:10.15607/RSS.2008.IV.009</a></li>
+    <li id="ref-silver2010">Silver, D., Veness, J. (2010). Monte-Carlo planning in large POMDPs. <span class="venue">NeurIPS 2010 (Advances in Neural Information Processing Systems 23)</span>. <a href="https://proceedings.neurips.cc/paper_files/paper/2010/hash/edfbe1afcf9246bb0d40eb4d8027d90f-Abstract.html">proceedings.neurips.cc</a></li>
+    <li id="ref-ye2017">Ye, N., Somani, A., Hsu, D., Lee, W. S. (2017). DESPOT: Online POMDP planning with regularization. <span class="venue">Journal of Artificial Intelligence Research</span>, 58, 231–266. <a href="https://doi.org/10.1613/jair.5328">doi:10.1613/jair.5328</a>. <a href="https://arxiv.org/abs/1609.03250">arXiv:1609.03250</a></li>
+    <li id="ref-sunberg2018">Sunberg, Z., Kochenderfer, M. (2018). Online algorithms for POMDPs with continuous state, action, and observation spaces. <span class="venue">ICAPS 2018</span>, 28, 259–263. <a href="https://doi.org/10.1609/icaps.v28i1.13882">doi:10.1609/icaps.v28i1.13882</a>. <a href="https://arxiv.org/abs/1709.06196">arXiv:1709.06196</a> (versión larga)</li>
+    <li id="ref-araya2010">Araya-López, M., Buffet, O., Thomas, V., Charpillet, F. (2010). A POMDP extension with belief-dependent rewards. <span class="venue">NeurIPS 2010 (Advances in Neural Information Processing Systems 23)</span>. <a href="https://proceedings.neurips.cc/paper_files/paper/2010/hash/68053af2923e00204c3ca7c6a3150cf7-Abstract.html">proceedings.neurips.cc</a></li>
+    <li id="ref-subramanian2022">Subramanian, J., Sinha, A., Seraj, R., Mahajan, A. (2022). Approximate information state for approximate planning and reinforcement learning in partially observed systems. <span class="venue">Journal of Machine Learning Research</span>, 23(12), 1–83. <a href="https://arxiv.org/abs/2010.08843">arXiv:2010.08843</a></li>
+    <li id="ref-liu2022">Liu, Q., Chung, A., Szepesvári, C., Jin, C. (2022). When is partially observable reinforcement learning not scary? <span class="venue">COLT 2022</span>, PMLR 178, 5175–5220. <a href="https://arxiv.org/abs/2204.08967">arXiv:2204.08967</a></li>
+    <li id="ref-moss2024">Moss, R. J., Corso, A., Caers, J., Kochenderfer, M. J. (2024). BetaZero: Belief-state planning for long-horizon POMDPs using learned approximations. <span class="venue">RLC 2024 (Reinforcement Learning Journal, 1)</span>. <a href="https://arxiv.org/abs/2306.00249">arXiv:2306.00249</a></li>
+    <li id="ref-egorov2017">Egorov, M., Sunberg, Z. N., Balaban, E., Wheeler, T. A., Gupta, J. K., Kochenderfer, M. J. (2017). POMDPs.jl: A framework for sequential decision making under uncertainty. <span class="venue">Journal of Machine Learning Research</span>, 18, 1–5. <a href="https://jmlr.org/papers/v18/16-300.html">jmlr.org</a></li>
+    <li id="ref-zheng2020">Zheng, K., Tellex, S. (2020). pomdp_py: A framework to build and solve POMDP problems. <a href="https://arxiv.org/abs/2004.10099">arXiv:2004.10099</a> (preprint; enviado al taller PlanRob de ICAPS 2020)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
