@@ -48,7 +48,7 @@
   <h2>Un robot desplegado ve cosas que no estaban en el entrenamiento</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Un sistema de agarre real preentrenado con 580 000 intentos se adapta a cambios (fondo, luz, pinza desplazada) con menos del 0,2 % de los datos que costaría aprender desde cero; con la pinza desplazada 10 cm pasa del 43 % al 98 % de éxito <a class="cite" data-ref="julian2020"></a>.</li>
         <li>Un cuadricóptero que aprende su dinámica en vuelo con una carga colgante de 75 g (+30 % de masa) reduce su error de seguimiento un 75 % frente a un controlador nominal con L1 <a class="cite" data-ref="saviolo2024"></a>.</li>
         <li>Pero seguir entrenando también cuesta: PPO en el «ant» de MuJoCo mejora unos 3 millones de pasos y después colapsa; a los 20 millones falla en todos los episodios <a class="cite" data-ref="dohare2024"></a>.</li>
@@ -80,15 +80,33 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:34%">Ejemplo en el dron del experimento</th></tr>
+      <tr><td>\(x\), \(y\)</td><td>Entrada de un dato y salida que debería dar el modelo</td><td>\(x\): velocidad, empuje y eje de empuje (7 números); \(y\): fuerza residual (3 números, en N)</td></tr>
+      <tr><td>\(\theta\), \(\theta_i\), \(P\)</td><td>Vector de parámetros (pesos y sesgos) de la red, su componente \(i\) y cuántos hay</td><td>Red de 2 capas de 64: \(P = 4867\)</td></tr>
+      <tr><td>\(f_\theta(x)\)</td><td>Lo que predice la red con parámetros \(\theta\) para la entrada \(x\)</td><td>La fuerza residual estimada</td></tr>
+      <tr><td>\(A\), \(B\); \(D_A\), \(D_B\)</td><td>Tarea anterior y tarea nueva; sus datos</td><td>\(A\) = flotar, \(B\) = maniobra agresiva</td></tr>
+      <tr><td>\(\mathcal L_A(\theta)\), \(\mathcal L_B(\theta)\)</td><td>Pérdida media de cada tarea: cuánto se equivoca \(f_\theta\) en sus datos</td><td>Error cuadrático medio de la fuerza (N²)</td></tr>
+      <tr><td>\(\theta^*_A\)</td><td>Parámetros al terminar de entrenar \(A\) (la estrella: «solución de esa tarea»)</td><td>La red justo después de aprender a flotar</td></tr>
+      <tr><td>\(T\); \(i\), \(j\)</td><td>Número de tareas de la secuencia; índice de la última tarea entrenada (\(i\)) y de la tarea en la que se evalúa (\(j\))</td><td>\(T = 5\) regímenes de vuelo</td></tr>
+      <tr><td>\(R_{i,j}\), \(\bar b_j\)</td><td>Resultado en la tarea \(j\) tras entrenar hasta la \(i\); resultado de referencia en \(j\) antes de entrenarla</td><td>\(R_{5,2}\): error en el agresivo al acabar los cinco</td></tr>
+      <tr><td>\(F_i\), \(\lambda\)</td><td>Importancia del parámetro \(i\) para la tarea anterior (diagonal de la Fisher) y peso de la penalización de EWC</td><td>\(\lambda = 0{,}01\) y \(1\) en el experimento</td></tr>
+      <tr><td>\(J\)</td><td>Jacobiano de la salida respecto a los parámetros, \(J = \partial f_\theta(x)/\partial\theta\): cuánto cambia cada salida al mover cada parámetro</td><td>Matriz de 3 × 4867</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Olvido · el dilema</p>
   <h2>Estabilidad frente a plasticidad</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">«Aprender en un sistema paralelo y distribuido requiere plasticidad para integrar conocimiento nuevo, pero también estabilidad para no olvidar el anterior. Demasiada plasticidad hace que lo codificado se olvide constantemente; demasiada estabilidad impide codificar lo nuevo» <a class="cite" data-ref="mermillod2013"></a>.</p>
-      <ul class="small">
-        <li><strong>Olvido catastrófico:</strong> en redes entrenadas por retropropagación, lo bien aprendido se olvida deprisa al aprender lo nuevo <a class="cite" data-ref="ratcliff1990"></a>.</li>
-        <li><strong>Por qué:</strong> según French, las mismas propiedades que dan a estas redes su capacidad de generalizar (representaciones distribuidas y compartidas) son la causa del olvido <a class="cite" data-ref="french1999"></a>.</li>
-      </ul>
+      <p>«Aprender en un sistema paralelo y distribuido requiere plasticidad para integrar conocimiento nuevo, pero también estabilidad para no olvidar el anterior. Demasiada plasticidad hace que lo codificado se olvide constantemente; demasiada estabilidad impide codificar lo nuevo» <a class="cite" data-ref="mermillod2013"></a>.</p>
+      <p><strong>Olvido catastrófico:</strong> en redes entrenadas por retropropagación, lo bien aprendido se olvida deprisa al aprender lo nuevo <a class="cite" data-ref="ratcliff1990"></a>.</p>
+      <p><strong>Por qué:</strong> según French, las mismas propiedades que dan a estas redes su capacidad de generalizar (representaciones distribuidas y compartidas) son la causa del olvido <a class="cite" data-ref="french1999"></a>.</p>
     </div>
     <div class="stack">
       <div class="table-wrap">
@@ -107,18 +125,228 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Olvido · métricas</p>
-  <h2>La matriz de resultados y tres números</h2>
+  <p class="kicker">Olvido · el dibujo</p>
+  <h2>Por qué el ajuste fino sale de la región buena de la primera tarea</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 440 320" style="max-height:470px" role="img" aria-label="Espacio de dos parámetros: franja vertical donde la tarea A va bien, franja horizontal donde la tarea B va bien, y dos trayectorias desde la solución de A: el ajuste fino acaba en la solución de B, fuera de la franja de A; EWC acaba en el cruce de las dos franjas">
+        <defs>
+          <clipPath id="a9b-clip"><rect x="50" y="40" width="370" height="250"/></clipPath>
+          <marker id="a9b-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a9b-art" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <g clip-path="url(#a9b-clip)">
+          <ellipse cx="314" cy="242" rx="53.7" ry="536.7" class="box-accent" style="fill-opacity:.55"/>
+          <ellipse cx="134" cy="122" rx="178.9" ry="53.7" class="box-time" style="fill-opacity:.55"/>
+        </g>
+        <line x1="50" y1="290" x2="420" y2="290" class="ln-rule"/>
+        <line x1="50" y1="40" x2="50" y2="290" class="ln-rule"/>
+        <text x="74" y="306" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="194" y="306" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="314" y="306" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <text x="42" y="246" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="42" y="126" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <text x="420" y="306" text-anchor="end" class="t-muted" font-size="14">θ<tspan baseline-shift="sub" font-size="10">1</tspan></text>
+        <text x="30" y="50" class="t-muted" font-size="14">θ<tspan baseline-shift="sub" font-size="10">2</tspan></text>
+        <text x="370" y="58" text-anchor="end" class="t-accent t-bold" font-size="13">A va bien</text>
+        <text x="58" y="160" class="t-time t-bold" font-size="13">B va bien</text>
+        <path d="M314.0,242.0 L305.9,182.0 L298.2,152.0 L290.8,137.0 L283.7,129.5 L277.0,125.8 L270.6,123.9 L264.4,122.9 L258.5,122.5 L252.9,122.2 L247.6,122.1 L224.2,122.0 L205.7,122.0 L190.9,122.0 L179.2,122.0 L169.9,122.0 L162.5,122.0 L156.7,122.0 L152.0,122.0 L148.3,122.0 L145.4,122.0 L143.0,122.0 L141.2,122.0 L139.7,122.0" class="ln" stroke-width="2" marker-end="url(#a9b-ar)"/>
+        <path d="M314.0,242.0 L305.9,182.0 L302.2,152.3 L300.5,137.6 L299.8,130.3 L299.4,126.7" class="ln-tesis" stroke-width="2.4" marker-end="url(#a9b-art)"/>
+        <circle cx="314" cy="242" r="5" class="fill-accent"/>
+        <circle cx="134" cy="122" r="5" class="fill-time"/>
+        <circle cx="299.1" cy="123.2" r="5" class="fill-tesis"/>
+        <text x="324" y="258" class="t-accent t-mono" font-size="13">θ*<tspan baseline-shift="sub" font-size="10">A</tspan></text>
+        <text x="128" y="108" text-anchor="end" class="t-time t-mono" font-size="13">θ*<tspan baseline-shift="sub" font-size="10">B</tspan></text>
+        <text x="200" y="112" class="t-muted" font-size="13">ajuste fino</text>
+        <text x="322" y="196" class="t-tesis" font-size="13">EWC</text>
+        <text x="312" y="110" class="t-tesis" font-size="12">cruce</text>
+      </svg>
+      <figcaption>Ejemplo 4 del script (hoja siguiente). Franjas: \(\mathcal L \le 0{,}1\). Gris: 120 pasos de descenso por el gradiente de \(\mathcal L_B\) desde \(\theta^*_A\); morado: lo mismo con EWC.</figcaption>
+    </figure>
+    <div class="stack">
+      <p>Cada tarea tiene su <strong>región buena</strong>: los \(\theta\) con pérdida pequeña. La de \(A\) es una franja vertical porque \(A\) casi no depende de \(\theta_2\); la de \(B\), una franja horizontal.</p>
+      <p>El <strong>ajuste fino</strong> solo mira \(\mathcal L_B\): baja por su gradiente y se para en \(\theta^*_B\), que está fuera de la franja de \(A\). Nada en su objetivo le pide quedarse dentro.</p>
+      <p>Las franjas se cruzan: hay parámetros buenos para las dos. <strong>EWC</strong> añade un término que sí pide quedarse cerca de \(\theta^*_A\) en lo que importa a \(A\) (\(\theta_1\)) y deja libre lo demás (\(\theta_2\)): acaba en el cruce.</p>
+      <div class="callout clave"><span class="tag">El dilema, en el dibujo</span>Estabilidad es no salir de la franja de \(A\); plasticidad, llegar a la de \(B\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · el ejemplo con números</p>
+  <h2>Dos tareas, dos parámetros: cuánto se olvida</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Tras terminar la tarea \(i\), se evalúa en todas: \(R_{i,j}\) es el resultado en la tarea \(j\) después de la tarea \(i\); \(\bar b_j\), el de la red antes de entrenar <a class="cite" data-ref="lopezpaz2017"></a>:</p>
-      \[ \mathrm{ACC} = \frac1T\sum_{i=1}^T R_{T,i}, \qquad \mathrm{BWT} = \frac{1}{T-1}\sum_{i=1}^{T-1}\big(R_{T,i} - R_{i,i}\big), \]
-      \[ \mathrm{FWT} = \frac{1}{T-1}\sum_{i=2}^{T}\big(R_{i-1,i} - \bar b_i\big). \]
-      <p class="small">Con aciertos, cuanto más grandes mejor; una transferencia hacia atrás muy negativa es el olvido.</p>
+      <p>Un modelo lineal \(f_\theta(x) = \theta_1 x_1 + \theta_2 x_2\) con la pérdida \(\mathcal L_k(\theta) = \tfrac12\,\mathbb E\big[(f_\theta(x) - y)^2\big]\) en cada tarea \(k\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Tarea</th><th>Entradas</th><th>Objetivo</th><th>\(\theta^*\)</th><th>\(H = \mathbb E[x x^\top]\)</th></tr></thead>
+          <tbody>
+            <tr><td>\(A\)</td><td>\(x_1\sim\mathcal N(0,1)\), \(x_2\sim\mathcal N(0,\,0{,}1^2)\)</td><td>\(y = 2x_1\)</td><td class="n">(2; 0)</td><td class="n">diag(1; 0,01)</td></tr>
+            <tr><td>\(B\)</td><td>\(x_1\sim\mathcal N(0,\,0{,}3^2)\), \(x_2\sim\mathcal N(0,1)\)</td><td>\(y = 0{,}5x_1 + x_2\)</td><td class="n">(0,5; 1)</td><td class="n">diag(0,09; 1)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>\(H\) es la <strong>curvatura</strong> de la pérdida: su diagonal es \(\mathbb E[x_i^2]\), lo mucho que varía cada entrada. En \(A\), \(x_2\) casi no varía, así que \(\theta_2\) apenas cambia el error: de ahí la franja.</p>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Con errores en lugar de aciertos</span>Nuestro modelo hace regresión, así que \(R_{i,j}\) es un error cuadrático medio y los signos se invierten: \(\mathrm{BWT} > 0\) es olvido (el error sube). Para la transferencia hacia delante usamos como referencia el error de predecir la media de cada régimen: el de la red sin entrenar es tan grande que la haría siempre positiva.</div>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(f_\theta(x) - y = (\theta - \theta^*_A)^\top x\)</td><td>En \(A\), \(y = \theta^{*\top}_A x\) sin ruido</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathcal L_A = \tfrac12 (\theta - \theta^*_A)^\top\,\mathbb E[xx^\top]\,(\theta - \theta^*_A)\)</td><td>Elevar al cuadrado y promediar; \(\theta\) sale de la media</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathcal L_A = \tfrac12\sum_i H_{A,i}(\theta_i - \theta^*_{A,i})^2\)</td><td>Entradas independientes de media 0: \(H_A\) es diagonal</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathcal L_A(\theta^*_B) = \tfrac12(1\cdot 1{,}5^2 + 0{,}01\cdot 1^2) = 1{,}13\)</td><td>\(\theta^*_B - \theta^*_A = (-1{,}5;\ 1)\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\mathcal L_B(\theta^*_A) = \tfrac12(0{,}09\cdot 1{,}5^2 + 1\cdot 1^2) = 0{,}60\)</td><td>Lo mismo con \(H_B\)</td></tr>
+        </table>
+      </div>
+      <p>El ajuste fino pasa de \(\mathcal L_A = 0\) a \(\mathcal L_A = 1{,}13\): <strong>olvido</strong>. Casi todo viene de \(\theta_1\), que \(A\) necesita (\(H_{A,1} = 1\)) y que \(B\) mueve aunque le importe poco (\(H_{B,1} = 0{,}09\)).</p>
+      <p class="small muted">Ejemplo 4 del script. Las franjas del dibujo son \(\mathcal L \le 0{,}1\): elipses de semiejes \(\sqrt{0{,}2/H_i}\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · medirlo</p>
+  <h2>Antes de las fórmulas: qué se mide y cuándo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 500 310" style="max-height:440px" role="img" aria-label="Esquema de la matriz de resultados: tras entrenar cada tarea se evalúa en todas, y cada evaluación llena una fila de la matriz">
+        <defs>
+          <marker id="a9b-ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <text x="330" y="22" text-anchor="middle" class="t-muted" font-size="13">evaluada en la tarea <tspan font-style="italic">j</tspan></text>
+        <text x="250" y="44" text-anchor="middle" class="t-mono t-faint" font-size="13">1</text>
+        <text x="330" y="44" text-anchor="middle" class="t-mono t-faint" font-size="13">2</text>
+        <text x="410" y="44" text-anchor="middle" class="t-mono t-faint" font-size="13">3</text>
+        <rect x="10" y="56" width="150" height="40" rx="5" class="box-soft"/>
+        <text x="85" y="81" text-anchor="middle" class="t-muted" font-size="13">sin entrenar</text>
+        <rect x="10" y="106" width="150" height="40" rx="5" class="box"/>
+        <text x="85" y="131" text-anchor="middle" font-size="13">entrenar la tarea 1</text>
+        <rect x="10" y="156" width="150" height="40" rx="5" class="box"/>
+        <text x="85" y="181" text-anchor="middle" font-size="13">entrenar la tarea 2</text>
+        <rect x="10" y="206" width="150" height="40" rx="5" class="box"/>
+        <text x="85" y="231" text-anchor="middle" font-size="13">entrenar la tarea 3</text>
+        <path d="M85 146 V154" class="ln" marker-end="url(#a9b-ar2)"/>
+        <path d="M85 196 V204" class="ln" marker-end="url(#a9b-ar2)"/>
+        <path d="M162 76 H206" class="ln" marker-end="url(#a9b-ar2)"/>
+        <path d="M162 126 H206" class="ln" marker-end="url(#a9b-ar2)"/>
+        <path d="M162 176 H206" class="ln" marker-end="url(#a9b-ar2)"/>
+        <path d="M162 226 H206" class="ln" marker-end="url(#a9b-ar2)"/>
+        <rect x="210" y="56" width="80" height="40" class="box-soft"/><rect x="290" y="56" width="80" height="40" class="box-soft"/><rect x="370" y="56" width="80" height="40" class="box-soft"/>
+        <rect x="210" y="106" width="80" height="40" class="box-accent"/><rect x="290" y="106" width="80" height="40" class="box-time"/><rect x="370" y="106" width="80" height="40" class="box"/>
+        <rect x="210" y="156" width="80" height="40" class="box"/><rect x="290" y="156" width="80" height="40" class="box-accent"/><rect x="370" y="156" width="80" height="40" class="box-time"/>
+        <rect x="210" y="206" width="80" height="40" class="box-tesis"/><rect x="290" y="206" width="80" height="40" class="box-tesis"/><rect x="370" y="206" width="80" height="40" class="box-tesis" style="stroke-width:3"/>
+        <text x="250" y="81" text-anchor="middle" class="t-mono t-muted" font-size="14"><tspan text-decoration="overline">b</tspan><tspan baseline-shift="sub" font-size="10">1</tspan></text>
+        <text x="330" y="81" text-anchor="middle" class="t-mono t-muted" font-size="14"><tspan text-decoration="overline">b</tspan><tspan baseline-shift="sub" font-size="10">2</tspan></text>
+        <text x="410" y="81" text-anchor="middle" class="t-mono t-muted" font-size="14"><tspan text-decoration="overline">b</tspan><tspan baseline-shift="sub" font-size="10">3</tspan></text>
+        <text x="250" y="131" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">1,1</tspan></text>
+        <text x="330" y="131" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">1,2</tspan></text>
+        <text x="410" y="131" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">1,3</tspan></text>
+        <text x="250" y="181" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">2,1</tspan></text>
+        <text x="330" y="181" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">2,2</tspan></text>
+        <text x="410" y="181" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">2,3</tspan></text>
+        <text x="250" y="231" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">3,1</tspan></text>
+        <text x="330" y="231" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">3,2</tspan></text>
+        <text x="410" y="231" text-anchor="middle" class="t-mono" font-size="14">R<tspan baseline-shift="sub" font-size="10">3,3</tspan></text>
+        <rect x="210" y="262" width="14" height="12" class="box-accent"/><text x="230" y="273" font-size="12" class="t-muted">diagonal R<tspan baseline-shift="sub" font-size="9">i,i</tspan>: recién aprendida</text>
+        <rect x="210" y="280" width="14" height="12" class="box-time"/><text x="230" y="291" font-size="12" class="t-muted">sobre la diagonal R<tspan baseline-shift="sub" font-size="9">i−1,i</tspan>: aún sin entrenar</text>
+        <rect x="10" y="262" width="14" height="12" class="box-tesis"/><text x="30" y="273" font-size="12" class="t-muted">última fila R<tspan baseline-shift="sub" font-size="9">T,j</tspan>: al final</text>
+      </svg>
+      <figcaption>Tras cada tarea se evalúa la red en <em>todas</em>, también en las que aún no ha visto: cada evaluación llena una fila.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué entra:</strong> una secuencia de \(T\) tareas y un conjunto de prueba fijo de cada una.</p>
+      <p><strong>Qué sale:</strong> una matriz \(T\times T\). La fila \(i\) es la red tal como quedó al acabar la tarea \(i\); la columna \(j\), su historia en la tarea \(j\).</p>
+      <p>Se le añade una fila de referencia, \(\bar b_j\): el resultado en \(j\) antes de entrenar nada.</p>
+      <div class="callout realidad"><span class="tag">En el experimento</span>\(T = 5\) regímenes y 2000 puntos de prueba en cada uno: 25 evaluaciones, baratas frente al entrenamiento.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · métricas</p>
+  <h2>Tres números que resumen la matriz</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Las métricas de GEM <a class="cite" data-ref="lopezpaz2017"></a>, con \(R_{i,j}\) un acierto (más es mejor):</p>
+      \[ \mathrm{ACC} = \frac1T\sum_{i=1}^T R_{T,i}, \qquad \mathrm{BWT} = \frac{1}{T-1}\sum_{i=1}^{T-1}\big(R_{T,i} - R_{i,i}\big), \]
+      \[ \mathrm{FWT} = \frac{1}{T-1}\sum_{i=2}^{T}\big(R_{i-1,i} - \bar b_i\big). \]
       <div class="callout clave"><span class="tag">Lee la matriz entera</span>Los tres números resumen; la matriz cuenta la historia: qué tarea borró a cuál. En nuestro experimento, la diagonal es buena y la última fila no.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th style="width:16%">Métrica</th><th>Qué celdas usa</th><th>Qué responde</th></tr></thead>
+          <tbody>
+            <tr><td><strong>ACC</strong></td><td>la última fila, \(R_{T,i}\)</td><td>¿Qué tal va al final, de media en todas las tareas?</td></tr>
+            <tr><td><strong>BWT</strong> (<em>backward</em>)</td><td>última fila menos diagonal, en las \(T-1\) tareas que tienen otras después</td><td>¿Cuánto cambió cada tarea desde que se aprendió? Muy negativa: <strong>olvido</strong></td></tr>
+            <tr><td><strong>FWT</strong> (<em>forward</em>)</td><td>sobre la diagonal menos la referencia, en las \(T-1\) tareas que tienen otras antes</td><td>¿Cuánto ayuda lo aprendido a una tarea que aún no se ha entrenado?</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>BWT promedia \(T-1\) términos porque la última tarea no tiene nada después; FWT, porque la primera no tiene nada antes.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · métricas con números</p>
+  <h2>Una matriz de 3 × 3, a mano</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Aciertos en %, con tres tareas. La red sin entrenar acierta el 10 % en cada una: \(\bar b = (10, 10, 10)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Tras entrenar … / acierto en</th><th>tarea 1</th><th>tarea 2</th><th>tarea 3</th></tr></thead>
+          <tbody>
+            <tr><td>tarea 1</td><td class="n"><strong>90</strong></td><td class="n">40</td><td class="n">20</td></tr>
+            <tr><td>tarea 2</td><td class="n">70</td><td class="n"><strong>85</strong></td><td class="n">30</td></tr>
+            <tr><td>tarea 3</td><td class="n">60</td><td class="n">75</td><td class="n"><strong>88</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>La tarea 1 baja de 90 a 70 y luego a 60: cada tarea nueva le quita algo. La tarea 2 ya acertaba el 40 % antes de entrenarla: algo de la 1 le sirve.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:14%">Métrica</th><th style="width:52%">Cuenta</th><th>Lectura</th></tr>
+          <tr><td>ACC</td><td>\((60 + 75 + 88)/3 = 74{,}3\)</td><td>Al final, el 74 % de media</td></tr>
+          <tr><td>BWT</td><td>\(\big[(60-90) + (75-85)\big]/2 = -20\)</td><td>Cada tarea perdió 20 puntos de media desde que se aprendió: olvido</td></tr>
+          <tr><td>FWT</td><td>\(\big[(40-10) + (30-10)\big]/2 = +25\)</td><td>Lo aprendido daba 25 puntos más que la red sin entrenar</td></tr>
+        </table>
+      </div>
+      <p>Las tres celdas de BWT y FWT son las del dibujo anterior: \(R_{3,1}, R_{3,2}\) frente a \(R_{1,1}, R_{2,2}\), y \(R_{1,2}, R_{2,3}\) frente a \(\bar b_2, \bar b_3\).</p>
+      <p class="small muted">Ejemplo 2 del script.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · métricas con errores</p>
+  <h2>Con errores en lugar de aciertos, los signos se invierten</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Nuestro modelo hace regresión, así que \(R_{i,j}\) es un <strong>error cuadrático medio</strong> (N²): menos es mejor.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Métrica</th><th>Con errores</th><th>Bueno si</th></tr></thead>
+          <tbody>
+            <tr><td>ACC</td><td>\(\frac1T\sum_i R_{T,i}\): error medio final</td><td>pequeño</td></tr>
+            <tr><td>BWT</td><td>\(\frac{1}{T-1}\sum_i (R_{T,i} - R_{i,i})\)</td><td>\(\le 0\); \(\mathrm{BWT} > 0\) es <strong>olvido</strong> (el error sube)</td></tr>
+            <tr><td>FWT</td><td>\(\frac{1}{T-1}\sum_i (\bar b_i - R_{i-1,i})\)</td><td>\(> 0\): lo aprendido antes ayuda</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>En FWT se cambia el orden de la resta para que positivo siga significando «ayuda».</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">La referencia \(\bar b_i\)</span>Para la transferencia hacia delante usamos como referencia el error de predecir la media de cada régimen, que es la varianza de la fuerza en ese régimen. El de la red sin entrenar es tan grande que haría la transferencia siempre positiva.</div>
+      <div class="aparte"><span class="rotulo">Por qué la media</span>
+        <p>Predecir siempre la media es lo mejor que se puede hacer sin mirar la entrada: su error cuadrático es la varianza. FWT \(> 0\) dice entonces que la red, sin haber visto el régimen, ya lo predice mejor que esa constante.</p>
+      </div>
+      <p>En la parte 4 se calculan los tres números con la matriz del experimento.</p>
     </div>
   </div>
 </section>
@@ -128,20 +356,187 @@
   <h2>EWC: un muelle en cada parámetro, tan fuerte como importa</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Penalizar que cambien los parámetros importantes para la tarea anterior \(A\) mientras se aprende \(B\) <a class="cite" data-ref="kirkpatrick2017"></a>:</p>
-      \[ \mathcal L(\theta) = \mathcal L_B(\theta) + \sum_i \frac{\lambda}{2} F_i\,(\theta_i - \theta^*_{A,i})^2, \]
-      <p class="small">con \(F_i\) la diagonal de la matriz de información de Fisher en \(\theta^*_A\). Sus autores la imaginan como un muelle que ancla los parámetros a la solución anterior: de ahí «elástica». Con más tareas, la suma de penalizaciones cuadráticas sigue siendo cuadrática.</p>
-      <ul class="small">
-        <li><strong>SI:</strong> la importancia se acumula en línea, como una integral del gradiente a lo largo de la trayectoria de entrenamiento <a class="cite" data-ref="zenke2017"></a>.</li>
-        <li><strong>LwF:</strong> entrena solo con datos de la tarea nueva y aun así conserva lo que la red sabía hacer; según sus autores, rinde parecido a entrenar con todas las tareas <a class="cite" data-ref="li2018"></a>.</li>
-      </ul>
+      <p>Penalizar que cambien los parámetros importantes para la tarea anterior \(A\) mientras se aprende \(B\) <a class="cite" data-ref="kirkpatrick2017"></a>:</p>
+      \[ \mathcal L(\theta) = \mathcal L_B(\theta) + \sum_{i=1}^{P} \frac{\lambda}{2}\, F_i\,(\theta_i - \theta^*_{A,i})^2 \]
+      <p>Sus autores lo imaginan como un muelle que ancla cada parámetro a la solución anterior: de ahí «elástica». La energía de un muelle de rigidez \(k\) estirado \(d\) es \(\tfrac12 k d^2\); aquí la rigidez es \(\lambda F_i\).</p>
+      <div class="callout clave"><span class="tag">En el ejemplo</span>\(F = (1;\ 0{,}01)\): \(\theta_1\) queda sujeto con un muelle 100 veces más rígido que \(\theta_2\). Por eso EWC sube por la franja de \(A\) hasta el cruce.</div>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Derivación: de Bayes a la penalización</summary>
-        <p class="small">Con tareas independientes, \(\log p(\theta\mid D) = \log p(D_B\mid\theta) + \log p(\theta\mid D_A) - \log p(D_B)\): toda la información de \(A\) está en el posterior \(p(\theta\mid D_A)\). Es intratable; con la aproximación de Laplace es una gaussiana centrada en \(\theta^*_A\) con precisión igual a la diagonal de Fisher:</p>
-        \[ \log p(\theta\mid D_A) \approx -\tfrac12\sum_i F_i(\theta_i - \theta^*_{A,i})^2 + \text{cte}. \]
-        <p class="small">Para una verosimilitud gaussiana de varianza unidad, \(F = \mathbb E\big[J^\top J\big]\) con \(J = \partial f_\theta(x)/\partial\theta\). Cuidado con usar el gradiente del error en lugar del jacobiano: se anula cuando el ajuste es bueno y subestima la importancia (nos pasó en la primera versión del experimento).</p>
-      </details>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th style="width:24%">Término</th><th>Qué es</th></tr></thead>
+          <tbody>
+            <tr><td>\(\mathcal L_B(\theta)\)</td><td>La pérdida de la tarea nueva: lo que haría el ajuste fino</td></tr>
+            <tr><td>\(\theta_i - \theta^*_{A,i}\)</td><td>Cuánto se ha alejado el parámetro \(i\) de donde lo dejó \(A\)</td></tr>
+            <tr><td>\(F_i\)</td><td>Importancia de \(\theta_i\) para \(A\): la diagonal de la información de Fisher en \(\theta^*_A\). Grande si mover \(\theta_i\) cambia mucho lo que la red predice en \(A\)</td></tr>
+            <tr><td>\(\lambda\)</td><td>Un solo número que pesa toda la penalización: 0 es ajuste fino; muy grande, no moverse de \(\theta^*_A\)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Las hojas siguientes explican de dónde sale la forma cuadrática y por qué el peso es la Fisher.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · EWC derivado</p>
+  <h2>De Bayes a la penalización: la aproximación de Laplace</h2>
+  <p><strong>La idea:</strong> si hubiera que entrenar \(B\) sin olvidar \(A\), lo correcto sería buscar los \(\theta\) más probables dados <em>todos</em> los datos. Lo que \(A\) aporta a esa cuenta es su posterior \(p(\theta\mid D_A)\); EWC lo aproxima por una gaussiana.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\log p(\theta\mid D) = \log p(D_B\mid\theta) + \log p(\theta\mid D_A) - \log p(D_B)\)</td><td>Bayes, con \(D = (D_A, D_B)\) todos los datos y \(p(\theta\mid D_A)\) como prior de \(B\); supone \(D_A\) y \(D_B\) independientes dado \(\theta\). El último término no depende de \(\theta\)</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\log p(\theta\mid D_A) \approx \log p(\theta^*_A\mid D_A) - \tfrac12(\theta - \theta^*_A)^\top H_A\,(\theta - \theta^*_A)\)</td><td>Taylor de orden 2 alrededor del máximo \(\theta^*_A\): allí el gradiente es 0. \(H_A = -\nabla^2_\theta \log p(\theta\mid D_A)\) en \(\theta^*_A\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(p(\theta\mid D_A) \approx \mathcal N\big(\theta^*_A,\ H_A^{-1}\big)\)</td><td>La exponencial de una cuadrática es una gaussiana: esto es la aproximación de Laplace. La curvatura \(H_A\) es su precisión</td></tr>
+      <tr><td><strong>4</strong></td><td>\(H_A \approx N_A\,F\)</td><td>Cerca del óptimo, la curvatura de \(-\log p(D_A\mid\theta)\) es \(N_A\) (número de datos) veces la Fisher de un dato (dos hojas más adelante); el prior inicial se desprecia</td></tr>
+      <tr><td><strong>5</strong></td><td>\(H_A \approx N_A\,\mathrm{diag}(F_1, \dots, F_P)\)</td><td>Solo la diagonal: \(P\) números en lugar de \(P^2\)</td></tr>
+      <tr><td><strong>6</strong></td><td>\(-\tfrac{1}{N_B}\log p(\theta\mid D) \approx \mathcal L_B(\theta) + \tfrac{N_A}{N_B}\sum_i \tfrac12 F_i(\theta_i - \theta^*_{A,i})^2 + \text{cte}\)</td><td>Con varianza unidad, \(-\log p(D_B\mid\theta) = N_B\,\mathcal L_B(\theta) + \text{cte}\). Maximizar el posterior es minimizar esto: la fórmula de EWC con \(\lambda = N_A/N_B\)</td></tr>
+    </table>
+  </div>
+  <p>En la práctica \(\lambda\) se ajusta a mano: el paso 6 dice solo que mide <strong>cuánto pesan los datos viejos frente a los nuevos</strong>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · EWC con números</p>
+  <h2>Laplace en el ejemplo de dos parámetros</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(N_A = 100\) datos de \(A\) y ruido de varianza 1, la precisión del posterior de \(A\) es \(N_A F = \mathrm{diag}(100;\ 1)\): desviaciones típicas \(\theta_1 \pm 0{,}10\) y \(\theta_2 \pm 1{,}0\). \(A\) fija \(\theta_1\) y apenas dice nada de \(\theta_2\).</p>
+      <p>Aquí el modelo es lineal y gaussiano: el log-posterior es exactamente cuadrático y <strong>Laplace es exacta</strong>. La penalización con \(\lambda = 1\) es \(\mathcal L_A\) entera, y EWC coincide con entrenar las dos tareas a la vez.</p>
+      <p>Al ser todo diagonal, el mínimo sale coordenada a coordenada (derivar e igualar a 0):</p>
+      \[ \theta_i = \frac{H_{B,i}\,\theta^*_{B,i} + \lambda F_i\,\theta^*_{A,i}}{H_{B,i} + \lambda F_i} \]
+      <p class="small muted">Una media de las dos soluciones, pesada por la curvatura de cada tarea. Ejemplos 4 y 5 del script.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\lambda\)</th><th>\(\theta\)</th><th>\(\mathcal L_A\)</th><th>\(\mathcal L_B\)</th><th>Qué es</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0</td><td class="n">(0,50; 1,00)</td><td class="n">1,130</td><td class="n">0</td><td>ajuste fino</td></tr>
+            <tr><td class="n">0,1</td><td class="n">(1,29; 1,00)</td><td class="n">0,257</td><td class="n">0,028</td><td></td></tr>
+            <tr><td class="n">1</td><td class="n">(1,88; 0,99)</td><td class="n">0,013</td><td class="n">0,085</td><td>= conjunto</td></tr>
+            <tr><td class="n">10</td><td class="n">(1,99; 0,91)</td><td class="n">0,004</td><td class="n">0,104</td><td></td></tr>
+            <tr><td class="n">100</td><td class="n">(2,00; 0,50)</td><td class="n">0,001</td><td class="n">0,226</td><td>casi congelado</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Al subir \(\lambda\), \(\mathcal L_A\) baja y \(\mathcal L_B\) sube: es la <strong>frontera entre estabilidad y plasticidad</strong>. Incluso con \(\lambda = 100\), \(\theta_2\) sigue moviéndose: su muelle es 100 veces más blando.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · la Fisher</p>
+  <h2>Por qué la Fisher se calcula con el jacobiano y no con el gradiente del error</h2>
+  <p><strong>La idea:</strong> la Fisher mide cuánto cambiaría la distribución que predice el modelo si se movieran sus parámetros. Con una verosimilitud gaussiana, eso depende de lo sensible que es la salida, no de lo bien que encaja con los datos.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(F = \mathbb E_x\,\mathbb E_{y\sim p_\theta(y\mid x)}\big[g\,g^\top\big]\), \(g = \nabla_\theta \log p_\theta(y\mid x)\)</td><td>Definición: la covarianza del gradiente del log, con \(y\) sacada <em>del propio modelo</em></td></tr>
+      <tr><td><strong>2</strong></td><td>\(\log p_\theta(y\mid x) = -\tfrac12\|y - f_\theta(x)\|^2 + \text{cte}\ \Rightarrow\ g = J^\top\big(y - f_\theta(x)\big)\)</td><td>Verosimilitud gaussiana de varianza unidad; regla de la cadena</td></tr>
+      <tr><td><strong>3</strong></td><td>\(y - f_\theta(x) = \varepsilon \sim \mathcal N(0, I)\ \Rightarrow\ \mathbb E[\varepsilon\varepsilon^\top] = I\)</td><td>Si \(y\) sale del modelo, el residuo es su ruido</td></tr>
+      <tr><td><strong>4</strong></td><td>\(F = \mathbb E_x\big[J^\top J\big]\); diagonal: \(F_i = \mathbb E_x\big[\sum_k (\partial f_k/\partial\theta_i)^2\big]\)</td><td>Sustituir 3 en 1: solo queda la sensibilidad de la salida; \(k\) recorre las salidas</td></tr>
+      <tr><td><strong>5</strong></td><td>Con los datos: \(\tilde F = \mathbb E\big[J^\top r\,r^\top J\big]\), \(r = y_{\text{dato}} - f_\theta(x)\)</td><td>Es el cuadrado del gradiente del error. Si el ajuste es bueno, \(r \to 0\) y \(\tilde F \to 0\)</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Por qué la Fisher es la curvatura (paso 4 de la derivación de EWC)</span>
+    <p>La curvatura de \(\tfrac12\|r\|^2\) respecto a \(\theta\) es \(J^\top J - \sum_k r_k\,\nabla^2_\theta f_k\). Con residuos pequeños el segundo término desaparece y queda \(J^\top J\), cuya media es \(F\).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · la Fisher con números</p>
+  <h2>Con el gradiente del error, EWC no protege nada</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En el ejemplo de dos parámetros, \(J = x\): el modelo es lineal, así que la sensibilidad de la salida a \(\theta_i\) es la propia entrada \(x_i\). Con 1000 datos de \(A\), evaluando en \(\theta^*_A\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Datos de \(A\)</th><th>\(F\) (jacobiano)</th><th>\(\tilde F\) (error)</th><th>\(\mathcal L_A\) tras EWC</th></tr></thead>
+          <tbody>
+            <tr><td>sin ruido</td><td class="n">(0,956; 0,0105)</td><td class="n">(0; 0)</td><td class="n">1,130</td></tr>
+            <tr><td>ruido \(\sigma = 0{,}1\)</td><td class="n">(0,956; 0,0105)</td><td class="n">(0,0090; 0,0001)</td><td class="n">0,934</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>\(F\) sale cerca de \((1;\ 0{,}01)\), la \(H_A\) exacta: con 1000 datos, \(\mathbb E[x_i^2]\) se estima con un error de unos pocos por ciento.</p>
+    </div>
+    <div class="stack">
+      <p>Sin ruido, el residuo es 0 en todos los datos: \(\tilde F = 0\) y EWC da lo mismo que el ajuste fino (\(\mathcal L_A = 1{,}13\)). Con ruido, \(\tilde F \approx \sigma^2 F\): cien veces corta, y EWC apenas protege (\(\mathcal L_A = 0{,}93\)).</p>
+      <div class="callout error"><span class="tag">Nos pasó</span>En la primera versión del experimento usamos el gradiente del error: se anula cuando el ajuste es bueno y subestima la importancia. La fuerza del experimento no tiene ruido: es el primer caso de la tabla.</div>
+      <p class="small muted">Ejemplo 6 del script, con \(\lambda = 1\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · EWC en la práctica</p>
+  <h2>La diagonal, varias tareas y dos parientes</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Por qué solo la diagonal.</strong> La red del experimento tiene \(P = 4867\) parámetros. La Fisher completa son \(P^2 \approx 23{,}7\) millones de números (95 MB en <code>float32</code>); su diagonal, 4867 (19,5 kB). Lo que se pierde son las correlaciones entre parámetros.</p>
+      <p><strong>Con más tareas</strong>, una penalización por tarea terminada: la suma de penalizaciones cuadráticas sigue siendo cuadrática. En el experimento se guarda \((\theta^*_j, F^{(j)})\) de cada régimen terminado; al entrenar el quinto, cada parámetro tiene cuatro muelles.</p>
+      <p class="small muted">Ejemplo 1 del script.</p>
+    </div>
+    <div class="stack">
+      <p><strong>SI:</strong> la importancia se acumula en línea, como una integral del gradiente a lo largo de la trayectoria de entrenamiento <a class="cite" data-ref="zenke2017"></a>. No hace falta una pasada aparte al terminar cada tarea.</p>
+      <p><strong>LwF:</strong> entrena solo con datos de la tarea nueva y aun así conserva lo que la red sabía hacer: protege las <em>salidas</em> anteriores, no los parámetros. Según sus autores, rinde parecido a entrenar con todas las tareas <a class="cite" data-ref="li2018"></a>.</p>
+      <div class="callout clave"><span class="tag">Lo común</span>Ninguno guarda datos viejos: todos resumen la tarea anterior en algo que cabe en memoria (unos números por parámetro o la red anterior).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · repetición</p>
+  <h2>Repetir: un estimador de la pérdida conjunta</h2>
+  <p><strong>La idea:</strong> la cota es entrenar con los datos de todas las tareas a la vez. No se puede, porque los datos viejos ya no están; pero una memoria pequeña de cada tarea da una estimación sin sesgo de su pérdida.</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathcal L_{\text{conj}}(\theta) = \sum_{j\le i} w_j\,\mathcal L_j(\theta)\), \(\mathcal L_j = \mathbb E_{(x,y)\sim D_j}\big[\ell(f_\theta(x), y)\big]\)</td><td>Lo que se querría minimizar al entrenar la tarea \(i\); \(\ell\) es el error de un dato y \(w_j\), el peso de cada tarea</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\hat{\mathcal L}_j(\theta) = \frac{1}{|M_j|}\sum_{(x,y)\in M_j}\ell(f_\theta(x), y)\)</td><td>La memoria \(M_j\) sustituye a los datos perdidos; si es una muestra al azar de \(D_j\), \(\mathbb E[\hat{\mathcal L}_j] = \mathcal L_j\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\ell_{\text{lote}} = \tfrac12\,\bar\ell_{\text{nuevo}} + \tfrac12\,\bar\ell_{\text{memoria}}\)</td><td>Un lote de la tarea actual y otro sorteado de la memoria, como en <code>figuras_a9b.py</code></td></tr>
+      <tr><td><strong>4</strong></td><td>\(\mathbb E[\ell_{\text{lote}}] = \tfrac12\,\mathcal L_i(\theta) + \sum_{j\lt i}\tfrac{1}{2(i-1)}\,\hat{\mathcal L}_j(\theta)\)</td><td>La memoria tiene los mismos puntos de cada tarea y se sortea uniforme: cada una recibe \(1/(i-1)\) del medio lote</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mathbb E[\nabla_\theta\,\ell_{\text{lote}}] = \nabla_\theta\,\mathbb E[\ell_{\text{lote}}]\)</td><td>El gradiente y la media se intercambian: el descenso por gradiente estocástico de siempre, sobre la pérdida conjunta con pesos \(w_i = \tfrac12\), \(w_j = \tfrac{1}{2(i-1)}\)</td></tr>
+    </table>
+  </div>
+  <p>Lo que cuesta: guardar \(M_j\), y que con pocos puntos \(\hat{\mathcal L}_j\) se parece poco a \(\mathcal L_j\) (la red puede aprenderse la memoria de memoria).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Olvido · repetición con números</p>
+  <h2>Cuánto pesa cada régimen, y cuánta memoria hace falta</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Entrenando el régimen</th><th>Peso del nuevo</th><th>De cada anterior</th><th>Conjunto</th></tr></thead>
+          <tbody>
+            <tr><td>2.º</td><td class="n">0,5</td><td class="n">0,500</td><td class="n">0,500</td></tr>
+            <tr><td>3.º</td><td class="n">0,5</td><td class="n">0,250</td><td class="n">0,333</td></tr>
+            <tr><td>4.º</td><td class="n">0,5</td><td class="n">0,167</td><td class="n">0,250</td></tr>
+            <tr><td>5.º</td><td class="n">0,5</td><td class="n">0,125</td><td class="n">0,200</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>La repetición del experimento pesa más lo nuevo que el entrenamiento conjunto (que sortea los regímenes vistos por igual). Su memoria: 200 puntos × 10 números × 4 bytes = <strong>8 kB por régimen</strong>, 40 kB en total.</p>
+      <p>Sin sesgo no quiere decir sin ruido. En el ejemplo de dos parámetros, en \(\theta^*_A\): gradiente exacto \((0{,}0675;\ -0{,}500)\); media de 20 000 lotes de 8 + 8, \((0{,}0682;\ -0{,}503)\); un lote suelto se desvía \((0{,}063;\ 0{,}263)\).</p>
+    </div>
+    <div class="stack">
+      <p>Mismo ejemplo, con \(\tfrac12\mathcal L_B + \tfrac12\hat{\mathcal L}_A\) y memorias de distinto tamaño:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Memoria de \(A\)</th><th>\(\theta\)</th><th>\(\mathcal L_A\)</th><th>\(\mathcal L_B\)</th></tr></thead>
+          <tbody>
+            <tr><td>5 puntos</td><td class="n">(1,35; 1,01)</td><td class="n">0,217</td><td class="n">0,033</td></tr>
+            <tr><td>20 puntos</td><td class="n">(1,82; 1,00)</td><td class="n">0,021</td><td class="n">0,079</td></tr>
+            <tr><td>200 puntos</td><td class="n">(1,86; 0,99)</td><td class="n">0,014</td><td class="n">0,084</td></tr>
+            <tr><td>infinita</td><td class="n">(1,88; 0,99)</td><td class="n">0,013</td><td class="n">0,085</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Tres caminos, un punto</span>Con pérdidas cuadráticas, EWC con \(\lambda = 1\), la repetición con memoria infinita y el entrenamiento conjunto dan lo mismo. Con una red no: en el experimento la repetición quedó mejor que EWC (parte 4).</div>
+      <p class="small muted">Ejemplo 7 del script.</p>
     </div>
   </div>
 </section>
@@ -165,37 +560,164 @@
 </section>
 
 <section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Las letras de las unidades y de los remedios</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:19%">Símbolo</th><th>Qué es</th><th style="width:31%">En el experimento</th></tr>
+      <tr><td>\(\ell\), \(H^\ell\)</td><td>Índice de una capa oculta y número de unidades que tiene</td><td>Dos capas, \(H^\ell = 64\)</td></tr>
+      <tr><td>\(z_i^\ell(x)\)</td><td>Preactivación de la unidad \(i\) de la capa \(\ell\): sus pesos de entrada por la salida de la capa anterior, más su sesgo</td><td>Un número por dato</td></tr>
+      <tr><td>\(h_i^\ell(x) = \max(0, z_i^\ell)\)</td><td>Activación (ReLU) de esa unidad: lo que pasa a la capa siguiente</td><td>Cero cuando \(z \le 0\)</td></tr>
+      <tr><td>\(s_i^\ell\), \(\tau\)</td><td>Puntuación de actividad (su actividad media frente a la de su capa) y umbral para ser «latente»</td><td>Contamos las muertas: \(\tau = 0\)</td></tr>
+      <tr><td>\(w_{\ell,i,k}\)</td><td>Peso de salida de la unidad \(i\) hacia la unidad \(k\) de la capa siguiente</td><td>64 o 3 por unidad</td></tr>
+      <tr><td>\(u_\ell[i]\), \(\eta\)</td><td>Utilidad de la unidad (una media móvil) y el factor de esa media</td><td>\(\eta = 0{,}99\)</td></tr>
+      <tr><td>\(\rho\), \(m\)</td><td>Fracción de unidades reemplazadas por paso; edad mínima (pasos) para poder serlo</td><td>\(\rho = 10^{-4}\), \(m = 100\)</td></tr>
+      <tr><td>\(\lambda\), \(p\), \(\sigma\)</td><td><strong>Cambian de significado:</strong> en encoger y perturbar, \(\lambda\) es el factor de encogimiento (no el peso de EWC), \(p\) un ruido gaussiano (no una probabilidad) y \(\sigma\) su desviación típica</td><td>\(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\)</td></tr>
+      <tr><td>\(\|\theta\|\)</td><td>Norma euclídea de todos los pesos de la red: si crece, los pesos se están haciendo grandes</td><td>15,9 al empezar</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
   <p class="kicker">Plasticidad · el fenómeno</p>
   <h2>Las redes profundas dejan de aprender si se las entrena sin parar</h2>
+  <p>Los métodos estándar de aprendizaje profundo pierden plasticidad poco a poco en aprendizaje continuo, «hasta que no aprenden mejor que una red superficial» <a class="cite" data-ref="dohare2024"></a>:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th style="width:22%">Experimento</th><th>Qué pasa</th></tr></thead>
+      <tbody>
+        <tr><td><strong>ImageNet continuo</strong> (miles de tareas binarias)</td><td>Hasta un 88 % de acierto en las primeras tareas; hacia la tarea 2000 habían perdido mucha plasticidad con todas las tasas de aprendizaje, algunas por debajo de una red lineal.</td></tr>
+        <tr><td><strong>CIFAR-100 por clases</strong></td><td>Pasadas 40 clases, la precisión cae en el sistema base, menos con encoger y perturbar y nada con retropropagación continua. Las unidades activas menos del 1 % del tiempo crecen deprisa.</td></tr>
+        <tr><td><strong>«Ant» no estacionario</strong> (la fricción cambia cada 2 millones de pasos)</td><td>PPO va bien al principio y después cada vez peor; con L2 o retropropagación continua mantiene la plasticidad.</td></tr>
+      </tbody>
+    </table>
+  </div>
   <div class="cols">
+    <div class="callout error"><span class="tag">Lo que no esperarías</span>Según el mismo trabajo, métodos populares como Adam, dropout y la normalización aumentaron la pérdida de plasticidad en sus experimentos. Y en el «ant» estacionario, PPO colapsa tras unos 3 millones de pasos, con la mayoría de las unidades latentes <a class="cite" data-ref="dohare2024"></a>.</div>
+    <div class="callout clave"><span class="tag">Su conclusión</span>Para aprender de forma sostenida hace falta un componente aleatorio, no basado en el gradiente, que mantenga la variabilidad: reinicializar de vez en cuando unidades poco útiles.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plasticidad · el dibujo</p>
+  <h2>Qué es una unidad latente, y una muerta</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 460 300" style="max-height:470px" role="img" aria-label="Distribución de la preactivación de cuatro unidades ReLU respecto al umbral cero: dos activas, una latente que casi nunca pasa de cero y una muerta que nunca pasa">
+        <rect x="290" y="14" width="150" height="250" class="box-accent" style="fill-opacity:.35; stroke:none"/>
+        <line x1="290" y1="14" x2="290" y2="264" class="ln-dash"/>
+        <text x="296" y="11" class="t-accent" font-size="12">z &gt; 0: h = z, pasa</text>
+        <text x="284" y="11" text-anchor="end" class="t-faint" font-size="12">z ≤ 0: h = 0</text>
+        <line x1="20" y1="70" x2="440" y2="70" class="ln-rule"/>
+        <line x1="20" y1="132" x2="440" y2="132" class="ln-rule"/>
+        <line x1="20" y1="194" x2="440" y2="194" class="ln-rule"/>
+        <line x1="20" y1="256" x2="440" y2="256" class="ln-rule"/>
+        <path d="M182.0,69.7 L188.6,69.6 L195.1,69.3 L201.7,68.9 L208.3,68.3 L214.8,67.5 L221.4,66.4 L227.9,64.9 L234.5,62.9 L241.1,60.5 L247.6,57.5 L254.2,54.1 L260.8,50.3 L267.3,46.2 L273.9,42.1 L280.5,38.0 L287.0,34.4 L293.6,31.4 L300.2,29.3 L306.7,28.1 L313.3,28.1 L319.8,29.3 L326.4,31.4 L333.0,34.4 L339.5,38.0 L346.1,42.1 L352.7,46.2 L359.2,50.3 L365.8,54.1 L372.4,57.5 L378.9,60.5 L385.5,62.9 L392.1,64.9 L398.6,66.4 L405.2,67.5 L411.7,68.3 L418.3,68.9 L424.9,69.3 L431.4,69.6 L438.0,69.7" class="ln-accent" stroke-width="2"/>
+        <path d="M266.0,131.7 L269.3,131.6 L272.6,131.3 L275.8,130.9 L279.1,130.3 L282.4,129.5 L285.7,128.4 L289.0,126.9 L292.3,124.9 L295.5,122.5 L298.8,119.5 L302.1,116.1 L305.4,112.3 L308.7,108.2 L311.9,104.1 L315.2,100.0 L318.5,96.4 L321.8,93.4 L325.1,91.3 L328.4,90.1 L331.6,90.1 L334.9,91.3 L338.2,93.4 L341.5,96.4 L344.8,100.0 L348.1,104.1 L351.3,108.2 L354.6,112.3 L357.9,116.1 L361.2,119.5 L364.5,122.5 L367.7,124.9 L371.0,126.9 L374.3,128.4 L377.6,129.5 L380.9,130.3 L384.2,130.9 L387.4,131.3 L390.7,131.6 L394.0,131.7" class="ln-accent" stroke-width="2"/>
+        <path d="M177.2,193.7 L181.1,193.6 L185.1,193.3 L189.0,192.9 L193.0,192.3 L196.9,191.5 L200.8,190.4 L204.8,188.9 L208.7,186.9 L212.6,184.5 L216.6,181.5 L220.5,178.1 L224.5,174.3 L228.4,170.2 L232.3,166.1 L236.3,162.0 L240.2,158.4 L244.2,155.4 L248.1,153.3 L252.0,152.1 L256.0,152.1 L259.9,153.3 L263.8,155.4 L267.8,158.4 L271.7,162.0 L275.7,166.1 L279.6,170.2 L283.5,174.3 L287.5,178.1 L291.4,181.5 L295.4,184.5 L299.3,186.9 L303.2,188.9 L307.2,190.4 L311.1,191.5 L315.0,192.3 L319.0,192.9 L322.9,193.3 L326.9,193.6 L330.8,193.7" class="ln-time" stroke-width="2"/>
+        <path d="M27.6,255.7 L32.9,255.6 L38.1,255.3 L43.4,254.9 L48.6,254.3 L53.9,253.5 L59.1,252.4 L64.4,250.9 L69.6,248.9 L74.9,246.5 L80.1,243.5 L85.4,240.1 L90.6,236.3 L95.9,232.2 L101.1,228.1 L106.4,224.0 L111.6,220.4 L116.9,217.4 L122.1,215.3 L127.4,214.1 L132.6,214.1 L137.9,215.3 L143.1,217.4 L148.4,220.4 L153.6,224.0 L158.9,228.1 L164.1,232.2 L169.4,236.3 L174.6,240.1 L179.9,243.5 L185.1,246.5 L190.4,248.9 L195.6,250.9 L200.9,252.4 L206.1,253.5 L211.4,254.3 L216.6,254.9 L221.9,255.3 L227.1,255.6 L232.4,255.7" class="ln-tesis" stroke-width="2"/>
+        <text x="20" y="40" class="t-bold" font-size="12">1 · activa el 69 %</text>
+        <text x="20" y="54" class="t-mono t-muted" font-size="12">s = 1,55</text>
+        <text x="20" y="102" class="t-bold" font-size="12">2 · activa el 98 %</text>
+        <text x="20" y="116" class="t-mono t-muted" font-size="12">s = 2,42</text>
+        <text x="20" y="164" class="t-bold t-time" font-size="12">3 · latente: activa el 7 %</text>
+        <text x="20" y="178" class="t-mono t-muted" font-size="12">s = 0,03</text>
+        <text x="300" y="226" class="t-bold" font-size="12">4 · muerta: nunca</text>
+        <text x="300" y="240" class="t-mono t-muted" font-size="12">s = 0</text>
+        <text x="130" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">−4</text>
+        <text x="210" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">−2</text>
+        <text x="290" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="370" y="278" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <text x="440" y="294" text-anchor="end" class="t-muted" font-size="13">preactivación z sobre los datos</text>
+      </svg>
+      <figcaption>Cuatro unidades ReLU de una capa: cada curva es cómo se reparte su preactivación \(z\) sobre los datos. Puntuaciones con 1024 entradas, ejemplo 8 del script.</figcaption>
+    </figure>
     <div class="stack">
-      <p class="small">Los métodos estándar de aprendizaje profundo pierden plasticidad poco a poco en aprendizaje continuo, «hasta que no aprenden mejor que una red superficial» <a class="cite" data-ref="dohare2024"></a>:</p>
-      <ul class="small">
-        <li><strong>ImageNet continuo</strong> (miles de tareas binarias): hasta un 88 % de acierto en las primeras tareas; hacia la tarea 2000 habían perdido mucha plasticidad con todas las tasas de aprendizaje, algunas por debajo de una red lineal.</li>
-        <li><strong>CIFAR-100 por clases:</strong> pasadas 40 clases, la precisión cae en el sistema base, menos con encoger y perturbar y nada con retropropagación continua. Las unidades activas menos del 1 % del tiempo crecen deprisa.</li>
-        <li><strong>«Ant» no estacionario</strong> (la fricción cambia cada 2 millones de pasos): PPO va bien al principio y después cada vez peor; con L2 o retropropagación continua mantiene la plasticidad.</li>
+      <p>Una unidad ReLU solo transmite algo cuando su preactivación es positiva. Sobre los datos, su \(z\) es una nube de valores:</p>
+      <ul>
+        <li><strong>Activa</strong> (1 y 2): la nube cruza el cero; unas veces pasa, otras no.</li>
+        <li><strong>Latente</strong> (3): casi toda la nube está por debajo; aporta muy poco.</li>
+        <li><strong>Muerta</strong> (4): toda la nube está por debajo. Da 0 con cualquier entrada.</li>
       </ul>
-    </div>
-    <div class="stack">
-      <div class="callout error"><span class="tag">Lo que no esperarías</span>Según el mismo trabajo, métodos populares como Adam, dropout y la normalización aumentaron la pérdida de plasticidad en sus experimentos. Y en el «ant» estacionario, PPO colapsa tras unos 3 millones de pasos, con la mayoría de las unidades latentes <a class="cite" data-ref="dohare2024"></a>.</div>
-      <div class="callout clave"><span class="tag">Su conclusión</span>Para aprender de forma sostenida hace falta un componente aleatorio, no basado en el gradiente, que mantenga la variabilidad: reinicializar de vez en cuando unidades poco útiles.</div>
+      <p>Una red con muchas unidades muertas es, en la práctica, una red más estrecha: tiene menos capacidad para lo que venga.</p>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">Plasticidad · síntomas y causas</p>
-  <h2>Unidades latentes, sesgo de primacía y curvatura</h2>
+  <p class="kicker">Plasticidad · por qué no se recupera</p>
+  <h2>Una unidad muerta no recibe gradiente</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small"><strong>Unidades latentes</strong> <a class="cite" data-ref="sokar2023"></a>: la puntuación de la unidad \(i\) de la capa \(\ell\) es su actividad media normalizada por la de su capa,</p>
-      \[ s_i^\ell = \frac{\mathbb E_x |h_i^\ell(x)|}{\frac{1}{H^\ell}\sum_k \mathbb E_x |h_k^\ell(x)|}, \]
-      <p class="small">y es τ-latente si \(s_i^\ell \le \tau\) (usan \(\tau = 0{,}1\)). ReDo reinicializa periódicamente esas unidades: pesos de entrada nuevos, de salida a cero.</p>
-      <p class="small"><strong>Sesgo de primacía</strong> <a class="cite" data-ref="nikishin2022"></a>: tendencia a apoyarse en las primeras interacciones e ignorar lo que llega después. Reiniciar parte de la red periódicamente mejora SAC en DeepMind Control de 501 a 656 (IQM) y SPR en Atari 100k de 0,380 a 0,478.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(h = \max(0, z)\), \(z = w^\top h^{\ell-1} + b\)</td><td>La unidad: pesos de entrada \(w\), sesgo \(b\), entrada \(h^{\ell-1}\) de la capa anterior</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\partial h/\partial z = 1\) si \(z > 0\); \(0\) si \(z \le 0\)</td><td>Derivada de la ReLU</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dfrac{\partial\mathcal L}{\partial w} = \sum_x \dfrac{\partial\mathcal L}{\partial h}\,\dfrac{\partial h}{\partial z}\,h^{\ell-1} = 0\)</td><td>Si \(z \le 0\) en todos los datos, cada término lleva un 0: sus pesos de entrada no se mueven (y \(b\) tampoco)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\dfrac{\partial\mathcal L}{\partial w_{\ell,i,k}} = \sum_x \dfrac{\partial\mathcal L}{\partial z^{\ell+1}_k}\, h = 0\)</td><td>Sus pesos de salida multiplican a \(h = 0\): tampoco se mueven</td></tr>
+        </table>
+      </div>
+      <p>Con gradiente 0, Adam no da pasos: la media de gradientes que acumula se va a 0.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números</span>Una unidad con \(w = (0{,}5;\ -0{,}3)\), \(b = -3\) y entradas \(\mathcal N(0, I)\) tiene \(z \sim \mathcal N(-3;\ 0{,}58^2)\): \(z > 0\) en 0 de 10 000 entradas. Su gradiente es exactamente 0 en todas (ejemplo 8 del script).</div>
+      <p>Solo la puede devolver algo ajeno a su propio gradiente:</p>
+      <ul>
+        <li>que cambien sus <strong>entradas</strong>, porque las capas anteriores siguen aprendiendo y la nube de \(z\) se desplaza;</li>
+        <li>o <strong>reinicializarla</strong> desde fuera. Es lo que hacen ReDo y la retropropagación continua.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plasticidad · medir las unidades</p>
+  <h2>La puntuación de Sokar et al.: actividad frente a la de su capa</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Para la unidad \(i\) de la capa \(\ell\) <a class="cite" data-ref="sokar2023"></a>:</p>
+      \[ s_i^\ell = \frac{\mathbb E_x |h_i^\ell(x)|}{\frac{1}{H^\ell}\sum_{k=1}^{H^\ell} \mathbb E_x |h_k^\ell(x)|} \]
+      <ul>
+        <li>Numerador: la actividad media de la unidad sobre los datos.</li>
+        <li>Denominador: la media de esa actividad en las \(H^\ell\) unidades de su capa. Dividir hace que \(s\) no dependa de la escala de la capa: \(s = 1\) es «normal».</li>
+      </ul>
+      <p>La unidad es <strong>τ-latente</strong> si \(s_i^\ell \le \tau\); los autores usan \(\tau = 0{,}1\). Con \(\tau = 0\) solo cuentan las muertas, que es lo que medimos en el experimento.</p>
+      <p><strong>ReDo</strong> reinicializa periódicamente las unidades τ-latentes: pesos de entrada nuevos, de salida a cero.</p>
+    </div>
+    <div class="stack">
+      <p>Las cuatro unidades del dibujo, con 1024 entradas:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Unidad</th><th>\(\mathbb E_x|h|\)</th><th>\(s\)</th><th>\(\tau = 0{,}1\)</th><th>\(\tau = 0\)</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="n">0,655</td><td class="n">1,55</td><td>activa</td><td>viva</td></tr>
+            <tr><td>2</td><td class="n">1,023</td><td class="n">2,42</td><td>activa</td><td>viva</td></tr>
+            <tr><td>3</td><td class="n">0,014</td><td class="n">0,03</td><td><strong>latente</strong></td><td>viva</td></tr>
+            <tr><td>4</td><td class="n">0</td><td class="n">0</td><td><strong>latente</strong></td><td><strong>muerta</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Media de la capa: \((0{,}655 + 1{,}023 + 0{,}014 + 0)/4 = 0{,}423\). Por ejemplo, \(s_3 = 0{,}014/0{,}423 = 0{,}03\).</p>
+      <p class="small muted">Ejemplo 8 del script. Con ReLU, \(|h| = h\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plasticidad · otras explicaciones</p>
+  <h2>Sesgo de primacía y curvatura</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Sesgo de primacía</strong> <a class="cite" data-ref="nikishin2022"></a>: tendencia a apoyarse en las primeras interacciones e ignorar lo que llega después.</p>
+      <p>Reiniciar parte de la red periódicamente mejora SAC en DeepMind Control de 501 a 656 (IQM) y SPR en Atari 100k de 0,380 a 0,478.</p>
+      <div class="callout clave"><span class="tag">En nuestro experimento</span>Las unidades muertas suben hasta un 28 % con Adam sin que el error empeore: un síntoma no es una causa.</div>
     </div>
     <div class="stack">
       <div class="callout realidad"><span class="tag">Pero cuidado con las explicaciones fáciles</span>Lyle et al. encuentran que la pérdida de plasticidad está ligada a cambios en la curvatura del paisaje de pérdida, que a menudo ocurre sin unidades saturadas, y que ni el rango de los rasgos, ni las unidades saturadas, ni la norma de los parámetros explican la pérdida de forma causal robusta. Lo que mejor funcionó fue la normalización por capas <a class="cite" data-ref="lyle2023"></a>.</div>
-      <div class="callout clave"><span class="tag">En nuestro experimento</span>Las unidades muertas suben hasta un 28 % con Adam sin que el error empeore: un síntoma no es una causa.</div>
+      <div class="aparte"><span class="rotulo">Qué es la curvatura aquí</span>
+        <p>Es la misma \(H\) de la parte 1: cuánto se tuerce la pérdida al mover los parámetros. Lyle et al. relacionan la pérdida de plasticidad con cómo cambia esa curvatura durante el entrenamiento, no con un recuento de unidades: por eso puede haber pérdida de plasticidad con todas las unidades vivas.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -205,17 +727,102 @@
   <h2>Encoger, perturbar, reinicializar</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>L2:</strong> mantiene los pesos pequeños; en ImageNet continuo siguió mejorando durante al menos 5000 tareas <a class="cite" data-ref="dohare2024"></a>.</li>
-        <li><strong>Encoger y perturbar</strong> <a class="cite" data-ref="ash2020"></a>: al empezar cada ronda, \(\theta \leftarrow \lambda\theta + p\) con \(p \sim \mathcal N(0, \sigma^2)\) y \(0 < \lambda < 1\). Nació para el arranque en caliente, que generaliza peor que una inicialización nueva aunque la pérdida de entrenamiento sea parecida.</li>
-        <li><strong>Reinicios</strong> <a class="cite" data-ref="nikishin2022"></a>: de toda la red o de las últimas capas, cada cierto número de pasos, conservando la memoria de repetición.</li>
-      </ul>
+      <p><strong>L2:</strong> mantiene los pesos pequeños; en ImageNet continuo siguió mejorando durante al menos 5000 tareas <a class="cite" data-ref="dohare2024"></a>.</p>
+      <p><strong>Encoger y perturbar</strong> <a class="cite" data-ref="ash2020"></a>: al empezar cada ronda,</p>
+      \[ \theta \leftarrow \lambda\,\theta + p, \qquad p \sim \mathcal N(0, \sigma^2), \quad 0 \lt \lambda \lt 1. \]
+      <p>Encoger (\(\lambda\)) acerca los pesos a 0, donde estaban al inicializar; perturbar (\(p\)) les devuelve aleatoriedad. Nació para el arranque en caliente, que generaliza peor que una inicialización nueva aunque la pérdida de entrenamiento sea parecida.</p>
+      <p><strong>Reinicios</strong> <a class="cite" data-ref="nikishin2022"></a>: de toda la red o de las últimas capas, cada cierto número de pasos, conservando la memoria de repetición.</p>
     </div>
     <div class="stack">
-      <p class="small"><strong>Retropropagación continua</strong> <a class="cite" data-ref="dohare2024"></a>: la utilidad de cada unidad es una media móvil de su contribución,</p>
-      \[ u_\ell[i] \leftarrow \eta\, u_\ell[i] + (1-\eta)\,|h_{\ell,i,t}|\sum_{k} |w_{\ell,i,k,t}|, \qquad \eta = 0{,}99, \]
-      <p class="small">y en cada paso se reinicializa una fracción ρ muy pequeña de las unidades maduras (más de \(m\) actualizaciones) de menor utilidad: pesos de entrada nuevos, de salida a cero, para no perturbar la función. En la práctica, una unidad cada cientos de pasos.</p>
-      <div class="callout clave"><span class="tag">La idea común</span>Devolver a la red parte de la aleatoriedad de la inicialización, que es lo que la hacía capaz de aprender al principio.</div>
+      <p>En el experimento, \(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\), con \(\theta_{\text{nueva}}\) una red recién inicializada: el ruido \(p\) tiene la forma de una inicialización.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:52%">Cuenta</th><th>Valor</th></tr>
+          <tr><td>\(\|\theta\| = \|\theta_{\text{nueva}}\|\)</td><td class="n">15,9</td></tr>
+          <tr><td>\(\|0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\|\)</td><td class="n">9,68</td></tr>
+          <tr><td>\(\sqrt{0{,}6^2 + 0{,}1^2}\cdot 15{,}9\)</td><td class="n">9,67</td></tr>
+          <tr><td>coseno entre \(\theta\) y el resultado</td><td class="n">0,986</td></tr>
+        </table>
+      </div>
+      <p>Dos vectores independientes de 4867 componentes son casi perpendiculares: las normas se suman en cuadratura. Cada ronda quita un 39 % de la norma y casi no cambia la dirección. Al final del flujo, la norma es 6,1.</p>
+      <p class="small muted">Ejemplo 9 del script.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plasticidad · retropropagación continua</p>
+  <h2>Antes de la fórmula: el bucle de la retropropagación continua</h2>
+  <div class="cols w60">
+    <div class="stack">
+    <figure class="fig">
+      <svg viewBox="0 0 520 320" style="max-height:345px" role="img" aria-label="Bucle de la retropropagación continua: lote, gradiente y Adam, actualizar utilidad y edad, acumular la tasa de reemplazo y, cuando llega a uno, reemplazar la unidad madura de menor utilidad">
+        <defs>
+          <marker id="a9b-ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+          <marker id="a9b-ar3t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-tesis"/></marker>
+        </defs>
+        <rect x="20" y="24" width="190" height="58" rx="6" class="box"/>
+        <text x="115" y="48" text-anchor="middle" class="t-bold" font-size="13">1 · un lote</text>
+        <text x="115" y="68" text-anchor="middle" class="t-muted" font-size="12">64 datos de la tarea actual</text>
+        <rect x="250" y="24" width="250" height="58" rx="6" class="box"/>
+        <text x="375" y="48" text-anchor="middle" class="t-bold" font-size="13">2 · gradiente y Adam</text>
+        <text x="375" y="68" text-anchor="middle" class="t-muted" font-size="12">como siempre: θ cambia un paso</text>
+        <rect x="250" y="122" width="250" height="58" rx="6" class="box-accent"/>
+        <text x="375" y="146" text-anchor="middle" class="t-bold" font-size="13">3 · utilidad y edad</text>
+        <text x="375" y="166" text-anchor="middle" class="t-mono t-muted" font-size="12">u ← η·u + (1−η)·|h|·Σ|w|</text>
+        <rect x="250" y="220" width="250" height="58" rx="6" class="box-accent"/>
+        <text x="375" y="244" text-anchor="middle" class="t-bold" font-size="13">4 · acumular a ← a + ρ·H</text>
+        <text x="375" y="264" text-anchor="middle" class="t-muted" font-size="12">¿a ≥ 1? (una vez cada 156 pasos)</text>
+        <rect x="20" y="210" width="190" height="78" rx="6" class="box-tesis"/>
+        <text x="115" y="232" text-anchor="middle" class="t-bold" font-size="13">5 · reemplazar</text>
+        <text x="115" y="251" text-anchor="middle" class="t-muted" font-size="12">madura (edad &gt; m), menor u:</text>
+        <text x="115" y="268" text-anchor="middle" class="t-muted" font-size="12">entrada nueva, salida a 0;</text>
+        <text x="115" y="283" text-anchor="middle" class="t-muted" font-size="12">u = 0, edad = 0, a ← a − 1</text>
+        <path d="M212 53 H246" class="ln" marker-end="url(#a9b-ar3)"/>
+        <path d="M375 84 V118" class="ln" marker-end="url(#a9b-ar3)"/>
+        <path d="M375 182 V216" class="ln" marker-end="url(#a9b-ar3)"/>
+        <path d="M248 249 H214" class="ln-tesis" marker-end="url(#a9b-ar3t)"/>
+        <text x="231" y="242" text-anchor="middle" class="t-tesis" font-size="12">sí</text>
+        <path d="M115 208 V86" class="ln-tesis" marker-end="url(#a9b-ar3t)"/>
+        <path d="M375 280 V306 H10 V53 H16" class="ln" marker-end="url(#a9b-ar3)"/>
+        <text x="200" y="300" class="t-muted" font-size="12">no: siguiente paso</text>
+      </svg>
+      <figcaption>Un paso de entrenamiento. Los pasos 3–5 se hacen en cada capa oculta; los pasos 1–2 son el entrenamiento normal. Frecuencia del paso 5 con \(\rho = 10^{-4}\) y \(H = 64\) (ejemplo 10 del script).</figcaption>
+    </figure>
+    <div class="callout clave"><span class="tag">La idea común</span>Devolver a la red parte de la aleatoriedad de la inicialización, que es lo que la hacía capaz de aprender al principio.</div>
+    </div>
+    <div class="stack">
+      <p><strong>Qué resuelve:</strong> mantener siempre unas cuantas unidades «recién nacidas», con la aleatoriedad que la red tenía al inicializarse, sin estropear lo aprendido.</p>
+      <p><strong>Qué entra:</strong> la red y su optimizador, más dos números por unidad oculta: su utilidad \(u\) y su edad (pasos desde que nació).</p>
+      <p><strong>Qué sale:</strong> la misma red, con una unidad poco útil sustituida de vez en cuando por una nueva.</p>
+      <p><strong>Cuántas:</strong> \(\rho H = 10^{-4}\cdot 64 = 0{,}0064\) por paso y capa, una cada 156 pasos. En 300 tareas de 500 pasos, 960 por capa: 15 veces la anchura de la capa.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Plasticidad · la utilidad</p>
+  <h2>La utilidad de una unidad, término a término</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Dohare et al. <a class="cite" data-ref="dohare2024"></a> miden cuánto aporta cada unidad con una media móvil de su contribución:</p>
+      \[ u_\ell[i] \leftarrow \eta\, u_\ell[i] + (1-\eta)\,|h_{\ell,i,t}|\sum_{k} |w_{\ell,i,k,t}|, \qquad \eta = 0{,}99 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:34%">Término</th><th>Qué es</th></tr>
+          <tr><td>\(|h_{\ell,i,t}|\)</td><td>Cuánto se activa la unidad en el paso \(t\)</td></tr>
+          <tr><td>\(\sum_k |w_{\ell,i,k,t}|\)</td><td>Cuánto pesa lo que manda a la capa siguiente</td></tr>
+          <tr><td>su producto</td><td>Su contribución: activa pero con pesos de salida nulos, o con pesos grandes pero apagada, no aporta</td></tr>
+          <tr><td>\(\eta\), \(1-\eta\)</td><td>Media móvil: memoria de unos \(1/(1-\eta) = 100\) pasos</td></tr>
+        </table>
+      </div>
+      <p>En cada paso se reinicializa una fracción \(\rho\) muy pequeña de las unidades <strong>maduras</strong> (más de \(m\) actualizaciones) de menor utilidad: pesos de entrada nuevos, de salida a cero, para no perturbar la función.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Con números</strong> (ejemplo 10 del script). Una unidad con \(|h| = 0{,}5\) y pesos de salida \((0{,}2;\ -0{,}1;\ 0{,}3)\) contribuye \(0{,}5\cdot 0{,}6 = 0{,}30\). Desde \(u = 0\), \(u = 0{,}30\,(1 - 0{,}99^n)\): 0,003 tras 1 paso, 0,19 tras 100, 0,30 tras 500.</p>
+      <p>Por eso la <strong>madurez</strong>: una unidad recién nacida tiene \(u \approx 0\) y sería la primera en caer. Con \(m = 100\) tiene tiempo de demostrar si sirve.</p>
+      <p><strong>Por qué salida a cero:</strong> la unidad nueva aporta \(w_{\text{salida}}\cdot h = 0\) a la capa siguiente, así que la red calcula exactamente lo mismo que antes del reemplazo. El gradiente decide después si la unidad sirve.</p>
+      <p><strong>Activa no es útil:</strong> con \((|h|, \sum|w|)\) = (0,80; 0,9) y (0,40; 0,05), dos unidades contribuyen 0,72 y 0,02. Cae la segunda: se activa, pero casi no influye en la salida.</p>
     </div>
   </div>
 </section>
@@ -232,7 +839,7 @@
   <h2>Afinar en el mundo real: horas, no meses</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Agarre</strong> <a class="cite" data-ref="julian2020"></a>: 52 experimentos de afinado sobre una política preentrenada con 580 000 agarres reales. Con hasta 800 intentos por cambio: fondo de tablero de 50 % a 90 %, luz intensa de 32 % a 63 %, pinza desplazada 10 cm de 43 % a 98 %. Entrenar desde cero con esos datos no funcionó.</li>
         <li><strong>Cuadrúpedo que sigue aprendiendo</strong> <a class="cite" data-ref="smith2022"></a>: preentrenado en simulación con dinámica aleatorizada y afinado en el mundo real con un controlador de recuperación; en menos de 2 horas aprende a caminar adelante y atrás en césped, y en menos de 2,5 horas en cada terreno, a ejecutar la habilidad sin tropezar.</li>
         <li><strong>Desde cero en 20 minutos</strong> <a class="cite" data-ref="kostrikov2023"></a>: un A1 aprende a caminar con RL sin modelo en un portátil con una GPU, construyendo sobre DroQ; según sus autores, lo que más ayudó fue la normalización por capas y una razón alta entre actualizaciones y datos.</li>
@@ -248,18 +855,19 @@
 <section class="slide">
   <p class="kicker">Despliegue · drones</p>
   <h2>Drones que aprenden su dinámica en vuelo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th style="width:20%">Trabajo</th><th>Qué consigue</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Aprendizaje activo de la dinámica</strong> <a class="cite" data-ref="saviolo2024"></a></td><td>Red de dinámica aprendida fuera de línea y actualizada en vuelo dentro de un MPC consciente de la incertidumbre. Con una carga colgante de 75 g (+30 % de masa), un 75 % menos de error que nominal con L1 y un 92 % menos que el modelo fijo; con viento, sigue bien la referencia tras un minuto de aprendizaje. Corre en una Jetson Xavier NX, pero no en tiempo real en una placa Snapdragon.</td></tr>
+        <tr><td><strong>KNODE en línea</strong> <a class="cite" data-ref="jiahao2023"></a></td><td>Mejora el modelo durante el despliegue; en simulación, con la masa bajando un 50 % y subiendo al 133 %, supera en un 18,6 % al MPC nominal y en un 58,8 % al MPC con el modelo aprendido fijo. Avisan de que el modelo anterior debe conservarse: entrenar a bordo la red que usa el controlador lo altera.</td></tr>
+        <tr><td><strong>Olvido real</strong> (preprint) <a class="cite" data-ref="elmabsout2023"></a></td><td>Al afinar con datos reales, los agentes pueden olvidar situaciones importantes pero poco representadas; con críticos de simulación como ancla, un dron de carreras reduce hasta un 50 % el consumo sin perder el control.</td></tr>
+      </tbody>
+    </table>
+  </div>
   <div class="cols">
-    <div class="stack">
-      <ul class="small">
-        <li><strong>Aprendizaje activo de la dinámica</strong> <a class="cite" data-ref="saviolo2024"></a>: red de dinámica aprendida fuera de línea y actualizada en vuelo dentro de un MPC consciente de la incertidumbre. Con una carga colgante de 75 g (+30 % de masa), un 75 % menos de error que nominal con L1 y un 92 % menos que el modelo fijo; con viento, sigue bien la referencia tras un minuto de aprendizaje. Corre en una Jetson Xavier NX, pero no en tiempo real en una placa Snapdragon.</li>
-        <li><strong>KNODE en línea</strong> <a class="cite" data-ref="jiahao2023"></a>: mejora el modelo durante el despliegue; en simulación, con la masa bajando un 50 % y subiendo al 133 %, supera en un 18,6 % al MPC nominal y en un 58,8 % al MPC con el modelo aprendido fijo. Avisan de que el modelo anterior debe conservarse: entrenar a bordo la red que usa el controlador lo altera.</li>
-        <li><strong>Olvido real</strong> (preprint) <a class="cite" data-ref="elmabsout2023"></a>: al afinar con datos reales, los agentes pueden olvidar situaciones importantes pero poco representadas; con críticos de simulación como ancla, un dron de carreras reduce hasta un 50 % el consumo sin perder el control.</li>
-      </ul>
-    </div>
-    <div class="stack">
-      <div class="callout error"><span class="tag">Lo que falta</span>No encontramos un trabajo con números sobre aprendizaje continuo de un dron durante muchos vuelos (semanas, no minutos), que mida olvido y plasticidad. Lo publicado son adaptaciones de minutos.</div>
-      <div class="callout clave"><span class="tag">El patrón</span>Modelo base aprendido fuera de línea + actualización en línea acotada + un controlador que tolera la incertidumbre. Es la receta de A9a llevada a la red entera.</div>
-    </div>
+    <div class="callout error"><span class="tag">Lo que falta</span>No encontramos un trabajo con números sobre aprendizaje continuo de un dron durante muchos vuelos (semanas, no minutos), que mida olvido y plasticidad. Lo publicado son adaptaciones de minutos.</div>
+    <div class="callout clave"><span class="tag">El patrón</span>Modelo base aprendido fuera de línea + actualización en línea acotada + un controlador que tolera la incertidumbre. Es la receta de A9a llevada a la red entera.</div>
   </div>
 </section>
 
@@ -268,7 +876,7 @@
   <h2>Los mejores agentes nunca dejan de aprender, y por eso hay que vigilarlos</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>RL continuo:</strong> el escenario en el que «los mejores agentes nunca dejan de aprender»; aprender como adaptación sin fin, no como encontrar una solución <a class="cite" data-ref="abel2023"></a>.</li>
         <li><strong>Taxonomía:</strong> la no estacionariedad se caracteriza por su alcance y por lo que la provoca <a class="cite" data-ref="khetarpal2022"></a>.</li>
         <li><strong>RL seguro:</strong> aprender políticas que maximicen el retorno cuando importa asegurar un rendimiento razonable o respetar restricciones de seguridad durante el aprendizaje o el despliegue; se consigue cambiando el criterio de optimalidad o guiando la exploración con conocimiento externo o una métrica de riesgo <a class="cite" data-ref="garcia2015"></a>.</li>
@@ -281,6 +889,64 @@
   </div>
 </section>
 
+<section class="slide">
+  <p class="kicker">Despliegue · el protocolo, como flujo</p>
+  <h2>Actualizar el modelo después de cada vuelo sin perder lo que funcionaba</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 310" style="max-height:470px" role="img" aria-label="Flujo de una actualización: volar, recoger datos, entrenar una copia con datos nuevos y memoria, evaluarla en todos los regímenes y aceptarla solo si mejora lo nuevo sin empeorar lo demás">
+        <defs>
+          <marker id="a9b-ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+        </defs>
+        <rect x="10" y="20" width="150" height="56" rx="6" class="box-tesis"/>
+        <text x="85" y="43" text-anchor="middle" class="t-bold" font-size="13">1 · volar</text>
+        <text x="85" y="62" text-anchor="middle" class="t-muted" font-size="12">con el modelo en uso</text>
+        <rect x="205" y="20" width="150" height="56" rx="6" class="box"/>
+        <text x="280" y="43" text-anchor="middle" class="t-bold" font-size="13">2 · datos del vuelo</text>
+        <text x="280" y="62" text-anchor="middle" class="t-muted" font-size="12">regímenes de hoy</text>
+        <rect x="400" y="20" width="150" height="56" rx="6" class="box-accent"/>
+        <text x="475" y="43" text-anchor="middle" class="t-bold" font-size="13">3 · entrenar una copia</text>
+        <text x="475" y="62" text-anchor="middle" class="t-muted" font-size="12">datos nuevos + memoria</text>
+        <rect x="205" y="106" width="150" height="56" rx="6" class="box-soft"/>
+        <text x="280" y="129" text-anchor="middle" class="t-bold" font-size="13">memoria de vuelos</text>
+        <text x="280" y="148" text-anchor="middle" class="t-muted" font-size="12">puntos de cada régimen</text>
+        <rect x="400" y="190" width="150" height="70" rx="6" class="box-accent"/>
+        <text x="475" y="212" text-anchor="middle" class="t-bold" font-size="13">4 · evaluar la copia</text>
+        <text x="475" y="231" text-anchor="middle" class="t-muted" font-size="12">prueba fija de cada</text>
+        <text x="475" y="247" text-anchor="middle" class="t-muted" font-size="12">régimen: fila nueva de R</text>
+        <rect x="205" y="190" width="150" height="70" rx="6" class="box-time"/>
+        <text x="280" y="212" text-anchor="middle" class="t-bold" font-size="13">5 · ¿aceptar?</text>
+        <text x="280" y="231" text-anchor="middle" class="t-muted" font-size="12">mejora lo nuevo y nada</text>
+        <text x="280" y="247" text-anchor="middle" class="t-muted" font-size="12">empeora más de un umbral</text>
+        <rect x="10" y="190" width="150" height="70" rx="6" class="box-tesis"/>
+        <text x="85" y="212" text-anchor="middle" class="t-bold" font-size="13">6 · sí: cambiar</text>
+        <text x="85" y="231" text-anchor="middle" class="t-muted" font-size="12">la copia pasa a uso;</text>
+        <text x="85" y="247" text-anchor="middle" class="t-muted" font-size="12">se guarda el anterior</text>
+        <path d="M162 48 H201" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M357 48 H396" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M280 78 V102" class="ln ln-dash" marker-end="url(#a9b-ar4)"/>
+        <path d="M357 134 H440 V80" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M505 78 V186" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M398 225 H359" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M203 225 H164" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M30 188 V80" class="ln" marker-end="url(#a9b-ar4)"/>
+        <path d="M280 262 V286" class="ln" marker-end="url(#a9b-ar4)"/>
+        <text x="280" y="302" text-anchor="middle" class="t-muted" font-size="12">no: se descarta la copia y sigue el modelo anterior</text>
+        <text x="40" y="100" class="t-tesis" font-size="12">en vuelo, si crece</text>
+        <text x="40" y="116" class="t-tesis" font-size="12">el error de predicción:</text>
+        <text x="40" y="132" class="t-tesis" font-size="12">volver al anterior</text>
+        <text x="292" y="94" class="t-faint" font-size="11">se guardan</text>
+      </svg>
+      <figcaption>El modelo en uso nunca se entrena en vuelo: se entrena una copia y se compara. Es la respuesta de la pregunta 6 de la autoevaluación, dibujada.</figcaption>
+    </figure>
+    <div class="stack">
+      <p><strong>Qué resuelve:</strong> aprovechar los datos de cada vuelo sin aceptar a ciegas un modelo que haya olvidado algo o que se haya estropeado.</p>
+      <p>Cada pieza ya ha salido en el tema: la memoria es la repetición (paso 3), la fila nueva de \(R\) es la prueba de olvido (paso 4) y guardar el modelo anterior es el aviso de Jiahao et al. (paso 6).</p>
+      <p>Lo que no resuelve: el umbral del paso 5 y cuánto puede cambiar el modelo en una actualización son decisiones de diseño; A14 trata cómo acotarlas.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ============ PARTE 4 ============ -->
 <section class="slide divider" data-section="Experimento">
   <p class="num">Parte 4</p>
@@ -289,33 +955,179 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Experimento · montaje</p>
-  <h2>La misma red, dos tipos de cambio</h2>
+  <p class="kicker">Experimento · el modelo</p>
+  <h2>Qué entra y qué sale del modelo</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 900 200" style="max-height:250px" role="img" aria-label="La red del experimento: siete entradas (velocidad, empuje y eje de empuje) se normalizan, pasan por dos capas de 64 unidades ReLU y salen tres números, la fuerza residual, que se comparan con la fuerza verdadera supuesta">
+      <defs>
+        <marker id="a9b-ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect x="10" y="14" width="200" height="40" rx="6" class="box-time"/>
+      <text x="110" y="39" text-anchor="middle" font-size="14">v · velocidad (3), m/s</text>
+      <rect x="10" y="64" width="200" height="40" rx="6" class="box-time"/>
+      <text x="110" y="89" text-anchor="middle" font-size="14">T · empuje normalizado (1)</text>
+      <rect x="10" y="114" width="200" height="40" rx="6" class="box-time"/>
+      <text x="110" y="139" text-anchor="middle" font-size="14">z<tspan baseline-shift="sub" font-size="10">b</tspan> · eje de empuje (3)</text>
+      <path d="M212 34 L246 74" class="ln" marker-end="url(#a9b-ar5)"/>
+      <path d="M212 84 H246" class="ln" marker-end="url(#a9b-ar5)"/>
+      <path d="M212 134 L246 94" class="ln" marker-end="url(#a9b-ar5)"/>
+      <rect x="250" y="56" width="120" height="56" rx="6" class="box"/>
+      <text x="310" y="80" text-anchor="middle" class="t-bold" font-size="14">normalizar</text>
+      <text x="310" y="99" text-anchor="middle" class="t-mono t-muted" font-size="12">(x − μ)/s</text>
+      <path d="M372 84 H396" class="ln" marker-end="url(#a9b-ar5)"/>
+      <rect x="400" y="56" width="110" height="56" rx="6" class="box-accent"/>
+      <text x="455" y="80" text-anchor="middle" class="t-bold" font-size="14">64 ReLU</text>
+      <text x="455" y="99" text-anchor="middle" class="t-muted" font-size="12">capa oculta 1</text>
+      <path d="M512 84 H536" class="ln" marker-end="url(#a9b-ar5)"/>
+      <rect x="540" y="56" width="110" height="56" rx="6" class="box-accent"/>
+      <text x="595" y="80" text-anchor="middle" class="t-bold" font-size="14">64 ReLU</text>
+      <text x="595" y="99" text-anchor="middle" class="t-muted" font-size="12">capa oculta 2</text>
+      <path d="M652 84 H686" class="ln" marker-end="url(#a9b-ar5)"/>
+      <text x="669" y="74" text-anchor="middle" class="t-faint" font-size="11">lineal</text>
+      <rect x="690" y="56" width="200" height="56" rx="6" class="box-tesis"/>
+      <text x="790" y="80" text-anchor="middle" class="t-bold" font-size="14">f̂ · fuerza residual (3)</text>
+      <text x="790" y="99" text-anchor="middle" class="t-muted" font-size="12">en newtons</text>
+      <path d="M790 114 V146" class="ln" marker-end="url(#a9b-ar5)"/>
+      <rect x="560" y="150" width="330" height="40" rx="6" class="box-soft"/>
+      <text x="725" y="175" text-anchor="middle" font-size="13">error cuadrático frente a la fuerza verdadera f</text>
+      <text x="455" y="140" text-anchor="middle" class="t-faint" font-size="12">4867 parámetros θ</text>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <p class="small">Una red de dos capas de 64 unidades ReLU predice la fuerza aerodinámica residual (N) a partir de la velocidad, el empuje y el eje de empuje. La fuerza verdadera es un modelo supuesto: resistencia lineal y cuadrática, arrastre de rotor proporcional al empuje y a la velocidad perpendicular al eje, y una pérdida de empuje cuadrática. Adam con tasa \(10^{-3}\).</p>
-      <ul class="small">
-        <li><strong>Olvido (por dominios):</strong> cinco regímenes en secuencia, 3000 pasos cada uno: flotar, agresivo, avance lento, subidas y bajadas, lateral rápido. La función no cambia; solo las entradas.</li>
-        <li><strong>Plasticidad (no estacionario):</strong> cientos de tareas seguidas de 500 pasos con las mismas entradas y otra función: un viento y una carga nuevos (comparten estructura) o una red maestra aleatoria (no comparten nada).</li>
-      </ul>
+      <p><strong>Entra:</strong> el estado de vuelo que importa para la aerodinámica: la velocidad \(v\) del dron, su empuje normalizado \(T\) (en torno a 1) y la dirección \(z_b\) en la que empuja (el eje vertical del cuerpo).</p>
+      <p><strong>Sale:</strong> la fuerza residual, lo que el modelo simple de empuje y peso no explica. Es lo que un controlador o un world model sumaría a su modelo nominal.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Entrenamiento:</strong> lotes de 128 (olvido) o 64 (plasticidad), Adam con tasa \(10^{-3}\) y error cuadrático medio. La «verdad» \(f\) es una fórmula supuesta, no medida (hoja siguiente): así se sabe siempre cuál es la respuesta correcta.</p>
+      <div class="callout tesis"><span class="tag">Por qué esta red</span>Es la pieza de dinámica de un world model en miniatura: lo que habría que seguir actualizando vuelo tras vuelo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · la verdad supuesta</p>
+  <h2>La fuerza residual, término a término y con números</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Con \(v_r = v_w - v\) la velocidad del aire respecto al dron (\(v_w\): viento) y \(v_\perp = v_r - (v_r\cdot z_b)\,z_b\) su parte perpendicular al eje de empuje:</p>
+      \[ \begin{aligned} f = {}& \underbrace{0{,}15\,v_r + 0{,}03\,\|v_r\|\,v_r}_{\text{resistencia}} + \underbrace{0{,}04\,T\,v_\perp}_{\text{arrastre de rotor}} \\ &- \underbrace{0{,}06\,T^2 z_b}_{\text{pérdida de empuje}} - \underbrace{\Delta m\,g\,e_z}_{\text{carga}} \end{aligned} \]
+      <p><strong>Resistencia</strong> lineal y cuadrática en la velocidad del aire; <strong>arrastre de rotor</strong>, proporcional al empuje y al aire que cruza el disco de los rotores; <strong>pérdida de empuje</strong>: el real es algo menor que el nominal; <strong>carga</strong> \(\Delta m\) (kg) que tira hacia abajo, con \(e_z\) el eje vertical y \(g = 9{,}81\) m/s².</p>
     </div>
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
-          <thead><tr><th>Método</th><th>Qué hace</th></tr></thead>
+          <thead><tr><th>Caso (\(T = 1\), \(z_b\) vertical)</th><th>Términos</th><th>\(f\) (N)</th></tr></thead>
           <tbody>
-            <tr><td>Ajuste fino</td><td>seguir entrenando, sin más</td></tr>
-            <tr><td>EWC (λ = 0,01 y 1)</td><td>penalización con la Fisher diagonal de cada régimen terminado</td></tr>
-            <tr><td>Repetición</td><td>200 puntos guardados por régimen, mezclados al 50 %</td></tr>
-            <tr><td>Conjunto</td><td>entrenar con todos los regímenes vistos (cota)</td></tr>
-            <tr><td>Adam + L2</td><td>decaimiento de pesos \(10^{-3}\)</td></tr>
-            <tr><td>Encoger y perturbar</td><td>\(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\) al empezar cada tarea</td></tr>
-            <tr><td>Retropropagación continua</td><td>\(\rho = 10^{-4}\), madurez 100, \(\eta = 0{,}99\)</td></tr>
-            <tr><td>Reiniciar</td><td>red y optimizador nuevos en cada tarea</td></tr>
+            <tr><td>flotar, sin viento</td><td>solo pérdida de empuje</td><td class="n">(0; 0; −0,06)</td></tr>
+            <tr><td>avanzar a 2 m/s en x</td><td>resistencia −0,42; rotor −0,08</td><td class="n">(−0,50; 0; −0,06)</td></tr>
+            <tr><td>flotar con viento de 5 m/s en x</td><td>resistencia +1,50; rotor +0,20</td><td class="n">(1,70; 0; −0,06)</td></tr>
+            <tr><td>flotar con 0,3 kg de carga</td><td>carga −2,94</td><td class="n">(0; 0; −3,00)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Avanzando a 2 m/s: \(v_r = (-2, 0, 0)\), resistencia \(0{,}15\cdot(-2) + 0{,}03\cdot 2\cdot(-2) = -0{,}42\); \(v_\perp = v_r\) porque \(z_b\) es vertical, rotor \(0{,}04\cdot(-2) = -0{,}08\).</p>
+      <div class="callout clave"><span class="tag">En el experimento de olvido</span>\(v_w = 0\) y \(\Delta m = 0\): la función es siempre la misma; solo cambia por dónde vuela el dron.</div>
+      <p class="small muted">Ejemplo 11 del script; la fórmula es la de <code>figuras_a9b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · olvido</p>
+  <h2>Cinco regímenes en secuencia: cambia la misión, no la física</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 900 120" style="max-height:150px" role="img" aria-label="Línea temporal del experimento de olvido: cinco regímenes de 3000 pasos cada uno; al terminar cada uno se evalúa en los cinco y se guardan la Fisher y una memoria">
+      <defs>
+        <marker id="a9b-ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      </defs>
+      <rect x="10" y="30" width="160" height="40" rx="6" class="box-accent"/><text x="90" y="55" text-anchor="middle" font-size="14">1 · flotar</text>
+      <rect x="190" y="30" width="160" height="40" rx="6" class="box-accent"/><text x="270" y="55" text-anchor="middle" font-size="14">2 · agresivo</text>
+      <rect x="370" y="30" width="160" height="40" rx="6" class="box-accent"/><text x="450" y="55" text-anchor="middle" font-size="14">3 · avance lento</text>
+      <rect x="550" y="30" width="160" height="40" rx="6" class="box-accent"/><text x="630" y="55" text-anchor="middle" font-size="14">4 · subidas y bajadas</text>
+      <rect x="730" y="30" width="160" height="40" rx="6" class="box-accent"/><text x="810" y="55" text-anchor="middle" font-size="14">5 · lateral rápido</text>
+      <text x="450" y="18" text-anchor="middle" class="t-muted" font-size="13">3000 pasos de Adam en cada régimen, lotes de 128 · tiempo →</text>
+      <path d="M180 72 V92" class="ln-tesis"/><path d="M360 72 V92" class="ln-tesis"/><path d="M540 72 V92" class="ln-tesis"/><path d="M720 72 V92" class="ln-tesis"/><path d="M890 72 V92" class="ln-tesis"/>
+      <text x="450" y="112" text-anchor="middle" class="t-tesis" font-size="13">al terminar cada uno: evaluar en los cinco (fila de R) y guardar la Fisher (EWC) y 200 puntos (repetición)</text>
+    </svg>
+  </figure>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Régimen</th><th>Velocidad (m/s): centro ± escala</th><th>Inclinación</th><th>Empuje</th><th>Var. de \(f\) (N²)</th></tr></thead>
+        <tbody>
+          <tr><td>flotar</td><td class="n">(0; 0; 0) ± (0,3; 0,3; 0,2)</td><td class="n">±0,12</td><td class="n">1 ± 0,1</td><td class="n">0,01</td></tr>
+          <tr><td>agresivo</td><td class="n">(0; 0; 0) ± (3; 3; 1,5)</td><td class="n">±0,6</td><td class="n">1 ± 0,4</td><td class="n">2,70</td></tr>
+          <tr><td>avance lento</td><td class="n">(2; 0; 0) ± (0,6; 0,3; 0,2)</td><td class="n">±0,12</td><td class="n">1 ± 0,1</td><td class="n">0,04</td></tr>
+          <tr><td>subidas y bajadas</td><td class="n">(0; 0; 0) ± (0,3; 0,3; 1,5)</td><td class="n">±0,12</td><td class="n">1 ± 0,1</td><td class="n">0,13</td></tr>
+          <tr><td>lateral rápido</td><td class="n">(0; 4,5; 0) ± (0,4; 1; 0,2)</td><td class="n">±0,3</td><td class="n">1 ± 0,1</td><td class="n">0,25</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <p>Cada régimen es una nube de entradas distinta: velocidad gaussiana alrededor de un centro, eje de empuje inclinado al azar y empuje variable.</p>
+      <p>El agresivo, el más amplio, va el segundo: tres regímenes estrechos vienen después a borrarlo.</p>
+    </div>
+  </div>
+  <p class="small muted">Inclinación: desviación típica de las componentes horizontales de \(z_b\) antes de normalizarlo. Varianzas de <code>salida_gpu.txt</code>; el resto, ejemplo 11 del script.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · plasticidad</p>
+  <h2>El flujo de tareas: ahora sí cambia la función</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 900 100" style="max-height:130px" role="img" aria-label="Línea temporal del experimento de plasticidad: cientos de tareas de 500 pasos, cada una con un viento y una carga nuevos o con una red maestra nueva, y una medida del error al final de cada una">
+      <rect x="10" y="26" width="150" height="40" rx="6" class="box-time"/><text x="85" y="51" text-anchor="middle" font-size="14">tarea 1</text>
+      <rect x="175" y="26" width="150" height="40" rx="6" class="box-time"/><text x="250" y="51" text-anchor="middle" font-size="14">tarea 2</text>
+      <rect x="340" y="26" width="150" height="40" rx="6" class="box-time"/><text x="415" y="51" text-anchor="middle" font-size="14">tarea 3</text>
+      <text x="560" y="51" text-anchor="middle" class="t-muted" font-size="18">…</text>
+      <rect x="630" y="26" width="260" height="40" rx="6" class="box-time"/><text x="760" y="51" text-anchor="middle" font-size="14">tarea 300 (vientos) o 600 (maestros)</text>
+      <text x="450" y="16" text-anchor="middle" class="t-muted" font-size="13">500 pasos por tarea, lotes de 64, siempre las entradas del régimen agresivo · tiempo →</text>
+      <path d="M160 68 V84" class="ln-tesis"/><path d="M325 68 V84" class="ln-tesis"/><path d="M490 68 V84" class="ln-tesis"/><path d="M890 68 V84" class="ln-tesis"/>
+      <text x="450" y="96" text-anchor="middle" class="t-tesis" font-size="13">al terminar cada tarea: error normalizado en 1024 entradas nuevas de esa tarea</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Con estructura</strong> (300 tareas): cada tarea sortea un viento horizontal \(v_w\) de 0 a 8 m/s en una dirección al azar y una carga \(\Delta m\) entre −0,3 y 0,5 kg. La fuerza sigue la fórmula de antes con otro \(v_w\) y otro \(\Delta m\): lo aprendido en una tarea sirve en la siguiente.</p>
+      <p><strong>Sin estructura</strong> (600 tareas): cada tarea es una red «maestra» aleatoria nueva, \(y = \tanh(W_1\tilde x + b_1)\,W_2\), con \(\tilde x\) la entrada normalizada. No hay nada que transferir.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Qué se mide</strong> al final de cada tarea:</p>
+      \[ e_{\text{norm}} = \frac{\text{error cuadrático medio}}{\text{varianza de } y \text{ en esa tarea}} \]
+      <p>Dividir por la varianza hace comparables tareas con fuerzas de tamaños muy distintos: \(e_{\text{norm}} = 0{,}007\) es un error del 0,7 % de la varianza (\(R^2 = 0{,}993\)); 1 sería no hacerlo mejor que la media.</p>
+      <p>Cada 10 tareas se cuentan además las unidades muertas y la norma de los pesos.</p>
+      <p class="small muted">Ejemplo 12 del script; sorteos de <code>figuras_a9b.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · montaje</p>
+  <h2>La misma red, dos tipos de cambio, ocho métodos</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Método</th><th>Qué hace</th><th>Contra</th></tr></thead>
+          <tbody>
+            <tr><td>Ajuste fino</td><td>seguir entrenando, sin más</td><td>(referencia)</td></tr>
+            <tr><td>EWC (λ = 0,01 y 1)</td><td>penalización con la Fisher diagonal de cada régimen terminado</td><td>olvido</td></tr>
+            <tr><td>Repetición</td><td>200 puntos guardados por régimen, mezclados al 50 %</td><td>olvido</td></tr>
+            <tr><td>Conjunto</td><td>entrenar con todos los regímenes vistos (cota)</td><td>olvido</td></tr>
+            <tr><td>Adam + L2</td><td>decaimiento de pesos \(10^{-3}\)</td><td>plasticidad</td></tr>
+            <tr><td>Encoger y perturbar</td><td>\(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\) al empezar cada tarea</td><td>plasticidad</td></tr>
+            <tr><td>Retropropagación continua</td><td>\(\rho = 10^{-4}\), madurez 100, \(\eta = 0{,}99\)</td><td>plasticidad</td></tr>
+            <tr><td>Reiniciar</td><td>red y optimizador nuevos en cada tarea</td><td>plasticidad (cota opuesta)</td></tr>
           </tbody>
         </table>
       </div>
       <p class="xsmall muted">Medias de 3 semillas. <code>figuras_a9b.py</code> (JAX en GPU, determinista; unos 10 minutos).</p>
+    </div>
+    <div class="stack">
+      <p><strong>Olvido (por dominios):</strong> los cinco regímenes en secuencia, 3000 pasos cada uno. La función no cambia; solo las entradas.</p>
+      <p><strong>Plasticidad (no estacionario):</strong> cientos de tareas seguidas de 500 pasos con las mismas entradas y otra función: un viento y una carga nuevos (comparten estructura) o una red maestra aleatoria (no comparten nada).</p>
+      <div class="callout clave"><span class="tag">Las dos cotas</span>El conjunto es lo mejor que se puede hacer contra el olvido (tiene todos los datos); reiniciar, lo máximo de plasticidad (siempre una red nueva) sin ninguna transferencia.</div>
     </div>
   </div>
 </section>
@@ -323,22 +1135,29 @@
 <section class="slide">
   <p class="kicker">Experimento · olvido</p>
   <h2>Al seguir con otras misiones, el modelo olvida cómo es una maniobra agresiva</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Ajuste fino: tras … / error en</th><th>flotar</th><th>agresivo</th><th>avance</th><th>sub./baj.</th><th>lateral</th></tr></thead>
+      <tbody>
+        <tr><td>flotar</td><td class="n">0,0001</td><td class="n">0,9018</td><td class="n">0,0267</td><td class="n">0,0137</td><td class="n">0,4735</td></tr>
+        <tr><td>agresivo</td><td class="n">0,0034</td><td class="n">0,0059</td><td class="n">0,0038</td><td class="n">0,0025</td><td class="n">0,0038</td></tr>
+        <tr><td>avance lento</td><td class="n">0,0002</td><td class="n">0,1370</td><td class="n">&lt; 0,0001</td><td class="n">0,0051</td><td class="n">0,0467</td></tr>
+        <tr><td>subidas y bajadas</td><td class="n">&lt; 0,0001</td><td class="n">0,1150</td><td class="n">0,0019</td><td class="n">&lt; 0,0001</td><td class="n">0,0961</td></tr>
+        <tr><td>lateral rápido</td><td class="n">0,0012</td><td class="n">0,2371</td><td class="n">0,0149</td><td class="n">0,0169</td><td class="n">0,0001</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="xsmall muted">Error cuadrático medio de la fuerza (N²) en datos de prueba de cada régimen. La varianza de la fuerza en el régimen agresivo es de 2,70 N².</p>
   <div class="cols">
-    <div class="stack">
-      <div class="table-wrap">
-        <table class="t">
-          <thead><tr><th>Ajuste fino: tras … / error en</th><th>flotar</th><th>agresivo</th><th>avance</th><th>sub./baj.</th><th>lateral</th></tr></thead>
-          <tbody>
-            <tr><td>flotar</td><td class="n">0,0001</td><td class="n">0,9018</td><td class="n">0,0267</td><td class="n">0,0137</td><td class="n">0,4735</td></tr>
-            <tr><td>agresivo</td><td class="n">0,0034</td><td class="n">0,0059</td><td class="n">0,0038</td><td class="n">0,0025</td><td class="n">0,0038</td></tr>
-            <tr><td>avance lento</td><td class="n">0,0002</td><td class="n">0,1370</td><td class="n">&lt; 0,0001</td><td class="n">0,0051</td><td class="n">0,0467</td></tr>
-            <tr><td>subidas y bajadas</td><td class="n">&lt; 0,0001</td><td class="n">0,1150</td><td class="n">0,0019</td><td class="n">&lt; 0,0001</td><td class="n">0,0961</td></tr>
-            <tr><td>lateral rápido</td><td class="n">0,0012</td><td class="n">0,2371</td><td class="n">0,0149</td><td class="n">0,0169</td><td class="n">0,0001</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="xsmall muted">Error cuadrático medio de la fuerza (N²) en datos de prueba de cada régimen. La varianza de la fuerza en el régimen agresivo es de 2,70 N².</p>
-    </div>
+    <p>El error en el régimen agresivo pasa de 0,0059 justo después de aprenderlo a 0,2371 al final: el modelo es bueno en lo último que vio y malo en lo que no ve desde hace tiempo.</p>
+    <p>La columna del agresivo es la historia entera: 0,90 antes de verlo, 0,006 al aprenderlo, y con los regímenes estrechos que llegan después vuelve a 0,14, 0,12 y 0,24.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · olvido, por método</p>
+  <h2>Repetir 200 puntos corta el olvido casi del todo</h2>
+  <div class="cols">
     <div class="stack">
       <div class="table-wrap">
         <table class="t">
@@ -352,10 +1171,52 @@
           </tbody>
         </table>
       </div>
-      <ul class="small">
-        <li>El error en el régimen agresivo pasa de 0,0059 justo después de aprenderlo a 0,2371 al final: el modelo es bueno en lo último que vio y malo en lo que no ve desde hace tiempo.</li>
-        <li>Guardar 200 puntos por régimen corta el olvido casi del todo; EWC fuerte se acerca, a costa de aprender algo peor cada régimen nuevo (0,0022 frente a 0,0012 N² en la diagonal).</li>
-      </ul>
+      <p class="xsmall muted">Con errores: ACC es el error medio final y BWT \(> 0\) es olvido.</p>
+    </div>
+    <div class="stack">
+      <p>Guardar 200 puntos por régimen corta el olvido casi del todo; EWC fuerte se acerca, a costa de aprender algo peor cada régimen nuevo (0,0022 frente a 0,0012 N² en la diagonal).</p>
+      <p>Es la frontera del ejemplo de dos parámetros, medida en la red: más \(\lambda\), menos olvido y peor la tarea nueva.</p>
+      <div class="callout clave"><span class="tag">BWT negativa</span>El conjunto tiene BWT \(\lt 0\): seguir entrenando con todos los regímenes mejora también los antiguos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Experimento · métricas paso a paso</p>
+  <h2>ACC, BWT y FWT con la matriz del ajuste fino</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>ACC</strong>, media de la última fila:</p>
+      <p>\((0{,}0012 + 0{,}2371 + 0{,}0149 + 0{,}0169 + 0{,}0001)/5 = 0{,}0540\) N².</p>
+      <p><strong>BWT</strong>, última fila menos diagonal en los cuatro primeros:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Régimen</th><th>\(R_{5,i} - R_{i,i}\)</th><th>Diferencia</th></tr></thead>
+          <tbody>
+            <tr><td>flotar</td><td class="n">0,0012 − 0,0001</td><td class="n">+0,0011</td></tr>
+            <tr><td>agresivo</td><td class="n">0,2371 − 0,0059</td><td class="n">+0,2312</td></tr>
+            <tr><td>avance</td><td class="n">0,0149 − 0,0000</td><td class="n">+0,0149</td></tr>
+            <tr><td>sub./baj.</td><td class="n">0,0169 − 0,0000</td><td class="n">+0,0169</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Suma 0,2641; entre 4, <strong>+0,0660</strong>. El agresivo pone el 88 %.</p>
+    </div>
+    <div class="stack">
+      <p><strong>FWT</strong>, referencia (varianza) menos el error antes de entrenar, en los cuatro últimos:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Régimen</th><th>\(\bar b_i - R_{i-1,i}\)</th><th>Diferencia</th></tr></thead>
+          <tbody>
+            <tr><td>agresivo</td><td class="n">2,70 − 0,9018</td><td class="n">+1,7982</td></tr>
+            <tr><td>avance</td><td class="n">0,04 − 0,0038</td><td class="n">+0,0362</td></tr>
+            <tr><td>sub./baj.</td><td class="n">0,13 − 0,0051</td><td class="n">+0,1249</td></tr>
+            <tr><td>lateral</td><td class="n">0,25 − 0,0961</td><td class="n">+0,1539</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Suma 2,1132; entre 4, <strong>+0,53</strong> (el script, sin redondear, da +0,5265). Positiva: lo que la red sabe de flotar ya predice el agresivo mejor que su media (0,90 frente a 2,70 N²).</p>
+      <p class="small muted">Ejemplo 3 del script; FWT de <code>salida_gpu.txt</code>.</p>
     </div>
   </div>
 </section>
@@ -397,7 +1258,7 @@
           </tbody>
         </table>
       </div>
-      <p class="small">Las tareas comparten estructura (la misma aerodinámica con otro viento y otra carga), así que lo aprendido antes ayuda: con Adam, el error al final de cada tarea baja de 0,016 a 0,007. Reiniciar pierde esa transferencia y es el peor. Las unidades muertas crecen hasta el 28 % sin que se note.</p>
+      <p>Las tareas comparten estructura (la misma aerodinámica con otro viento y otra carga), así que lo aprendido antes ayuda: con Adam, el error al final de cada tarea baja de 0,016 a 0,007. Reiniciar pierde esa transferencia y es el peor. Las unidades muertas crecen hasta el 28 % sin que se note.</p>
     </div>
   </div>
 </section>
@@ -425,6 +1286,7 @@
         <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">tarea</text>
       </svg>
       <figcaption>Media móvil de 20 tareas. Azul: Adam; morado: retropropagación continua; gruesas, tasa \(10^{-2}\); finas, \(10^{-3}\). Gris discontinuo: reiniciar.</figcaption>
+      <p>Con la tasa por defecto, 600 tareas no bastan: ningún método pierde plasticidad, aunque con Adam las unidades muertas lleguen al 32 %. Dohare et al. la midieron en miles de tareas.</p>
     </figure>
     <div class="stack">
       <div class="table-wrap">
@@ -440,10 +1302,7 @@
           </tbody>
         </table>
       </div>
-      <ul class="small">
-        <li>Con la tasa por defecto, 600 tareas no bastan: ningún método pierde plasticidad, aunque con Adam las unidades muertas lleguen al 32 %. Dohare et al. la midieron en miles de tareas.</li>
-        <li>Con tasa \(10^{-2}\), Adam aprende más deprisa al principio y después se degrada (de 0,110 a 0,159, con un 49 % de unidades muertas y los pesos más que duplicados). La retropropagación continua frena la caída (de 0,099 a 0,118), con una tasa de reemplazo pensada para la tasa baja.</li>
-      </ul>
+      <p>Con tasa \(10^{-2}\), Adam aprende más deprisa al principio y después se degrada (de 0,110 a 0,159, con un 49 % de unidades muertas y los pesos más que duplicados). La retropropagación continua frena la caída (de 0,099 a 0,118), con una tasa de reemplazo pensada para la tasa baja.</p>
     </div>
   </div>
 </section>
@@ -453,7 +1312,7 @@
   <h2>Olvido y plasticidad piden remedios opuestos</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Olvido:</strong> cuando la función no cambia, lo barato y eficaz es guardar unos pocos datos de cada régimen y repetirlos. EWC protege a costa de aprender peor lo nuevo.</li>
         <li><strong>Plasticidad:</strong> cuando la función cambia, lo que importa es poder seguir moviendo la red: pesos pequeños (L2, encoger) y unidades vivas (retropropagación continua, reinicios), según la literatura. En nuestro caso solo hizo falta con la tasa alta, y ahí la retropropagación continua fue la que frenó la caída.</li>
         <li><strong>La tensión:</strong> anclar los pesos (EWC) reduce el olvido y la plasticidad a la vez; reinicializar unidades devuelve plasticidad y borra algo de lo aprendido. Es el dilema de estabilidad y plasticidad, medido.</li>
@@ -483,7 +1342,7 @@
   <h2>Un world model que aprende de cada vuelo</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Olvido:</strong> si tu dron pasa semanas buscando en interiores, su modelo puede olvidar cómo vuela al aire libre. Una memoria de vuelos de todos los regímenes y la matriz de resultados lo detectan.</li>
         <li><strong>Plasticidad:</strong> el RSSM de A8a se entrena con Adam durante mucho tiempo; vigila las unidades latentes de su GRU y la norma de los pesos, y prueba la normalización por capas.</li>
         <li><strong>Belief:</strong> adaptarse (A9a) es actualizar un belief sobre parámetros; aprender continuamente es actualizar el propio modelo con el que se forma el belief. Lo segundo es más lento y más arriesgado.</li>
@@ -617,8 +1476,8 @@
   <h2>Olvido y plasticidad en un modelo de la aerodinámica</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>Regímenes en secuencia:</strong> matriz de resultados y métricas.</li>
         <li><strong>Contra el olvido:</strong> EWC (con la Fisher bien calculada) y repetición.</li>
         <li><strong>Flujo de tareas:</strong> con y sin estructura compartida.</li>
@@ -683,110 +1542,157 @@
 </main>
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
-</dl>
 <h3>Notación general</h3>
-<p>Un sombrero (\(\hat x\)) es una estimación; una barra (\(\bar b_j\)), una referencia; una estrella (\(\theta^*\)), la solución al terminar una tarea. Los errores son cuadráticos medios.</p>
+<p>Un sombrero (\(\hat{\mathcal L}_j\)) es una estimación; una barra (\(\bar b_j\)), una referencia o una media; una estrella (\(\theta^*\)), la solución al terminar una tarea; una tilde (\(\tilde F\)), una versión aproximada o calculada de otra forma. Los errores son cuadráticos medios.</p>
 <dl>
-<dt>\(\theta\)</dt><dd data-hojas="8">Vector de parámetros (pesos) de la red; \(\theta_i\) es su componente \(i\). En encoger y perturbar, \(\theta\) es la red al empezar la ronda.</dd>
-<dt>\(\mathcal L(\theta)\)</dt><dd data-hojas="8">Función de pérdida total que se minimiza con EWC: la pérdida de la tarea nueva más la penalización.</dd>
-<dt>\(\mathbb E\)</dt><dd data-hojas="8">Esperanza (media) sobre los datos; \(\mathbb E_x\) es la media sobre las entradas \(x\).</dd>
-<dt>\(\mathcal N(0, \sigma^2)\)</dt><dd data-hojas="13">Gaussiana de media cero y varianza \(\sigma^2\); de ella sale el ruido \(p\) de encoger y perturbar.</dd>
-<dt>\(\sim\)</dt><dd data-hojas="13">«Se distribuye según».</dd>
-<dt>\(\approx\)</dt><dd data-hojas="8">«Aproximadamente igual»: la aproximación de Laplace del posterior.</dd>
-<dt>\(\mid\)</dt><dd data-hojas="8">«Dado que»: \(p(\theta\mid D_A)\) es la probabilidad de \(\theta\) dados los datos \(D_A\).</dd>
-<dt>\(\log\)</dt><dd data-hojas="8">Logaritmo natural, usado en la verosimilitud y en el posterior.</dd>
-<dt>\(\leftarrow\)</dt><dd data-hojas="13">Asignación: el valor de la derecha sustituye al de la izquierda.</dd>
-<dt>\(^\top\)</dt><dd data-hojas="8">Traspuesta de una matriz o vector.</dd>
-<dt>\(\partial\)</dt><dd data-hojas="8">Derivada parcial; con ella se define el jacobiano \(J = \partial f_\theta(x)/\partial\theta\).</dd>
-<dt>\(\|\theta\|\)</dt><dd data-hojas="22">Norma de los parámetros de la red: mide si los pesos crecen durante el entrenamiento.</dd>
-
+<dt>\(\theta\)</dt><dd data-hojas="6,14">Vector de parámetros (pesos y sesgos) de la red; \(\theta_i\) es su componente \(i\). En encoger y perturbar, \(\theta\) es la red al empezar la ronda.</dd>
+<dt>\(P\)</dt><dd data-hojas="6,19">Número de parámetros de la red: 4867 en la red de 2 capas de 64 del experimento.</dd>
+<dt>\(x\)</dt><dd data-hojas="6">Entrada de un dato. En el experimento, velocidad, empuje y eje de empuje: 7 números.</dd>
+<dt>\(y\)</dt><dd data-hojas="6,9">Salida que debería dar el modelo para la entrada \(x\). En el experimento, la fuerza residual (3 números, en N).</dd>
+<dt>\(f_\theta(x)\)</dt><dd data-hojas="6,17">Salida de la red con parámetros \(\theta\) para la entrada \(x\): la fuerza residual estimada.</dd>
+<dt>\(\mathcal L(\theta)\)</dt><dd data-hojas="14">Función de pérdida total que se minimiza con EWC: la pérdida de la tarea nueva más la penalización.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="9,15">Esperanza (media) sobre los datos; \(\mathbb E_x\) es la media sobre las entradas \(x\).</dd>
+<dt>\(\mathcal N(0, \sigma^2)\)</dt><dd data-hojas="30">Gaussiana de media cero y varianza \(\sigma^2\); de ella sale el ruido \(p\) de encoger y perturbar.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="9,30">«Se distribuye según».</dd>
+<dt>\(\approx\)</dt><dd data-hojas="15">«Aproximadamente igual»: la aproximación de Laplace del posterior.</dd>
+<dt>\(\mid\)</dt><dd data-hojas="15">«Dado que»: \(p(\theta\mid D_A)\) es la probabilidad de \(\theta\) dados los datos \(D_A\).</dd>
+<dt>\(\log\)</dt><dd data-hojas="15">Logaritmo natural, usado en la verosimilitud y en el posterior.</dd>
+<dt>\(\leftarrow\)</dt><dd data-hojas="30,32">Asignación: el valor de la derecha sustituye al de la izquierda.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="9,17">Traspuesta de una matriz o vector.</dd>
+<dt>\(\partial\)</dt><dd data-hojas="17,27">Derivada parcial; con ella se define el jacobiano \(J = \partial f_\theta(x)/\partial\theta\).</dd>
+<dt>\(\nabla_\theta\), \(\nabla^2_\theta\)</dt><dd data-hojas="17">Gradiente (vector de derivadas) y matriz de segundas derivadas respecto a los parámetros.</dd>
+<dt>\(\mathrm{diag}\)</dt><dd data-hojas="15,16">Matriz diagonal con los números indicados en la diagonal y ceros fuera.</dd>
+<dt>\(\|\theta\|\)</dt><dd data-hojas="24,48">Norma euclídea de todos los pesos de la red: mide si los pesos crecen durante el entrenamiento (15,9 al empezar).</dd>
+</dl>
+<h3>Olvido: dos tareas, dos parámetros</h3>
+<p>Parte 1. El ejemplo lineal con el que se dibuja el dilema y se calculan EWC y la repetición a mano.</p>
+<dl>
+<dt>\(A\), \(B\)</dt><dd data-hojas="6,8">Tarea anterior y tarea nueva.</dd>
+<dt>\(\theta_1\), \(\theta_2\)</dt><dd data-hojas="8,9">Los dos parámetros del modelo lineal del ejemplo, \(f_\theta(x) = \theta_1 x_1 + \theta_2 x_2\).</dd>
+<dt>\(x_1\), \(x_2\)</dt><dd data-hojas="9">Las dos entradas del ejemplo: en \(A\) varía sobre todo \(x_1\); en \(B\), sobre todo \(x_2\).</dd>
+<dt>\(\mathcal L_k(\theta)\)</dt><dd data-hojas="9">Pérdida de la tarea \(k\) en el ejemplo, \(\tfrac12\mathbb E[(f_\theta(x) - y)^2]\): el error cuadrático medio con un ½, que es \(-\log p\) con ruido de varianza 1.</dd>
+<dt>\(H\), \(H_A\), \(H_B\)</dt><dd data-hojas="9,16">Curvatura de la pérdida, \(\mathbb E[xx^\top]\) en el modelo lineal: \(H_A = \mathrm{diag}(1;\ 0{,}01)\), \(H_B = \mathrm{diag}(0{,}09;\ 1)\). En la derivación de EWC, \(H_A\) es la curvatura de \(-\log p(\theta\mid D_A)\) en \(\theta^*_A\).</dd>
+<dt>\(H_{A,i}\)</dt><dd data-hojas="9">Elemento \(i\) de la diagonal de \(H_A\): lo mucho que varía la entrada \(x_i\) en la tarea \(A\).</dd>
 </dl>
 <h3>Olvido: la matriz de resultados</h3>
 <p>Parte 1. \(T\) tareas (en el experimento, regímenes de vuelo) se aprenden en orden.</p>
 <dl>
-<dt>\(T\)</dt><dd data-hojas="7">Número total de tareas de la secuencia.</dd>
-<dt>\(i\), \(j\)</dt><dd data-hojas="7">Índices de tarea: \(i\) es la última tarea entrenada y \(j\), la tarea en la que se evalúa.</dd>
-<dt>\(R_{i,j}\)</dt><dd data-hojas="7">Matriz de resultados: resultado en la tarea \(j\) tras terminar la tarea \(i\). Con regresión es un error cuadrático medio.</dd>
-<dt>\(R_{T,i}\)</dt><dd data-hojas="7">Última fila de la matriz: resultado en la tarea \(i\) al final de todo el entrenamiento.</dd>
-<dt>\(R_{i,i}\)</dt><dd data-hojas="7">Diagonal: resultado en la tarea \(i\) justo después de aprenderla.</dd>
-<dt>\(R_{i-1,i}\)</dt><dd data-hojas="7">Resultado en la tarea \(i\) antes de entrenarla, con lo aprendido hasta la tarea anterior; se usa en FWT.</dd>
-<dt>\(\bar b_j\)</dt><dd data-hojas="7">Resultado de referencia en la tarea \(j\) antes de entrenar. Aquí, el error de predecir la media de cada régimen.</dd>
-<dt>\(\mathrm{ACC}\)</dt><dd data-hojas="7">Precisión media final: \(\frac1T\sum_i R_{T,i}\), promedio de la última fila.</dd>
-<dt>\(\mathrm{BWT}\)</dt><dd data-hojas="7">Transferencia hacia atrás: media de \(R_{T,i} - R_{i,i}\). Con aciertos, muy negativa es olvido; con errores (nuestro caso), positiva es olvido.</dd>
-<dt>\(\mathrm{FWT}\)</dt><dd data-hojas="7">Transferencia hacia delante: media de \(R_{i-1,i} - \bar b_i\), lo que ayuda lo aprendido a una tarea aún no entrenada.</dd>
-<dt>\(\sum_{i=1}^T\)</dt><dd data-hojas="7">Suma sobre las tareas.</dd>
-
+<dt>\(T\)</dt><dd data-hojas="6,10">Número total de tareas de la secuencia. En la parte 4, \(T\) es también el empuje: ver «Experimento».</dd>
+<dt>\(i\), \(j\)</dt><dd data-hojas="6,10">Índices de tarea: \(i\) es la última tarea entrenada y \(j\), la tarea en la que se evalúa.</dd>
+<dt>\(R_{i,j}\)</dt><dd data-hojas="6,11">Matriz de resultados: resultado en la tarea \(j\) tras terminar la tarea \(i\). Con regresión es un error cuadrático medio.</dd>
+<dt>\(R_{T,i}\)</dt><dd data-hojas="11">Última fila de la matriz: resultado en la tarea \(i\) al final de todo el entrenamiento.</dd>
+<dt>\(R_{i,i}\)</dt><dd data-hojas="11">Diagonal: resultado en la tarea \(i\) justo después de aprenderla.</dd>
+<dt>\(R_{i-1,i}\)</dt><dd data-hojas="11,13">Resultado en la tarea \(i\) antes de entrenarla, con lo aprendido hasta la tarea anterior; se usa en FWT.</dd>
+<dt>\(\bar b_j\)</dt><dd data-hojas="10,13">Resultado de referencia en la tarea \(j\) antes de entrenarla. Aquí, el error de predecir la media de cada régimen (su varianza).</dd>
+<dt>\(\mathrm{ACC}\)</dt><dd data-hojas="11,12">Precisión media final: \(\frac1T\sum_i R_{T,i}\), promedio de la última fila. Con errores, error medio final.</dd>
+<dt>\(\mathrm{BWT}\)</dt><dd data-hojas="11,13">Transferencia hacia atrás: media de \(R_{T,i} - R_{i,i}\). Con aciertos, muy negativa es olvido; con errores (nuestro caso), positiva es olvido.</dd>
+<dt>\(\mathrm{FWT}\)</dt><dd data-hojas="11,13">Transferencia hacia delante: media de \(R_{i-1,i} - \bar b_i\) (con errores, \(\bar b_i - R_{i-1,i}\)), lo que ayuda lo aprendido a una tarea aún no entrenada.</dd>
+<dt>\(\sum_{i=1}^T\)</dt><dd data-hojas="11">Suma sobre las tareas.</dd>
 </dl>
-<h3>Olvido: EWC y remedios</h3>
+<h3>Olvido: EWC y la Fisher</h3>
 <p>\(A\) es la tarea anterior y \(B\), la nueva.</p>
 <dl>
-<dt>\(\mathcal L_B(\theta)\)</dt><dd data-hojas="8">Pérdida de la tarea nueva \(B\).</dd>
-<dt>\(\lambda\) (EWC)</dt><dd data-hojas="8">Peso de la penalización de EWC: cuánto vale cada muelle. En el experimento, 0,01 y 1. En encoger y perturbar, \(\lambda\) es el factor de encogimiento.</dd>
-<dt>\(F_i\)</dt><dd data-hojas="8">Elemento \(i\) de la diagonal de la información de Fisher en \(\theta^*_A\): importancia del parámetro \(\theta_i\) para la tarea anterior.</dd>
-<dt>\(\theta^*_A\), \(\theta^*_{A,i}\)</dt><dd data-hojas="8">Parámetros óptimos tras la tarea \(A\) y su componente \(i\); es el punto al que el muelle ancla.</dd>
-<dt>\(D_A\), \(D_B\)</dt><dd data-hojas="8">Datos de las tareas \(A\) y \(B\).</dd>
-<dt>\(p(\theta\mid D_A)\)</dt><dd data-hojas="8">Posterior de los parámetros dados los datos de \(A\): contiene toda la información de \(A\). Se aproxima con una gaussiana (Laplace).</dd>
-<dt>\(p(D_B\mid\theta)\)</dt><dd data-hojas="8">Verosimilitud de los datos de \(B\) dados los parámetros.</dd>
-<dt>\(p(D_B)\)</dt><dd data-hojas="8">Probabilidad marginal de los datos de \(B\); no depende de \(\theta\).</dd>
-<dt>\(J\)</dt><dd data-hojas="8">Jacobiano de la salida de la red respecto a los parámetros, \(J = \partial f_\theta(x)/\partial\theta\). Con verosimilitud gaussiana de varianza unidad, \(F = \mathbb E[J^\top J]\).</dd>
-<dt>\(f_\theta(x)\)</dt><dd data-hojas="8">Salida de la red con parámetros \(\theta\) para la entrada \(x\).</dd>
-<dt>\(x\)</dt><dd data-hojas="8">Entrada de la red (en el experimento, velocidad, empuje y eje de empuje).</dd>
-
+<dt>\(\mathcal L_A(\theta)\), \(\mathcal L_B(\theta)\)</dt><dd data-hojas="6,14">Pérdida media de cada tarea: cuánto se equivoca \(f_\theta\) en sus datos.</dd>
+<dt>\(\lambda\) (EWC)</dt><dd data-hojas="14,16">Peso de la penalización de EWC: la rigidez común de los muelles. Hace el papel de \(N_A/N_B\). En el experimento, 0,01 y 1. En encoger y perturbar, \(\lambda\) es el factor de encogimiento.</dd>
+<dt>\(F_i\)</dt><dd data-hojas="14,17">Elemento \(i\) de la diagonal de la información de Fisher en \(\theta^*_A\): importancia del parámetro \(\theta_i\) para la tarea anterior.</dd>
+<dt>\(F\)</dt><dd data-hojas="15,17">Matriz de información de Fisher de un dato; con verosimilitud gaussiana de varianza unidad, \(F = \mathbb E_x[J^\top J]\).</dd>
+<dt>\(\tilde F\)</dt><dd data-hojas="17,18">«Fisher empírica»: el cuadrado del gradiente del error con los datos, \(\mathbb E[J^\top r\,r^\top J]\). Se anula si el ajuste es bueno: no sirve para EWC.</dd>
+<dt>\(\theta^*_A\), \(\theta^*_{A,i}\)</dt><dd data-hojas="14,6">Parámetros al terminar la tarea \(A\) y su componente \(i\); es el punto al que el muelle ancla.</dd>
+<dt>\(\theta^*_j\), \(F^{(j)}\)</dt><dd data-hojas="19">Parámetros y Fisher diagonal guardados al terminar el régimen \(j\): una penalización por régimen terminado.</dd>
+<dt>\(D_A\), \(D_B\), \(D\)</dt><dd data-hojas="6,15">Datos de las tareas \(A\) y \(B\); \(D = (D_A, D_B)\), todos los datos.</dd>
+<dt>\(N_A\), \(N_B\)</dt><dd data-hojas="15,16">Número de datos de \(A\) y de \(B\).</dd>
+<dt>\(p(\theta\mid D_A)\)</dt><dd data-hojas="15">Posterior de los parámetros dados los datos de \(A\): contiene toda la información de \(A\). Se aproxima con una gaussiana (Laplace).</dd>
+<dt>\(p(D_B\mid\theta)\)</dt><dd data-hojas="15">Verosimilitud de los datos de \(B\) dados los parámetros.</dd>
+<dt>\(p(D_B)\)</dt><dd data-hojas="15">Probabilidad marginal de los datos de \(B\); no depende de \(\theta\).</dd>
+<dt>\(p_\theta(y\mid x)\)</dt><dd data-hojas="17">Distribución de la salida que predice el modelo: gaussiana centrada en \(f_\theta(x)\) con varianza unidad.</dd>
+<dt>\(J\)</dt><dd data-hojas="6,17">Jacobiano de la salida de la red respecto a los parámetros, \(J = \partial f_\theta(x)/\partial\theta\) (3 × 4867 en el experimento; \(J = x\) en el ejemplo lineal).</dd>
+<dt>\(g\)</dt><dd data-hojas="17">Gradiente del logaritmo de la verosimilitud de un dato, \(\nabla_\theta\log p_\theta(y\mid x) = J^\top(y - f_\theta(x))\).</dd>
+<dt>\(\varepsilon\)</dt><dd data-hojas="17">Ruido del modelo: el residuo cuando \(y\) se saca del propio modelo, \(\mathcal N(0, I)\).</dd>
+<dt>\(r\)</dt><dd data-hojas="17">Residuo con los datos, \(y_{\text{dato}} - f_\theta(x)\).</dd>
+<dt>\(k\) (salidas)</dt><dd data-hojas="17">Índice de las salidas de la red en \(F_i = \mathbb E_x[\sum_k(\partial f_k/\partial\theta_i)^2]\). En la parte 2, \(k\) recorre las unidades de la capa.</dd>
+<dt>\(I\)</dt><dd data-hojas="17">Matriz identidad.</dd>
+<dt>\(\sigma\) (ruido de los datos)</dt><dd data-hojas="18">Desviación típica del ruido añadido a los datos de \(A\) en el ejemplo de la Fisher (0,1). En encoger y perturbar, \(\sigma\) es otra cosa.</dd>
+</dl>
+<h3>Olvido: repetición</h3>
+<dl>
+<dt>\(\mathcal L_{\text{conj}}(\theta)\)</dt><dd data-hojas="20">Pérdida conjunta de todas las tareas vistas, pesadas por \(w_j\): lo que minimiza el entrenamiento conjunto.</dd>
+<dt>\(w_j\)</dt><dd data-hojas="20,21">Peso de la tarea \(j\) en la pérdida conjunta. En la repetición del experimento, \(\tfrac12\) para la nueva y \(\tfrac{1}{2(i-1)}\) para cada anterior.</dd>
+<dt>\(\ell\) (error de un dato)</dt><dd data-hojas="20">Error de un solo dato, \(\ell(f_\theta(x), y)\). En la parte 2, \(\ell\) es el índice de capa.</dd>
+<dt>\(M_j\)</dt><dd data-hojas="20">Memoria de la tarea \(j\): los puntos guardados (200 por régimen en el experimento).</dd>
+<dt>\(\hat{\mathcal L}_j(\theta)\)</dt><dd data-hojas="20,21">Pérdida de la tarea \(j\) estimada con su memoria; sin sesgo si la memoria es una muestra al azar.</dd>
+<dt>\(\ell_{\text{lote}}\), \(\bar\ell_{\text{nuevo}}\), \(\bar\ell_{\text{memoria}}\)</dt><dd data-hojas="20">Pérdida de un paso: la media del error en el lote nuevo y en el lote de la memoria, al 50 %.</dd>
 </dl>
 <h3>Pérdida de plasticidad</h3>
 <p>Parte 2. Unidades latentes y remedios que devuelven plasticidad.</p>
 <dl>
-<dt>\(s_i^\ell\)</dt><dd data-hojas="12">Puntuación de la unidad \(i\) de la capa \(\ell\): su actividad media normalizada por la media de su capa.</dd>
-<dt>\(h_i^\ell(x)\)</dt><dd data-hojas="12">Activación de la unidad \(i\) de la capa \(\ell\) para la entrada \(x\).</dd>
-<dt>\(H^\ell\)</dt><dd data-hojas="12">Número de unidades de la capa \(\ell\).</dd>
-<dt>\(\tau\)</dt><dd data-hojas="12">Umbral de la puntuación: la unidad es \(\tau\)-latente si \(s_i^\ell \le \tau\) (se usa \(\tau = 0{,}1\)).</dd>
-<dt>\(\lambda\) (encoger)</dt><dd data-hojas="13">Factor de encogimiento, \(0 \lt \lambda \lt 1\), en \(\theta \leftarrow \lambda\theta + p\).</dd>
-<dt>\(p\)</dt><dd data-hojas="13">Ruido gaussiano de perturbación, \(p \sim \mathcal N(0, \sigma^2)\), que se suma a los pesos encogidos.</dd>
-<dt>\(\sigma\)</dt><dd data-hojas="13">Desviación típica del ruido de perturbación.</dd>
-<dt>\(\theta_{\text{nueva}}\)</dt><dd data-hojas="19">Pesos de una red recién inicializada, mezclados en encoger y perturbar: \(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\).</dd>
-<dt>\(u_\ell[i]\)</dt><dd data-hojas="13">Utilidad de la unidad \(i\) de la capa \(\ell\) en retropropagación continua: media móvil de su contribución.</dd>
-<dt>\(\eta\)</dt><dd data-hojas="13">Factor de la media móvil de la utilidad (\(\eta = 0{,}99\)).</dd>
-<dt>\(h_{\ell,i,t}\)</dt><dd data-hojas="13">Activación de la unidad \(i\) de la capa \(\ell\) en el paso \(t\).</dd>
-<dt>\(w_{\ell,i,k,t}\)</dt><dd data-hojas="13">Peso de salida de la unidad \(i\) de la capa \(\ell\) hacia la unidad \(k\) de la capa siguiente, en el paso \(t\).</dd>
-<dt>\(\rho\)</dt><dd data-hojas="13,19">Fracción muy pequeña de unidades maduras de menor utilidad que se reinicializan en cada paso (en el experimento, \(10^{-4}\)).</dd>
-<dt>\(m\)</dt><dd data-hojas="13">Número mínimo de actualizaciones para que una unidad sea «madura» (en el experimento, 100).</dd>
-<dt>\(10^{-3}\), \(10^{-2}\)</dt><dd data-hojas="19,22">Tasas de aprendizaje de Adam; \(10^{-3}\) es la tasa por defecto y \(10^{-2}\), la alta con la que sí aparece pérdida de plasticidad. \(10^{-3}\) es también el decaimiento de pesos de L2.</dd>
-<dt>N²</dt><dd data-hojas="20">Unidad del error cuadrático medio de la fuerza (newtons al cuadrado).</dd>
-<dt>\(\lambda = 0{,}01\) y \(1\)</dt><dd data-hojas="19">Los dos pesos de EWC probados en el experimento.</dd>
-<dt>\(\ell\)</dt><dd data-hojas="12">Índice de capa de la red.</dd>
+<dt>\(\ell\)</dt><dd data-hojas="24,28">Índice de capa oculta de la red.</dd>
+<dt>\(H^\ell\)</dt><dd data-hojas="24,28">Número de unidades de la capa \(\ell\) (64 en el experimento). No confundir con la curvatura \(H\) de la parte 1.</dd>
+<dt>\(z_i^\ell(x)\)</dt><dd data-hojas="24">Preactivación de la unidad \(i\) de la capa \(\ell\): pesos de entrada por la salida de la capa anterior, más el sesgo.</dd>
+<dt>\(h_i^\ell(x)\)</dt><dd data-hojas="24,28">Activación (ReLU) de la unidad \(i\) de la capa \(\ell\) para la entrada \(x\): \(\max(0, z_i^\ell)\).</dd>
+<dt>\(w\), \(b\), \(h^{\ell-1}\)</dt><dd data-hojas="27">Pesos de entrada, sesgo y entrada (salida de la capa anterior) de una unidad.</dd>
+<dt>\(s_i^\ell\)</dt><dd data-hojas="28">Puntuación de la unidad \(i\) de la capa \(\ell\): su actividad media normalizada por la media de su capa.</dd>
+<dt>\(\tau\)</dt><dd data-hojas="24,28">Umbral de la puntuación: la unidad es \(\tau\)-latente si \(s_i^\ell \le \tau\) (Sokar et al. usan \(\tau = 0{,}1\); las «muertas» del experimento son \(\tau = 0\)).</dd>
+<dt>\(\lambda\) (encoger)</dt><dd data-hojas="30">Factor de encogimiento, \(0 \lt \lambda \lt 1\), en \(\theta \leftarrow \lambda\theta + p\).</dd>
+<dt>\(p\)</dt><dd data-hojas="30">Ruido gaussiano de perturbación, \(p \sim \mathcal N(0, \sigma^2)\), que se suma a los pesos encogidos. No es una probabilidad.</dd>
+<dt>\(\sigma\) (encoger)</dt><dd data-hojas="30">Desviación típica del ruido de perturbación.</dd>
+<dt>\(\theta_{\text{nueva}}\)</dt><dd data-hojas="30,43">Pesos de una red recién inicializada, mezclados en encoger y perturbar: \(\theta \leftarrow 0{,}6\,\theta + 0{,}1\,\theta_{\text{nueva}}\).</dd>
+<dt>\(u_\ell[i]\)</dt><dd data-hojas="24,32">Utilidad de la unidad \(i\) de la capa \(\ell\) en retropropagación continua: media móvil de su contribución.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="32">Factor de la media móvil de la utilidad (\(\eta = 0{,}99\)): memoria de unos 100 pasos.</dd>
+<dt>\(t\)</dt><dd data-hojas="32">Paso de entrenamiento (un lote, una actualización).</dd>
+<dt>\(h_{\ell,i,t}\)</dt><dd data-hojas="32">Activación de la unidad \(i\) de la capa \(\ell\) en el paso \(t\).</dd>
+<dt>\(w_{\ell,i,k,t}\)</dt><dd data-hojas="32,24">Peso de salida de la unidad \(i\) de la capa \(\ell\) hacia la unidad \(k\) de la capa siguiente, en el paso \(t\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="31,32">Fracción muy pequeña de unidades maduras de menor utilidad que se reinicializan en cada paso (en el experimento, \(10^{-4}\): una cada 156 pasos por capa).</dd>
+<dt>\(m\)</dt><dd data-hojas="24,32">Número mínimo de actualizaciones para que una unidad sea «madura» (en el experimento, 100).</dd>
+<dt>\(10^{-3}\), \(10^{-2}\)</dt><dd data-hojas="48,43">Tasas de aprendizaje de Adam; \(10^{-3}\) es la tasa por defecto y \(10^{-2}\), la alta con la que sí aparece pérdida de plasticidad. \(10^{-3}\) es también el decaimiento de pesos de L2.</dd>
+<dt>N²</dt><dd data-hojas="44">Unidad del error cuadrático medio de la fuerza (newtons al cuadrado).</dd>
+<dt>\(\lambda = 0{,}01\) y \(1\)</dt><dd data-hojas="6,45">Los dos pesos de EWC probados en el experimento.</dd>
 </dl>
-
+<h3>Experimento</h3>
+<p>Parte 4. La red que predice la fuerza residual y la fórmula supuesta que hace de verdad.</p>
+<dl>
+<dt>\(v\)</dt><dd data-hojas="39,40">Velocidad del dron (3 componentes, m/s): entrada de la red.</dd>
+<dt>\(T\) (empuje)</dt><dd data-hojas="39,40">Empuje normalizado (en torno a 1): entrada de la red. No confundir con el número de tareas \(T\) de la parte 1.</dd>
+<dt>\(z_b\)</dt><dd data-hojas="39,40">Eje de empuje: la dirección (unitaria) en la que empuja el dron, su eje vertical de cuerpo.</dd>
+<dt>\(f\)</dt><dd data-hojas="40">Fuerza residual verdadera (supuesta, en N): resistencia, arrastre de rotor, pérdida de empuje y carga.</dd>
+<dt>\(v_w\)</dt><dd data-hojas="40,42">Velocidad del viento (m/s). Cero en el experimento de olvido; de 0 a 8 m/s en el flujo de tareas.</dd>
+<dt>\(v_r\)</dt><dd data-hojas="40">Velocidad del aire respecto al dron, \(v_w - v\).</dd>
+<dt>\(v_\perp\)</dt><dd data-hojas="40">Parte de \(v_r\) perpendicular al eje de empuje, \(v_r - (v_r\cdot z_b)\,z_b\): la que produce arrastre de rotor.</dd>
+<dt>\(\Delta m\)</dt><dd data-hojas="40,42">Carga añadida (kg). Cero en el experimento de olvido; entre −0,3 y 0,5 kg en el flujo de tareas.</dd>
+<dt>\(g\), \(e_z\)</dt><dd data-hojas="40">Gravedad (9,81 m/s²) y vector unitario vertical.</dd>
+<dt>\(e_{\text{norm}}\)</dt><dd data-hojas="42,47">Error normalizado: error cuadrático medio dividido por la varianza de la salida en esa tarea. 1 es no hacerlo mejor que la media.</dd>
+<dt>\(R^2\)</dt><dd data-hojas="42">Coeficiente de determinación, \(1 - e_{\text{norm}}\): fracción de la varianza explicada.</dd>
+<dt>\(W_1\), \(b_1\), \(W_2\), \(\tilde x\)</dt><dd data-hojas="42">Pesos y sesgo de la red «maestra» aleatoria de cada tarea sin estructura, y la entrada normalizada que recibe.</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
-<dt>EWC</dt><dd data-hojas="8">Elastic weight consolidation: penaliza cambiar los parámetros importantes para tareas anteriores, con la Fisher diagonal.</dd>
-<dt>SI</dt><dd data-hojas="8">Synaptic intelligence: acumula la importancia de cada parámetro en línea, como una integral del gradiente.</dd>
-<dt>LwF</dt><dd data-hojas="8">Learning without forgetting: entrena solo con datos nuevos y conserva las salidas anteriores.</dd>
-<dt>CLEAR</dt><dd data-hojas="9">Método de repetición que mezcla al 50 % experiencia nueva y repetida, con clonación del comportamiento sobre la repetida.</dd>
-<dt>GEM</dt><dd data-hojas="4">Gradient episodic memory: método de aprendizaje continuo que propone también métricas.</dd>
-<dt>ACC</dt><dd data-hojas="7">Accuracy: precisión media final sobre todas las tareas.</dd>
-<dt>BWT</dt><dd data-hojas="7">Backward transfer: efecto de aprender tareas nuevas sobre las anteriores; mide el olvido.</dd>
-<dt>FWT</dt><dd data-hojas="7">Forward transfer: efecto de lo aprendido sobre tareas aún no entrenadas.</dd>
-<dt>CIFAR</dt><dd data-hojas="11">Conjunto de datos de imágenes (CIFAR-100) con el que se prueba el olvido por clases.</dd>
-<dt>ReDo</dt><dd data-hojas="12">Método que reinicializa periódicamente las unidades latentes: pesos de entrada nuevos, de salida a cero.</dd>
-<dt>L2</dt><dd data-hojas="13">Regularización L2 (decaimiento de pesos): mantiene los pesos pequeños.</dd>
-<dt>ReLU</dt><dd data-hojas="19">Rectified linear unit: activación de las unidades de la red de dos capas.</dd>
-<dt>Adam</dt><dd data-hojas="19">Optimizador usado en el experimento, con tasa \(10^{-3}\).</dd>
-<dt>PPO</dt><dd data-hojas="3">Proximal policy optimization: algoritmo de RL que mejora y luego colapsa en el «ant» al entrenar muchos pasos.</dd>
-<dt>SAC</dt><dd data-hojas="12">Soft actor-critic: algoritmo de RL que mejora al reiniciar parte de la red.</dd>
-<dt>SPR</dt><dd data-hojas="12">Self-predictive representations: agente de RL evaluado en Atari 100k.</dd>
-<dt>IQM</dt><dd data-hojas="12">Interquartile mean: medida de rendimiento usada para SAC en DeepMind Control.</dd>
-<dt>DroQ</dt><dd data-hojas="15">Algoritmo de RL sin modelo sobre el que se construye el cuadrúpedo que aprende en 20 minutos.</dd>
-<dt>MPC</dt><dd data-hojas="16">Model predictive control: control que optimiza la acción sobre un modelo; aquí, consciente de la incertidumbre.</dd>
-<dt>KNODE</dt><dd data-hojas="16">Modelo de dinámica aprendido que se mejora en línea durante el despliegue.</dd>
-<dt>RL</dt><dd data-hojas="3">Reinforcement learning: aprendizaje por refuerzo.</dd>
-<dt>RSSM</dt><dd data-hojas="25">Recurrent state-space model: el modelo del mundo de A8a, con una GRU.</dd>
-<dt>GRU</dt><dd data-hojas="25">Gated recurrent unit: red recurrente del RSSM.</dd>
-<dt>RMA</dt><dd data-hojas="25">Rapid motor adaptation: estima un latente desde el historial (ver A9a).</dd>
-<dt>IMU</dt><dd data-hojas="15">Inertial measurement unit: sensor inercial usado con los contactos de las patas para estimar la velocidad.</dd>
+<dt>EWC</dt><dd data-hojas="14">Elastic weight consolidation: penaliza cambiar los parámetros importantes para tareas anteriores, con la Fisher diagonal.</dd>
+<dt>SI</dt><dd data-hojas="19">Synaptic intelligence: acumula la importancia de cada parámetro en línea, como una integral del gradiente.</dd>
+<dt>LwF</dt><dd data-hojas="19">Learning without forgetting: entrena solo con datos nuevos y conserva las salidas anteriores.</dd>
+<dt>CLEAR</dt><dd data-hojas="22">Método de repetición que mezcla al 50 % experiencia nueva y repetida, con clonación del comportamiento sobre la repetida.</dd>
+<dt>GEM</dt><dd data-hojas="4,11">Gradient episodic memory: método de aprendizaje continuo que propone también métricas.</dd>
+<dt>ACC</dt><dd data-hojas="11">Accuracy: precisión media final sobre todas las tareas.</dd>
+<dt>BWT</dt><dd data-hojas="11">Backward transfer: efecto de aprender tareas nuevas sobre las anteriores; mide el olvido.</dd>
+<dt>FWT</dt><dd data-hojas="11">Forward transfer: efecto de lo aprendido sobre tareas aún no entrenadas.</dd>
+<dt>CIFAR</dt><dd data-hojas="25">Conjunto de datos de imágenes (CIFAR-100) con el que se prueba el olvido por clases.</dd>
+<dt>ReDo</dt><dd data-hojas="28">Método que reinicializa periódicamente las unidades latentes: pesos de entrada nuevos, de salida a cero.</dd>
+<dt>L2</dt><dd data-hojas="30">Regularización L2 (decaimiento de pesos): mantiene los pesos pequeños.</dd>
+<dt>ReLU</dt><dd data-hojas="24,39">Rectified linear unit, \(\max(0, z)\): activación de las unidades de la red de dos capas.</dd>
+<dt>Adam</dt><dd data-hojas="39,43">Optimizador usado en el experimento, con tasa \(10^{-3}\).</dd>
+<dt>PPO</dt><dd data-hojas="3,25">Proximal policy optimization: algoritmo de RL que mejora y luego colapsa en el «ant» al entrenar muchos pasos.</dd>
+<dt>SAC</dt><dd data-hojas="29">Soft actor-critic: algoritmo de RL que mejora al reiniciar parte de la red.</dd>
+<dt>SPR</dt><dd data-hojas="29">Self-predictive representations: agente de RL evaluado en Atari 100k.</dd>
+<dt>IQM</dt><dd data-hojas="29">Interquartile mean: medida de rendimiento usada para SAC en DeepMind Control.</dd>
+<dt>DroQ</dt><dd data-hojas="34">Algoritmo de RL sin modelo sobre el que se construye el cuadrúpedo que aprende en 20 minutos.</dd>
+<dt>MPC</dt><dd data-hojas="35">Model predictive control: control que optimiza la acción sobre un modelo; aquí, consciente de la incertidumbre.</dd>
+<dt>KNODE</dt><dd data-hojas="35">Modelo de dinámica aprendido que se mejora en línea durante el despliegue.</dd>
+<dt>RL</dt><dd data-hojas="34,36">Reinforcement learning: aprendizaje por refuerzo.</dd>
+<dt>RSSM</dt><dd data-hojas="51">Recurrent state-space model: el modelo del mundo de A8a, con una GRU.</dd>
+<dt>GRU</dt><dd data-hojas="51">Gated recurrent unit: red recurrente del RSSM.</dd>
+<dt>RMA</dt><dd data-hojas="51">Rapid motor adaptation: estima un latente desde el historial (ver A9a).</dd>
+<dt>IMU</dt><dd data-hojas="34">Inertial measurement unit: sensor inercial usado con los contactos de las patas para estimar la velocidad.</dd>
 <dt>L1</dt><dd data-hojas="3">Control adaptativo L1: la referencia nominal con la que se compara el dron que aprende su dinámica.</dd>
-<dt>GPU</dt><dd data-hojas="15">Graphics processing unit: aquí, la de un portátil que entrena al A1, o la de consumo del laboratorio.</dd>
-<dt>JAX</dt><dd data-hojas="19">Biblioteca en la que corre el script del experimento, en GPU y de forma determinista.</dd>
+<dt>GPU</dt><dd data-hojas="34">Graphics processing unit: aquí, la de un portátil que entrena al A1, o la de consumo del laboratorio.</dd>
+<dt>JAX</dt><dd data-hojas="43">Biblioteca en la que corre el script del experimento, en GPU y de forma determinista.</dd>
 </dl>
 </aside>
 <script src="../../assets/curso.js?v=4"></script>

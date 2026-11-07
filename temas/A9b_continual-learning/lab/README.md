@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Medir por separado los dos fallos del aprendizaje continuo con un modelo de la fuerza aerodinámica residual de un dron: el olvido, cuando cambia la misión pero no la dinámica, y la pérdida de plasticidad, cuando la dinámica cambia una y otra vez. Probar los remedios de cada uno. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a9b.py`, salida en `figuras/salida_gpu.txt`):
+Medir por separado los dos fallos del aprendizaje continuo con un modelo de la fuerza aerodinámica residual de un dron: el olvido, cuando cambia la misión pero no la dinámica, y la pérdida de plasticidad, cuando la dinámica cambia una y otra vez. Probar los remedios de cada uno. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a9b.py`, salida en `figuras/salida_gpu.txt`; los ejemplos que se siguen a mano, como el de dos tareas y dos parámetros, la Fisher o la utilidad, están en `figuras/ejemplos_a9b.py`, salida en `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación (determinista en la misma GPU) | Valor | Paso |
 |---|---|---|
