@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B3a · Modelos de sensores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=7">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="B3a" data-deck-title="Modelos de sensores · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 2 · Jornada 13 · Curso de robótica inteligente</p>
+  <h1>Modelos de sensores</h1>
+  <p class="subtitle">Lo que la política verá de verdad: IMU con su ruido y sus sesgos medidos con la varianza de Allan, cámaras con ruido fotométrico, obturador rodante y desenfoque, cámaras de eventos, LiDAR, GNSS, barómetro y magnetómetro. Cómo se modelan, cómo se validan y qué hacen mal los simuladores por defecto.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A4a, A4b (estimación), B1, B2</span>
+    <span><b>Prepara</b> B3b, B4, A7b, B7</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de B3a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Escribir el modelo de medida de una IMU, pasar sus parámetros de tiempo continuo a discreto y simularla.</li>
+    <li>Calcular e interpretar una desviación de Allan: leer el ruido blanco, la inestabilidad del sesgo y el paseo aleatorio, con su incertidumbre.</li>
+    <li>Predecir la deriva de la navegación inercial pura término a término.</li>
+    <li>Modelar el ruido fotométrico de una cámara, el obturador rodante y el desenfoque, y estimar su efecto en píxeles.</li>
+    <li>Explicar cómo genera eventos una cámara de eventos y cómo se simula.</li>
+    <li>Modelar LiDAR, GNSS, barómetro y magnetómetro, y detectar los modelos irreales de los simuladores por defecto.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>La política nunca ve el estado: ve lo que el modelo de sensor le deja ver</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>En un POMDP, el modelo de observación \(p(o\mid s)\) es la mitad del problema. En simulación, ese modelo lo escribes tú: si es demasiado limpio, la política (y su belief) aprende a fiarse de algo que no existe.</li>
+        <li>Los estimadores de A4 necesitan las densidades de ruido correctas: con valores optimistas, el filtro se cree más de lo que sabe (NEES alto).</li>
+        <li>Lo que no se simula no se aprende a tolerar: sesgos que derivan, vibración, obturador rodante, retardos.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu belief se entrena con observaciones simuladas. Este tema decide si esas observaciones tienen la información y los defectos de las reales, que es la condición para que el belief transfiera.</div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Leído en el código de los simuladores</span>
+        <ul class="small" style="margin:6px 0 0 18px; padding:0;">
+          <li>IMU del x500 de Gazebo: solo ruido blanco, sin sesgo <a class="cite" data-ref="px4gzmodels"></a>.</li>
+          <li>IMU de SIH: el ruido «realista» está desactivado en el código, con el comentario «demasiado ruido, al menos para la baja frecuencia de actualización» <a class="cite" data-ref="px4sih"></a>.</li>
+          <li>GNSS simulado de PX4: un ruido de 2,5 cm de desviación típica, mientras declara una precisión horizontal de 0,9 m <a class="cite" data-ref="px4gpssim"></a>.</li>
+        </ul>
+      </div>
+      <div class="callout clave"><span class="tag">El hilo de este tema</span>Para cada sensor: (1) modelo físico de medida, (2) parámetros reales con su fuente, (3) cómo validar el modelo con datos, (4) qué hacen los simuladores por defecto.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De los relojes atómicos a las cámaras de eventos</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1966</span>Allan define la varianza de dos muestras para caracterizar la estabilidad de osciladores <a class="cite" data-ref="allan1966"></a>; después se adopta para giróscopos.</div>
+    <div class="ev"><span class="yr">1997</span>IEEE Std 952: procedimiento de ensayo de giróscopos de fibra óptica con las pendientes de la desviación de Allan para cada tipo de ruido <a class="cite" data-ref="ieee952"></a>.</div>
+    <div class="ev"><span class="yr">2008</span>El sensor de visión de contraste temporal asíncrono (DVS), 15 µs de latencia <a class="cite" data-ref="lichtsteiner2008"></a>. Análisis de sensores inerciales con Allan para navegación <a class="cite" data-ref="elsheimy2008"></a>.</div>
+    <div class="ev"><span class="yr">2013</span>Kalibr: calibración espacial y temporal de cámara e IMU, con un modelo de ruido de IMU que se ha vuelto estándar en robótica <a class="cite" data-ref="furgale2013,kalibrwiki"></a>.</div>
+    <div class="ev"><span class="yr">2018–2021</span>Simuladores de cámaras de eventos: ESIM <a class="cite" data-ref="rebecq2018"></a> y v2e <a class="cite" data-ref="hu2021"></a>. Simulación de LiDAR aprendida a partir de datos reales <a class="cite" data-ref="manivasagam2020"></a>.</div>
+    <div class="ev"><span class="yr">2023–2026</span>Simuladores de LiDAR ligeros para drones <a class="cite" data-ref="kong2023"></a> y sensores simulados en GPU para entrenar políticas masivamente (B1).</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="IMU">
+  <p class="num">Parte 1</p>
+  <h2>La IMU</h2>
+  <p>El sensor más importante del dron y el más maltratado en simulación: ruido blanco, sesgos que derivan, vibración y temperatura.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · modelo de medida</p>
+  <h2>Medida = verdad + sesgo + ruido (y lo que suele olvidarse)</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Modelo estándar, por eje, para giróscopo (y, con sus parámetros, acelerómetro) <a class="cite" data-ref="kalibrwiki"></a>:</p>
+      \[ \tilde\omega(t) = \omega(t) + b(t) + n(t) \]
+      \[ \mathbb E[n(t_1)n(t_2)] = \sigma_g^2\,\delta(t_1 - t_2),\qquad \dot b = \sigma_{b_g}\,w(t) \]
+      <ul class="small">
+        <li>\(\sigma_g\): densidad de ruido (rad/s/√Hz), el «angle random walk» de las hojas de datos.</li>
+        <li>\(\sigma_{b_g}\): paseo aleatorio del sesgo (rad/s²/√Hz).</li>
+        <li>Lo que este modelo no tiene: factor de escala, desalineamiento entre ejes, sensibilidad del giróscopo a la aceleración, dependencia de la temperatura, vibración y saturación.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Kalibr, sobre su propio modelo</span>Se obtiene en reposo y a temperatura constante, así que «es optimista». Con los sensores más baratos, «puede ser necesario multiplicar los parámetros por 10 o más» <a class="cite" data-ref="kalibrwiki"></a>.</div>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: de tiempo continuo a discreto</summary>
+        <p class="small">Si la señal se filtra con un paso bajo ideal en \(1/(2\Delta t)\) y se muestrea, la media de \(n\) en un intervalo \(\Delta t\) tiene varianza</p>
+        \[ \mathrm{Var}\Big[\frac{1}{\Delta t}\int_0^{\Delta t} n\,dt\Big] = \frac{\sigma_g^2}{\Delta t}\;\Rightarrow\; \sigma_{g,d} = \frac{\sigma_g}{\sqrt{\Delta t}}. \]
+        <p class="small">El sesgo es una integral de ruido blanco: en un paso acumula varianza \(\sigma_{b_g}^2\Delta t\):</p>
+        \[ b_k = b_{k-1} + \sigma_{b_g}\sqrt{\Delta t}\;w_k,\qquad w_k\sim\mathcal N(0,1). \]
+        <p class="small">Si submuestreas sin filtrar (quedarte con una de cada \(m\) muestras), la desviación por muestra no cambia y la fórmula deja de valer <a class="cite" data-ref="kalibrwiki"></a>.</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente</span>Poner en el simulador la densidad de la hoja de datos como desviación típica por muestra. A 200 Hz, la desviación por muestra es \(\sqrt{200} \approx 14\) veces la densidad.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · varianza de Allan</p>
+  <h2>La desviación de Allan separa los ruidos por su escala de tiempo</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con la señal promediada en ventanas de duración \(\tau\), \(\bar\Omega_k(\tau)\), la varianza de Allan es la mitad de la varianza de la diferencia entre ventanas consecutivas <a class="cite" data-ref="allan1966,ieee952,hou2004"></a>:</p>
+      \[ \sigma^2(\tau) = \tfrac12\,\mathbb E\big[(\bar\Omega_{k+1}(\tau) - \bar\Omega_k(\tau))^2\big]. \]
+      <p class="small">Con el ángulo integrado \(\theta_k\) y \(m = \tau f_s\) muestras por ventana, el estimador solapado usa todas las ventanas posibles:</p>
+      \[ \hat\sigma^2(\tau) = \frac{1}{2\tau^2(N-2m)}\sum_{k}\big(\theta_{k+2m} - 2\theta_{k+m} + \theta_k\big)^2 . \]
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Ruido</th><th>\(\sigma(\tau)\)</th><th>Pendiente</th><th>Lectura</th></tr></thead>
+          <tbody>
+            <tr><td>Cuantización</td><td>\(\sqrt3\,Q/\tau\)</td><td class="n">−1</td><td>—</td></tr>
+            <tr><td>Ruido blanco (ARW)</td><td>\(N/\sqrt\tau\)</td><td class="n">−1/2</td><td>\(N = \sigma(1\ \text s)\)</td></tr>
+            <tr><td>Inestabilidad del sesgo</td><td>≈ \(0{,}664\,B\)</td><td class="n">0</td><td>mínimo / 0,664</td></tr>
+            <tr><td>Paseo aleatorio (RRW)</td><td>\(K\sqrt{\tau/3}\)</td><td class="n">+1/2</td><td>\(K = \sigma(3\ \text s)\)</td></tr>
+            <tr><td>Rampa</td><td>\(R\tau/\sqrt2\)</td><td class="n">+1</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: las pendientes −1/2 y +1/2</summary>
+        <p class="small"><strong>Ruido blanco</strong> de densidad \(N\): la media en \(\tau\) tiene varianza \(N^2/\tau\), y dos ventanas consecutivas son independientes:</p>
+        \[ \sigma^2(\tau) = \tfrac12\cdot 2\,\frac{N^2}{\tau} = \frac{N^2}{\tau}. \]
+        <p class="small"><strong>Paseo aleatorio</strong> \(\dot b = K w\): la diferencia de dos medias consecutivas es \(\frac1\tau\int_0^{\tau}\big(b(t+\tau)-b(t)\big)dt\). Con \(\mathrm{Var}[b(t+s)-b(t)] = K^2 s\) e integrando la covarianza:</p>
+        \[ \sigma^2(\tau) = \frac{K^2\tau}{3}. \]
+        <p class="small">Por eso \(N\) se lee en \(\tau\) = 1 s y \(K\) en \(\tau\) = 3 s sobre las rectas ajustadas <a class="cite" data-ref="kalibrwiki"></a>.</p>
+      </details>
+      <p class="xsmall muted">Pendientes y puntos de lectura según IEEE Std 952, en la forma de la tesis de Hou (ec. 4.29–4.57) <a class="cite" data-ref="ieee952,hou2004"></a>. Hou llama \(Q\) al coeficiente que aquí es \(N\).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · un ejemplo</p>
+  <h2>Un giróscopo MEMS frente al del x500 de Gazebo</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Desviación de Allan de un giróscopo simulado y del de Gazebo">
+        <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="198.9" x2="530" y2="198.9" class="ln-dash"/>
+        <line x1="60" y1="147.8" x2="530" y2="147.8" class="ln-dash"/>
+        <line x1="60" y1="96.7" x2="530" y2="96.7" class="ln-dash"/>
+        <line x1="60" y1="45.6" x2="530" y2="45.6" class="ln-dash"/>
+        <text x="54" y="203" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁶</text>
+        <text x="54" y="152" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁵</text>
+        <text x="54" y="101" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻⁴</text>
+        <text x="54" y="50" text-anchor="end" class="t-mono t-faint" font-size="12">10⁻³</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,01</text>
+        <text x="139.3" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,1</text>
+        <text x="218.6" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="297.9" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="377.2" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100</text>
+        <text x="456.6" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1000 s</text>
+        <path d="M60.0,50.5 L75.9,55.6 L91.7,60.7 L107.6,65.8 L123.4,71.0 L139.3,76.1 L155.2,81.2 L171.0,86.3 L186.9,91.4 L202.8,96.5 L218.6,101.6 L234.5,106.7 L250.3,111.8 L266.2,117.0 L282.1,122.1 L297.9,127.2 L313.8,132.3 L329.7,137.4 L345.5,142.5 L361.4,147.6 L377.2,152.7 L393.1,157.8 L409.0,163.0 L424.8,168.1 L440.7,173.2 L456.6,178.3 L472.4,183.4 L488.3,188.5 L504.1,193.6 L520.0,198.7" fill="none" class="ln-dash" stroke-width="1.5"/>
+        <path d="M337.6,155.2 L357.9,148.7 L378.1,142.2 L398.4,135.7 L418.7,129.1 L438.9,122.6 L459.2,116.1 L479.5,109.5 L499.7,103.0 L520.0,96.5" fill="none" class="ln-dash" stroke-width="1.5"/>
+        <path d="M60.0,56.3 L71.6,60.8 L83.1,66.4 L94.7,70.2 L106.2,74.1 L117.8,77.0 L129.3,81.3 L140.9,84.7 L152.4,88.7 L164.0,92.2 L175.5,96.1 L187.1,99.7 L198.6,103.4 L210.2,107.2 L221.7,110.9 L233.3,114.6 L244.9,118.2 L256.4,121.9 L268.0,125.6 L279.5,129.3 L291.1,133.0 L302.6,136.7 L314.2,140.4 L325.7,144.0 L337.3,147.5 L348.8,151.5 L360.4,155.7 L371.9,159.4 L383.5,163.1 L395.0,167.1 L406.6,171.3 L418.2,175.3 L429.7,179.3 L441.3,183.3 L452.8,187.5 L464.4,191.8 L475.9,197.1 L487.5,201.0 L499.0,204.2 L510.6,210.4" fill="none" class="ln-time" stroke-width="2.5"/>
+        <path d="M60.0,50.5 L71.6,55.0 L83.1,58.2 L94.7,60.7 L106.2,65.9 L117.8,69.4 L129.3,72.9 L140.9,76.6 L152.4,80.2 L164.0,84.0 L175.5,87.7 L187.1,91.5 L198.6,95.2 L210.2,99.0 L221.7,102.7 L233.3,106.4 L244.9,110.2 L256.4,113.9 L268.0,117.5 L279.5,121.1 L291.1,124.6 L302.6,128.0 L314.2,131.0 L325.7,133.5 L337.3,135.1 L348.8,135.6 L360.4,135.0 L371.9,133.3 L383.5,131.1 L395.0,128.8 L406.6,126.3 L418.2,123.9 L429.7,121.8 L441.3,120.2 L452.8,118.5 L464.4,116.5 L475.9,113.7 L487.5,110.4 L499.0,106.6 L510.6,101.5" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <circle cx="218.6" cy="101.6" r="5" class="fill-accent"/>
+        <circle cx="256.5" cy="181.4" r="5" class="fill-tesis"/>
+        <circle cx="348.8" cy="135.6" r="5" class="fill-ink3"/>
+        <text x="226" y="92" class="t-accent" font-size="12">N = σ(1 s)</text>
+        <text x="262" y="196" class="t-tesis" font-size="12">K en τ = 3 s</text>
+        <text x="300" y="124" class="t-muted" font-size="12">mínimo: 0,664 B</text>
+        <text x="80" y="36" class="t-accent" font-size="13">giróscopo MEMS (TUM VI + sesgo)</text>
+        <text x="300" y="232" class="t-time" font-size="13">x500 de Gazebo: solo ruido blanco</text>
+        <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="13">tiempo de promediado τ; σ(τ) en rad/s</text>
+      </svg>
+      <figcaption>12 h simuladas a 200 Hz con \(N\) = 8,0·10⁻⁵ rad/s/√Hz y \(K\) = 2,2·10⁻⁶ rad/s²/√Hz (los de TUM VI) más una inestabilidad de sesgo de Gauss-Markov (supuesta, 3·10⁻⁵ rad/s, 300 s). Gazebo: 0,000873 rad/s por muestra a 250 Hz, sin sesgo. <code>figuras_b3a.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>\(\sigma\)(1 s) = 7,99·10⁻⁵: \(N\) recuperado.</li>
+        <li>Mínimo de 1,73·10⁻⁵ rad/s a 44 s: inestabilidad del sesgo de 5,4 °/h.</li>
+        <li>Error relativo de cada punto: \(1/\sqrt{2(N/n-1)}\), con \(N/n\) ventanas <a class="cite" data-ref="hou2004"></a>.</li>
+        <li>\(K\) leído con la recta +1/2: 1,93·10⁻⁶, un 12 % por debajo del verdadero, con 12 h de datos. A \(\tau\) ≈ 3400 s solo caben unas 12 ventanas y el error relativo de cada punto es de ±21 %.</li>
+        <li>Gazebo baja con pendiente −1/2 para siempre: su sesgo es constante (nulo). Su densidad equivalente, \(0{,}000873/\sqrt{250}\) = 5,5·10⁻⁵ rad/s/√Hz, es comparable a la del MEMS.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Cuántos datos</span>Para ver el paseo aleatorio hacen falta horas en reposo: TUM VI grabó 111 h <a class="cite" data-ref="tumvi"></a>. Con un vuelo de minutos solo ves el ruido blanco.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · valores reales</p>
+  <h2>Del dataset a tu filtro: valores medidos y cuánto los inflan</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>\(\sigma_g\) (rad/s/√Hz)</th><th>\(\sigma_{b_g}\)</th><th>\(\sigma_a\) (m/s²/√Hz)</th><th>\(\sigma_{b_a}\)</th></tr></thead>
+          <tbody>
+            <tr><td>TUM VI, Allan (BMI160) <a class="cite" data-ref="tumvi"></a></td><td class="n">8,0·10⁻⁵</td><td class="n">2,2·10⁻⁶</td><td class="n">1,4·10⁻³</td><td class="n">8,6·10⁻⁵</td></tr>
+            <tr><td>TUM VI, para Kalibr</td><td class="n">1,6·10⁻⁴</td><td class="n">2,2·10⁻⁵</td><td class="n">2,8·10⁻³</td><td class="n">8,6·10⁻⁴</td></tr>
+            <tr><td>EuRoC (ADIS16448) <a class="cite" data-ref="openvins"></a></td><td class="n">1,7·10⁻⁴</td><td class="n">1,9·10⁻⁵</td><td class="n">2,0·10⁻³</td><td class="n">3,0·10⁻³</td></tr>
+            <tr><td>x500 de Gazebo (equivalente)</td><td class="n">5,5·10⁻⁵</td><td class="n">0</td><td class="n">4,0·10⁻⁴</td><td class="n">0</td></tr>
+            <tr><td>SIH de PX4 (equivalente a 200 Hz)</td><td class="n">7,1·10⁻⁴</td><td class="n">0</td><td class="n">7,1·10⁻³</td><td class="n">0</td></tr>
+            <tr><td>BMI088, hoja de datos <a class="cite" data-ref="bmi088"></a></td><td class="n">2,4·10⁻⁴</td><td class="n">—</td><td class="n">1,6·10⁻³</td><td class="n">—</td></tr>
+            <tr><td>ICM-42688-P, hoja de datos <a class="cite" data-ref="icm42688"></a></td><td class="n">4,9·10⁻⁵</td><td class="n">—</td><td class="n">6,4·10⁻⁴</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Paseos en rad/s²/√Hz y m/s³/√Hz. «Equivalente»: desviación por muestra × √Δt. Hojas de datos (afirmaciones del fabricante): 0,014 y 0,0028 °/s/√Hz; 160 y 65 µg/√Hz en X e Y; no dan el paseo del sesgo.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Cuánto se inflan en la práctica</span>TUM VI publica sus valores de Allan y los que usa con Kalibr: ruido blanco ×2 y paseo del sesgo ×10. Para evaluar VIO, OKVIS funcionó mejor con ×50 y ×20, y ROVIO con ×10 en todo, según una búsqueda simple de parámetros <a class="cite" data-ref="tumvi"></a>.</div>
+      <div class="callout clave"><span class="tag">Por qué</span>Allan se mide en reposo y a temperatura constante. En vuelo hay vibración de los motores, cambios de temperatura, errores de escala y de alineamiento, y los propios errores del modelo del estimador. El factor de inflado los absorbe.</div>
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>Simula la IMU con los valores de Allan más vibración y sesgo variable, y que tu estimador use valores inflados: así reproduces la relación entre lo que pasa y lo que el filtro cree que pasa.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · navegación a ciegas</p>
+  <h2>Cuánto deriva una IMU sola, término a término</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 300" role="img" aria-label="Deriva de posición por término de ruido frente al tiempo">
+        <line x1="60" y1="250" x2="530" y2="250" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <line x1="60" y1="184.3" x2="530" y2="184.3" class="ln-dash"/>
+        <line x1="60" y1="118.6" x2="530" y2="118.6" class="ln-dash"/>
+        <line x1="60" y1="52.9" x2="530" y2="52.9" class="ln-dash"/>
+        <text x="54" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0,1 mm</text>
+        <text x="54" y="188" text-anchor="end" class="t-mono t-faint" font-size="12">1 cm</text>
+        <text x="54" y="123" text-anchor="end" class="t-mono t-faint" font-size="12">1 m</text>
+        <text x="54" y="57" text-anchor="end" class="t-mono t-faint" font-size="12">100 m</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">100 s</text>
+        <path d="M60.0,215.1 L71.8,212.6 L83.6,210.0 L95.4,207.5 L107.2,205.0 L119.0,202.5 L130.8,199.9 L142.6,197.4 L154.4,194.9 L166.2,192.3 L177.9,189.8 L189.7,187.3 L201.5,184.8 L213.3,182.2 L225.1,179.7 L236.9,177.2 L248.7,174.7 L260.5,172.1 L272.3,169.6 L284.1,167.1 L295.9,164.5 L307.7,162.0 L319.5,159.5 L331.3,157.0 L343.1,154.4 L354.9,151.9 L366.7,149.4 L378.5,146.8 L390.3,144.3 L402.1,141.8 L413.8,139.3 L425.6,136.7 L437.4,134.2 L449.2,131.7 L461.0,129.2 L472.8,126.6 L484.6,124.1 L496.4,121.6 L508.2,119.0 L520.0,116.5" fill="none" class="ln" stroke-width="2.5"/>
+        <path d="M60.0,222.8 L71.8,218.6 L83.6,214.4 L95.4,210.2 L107.2,206.0 L119.0,201.8 L130.8,197.6 L142.6,193.4 L154.4,189.1 L166.2,184.9 L177.9,180.7 L189.7,176.5 L201.5,172.3 L213.3,168.1 L225.1,163.9 L236.9,159.7 L248.7,155.4 L260.5,151.2 L272.3,147.0 L284.1,142.8 L295.9,138.6 L307.7,134.4 L319.5,130.2 L331.3,126.0 L343.1,121.7 L354.9,117.5 L366.7,113.3 L378.5,109.1 L390.3,104.9 L402.1,100.7 L413.8,96.5 L425.6,92.3 L437.4,88.0 L449.2,83.8 L461.0,79.6 L472.8,75.4 L484.6,71.2 L496.4,67.0 L508.2,62.8 L520.0,58.6" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,231.2 L71.8,227.0 L83.6,222.8 L95.4,218.6 L107.2,214.4 L119.0,210.2 L130.8,206.0 L142.6,201.8 L154.4,197.5 L166.2,193.3 L177.9,189.1 L189.7,184.9 L201.5,180.7 L213.3,176.5 L225.1,172.3 L236.9,168.1 L248.7,163.8 L260.5,159.6 L272.3,155.4 L284.1,151.2 L295.9,147.0 L307.7,142.8 L319.5,138.6 L331.3,134.4 L343.1,130.1 L354.9,125.9 L366.7,121.7 L378.5,117.5 L390.3,113.3 L402.1,109.1 L413.8,104.9 L425.6,100.7 L437.4,96.4 L449.2,92.2 L461.0,88.0 L472.8,83.8 L484.6,79.6 L496.4,75.4 L508.2,71.2 L520.0,67.0" fill="none" class="ln-time" stroke-width="2.5"/>
+        <path d="M60.0,280.3 L71.8,274.4 L83.6,268.5 L95.4,262.6 L107.2,256.7 L119.0,250.8 L130.8,244.9 L142.6,239.0 L154.4,233.1 L166.2,227.2 L177.9,221.3 L189.7,215.4 L201.5,209.5 L213.3,203.6 L225.1,197.7 L236.9,191.8 L248.7,185.9 L260.5,180.0 L272.3,174.1 L284.1,168.2 L295.9,162.3 L307.7,156.4 L319.5,150.5 L331.3,144.6 L343.1,138.7 L354.9,132.8 L366.7,126.9 L378.5,121.0 L390.3,115.1 L402.1,109.2 L413.8,103.4 L425.6,97.5 L437.4,91.6 L449.2,85.7 L461.0,79.8 L472.8,73.9 L484.6,68.0 L496.4,62.1 L508.2,56.2 L520.0,50.3" fill="none" class="ln-tesis" stroke-width="2.5"/>
+        <text x="420" y="128" class="t-bold" font-size="12">acel. blanco ∝ t^1,5</text>
+        <text x="330" y="70" class="t-accent" font-size="12">sesgo acel. ∝ t^2,5</text>
+        <text x="200" y="150" class="t-time" font-size="12">gir. blanco ∝ t^2,5</text>
+        <text x="400" y="30" class="t-tesis" font-size="12">sesgo gir. ∝ t^3,5</text>
+        <text x="300" y="290" text-anchor="middle" class="t-muted" font-size="13">tiempo sin corrección; desviación típica de posición (un eje)</text>
+      </svg>
+      <figcaption>IMU de EuRoC en reposo, sin ninguna corrección externa. <code>figuras_b3a.py</code>, sección 2.</figcaption>
+    </figure>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: los cuatro términos</summary>
+        <p class="small">Cada término es ruido blanco integrado varias veces; la integral \(k\)-ésima de ruido de densidad \(q\) tiene varianza \(q^2 t^{2k-1}/((k-1)!^2(2k-1))\):</p>
+        \[ \sigma_p^{(a)} = \frac{\sigma_a t^{3/2}}{\sqrt3},\qquad \sigma_p^{(b_a)} = \frac{\sigma_{b_a} t^{5/2}}{\sqrt{20}}, \]
+        \[ \sigma_p^{(g)} = \frac{g\,\sigma_g t^{5/2}}{\sqrt{20}},\qquad \sigma_p^{(b_g)} = \frac{g\,\sigma_{b_g} t^{7/2}}{\sqrt{252}}. \]
+        <p class="small">El giróscopo entra por la inclinación: un error de actitud \(\delta\theta\) proyecta la gravedad, \(g\,\delta\theta\), como aceleración horizontal. Comprobado con 2000 ensayos de Monte Carlo: 0,1180 m frente a 0,1177 m de la fórmula a 10 s.</p>
+      </details>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Sin corrección</th><th>1 s</th><th>10 s</th><th>60 s</th></tr></thead>
+          <tbody>
+            <tr><td>EuRoC (ADIS16448)</td><td class="n">1 mm</td><td class="n">25 cm</td><td class="n">29 m</td></tr>
+            <tr><td>TUM VI (BMI160)</td><td class="n">1 mm</td><td class="n">6 cm</td><td class="n">5,4 m</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout tesis"><span class="tag">Hilo de observabilidad</span>Por eso la IMU sola no basta: en segundos, la incertidumbre de posición crece como \(t^{5/2}\) o más. Cualquier belief de posición necesita una medida externa (visión, GNSS) a una frecuencia que A4a y A4b te enseñaron a calcular.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">IMU · en vuelo</p>
+  <h2>Vibración, filtros y lo que los simuladores no tienen</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Vibración:</strong> los rotores excitan la estructura a su frecuencia de giro y sus armónicos (a 770 rad/s, unos 123 Hz). Si el muestreo o el filtro antialiasing no la cortan, aparece como ruido a baja frecuencia (aliasing) y sesga el acelerómetro.</li>
+        <li><strong>PX4 lo combate</strong> con un paso bajo del giróscopo (<code>IMU_GYRO_CUTOFF</code>, A2) y filtros notch dinámicos que siguen la velocidad de los motores por telemetría del ESC o por FFT a bordo (<code>IMU_GYRO_DNF_EN</code>, desactivado por defecto; 3 armónicos y 15 Hz de ancho por notch) <a class="cite" data-ref="px4gyro"></a>.</li>
+        <li><strong>Temperatura:</strong> el sesgo de un MEMS cambia con ella; en un vuelo de minutos la IMU se calienta. PX4 tiene calibración térmica.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Gazebo</span>Su modelo de ruido gaussiano admite sesgo constante aleatorio y un sesgo dinámico de Gauss-Markov con tiempo de correlación (tomado de RotorS y de la wiki de Kalibr), además de cuantización <a class="cite" data-ref="gznoise"></a>. El x500 de PX4 no usa nada de eso: solo ruido blanco, «modelado según la IIM42653» <a class="cite" data-ref="px4gzmodels"></a>.</div>
+      <div class="callout realidad"><span class="tag">SIH</span>Tiene en el código ruido de 0,5–1,7 m/s² y 0,03–0,14 rad/s por eje (de un trabajo de Bulka y Nahon), pero desactivado: usa 0,1 m/s² y 0,01 rad/s <a class="cite" data-ref="px4sih"></a>.</div>
+      <div class="callout tesis"><span class="tag">Para tu simulador</span>Una capa de vibración barata: senoides a la frecuencia de los rotores y sus armónicos, con amplitud proporcional al empuje, más el filtro de PX4. Comprueba con la desviación de Allan y con el espectro que el resultado se parece a un log real (C7).</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Cámaras">
+  <p class="num">Parte 2</p>
+  <h2>Cámaras convencionales y de eventos</h2>
+  <p>La geometría de la cámara la viste en A4b. Aquí, lo que la convierte en un sensor ruidoso y lento: fotones, electrones, tiempo de exposición y el orden en que se leen las filas.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara · ruido fotométrico</p>
+  <h2>De fotones a niveles digitales: el modelo lineal de cámara</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El estándar EMVA 1288 modela una cámara como una cadena lineal: \(\mu_p\) fotones por píxel, eficiencia cuántica \(\eta\), ganancia \(K\) (niveles digitales por electrón) <a class="cite" data-ref="emva1288"></a>:</p>
+      \[ \mu_y = K(\eta\,\mu_p + \mu_d) \]
+      \[ \sigma_y^2 = K^2\sigma_d^2 + \sigma_q^2 + K\,(\mu_y - \mu_{y,\text{dark}}) \]
+      <ul class="small">
+        <li><strong>Ruido de disparo</strong> (Poisson): varianza igual a la media de electrones. Domina con buena luz.</li>
+        <li><strong>Ruido oscuro</strong> \(\sigma_d\) (lectura y corriente oscura, en electrones): domina con poca luz.</li>
+        <li><strong>Cuantización</strong>: \(\sigma_q^2 = 1/12\) niveles digitales al cuadrado.</li>
+      </ul>
+      \[ \mathrm{SNR} = \frac{\eta\mu_p}{\sqrt{\sigma_d^2 + \sigma_q^2/K^2 + \eta\mu_p}} . \]
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Cuenta: la relación señal-ruido y la exposición</summary>
+        <p class="small">Con buena luz (ruido de disparo), \(\mathrm{SNR} \approx \sqrt{\eta\mu_p}\): para pasar de SNR 10 a 30 hace falta 9 veces más luz, es decir, 9 veces más exposición. Pero la exposición es también desenfoque: \(f\,\omega\,t_{\exp}\) píxeles.</p>
+        <p class="small">Un dron que gira a 2 rad/s con la cámara de EuRoC (\(f\) = 458,65 px) y 5 ms de exposición emborrona 4,6 px. Ganar SNR cuesta nitidez: en interiores oscuros, el compromiso decide si el VIO funciona.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Para simular</span>Renderiza la radiancia sin ruido; conviértela a electrones con \(\eta\) y la exposición; añade Poisson y ruido gaussiano oscuro; aplica la ganancia, satura y cuantiza. Y aplica el desenfoque y el obturador antes del ruido, en el dominio de la radiancia.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Ruido gaussiano aditivo de varianza fija sobre la imagen en 8 bits. El ruido real depende de la intensidad de cada píxel y crece en las zonas oscuras relativas a la señal.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara · obturador rodante y desenfoque</p>
+  <h2>El orden de lectura de las filas deforma la imagen</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 640 230" role="img" aria-label="Rejilla deformada por el obturador rodante">
+        <text x="160" y="14" text-anchor="middle" class="t-bold" font-size="13">obturador global</text>
+        <text x="480" y="14" text-anchor="middle" class="t-bold" font-size="13">obturador rodante, 30 ms</text>
+        <g transform="translate(0,6)">
+          <rect x="20" y="20" width="280" height="179" class="box-soft"/>
+          <line x1="20" y1="20" x2="20" y2="199" class="ln"/><line x1="55" y1="20" x2="55" y2="199" class="ln"/><line x1="90" y1="20" x2="90" y2="199" class="ln"/><line x1="125" y1="20" x2="125" y2="199" class="ln"/><line x1="160" y1="20" x2="160" y2="199" class="ln"/><line x1="195" y1="20" x2="195" y2="199" class="ln"/><line x1="230" y1="20" x2="230" y2="199" class="ln"/><line x1="265" y1="20" x2="265" y2="199" class="ln"/><line x1="300" y1="20" x2="300" y2="199" class="ln"/>
+          <line x1="20" y1="20" x2="300" y2="20" class="ln"/><line x1="20" y1="49.8" x2="300" y2="49.8" class="ln"/><line x1="20" y1="79.7" x2="300" y2="79.7" class="ln"/><line x1="20" y1="109.5" x2="300" y2="109.5" class="ln"/><line x1="20" y1="139.3" x2="300" y2="139.3" class="ln"/><line x1="20" y1="169.2" x2="300" y2="169.2" class="ln"/><line x1="20" y1="199" x2="300" y2="199" class="ln"/>
+        </g>
+        <g transform="translate(320,6)">
+          <rect x="20" y="20" width="280" height="179" class="box-soft"/>
+          <path d="M20.0,20.0 L18.9,27.5 L17.9,34.9 L16.8,42.4 L15.7,49.8 L14.7,57.3 L13.6,64.8 L12.5,72.2 L11.5,79.7 L10.4,87.1 L9.3,94.6 L8.3,102.0 L7.2,109.5 L6.1,117.0 L5.1,124.4 L4.0,131.9 L2.9,139.3 L1.9,146.8 L0.8,154.2 L-0.3,161.7 L-1.3,169.2 L-2.4,176.6 L-3.5,184.1 L-4.5,191.5 L-5.6,199.0" fill="none" class="ln-accent"/><path d="M55.0,20.0 L53.9,27.5 L52.9,34.9 L51.8,42.4 L50.7,49.8 L49.7,57.3 L48.6,64.8 L47.5,72.2 L46.5,79.7 L45.4,87.1 L44.3,94.6 L43.3,102.0 L42.2,109.5 L41.1,117.0 L40.1,124.4 L39.0,131.9 L37.9,139.3 L36.9,146.8 L35.8,154.2 L34.7,161.7 L33.7,169.2 L32.6,176.6 L31.5,184.1 L30.5,191.5 L29.4,199.0" fill="none" class="ln-accent"/><path d="M90.0,20.0 L88.9,27.5 L87.9,34.9 L86.8,42.4 L85.7,49.8 L84.7,57.3 L83.6,64.8 L82.5,72.2 L81.5,79.7 L80.4,87.1 L79.3,94.6 L78.3,102.0 L77.2,109.5 L76.1,117.0 L75.1,124.4 L74.0,131.9 L72.9,139.3 L71.9,146.8 L70.8,154.2 L69.7,161.7 L68.7,169.2 L67.6,176.6 L66.5,184.1 L65.5,191.5 L64.4,199.0" fill="none" class="ln-accent"/>
+          <path d="M125.0,20.0 L123.9,27.5 L122.9,34.9 L121.8,42.4 L120.7,49.8 L119.7,57.3 L118.6,64.8 L117.5,72.2 L116.5,79.7 L115.4,87.1 L114.3,94.6 L113.3,102.0 L112.2,109.5 L111.1,117.0 L110.1,124.4 L109.0,131.9 L107.9,139.3 L106.9,146.8 L105.8,154.2 L104.7,161.7 L103.7,169.2 L102.6,176.6 L101.5,184.1 L100.5,191.5 L99.4,199.0" fill="none" class="ln-accent"/><path d="M160.0,20.0 L158.9,27.5 L157.9,34.9 L156.8,42.4 L155.7,49.8 L154.7,57.3 L153.6,64.8 L152.5,72.2 L151.5,79.7 L150.4,87.1 L149.3,94.6 L148.3,102.0 L147.2,109.5 L146.1,117.0 L145.1,124.4 L144.0,131.9 L142.9,139.3 L141.9,146.8 L140.8,154.2 L139.7,161.7 L138.7,169.2 L137.6,176.6 L136.5,184.1 L135.5,191.5 L134.4,199.0" fill="none" class="ln-accent"/><path d="M195.0,20.0 L193.9,27.5 L192.9,34.9 L191.8,42.4 L190.7,49.8 L189.7,57.3 L188.6,64.8 L187.5,72.2 L186.5,79.7 L185.4,87.1 L184.3,94.6 L183.3,102.0 L182.2,109.5 L181.1,117.0 L180.1,124.4 L179.0,131.9 L177.9,139.3 L176.9,146.8 L175.8,154.2 L174.7,161.7 L173.7,169.2 L172.6,176.6 L171.5,184.1 L170.5,191.5 L169.4,199.0" fill="none" class="ln-accent"/>
+          <path d="M230.0,20.0 L228.9,27.5 L227.9,34.9 L226.8,42.4 L225.7,49.8 L224.7,57.3 L223.6,64.8 L222.5,72.2 L221.5,79.7 L220.4,87.1 L219.3,94.6 L218.3,102.0 L217.2,109.5 L216.1,117.0 L215.1,124.4 L214.0,131.9 L212.9,139.3 L211.9,146.8 L210.8,154.2 L209.7,161.7 L208.7,169.2 L207.6,176.6 L206.5,184.1 L205.5,191.5 L204.4,199.0" fill="none" class="ln-accent"/><path d="M265.0,20.0 L263.9,27.5 L262.9,34.9 L261.8,42.4 L260.7,49.8 L259.7,57.3 L258.6,64.8 L257.5,72.2 L256.5,79.7 L255.4,87.1 L254.3,94.6 L253.3,102.0 L252.2,109.5 L251.1,117.0 L250.1,124.4 L249.0,131.9 L247.9,139.3 L246.9,146.8 L245.8,154.2 L244.7,161.7 L243.7,169.2 L242.6,176.6 L241.5,184.1 L240.5,191.5 L239.4,199.0" fill="none" class="ln-accent"/><path d="M300.0,20.0 L298.9,27.5 L297.9,34.9 L296.8,42.4 L295.7,49.8 L294.7,57.3 L293.6,64.8 L292.5,72.2 L291.5,79.7 L290.4,87.1 L289.3,94.6 L288.3,102.0 L287.2,109.5 L286.1,117.0 L285.1,124.4 L284.0,131.9 L282.9,139.3 L281.9,146.8 L280.8,154.2 L279.7,161.7 L278.7,169.2 L277.6,176.6 L276.5,184.1 L275.5,191.5 L274.4,199.0" fill="none" class="ln-accent"/>
+          <path d="M20.0,20.0 L300.0,20.0" fill="none" class="ln-accent"/><path d="M15.7,49.8 L295.7,49.8" fill="none" class="ln-accent"/><path d="M11.5,79.7 L291.5,79.7" fill="none" class="ln-accent"/>
+          <path d="M7.2,109.5 L287.2,109.5" fill="none" class="ln-accent"/><path d="M2.9,139.3 L282.9,139.3" fill="none" class="ln-accent"/><path d="M-1.3,169.2 L278.7,169.2" fill="none" class="ln-accent"/>
+          <path d="M-5.6,199.0 L274.4,199.0" fill="none" class="ln-accent"/>
+        </g>
+      </svg>
+      <figcaption>Una rejilla vista por la cámara de EuRoC (752 × 480, \(f\) = 458,65 px) mientras el dron gira en guiñada a 5 rad/s. Con una lectura de 30 ms, la última fila se desplaza 69 px (9 % del ancho) respecto a la primera. <code>figuras_b3a.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small">Cada fila \(v\) se expone \(t_{ro}\,v/H\) más tarde que la primera. Con giro \(\omega\), el desplazamiento horizontal de la fila \(v\) es</p>
+      \[ \Delta u(v) \approx f\,\omega\,t_{ro}\,\frac{v}{H},\qquad \text{desenfoque} \approx f\,\omega\,t_{\exp}. \]
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\omega\) · lectura · exposición</th><th>Cizalla</th><th>Desenfoque</th></tr></thead>
+          <tbody>
+            <tr><td>1 rad/s · 20 ms · 5 ms</td><td class="n">9,2 px</td><td class="n">2,3 px</td></tr>
+            <tr><td>2 rad/s · 20 ms · 5 ms</td><td class="n">18,3 px</td><td class="n">4,6 px</td></tr>
+            <tr><td>5 rad/s · 30 ms · 2 ms</td><td class="n">68,8 px</td><td class="n">4,6 px</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">Cifras reales</span>TUM VI eligió cámaras de obturador global <a class="cite" data-ref="tumvi"></a>. En su dataset de obturador rodante, la misma cámara en modo rodante tarda unos 29,5 µs por fila (unos 30 ms para sus 1024 filas), «más bien en el extremo lento» según los autores, que modelan el tiempo de cada fila en su VIO <a class="cite" data-ref="schubert2019"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara de eventos · generación</p>
+  <h2>Un evento cada vez que el logaritmo de la intensidad cambia un umbral</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 260" role="img" aria-label="Eventos generados por un borde que cruza un píxel">
+        <line x1="60" y1="210" x2="530" y2="210" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="210" class="ln-rule"/>
+        <text x="54" y="179" text-anchor="end" class="t-mono t-faint" font-size="12">ln 0,2</text>
+        <text x="54" y="42" text-anchor="end" class="t-mono t-faint" font-size="12">ln 1</text>
+        <text x="60" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">−2</text>
+        <text x="162.2" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">−1</text>
+        <text x="264.4" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="366.7" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="468.9" y="228" text-anchor="middle" class="t-mono t-faint" font-size="12">2 ms</text>
+        <path d="M60.0,169.5 L60.5,169.5 L61.0,169.4 L61.5,169.4 L62.0,169.3 L62.6,169.2 L63.1,169.2 L63.6,169.1 L64.1,169.1 L64.6,169.0 L65.1,168.9 L65.6,168.9 L66.1,168.8 L66.6,168.8 L67.2,168.7 L67.7,168.6 L68.2,168.6 L68.7,168.5 L69.2,168.4 L69.7,168.4 L70.2,168.3 L70.7,168.2 L71.2,168.2 L71.8,168.1 L72.3,168.0 L72.8,168.0 L73.3,167.9 L73.8,167.8 L74.3,167.7 L74.8,167.7 L75.3,167.6 L75.8,167.5 L76.4,167.4 L76.9,167.4 L77.4,167.3 L77.9,167.2 L78.4,167.1 L78.9,167.1 L79.4,167.0 L79.9,166.9 L80.4,166.8 L81.0,166.7 L81.5,166.7 L82.0,166.6 L82.5,166.5 L83.0,166.4 L83.5,166.3 L84.0,166.3 L84.5,166.2 L85.0,166.1 L85.6,166.0 L86.1,165.9 L86.6,165.8 L87.1,165.7 L87.6,165.6 L88.1,165.6 L88.6,165.5 L89.1,165.4 L89.6,165.3 L90.2,165.2 L90.7,165.1 L91.2,165.0 L91.7,164.9 L92.2,164.8 L92.7,164.7 L93.2,164.6 L93.7,164.5 L94.2,164.4 L94.8,164.3 L95.3,164.2 L95.8,164.1 L96.3,164.0 L96.8,163.9 L97.3,163.8 L97.8,163.7 L98.3,163.6 L98.8,163.5 L99.4,163.4 L99.9,163.3 L100.4,163.1 L100.9,163.0 L101.4,162.9 L101.9,162.8 L102.4,162.7 L102.9,162.6 L103.4,162.5 L104.0,162.4 L104.5,162.2 L105.0,162.1 L105.5,162.0 L106.0,161.9 L106.5,161.8 L107.0,161.6 L107.5,161.5 L108.0,161.4 L108.6,161.3 L109.1,161.1 L109.6,161.0 L110.1,160.9 L110.6,160.8 L111.1,160.6 L111.6,160.5 L112.1,160.4 L112.6,160.2 L113.2,160.1 L113.7,160.0 L114.2,159.8 L114.7,159.7 L115.2,159.6 L115.7,159.4 L116.2,159.3 L116.7,159.1 L117.2,159.0 L117.8,158.9 L118.3,158.7 L118.8,158.6 L119.3,158.4 L119.8,158.3 L120.3,158.1 L120.8,158.0 L121.3,157.8 L121.8,157.7 L122.4,157.5 L122.9,157.4 L123.4,157.2 L123.9,157.1 L124.4,156.9 L124.9,156.8 L125.4,156.6 L125.9,156.4 L126.4,156.3 L127.0,156.1 L127.5,156.0 L128.0,155.8 L128.5,155.6 L129.0,155.5 L129.5,155.3 L130.0,155.1 L130.5,155.0 L131.0,154.8 L131.6,154.6 L132.1,154.4 L132.6,154.3 L133.1,154.1 L133.6,153.9 L134.1,153.7 L134.6,153.6 L135.1,153.4 L135.6,153.2 L136.2,153.0 L136.7,152.8 L137.2,152.7 L137.7,152.5 L138.2,152.3 L138.7,152.1 L139.2,151.9 L139.7,151.7 L140.2,151.5 L140.8,151.3 L141.3,151.1 L141.8,150.9 L142.3,150.8 L142.8,150.6 L143.3,150.4 L143.8,150.2 L144.3,150.0 L144.8,149.8 L145.4,149.6 L145.9,149.3 L146.4,149.1 L146.9,148.9 L147.4,148.7 L147.9,148.5 L148.4,148.3 L148.9,148.1 L149.4,147.9 L150.0,147.7 L150.5,147.5 L151.0,147.2 L151.5,147.0 L152.0,146.8 L152.5,146.6 L153.0,146.4 L153.5,146.1 L154.0,145.9 L154.6,145.7 L155.1,145.5 L155.6,145.2 L156.1,145.0 L156.6,144.8 L157.1,144.6 L157.6,144.3 L158.1,144.1 L158.6,143.9 L159.2,143.6 L159.7,143.4 L160.2,143.1 L160.7,142.9 L161.2,142.7 L161.7,142.4 L162.2,142.2 L162.7,141.9 L163.2,141.7 L163.8,141.5 L164.3,141.2 L164.8,141.0 L165.3,140.7 L165.8,140.5 L166.3,140.2 L166.8,140.0 L167.3,139.7 L167.8,139.4 L168.4,139.2 L168.9,138.9 L169.4,138.7 L169.9,138.4 L170.4,138.2 L170.9,137.9 L171.4,137.6 L171.9,137.4 L172.4,137.1 L173.0,136.8 L173.5,136.6 L174.0,136.3 L174.5,136.0 L175.0,135.8 L175.5,135.5 L176.0,135.2 L176.5,135.0 L177.0,134.7 L177.6,134.4 L178.1,134.1 L178.6,133.9 L179.1,133.6 L179.6,133.3 L180.1,133.0 L180.6,132.7 L181.1,132.5 L181.6,132.2 L182.2,131.9 L182.7,131.6 L183.2,131.3 L183.7,131.0 L184.2,130.7 L184.7,130.5 L185.2,130.2 L185.7,129.9 L186.2,129.6 L186.8,129.3 L187.3,129.0 L187.8,128.7 L188.3,128.4 L188.8,128.1 L189.3,127.8 L189.8,127.5 L190.3,127.2 L190.8,126.9 L191.4,126.6 L191.9,126.3 L192.4,126.0 L192.9,125.7 L193.4,125.4 L193.9,125.1 L194.4,124.8 L194.9,124.5 L195.4,124.2 L196.0,123.9 L196.5,123.6 L197.0,123.3 L197.5,123.0 L198.0,122.7 L198.5,122.3 L199.0,122.0 L199.5,121.7 L200.0,121.4 L200.6,121.1 L201.1,120.8 L201.6,120.5 L202.1,120.2 L202.6,119.8 L203.1,119.5 L203.6,119.2 L204.1,118.9 L204.6,118.6 L205.2,118.3 L205.7,118.0 L206.2,117.6 L206.7,117.3 L207.2,117.0 L207.7,116.7 L208.2,116.4 L208.7,116.0 L209.2,115.7 L209.8,115.4 L210.3,115.1 L210.8,114.8 L211.3,114.4 L211.8,114.1 L212.3,113.8 L212.8,113.5 L213.3,113.1 L213.8,112.8 L214.4,112.5 L214.9,112.2 L215.4,111.8 L215.9,111.5 L216.4,111.2 L216.9,110.9 L217.4,110.5 L217.9,110.2 L218.4,109.9 L219.0,109.6 L219.5,109.2 L220.0,108.9 L220.5,108.6 L221.0,108.3 L221.5,107.9 L222.0,107.6 L222.5,107.3 L223.0,107.0 L223.6,106.6 L224.1,106.3 L224.6,106.0 L225.1,105.7 L225.6,105.3 L226.1,105.0 L226.6,104.7 L227.1,104.4 L227.6,104.0 L228.2,103.7 L228.7,103.4 L229.2,103.1 L229.7,102.7 L230.2,102.4 L230.7,102.1 L231.2,101.8 L231.7,101.4 L232.2,101.1 L232.8,100.8 L233.3,100.5 L233.8,100.1 L234.3,99.8 L234.8,99.5 L235.3,99.2 L235.8,98.9 L236.3,98.5 L236.8,98.2 L237.4,97.9 L237.9,97.6 L238.4,97.2 L238.9,96.9 L239.4,96.6 L239.9,96.3 L240.4,96.0 L240.9,95.7 L241.4,95.3 L242.0,95.0 L242.5,94.7 L243.0,94.4 L243.5,94.1 L244.0,93.8 L244.5,93.4 L245.0,93.1 L245.5,92.8 L246.0,92.5 L246.6,92.2 L247.1,91.9 L247.6,91.6 L248.1,91.3 L248.6,90.9 L249.1,90.6 L249.6,90.3 L250.1,90.0 L250.6,89.7 L251.2,89.4 L251.7,89.1 L252.2,88.8 L252.7,88.5 L253.2,88.2 L253.7,87.9 L254.2,87.6 L254.7,87.3 L255.2,87.0 L255.8,86.7 L256.3,86.4 L256.8,86.1 L257.3,85.8 L257.8,85.5 L258.3,85.2 L258.8,84.9 L259.3,84.6 L259.8,84.3 L260.4,84.0 L260.9,83.7 L261.4,83.4 L261.9,83.2 L262.4,82.9 L262.9,82.6 L263.4,82.3 L263.9,82.0 L264.4,81.7 L265.0,81.4 L265.5,81.2 L266.0,80.9 L266.5,80.6 L267.0,80.3 L267.5,80.0 L268.0,79.8 L268.5,79.5 L269.0,79.2 L269.6,78.9 L270.1,78.6 L270.6,78.4 L271.1,78.1 L271.6,77.8 L272.1,77.6 L272.6,77.3 L273.1,77.0 L273.6,76.8 L274.2,76.5 L274.7,76.2 L275.2,76.0 L275.7,75.7 L276.2,75.4 L276.7,75.2 L277.2,74.9 L277.7,74.7 L278.2,74.4 L278.8,74.2 L279.3,73.9 L279.8,73.6 L280.3,73.4 L280.8,73.1 L281.3,72.9 L281.8,72.6 L282.3,72.4 L282.8,72.1 L283.4,71.9 L283.9,71.7 L284.4,71.4 L284.9,71.2 L285.4,70.9 L285.9,70.7 L286.4,70.5 L286.9,70.2 L287.4,70.0 L288.0,69.7 L288.5,69.5 L289.0,69.3 L289.5,69.0 L290.0,68.8 L290.5,68.6 L291.0,68.4 L291.5,68.1 L292.0,67.9 L292.6,67.7 L293.1,67.5 L293.6,67.2 L294.1,67.0 L294.6,66.8 L295.1,66.6 L295.6,66.4 L296.1,66.1 L296.6,65.9 L297.2,65.7 L297.7,65.5 L298.2,65.3 L298.7,65.1 L299.2,64.9 L299.7,64.7 L300.2,64.5 L300.7,64.2 L301.2,64.0 L301.8,63.8 L302.3,63.6 L302.8,63.4 L303.3,63.2 L303.8,63.0 L304.3,62.8 L304.8,62.6 L305.3,62.5 L305.8,62.3 L306.4,62.1 L306.9,61.9 L307.4,61.7 L307.9,61.5 L308.4,61.3 L308.9,61.1 L309.4,60.9 L309.9,60.8 L310.4,60.6 L311.0,60.4 L311.5,60.2 L312.0,60.0 L312.5,59.8 L313.0,59.7 L313.5,59.5 L314.0,59.3 L314.5,59.1 L315.0,59.0 L315.6,58.8 L316.1,58.6 L316.6,58.5 L317.1,58.3 L317.6,58.1 L318.1,58.0 L318.6,57.8 L319.1,57.6 L319.6,57.5 L320.2,57.3 L320.7,57.1 L321.2,57.0 L321.7,56.8 L322.2,56.7 L322.7,56.5 L323.2,56.4 L323.7,56.2 L324.2,56.1 L324.8,55.9 L325.3,55.8 L325.8,55.6 L326.3,55.5 L326.8,55.3 L327.3,55.2 L327.8,55.0 L328.3,54.9 L328.8,54.7 L329.4,54.6 L329.9,54.4 L330.4,54.3 L330.9,54.2 L331.4,54.0 L331.9,53.9 L332.4,53.8 L332.9,53.6 L333.4,53.5 L334.0,53.4 L334.5,53.2 L335.0,53.1 L335.5,53.0 L336.0,52.8 L336.5,52.7 L337.0,52.6 L337.5,52.4 L338.0,52.3 L338.6,52.2 L339.1,52.1 L339.6,52.0 L340.1,51.8 L340.6,51.7 L341.1,51.6 L341.6,51.5 L342.1,51.4 L342.6,51.2 L343.2,51.1 L343.7,51.0 L344.2,50.9 L344.7,50.8 L345.2,50.7 L345.7,50.6 L346.2,50.4 L346.7,50.3 L347.2,50.2 L347.8,50.1 L348.3,50.0 L348.8,49.9 L349.3,49.8 L349.8,49.7 L350.3,49.6 L350.8,49.5 L351.3,49.4 L351.8,49.3 L352.4,49.2 L352.9,49.1 L353.4,49.0 L353.9,48.9 L354.4,48.8 L354.9,48.7 L355.4,48.6 L355.9,48.5 L356.4,48.4 L357.0,48.3 L357.5,48.2 L358.0,48.1 L358.5,48.0 L359.0,48.0 L359.5,47.9 L360.0,47.8 L360.5,47.7 L361.0,47.6 L361.6,47.5 L362.1,47.4 L362.6,47.3 L363.1,47.3 L363.6,47.2 L364.1,47.1 L364.6,47.0 L365.1,46.9 L365.6,46.8 L366.2,46.8 L366.7,46.7 L367.2,46.6 L367.7,46.5 L368.2,46.4 L368.7,46.4 L369.2,46.3 L369.7,46.2 L370.2,46.1 L370.8,46.1 L371.3,46.0 L371.8,45.9 L372.3,45.9 L372.8,45.8 L373.3,45.7 L373.8,45.6 L374.3,45.6 L374.8,45.5 L375.4,45.4 L375.9,45.4 L376.4,45.3 L376.9,45.2 L377.4,45.2 L377.9,45.1 L378.4,45.0 L378.9,45.0 L379.4,44.9 L380.0,44.8 L380.5,44.8 L381.0,44.7 L381.5,44.7 L382.0,44.6 L382.5,44.5 L383.0,44.5 L383.5,44.4 L384.0,44.4 L384.6,44.3 L385.1,44.2 L385.6,44.2 L386.1,44.1 L386.6,44.1 L387.1,44.0 L387.6,44.0 L388.1,43.9 L388.6,43.8 L389.2,43.8 L389.7,43.7 L390.2,43.7 L390.7,43.6 L391.2,43.6 L391.7,43.5 L392.2,43.5 L392.7,43.4 L393.2,43.4 L393.8,43.3 L394.3,43.3 L394.8,43.2 L395.3,43.2 L395.8,43.1 L396.3,43.1 L396.8,43.0 L397.3,43.0 L397.8,42.9 L398.4,42.9 L398.9,42.8 L399.4,42.8 L399.9,42.8 L400.4,42.7 L400.9,42.7 L401.4,42.6 L401.9,42.6 L402.4,42.5 L403.0,42.5 L403.5,42.5 L404.0,42.4 L404.5,42.4 L405.0,42.3 L405.5,42.3 L406.0,42.3 L406.5,42.2 L407.0,42.2 L407.6,42.1 L408.1,42.1 L408.6,42.1 L409.1,42.0 L409.6,42.0 L410.1,41.9 L410.6,41.9 L411.1,41.9 L411.6,41.8 L412.2,41.8 L412.7,41.8 L413.2,41.7 L413.7,41.7 L414.2,41.7 L414.7,41.6 L415.2,41.6 L415.7,41.6 L416.2,41.5 L416.8,41.5 L417.3,41.5 L417.8,41.4 L418.3,41.4 L418.8,41.4 L419.3,41.3 L419.8,41.3 L420.3,41.3 L420.8,41.2 L421.4,41.2 L421.9,41.2 L422.4,41.2 L422.9,41.1 L423.4,41.1 L423.9,41.1 L424.4,41.0 L424.9,41.0 L425.4,41.0 L426.0,41.0 L426.5,40.9 L427.0,40.9 L427.5,40.9 L428.0,40.8 L428.5,40.8 L429.0,40.8 L429.5,40.8 L430.0,40.7 L430.6,40.7 L431.1,40.7 L431.6,40.7 L432.1,40.6 L432.6,40.6 L433.1,40.6 L433.6,40.6 L434.1,40.5 L434.6,40.5 L435.2,40.5 L435.7,40.5 L436.2,40.5 L436.7,40.4 L437.2,40.4 L437.7,40.4 L438.2,40.4 L438.7,40.3 L439.2,40.3 L439.8,40.3 L440.3,40.3 L440.8,40.3 L441.3,40.2 L441.8,40.2 L442.3,40.2 L442.8,40.2 L443.3,40.2 L443.8,40.1 L444.4,40.1 L444.9,40.1 L445.4,40.1 L445.9,40.1 L446.4,40.0 L446.9,40.0 L447.4,40.0 L447.9,40.0 L448.4,40.0 L449.0,39.9 L449.5,39.9 L450.0,39.9 L450.5,39.9 L451.0,39.9 L451.5,39.9 L452.0,39.8 L452.5,39.8 L453.0,39.8 L453.6,39.8 L454.1,39.8 L454.6,39.8 L455.1,39.7 L455.6,39.7 L456.1,39.7 L456.6,39.7 L457.1,39.7 L457.6,39.7 L458.2,39.7 L458.7,39.6 L459.2,39.6 L459.7,39.6 L460.2,39.6 L460.7,39.6 L461.2,39.6 L461.7,39.6 L462.2,39.5 L462.8,39.5 L463.3,39.5 L463.8,39.5 L464.3,39.5 L464.8,39.5 L465.3,39.5 L465.8,39.4 L466.3,39.4 L466.8,39.4 L467.4,39.4 L467.9,39.4 L468.4,39.4 L468.9,39.4 L469.4,39.4 L469.9,39.3 L470.4,39.3 L470.9,39.3 L471.4,39.3 L472.0,39.3 L472.5,39.3 L473.0,39.3 L473.5,39.3 L474.0,39.3 L474.5,39.2 L475.0,39.2 L475.5,39.2 L476.0,39.2 L476.6,39.2 L477.1,39.2 L477.6,39.2 L478.1,39.2 L478.6,39.2 L479.1,39.1 L479.6,39.1 L480.1,39.1 L480.6,39.1 L481.2,39.1 L481.7,39.1 L482.2,39.1 L482.7,39.1 L483.2,39.1 L483.7,39.1 L484.2,39.1 L484.7,39.0 L485.2,39.0 L485.8,39.0 L486.3,39.0 L486.8,39.0 L487.3,39.0 L487.8,39.0 L488.3,39.0 L488.8,39.0 L489.3,39.0 L489.8,39.0 L490.4,38.9 L490.9,38.9 L491.4,38.9 L491.9,38.9 L492.4,38.9 L492.9,38.9 L493.4,38.9 L493.9,38.9 L494.4,38.9 L495.0,38.9 L495.5,38.9 L496.0,38.9 L496.5,38.9 L497.0,38.8 L497.5,38.8 L498.0,38.8 L498.5,38.8 L499.0,38.8 L499.6,38.8 L500.1,38.8 L500.6,38.8 L501.1,38.8 L501.6,38.8 L502.1,38.8 L502.6,38.8 L503.1,38.8 L503.6,38.8 L504.2,38.8 L504.7,38.7 L505.2,38.7 L505.7,38.7 L506.2,38.7 L506.7,38.7 L507.2,38.7 L507.7,38.7 L508.2,38.7 L508.8,38.7 L509.3,38.7 L509.8,38.7 L510.3,38.7 L510.8,38.7 L511.3,38.7 L511.8,38.7 L512.3,38.7 L512.8,38.7 L513.4,38.7 L513.9,38.6 L514.4,38.6 L514.9,38.6 L515.4,38.6 L515.9,38.6 L516.4,38.6 L516.9,38.6 L517.4,38.6 L518.0,38.6 L518.5,38.6 L519.0,38.6 L519.5,38.6 L520.0,38.6" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <line x1="138.2" y1="152.5" x2="138.2" y2="210" class="ln-time"/><circle cx="138.2" cy="152.5" r="4" class="fill-time"/>
+        <line x1="176.0" y1="135.4" x2="176.0" y2="210" class="ln-time"/><circle cx="176.0" cy="135.4" r="4" class="fill-time"/>
+        <line x1="205.2" y1="118.3" x2="205.2" y2="210" class="ln-time"/><circle cx="205.2" cy="118.3" r="4" class="fill-time"/>
+        <line x1="232.2" y1="101.3" x2="232.2" y2="210" class="ln-time"/><circle cx="232.2" cy="101.3" r="4" class="fill-time"/>
+        <line x1="260.4" y1="84.2" x2="260.4" y2="210" class="ln-time"/><circle cx="260.4" cy="84.2" r="4" class="fill-time"/>
+        <line x1="294.1" y1="67.1" x2="294.1" y2="210" class="ln-time"/><circle cx="294.1" cy="67.1" r="4" class="fill-time"/>
+        <line x1="348.3" y1="50.1" x2="348.3" y2="210" class="ln-time"/><circle cx="348.3" cy="50.1" r="4" class="fill-time"/>
+        <text x="380" y="80" class="t-accent" font-size="13">ln I en el píxel</text>
+        <text x="380" y="150" class="t-time" font-size="13">eventos ON (C = 0,2)</text>
+        <text x="300" y="250" text-anchor="middle" class="t-muted" font-size="13">tiempo; un borde de contraste 5:1 que pasa a 1000 px/s</text>
+      </svg>
+      <figcaption>Un píxel ve pasar un borde suave (2 px de ancho) de intensidad 0,2 a 1. Cada vez que \(\ln I\) sube \(C\) desde el último evento, se emite uno. <code>figuras_b3a.py</code>, sección 4.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small">Cada píxel memoriza \(\ln I\) en su último evento y emite otro, con polaridad \(\pm1\), cuando <a class="cite" data-ref="gallego2022"></a></p>
+      \[ \Delta\ln I(\mathbf x, t) = \ln I(\mathbf x, t) - \ln I(\mathbf x, t_{\text{último}}) = \pm C . \]
+      <ul class="small">
+        <li>Umbrales típicos entre el 10 % y el 50 % de cambio de iluminación, con una dispersión entre píxeles de 2–4 % (1σ) <a class="cite" data-ref="gallego2022"></a>.</li>
+        <li>El número de eventos lo fija el contraste, \(\ln(1/0{,}2)/C \approx 8\); su ritmo, la velocidad del borde: a 100, 1000 y 10 000 px/s, los mismos 8 eventos en 36 ms, 3,6 ms y 0,36 ms.</li>
+        <li>A 10 000 px/s, una cámara de 30 Hz vería el borde saltar 333 px entre imágenes.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Hardware</span>El DVS de 2008: 128 × 128 píxeles, 120 dB de rango dinámico y 15 µs de latencia <a class="cite" data-ref="lichtsteiner2008"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Cámara de eventos · simular</p>
+  <h2>ESIM y v2e: de vídeo renderizado a eventos con sus defectos</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>El problema:</strong> los eventos tienen resolución de microsegundos y un renderizador da imágenes a decenas o cientos de Hz. Interpolar entre imágenes pierde eventos si el cambio entre dos de ellas supera \(C\) muchas veces.</li>
+        <li><strong>ESIM</strong> acopla el renderizador y el simulador de eventos y elige el paso de render de forma adaptativa, \(t_{k+1} = t_k + \lambda C\,|\partial L/\partial t|_{\max}^{-1}\), o según el flujo óptico. Con flujo óptico necesita 1260 imágenes por segundo para el error que el muestreo uniforme logra con 2060 <a class="cite" data-ref="rebecq2018"></a>.</li>
+        <li><strong>v2e</strong> parte de vídeo (real o sintético) y añade los defectos del sensor real: dispersión del umbral (\(\sigma_\theta\) ≈ 0,03 alrededor de unos 0,3), eventos de fuga (≈ 0,1 Hz), ruido de disparo (1 Hz por defecto) y un ancho de banda del fotorreceptor proporcional a la luz <a class="cite" data-ref="hu2021"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lo que no puede faltar</span>(1) Umbral distinto en cada píxel (desajuste); (2) periodo refractario; (3) eventos de ruido en oscuridad; (4) ancho de banda que cae con poca luz. Sin ellos, una red entrenada en simulación ve un sensor demasiado limpio.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Las cámaras de eventos dan observaciones con latencia de microsegundos y sin desenfoque (A4b). Si las usas, el belief se actualiza de forma asíncrona: eso encaja con la memoria continua en el tiempo y con el tema B4.</div>
+      <div class="callout realidad"><span class="tag">¿Se parece lo simulado a lo real?</span>EQS mide la distancia entre eventos simulados y reales en el espacio latente de una red; en conducción, más EQS se traduce en mejor generalización a datos reales (CVPRW 2025, según sus autores) <a class="cite" data-ref="chanda2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="LiDAR y profundidad">
+  <p class="num">Parte 3</p>
+  <h2>LiDAR y profundidad</h2>
+  <p>Rayos con un ruido de distancia pequeño y una resolución angular que decide qué obstáculos existen.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">LiDAR · modelo</p>
+  <h2>Un LiDAR simulado es un ray casting; uno real, no del todo</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Geometría:</strong> un rayo por dirección del patrón de barrido (filas y columnas, o el patrón no repetitivo de algunos LiDAR de estado sólido), intersectado con la escena. Es lo que hacen Gazebo, Isaac y Aerial Gym (B1).</li>
+        <li><strong>Distancia:</strong> ruido gaussiano de unos centímetros, que en el real crece con la distancia y con la reflectividad baja.</li>
+        <li><strong>Lo que el ray casting no da:</strong> divergencia del haz (un rayo «grueso» que toca dos superficies da puntos intermedios: <em>mixed pixels</em>), pérdida de retornos (<em>raydrop</em>) en superficies negras, especulares o lejanas, intensidad, y retornos de polvo o lluvia.</li>
+        <li><strong>Distorsión por movimiento:</strong> un barrido dura decenas de milisegundos; si el dron se mueve, la nube se deforma igual que una imagen con obturador rodante.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Aprender lo que falta</span>LiDARsim reconstruye la escena con datos reales y aprende qué rayos se pierden. Un detector de vehículos entrenado en simulación y evaluado en datos reales: 69,2 de mAP sin pérdida de retornos, 71,6 con la aprendida, 75,2 entrenado con datos reales <a class="cite" data-ref="manivasagam2020"></a>.</div>
+      <div class="callout realidad"><span class="tag">Para drones</span>MARSIM construye una imagen de profundidad a partir de un mapa de puntos y la interpola. En un NUC, su versión en CPU es el doble de rápida que Gazebo con GPU, y la de GPU, diez veces; siempre en tiempo real a 10 Hz <a class="cite" data-ref="kong2023"></a>.</div>
+      <div class="callout clave"><span class="tag">Profundidad estéreo</span>Su error crece con el cuadrado de la distancia, \(\sigma_Z = Z^2\sigma_d/(fb)\): unos 99 cm a 10 m con la cámara de EuRoC (A4b). En un simulador, la profundidad «perfecta» del render no tiene ese ruido: hay que añadirlo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">LiDAR · obstáculos finos</p>
+  <h2>¿Cuántos rayos tocan un cable o una rama?</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con resolución angular horizontal \(\Delta\theta_h\), un objeto de anchura \(w\) a distancia \(r\) recibe del orden de</p>
+      \[ n_h \approx \frac{w}{r\,\Delta\theta_h}\quad\text{columnas por barrido.} \]
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\Delta\theta_h\)</th><th>Poste de 5 cm a 5 m</th><th>A 10 m</th><th>A 20 m</th><th>\(n_h\) = 1 en</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0,1°</td><td class="n">5,7</td><td class="n">2,9</td><td class="n">1,4</td><td class="n">28,6 m</td></tr>
+            <tr><td class="n">0,2°</td><td class="n">2,9</td><td class="n">1,4</td><td class="n">0,7</td><td class="n">14,3 m</td></tr>
+            <tr><td class="n">0,35°</td><td class="n">1,6</td><td class="n">0,8</td><td class="n">0,4</td><td class="n">8,2 m</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Resoluciones de ejemplo (no de un modelo concreto). <code>figuras_b3a.py</code>, sección 5.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Distancia de parada (A5)</span>A 10 m/s, con 0,1 s de latencia y \(a = g\tan30°\), necesitas ver el obstáculo a 9,8 m. Con 0,35° de resolución, un poste de 5 cm a esa distancia recibe menos de un rayo por barrido: puede no existir para el planificador.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Validar la evitación de obstáculos con un LiDAR simulado de resolución alta, sin pérdida de retornos, en un bosque de troncos gruesos. Los cables y las ramas finas son exactamente lo que el real no ve.</div>
+      <div class="callout tesis"><span class="tag">Observabilidad</span>Lo que no se ve en un barrido se puede ver en el siguiente, con otro ángulo. Un belief de mapa que acumula evidencia (A5, A7b) recupera obstáculos que ningún barrido aislado garantiza.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="GNSS, baro y mag">
+  <p class="num">Parte 4</p>
+  <h2>GNSS, barómetro y magnetómetro</h2>
+  <p>Sensores de posición, altura y rumbo absolutos, lentos y con errores correlacionados en el tiempo. Modelarlos como ruido blanco es el error más común.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GNSS · errores</p>
+  <h2>El error del GNSS es lento: un proceso de Gauss-Markov, no ruido blanco</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Tres modelos de error de posición GNSS">
+        <line x1="60" y1="135" x2="530" y2="135" class="ln-rule"/>
+        <line x1="60" y1="20" x2="60" y2="250" class="ln-rule"/>
+        <text x="54" y="106" text-anchor="end" class="t-mono t-faint" font-size="12">+1 m</text>
+        <text x="54" y="172" text-anchor="end" class="t-mono t-faint" font-size="12">−1 m</text>
+        <text x="54" y="73" text-anchor="end" class="t-mono t-faint" font-size="12">+2 m</text>
+        <line x1="60" y1="102.1" x2="530" y2="102.1" class="ln-dash"/>
+        <line x1="60" y1="167.9" x2="530" y2="167.9" class="ln-dash"/>
+        <text x="213" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">200</text>
+        <text x="367" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">400</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">600 s</text>
+        <path d="M60.0,109.7 L61.5,115.6 L63.1,159.9 L64.6,146.0 L66.1,141.2 L67.7,121.7 L69.2,160.9 L70.7,172.9 L72.3,155.9 L73.8,126.8 L75.3,141.5 L76.9,156.9 L78.4,149.2 L79.9,166.3 L81.5,102.4 L83.0,140.3 L84.5,134.8 L86.1,126.4 L87.6,158.8 L89.1,197.3 L90.7,127.1 L92.2,131.3 L93.7,127.1 L95.3,123.8 L96.8,123.2 L98.3,119.7 L99.9,161.8 L101.4,73.4 L102.9,163.0 L104.5,70.1 L106.0,175.7 L107.5,147.6 L109.1,114.7 L110.6,133.7 L112.1,150.8 L113.7,188.5 L115.2,110.4 L116.7,131.6 L118.3,113.5 L119.8,143.1 L121.3,131.4 L122.9,139.2 L124.4,164.5 L125.9,164.0 L127.5,124.1 L129.0,149.9 L130.5,155.9 L132.1,158.0 L133.6,126.1 L135.1,172.0 L136.7,94.5 L138.2,128.1 L139.7,160.4 L141.3,129.5 L142.8,102.4 L144.3,107.3 L145.9,125.6 L147.4,131.8 L148.9,107.4 L150.5,174.2 L152.0,104.5 L153.5,170.8 L155.1,126.0 L156.6,132.1 L158.1,126.0 L159.7,72.8 L161.2,83.8 L162.7,83.5 L164.3,159.3 L165.8,121.2 L167.3,71.5 L168.9,175.9 L170.4,102.9 L171.9,98.3 L173.5,143.0 L175.0,183.8 L176.5,161.8 L178.1,175.0 L179.6,118.1 L181.1,105.6 L182.7,153.0 L184.2,96.2 L185.7,113.4 L187.3,148.6 L188.8,126.1 L190.3,127.1 L191.9,162.9 L193.4,169.5 L194.9,117.0 L196.5,97.7 L198.0,158.1 L199.5,112.2 L201.1,113.9 L202.6,73.1 L204.1,134.9 L205.7,98.5 L207.2,119.2 L208.7,148.9 L210.3,187.6 L211.8,134.8 L213.3,139.3 L214.9,91.4 L216.4,64.9 L217.9,107.1 L219.5,88.5 L221.0,163.0 L222.5,126.1 L224.1,86.8 L225.6,133.3 L227.1,154.3 L228.7,87.8 L230.2,123.7 L231.7,123.8 L233.3,146.4 L234.8,136.5 L236.3,123.5 L237.9,110.1 L239.4,99.1 L240.9,110.5 L242.5,149.0 L244.0,107.1 L245.5,88.4 L247.1,128.7 L248.6,99.7 L250.1,136.1 L251.7,157.0 L253.2,125.6 L254.7,160.4 L256.3,154.8 L257.8,137.6 L259.3,120.1 L260.9,145.7 L262.4,149.0 L263.9,157.8 L265.5,115.1 L267.0,128.4 L268.5,117.3 L270.1,127.1 L271.6,117.5 L273.1,194.4 L274.7,72.0 L276.2,143.5 L277.7,158.3 L279.3,159.0 L280.8,161.0 L282.3,165.6 L283.9,130.1 L285.4,116.0 L286.9,156.4 L288.5,105.3 L290.0,122.1 L291.5,145.4 L293.1,192.8 L294.6,150.9 L296.1,83.6 L297.7,200.6 L299.2,157.7 L300.7,169.7 L302.3,109.8 L303.8,120.7 L305.3,93.3 L306.9,142.2 L308.4,136.3 L309.9,128.5 L311.5,172.1 L313.0,122.9 L314.5,93.3 L316.1,151.9 L317.6,86.5 L319.1,192.0 L320.7,89.4 L322.2,130.1 L323.7,93.3 L325.3,112.3 L326.8,89.6 L328.3,91.6 L329.9,149.6 L331.4,136.7 L332.9,73.7 L334.5,102.5 L336.0,145.5 L337.5,133.9 L339.1,81.7 L340.6,122.5 L342.1,112.6 L343.7,171.6 L345.2,69.9 L346.7,108.0 L348.3,191.0 L349.8,136.2 L351.3,100.3 L352.9,166.4 L354.4,177.2 L355.9,137.3 L357.5,76.2 L359.0,147.8 L360.5,115.7 L362.1,146.5 L363.6,83.7 L365.1,154.0 L366.7,154.6 L368.2,127.2 L369.7,179.4 L371.3,139.7 L372.8,103.7 L374.3,95.9 L375.9,159.6 L377.4,128.3 L378.9,143.9 L380.5,128.9 L382.0,153.6 L383.5,116.6 L385.1,95.7 L386.6,134.2 L388.1,177.9 L389.7,119.9 L391.2,68.5 L392.7,126.9 L394.3,137.7 L395.8,143.1 L397.3,175.3 L398.9,174.6 L400.4,165.2 L401.9,102.5 L403.5,111.0 L405.0,141.2 L406.5,196.9 L408.1,131.4 L409.6,180.0 L411.1,144.7 L412.7,128.6 L414.2,148.3 L415.7,121.4 L417.3,178.5 L418.8,91.6 L420.3,126.6 L421.9,127.8 L423.4,99.6 L424.9,122.3 L426.5,121.2 L428.0,160.0 L429.5,162.5 L431.1,120.9 L432.6,168.8 L434.1,108.9 L435.7,170.0 L437.2,134.3 L438.7,120.0 L440.3,94.6 L441.8,114.9 L443.3,58.4 L444.9,100.5 L446.4,141.0 L447.9,102.1 L449.5,81.2 L451.0,198.1 L452.5,175.3 L454.1,142.7 L455.6,105.9 L457.1,127.0 L458.7,178.8 L460.2,183.2 L461.7,148.9 L463.3,121.4 L464.8,81.4 L466.3,65.8 L467.9,127.0 L469.4,172.4 L470.9,127.4 L472.5,114.8 L474.0,138.2 L475.5,158.2 L477.1,121.7 L478.6,136.8 L480.1,109.0 L481.7,108.3 L483.2,166.5 L484.7,187.3 L486.3,109.0 L487.8,178.0 L489.3,135.3 L490.9,160.8 L492.4,81.7 L493.9,155.2 L495.5,126.7 L497.0,155.7 L498.5,97.1 L500.1,152.5 L501.6,183.8 L503.1,181.1 L504.7,81.2 L506.2,129.4 L507.7,169.8 L509.3,102.0 L510.8,142.1 L512.3,160.3 L513.9,197.4 L515.4,111.2 L516.9,179.6 L518.5,181.5" fill="none" class="ln-dash" stroke-width="1"/>
+        <path d="M60.0,135.0 L60.8,137.1 L61.5,136.6 L62.3,135.9 L63.1,137.0 L63.8,126.7 L64.6,134.0 L65.4,140.4 L66.1,144.7 L66.9,133.5 L67.7,127.5 L68.4,129.6 L69.2,133.0 L70.0,130.2 L70.7,130.5 L71.5,123.2 L72.3,126.8 L73.0,115.2 L73.8,118.2 L74.6,122.6 L75.3,121.9 L76.1,126.1 L76.9,128.2 L77.6,138.5 L78.4,134.5 L79.2,131.8 L79.9,129.1 L80.7,126.5 L81.5,118.1 L82.2,118.4 L83.0,114.3 L83.8,112.5 L84.5,104.1 L85.3,110.2 L86.1,110.4 L86.8,111.2 L87.6,112.6 L88.4,109.7 L89.1,117.2 L89.9,121.2 L90.7,131.2 L91.4,131.1 L92.2,131.2 L93.0,135.0 L93.7,130.6 L94.5,124.4 L95.3,118.6 L96.0,115.4 L96.8,116.2 L97.6,109.8 L98.3,114.5 L99.1,120.1 L99.9,118.3 L100.6,118.5 L101.4,119.4 L102.2,122.4 L102.9,127.2 L103.7,132.9 L104.5,128.2 L105.2,129.4 L106.0,131.8 L106.8,130.2 L107.5,128.8 L108.3,122.2 L109.1,116.8 L109.8,118.6 L110.6,115.6 L111.4,111.0 L112.1,104.8 L112.9,105.8 L113.7,119.7 L114.4,128.3 L115.2,135.8 L116.0,140.8 L116.7,143.0 L117.5,142.2 L118.3,139.6 L119.0,128.6 L119.8,124.8 L120.6,124.9 L121.3,131.8 L122.1,138.9 L122.9,145.8 L123.6,159.1 L124.4,146.7 L125.2,142.5 L125.9,138.7 L126.7,131.7 L127.5,131.9 L128.2,124.5 L129.0,119.2 L129.8,107.6 L130.5,105.5 L131.3,104.9 L132.1,99.9 L132.8,89.6 L133.6,94.6 L134.4,105.0 L135.1,99.7 L135.9,101.4 L136.7,101.6 L137.4,99.6 L138.2,96.3 L139.0,95.8 L139.7,86.6 L140.5,85.6 L141.3,85.2 L142.0,93.4 L142.8,101.6 L143.6,94.6 L144.3,103.9 L145.1,111.7 L145.9,111.9 L146.6,124.3 L147.4,126.5 L148.2,122.2 L148.9,131.6 L149.7,136.2 L150.5,136.0 L151.2,145.6 L152.0,143.7 L152.8,137.4 L153.5,126.2 L154.3,132.4 L155.1,127.2 L155.8,131.8 L156.6,129.4 L157.4,126.9 L158.1,122.2 L158.9,115.0 L159.7,124.2 L160.4,127.5 L161.2,129.0 L162.0,129.0 L162.7,130.4 L163.5,132.4 L164.3,125.5 L165.0,120.6 L165.8,121.6 L166.6,115.2 L167.3,126.4 L168.1,130.8 L168.9,136.9 L169.6,136.1 L170.4,135.3 L171.2,141.0 L171.9,151.3 L172.7,144.4 L173.5,137.9 L174.2,145.0 L175.0,150.8 L175.8,151.6 L176.5,143.6 L177.3,148.1 L178.1,161.8 L178.8,164.7 L179.6,165.0 L180.4,163.2 L181.1,162.0 L181.9,161.8 L182.7,166.1 L183.4,171.1 L184.2,152.3 L185.0,153.1 L185.7,153.5 L186.5,149.4 L187.3,148.5 L188.0,149.8 L188.8,151.6 L189.6,142.5 L190.3,139.2 L191.1,131.4 L191.9,129.6 L192.6,141.7 L193.4,143.3 L194.2,135.9 L194.9,138.0 L195.7,147.1 L196.5,143.7 L197.2,149.8 L198.0,145.7 L198.8,137.7 L199.5,132.4 L200.3,116.2 L201.1,114.2 L201.8,111.7 L202.6,108.2 L203.4,114.7 L204.1,114.4 L204.9,120.6 L205.7,125.4 L206.4,131.4 L207.2,135.9 L208.0,140.3 L208.7,147.1 L209.5,145.4 L210.3,146.7 L211.0,142.9 L211.8,147.3 L212.6,146.0 L213.3,143.8 L214.1,130.4 L214.9,132.7 L215.6,137.0 L216.4,128.3 L217.2,129.4 L217.9,126.3 L218.7,136.5 L219.5,137.2 L220.2,144.7 L221.0,141.6 L221.8,135.0 L222.5,132.6 L223.3,132.0 L224.1,143.2 L224.8,148.4 L225.6,147.9 L226.4,141.3 L227.1,147.6 L227.9,146.4 L228.7,141.2 L229.4,142.2 L230.2,135.7 L231.0,138.7 L231.7,133.6 L232.5,137.3 L233.3,139.3 L234.0,138.4 L234.8,141.5 L235.6,138.6 L236.3,134.7 L237.1,147.1 L237.9,147.0 L238.6,148.0 L239.4,142.1 L240.2,144.6 L240.9,142.3 L241.7,145.3 L242.5,151.8 L243.2,149.0 L244.0,144.3 L244.8,152.9 L245.5,160.6 L246.3,171.9 L247.1,177.5 L247.8,179.8 L248.6,181.8 L249.4,185.3 L250.1,183.6 L250.9,177.6 L251.7,170.3 L252.4,164.9 L253.2,157.6 L254.0,149.6 L254.7,139.8 L255.5,138.1 L256.3,134.9 L257.0,134.7 L257.8,129.2 L258.6,134.0 L259.3,127.7 L260.1,129.5 L260.9,128.4 L261.6,119.4 L262.4,118.0 L263.2,113.2 L263.9,107.8 L264.7,103.8 L265.5,109.1 L266.2,115.2 L267.0,110.6 L267.8,100.4 L268.5,109.4 L269.3,115.0 L270.1,118.7 L270.8,119.8 L271.6,122.2 L272.4,123.8 L273.1,128.2 L273.9,126.6 L274.7,123.7 L275.4,120.4 L276.2,124.9 L277.0,123.4 L277.7,128.1 L278.5,120.1 L279.3,120.3 L280.0,127.2 L280.8,135.4 L281.6,135.6 L282.3,139.5 L283.1,149.8 L283.9,147.5 L284.6,137.8 L285.4,144.1 L286.2,152.2 L286.9,159.0 L287.7,161.5 L288.5,160.4 L289.2,161.4 L290.0,155.6 L290.8,149.6 L291.5,148.4 L292.3,155.5 L293.1,149.0 L293.8,148.2 L294.6,155.6 L295.4,156.5 L296.1,158.3 L296.9,158.8 L297.7,151.9 L298.4,145.5 L299.2,150.2 L300.0,156.6 L300.7,162.0 L301.5,159.7 L302.3,168.4 L303.0,168.7 L303.8,169.7 L304.6,170.2 L305.3,171.1 L306.1,165.5 L306.9,174.2 L307.6,167.5 L308.4,167.4 L309.2,173.1 L309.9,179.7 L310.7,174.5 L311.5,182.8 L312.2,185.8 L313.0,187.9 L313.8,185.0 L314.5,193.1 L315.3,189.8 L316.1,194.1 L316.8,196.5 L317.6,195.8 L318.4,193.2 L319.1,199.3 L319.9,194.5 L320.7,184.6 L321.4,179.1 L322.2,175.8 L323.0,158.1 L323.7,159.3 L324.5,164.6 L325.3,160.3 L326.0,155.5 L326.8,152.2 L327.6,150.9 L328.3,141.7 L329.1,130.0 L329.9,134.0 L330.6,129.5 L331.4,133.8 L332.2,128.0 L332.9,125.5 L333.7,124.7 L334.5,129.3 L335.2,129.3 L336.0,133.1 L336.8,128.1 L337.5,126.6 L338.3,121.5 L339.1,117.7 L339.8,110.4 L340.6,111.1 L341.4,117.5 L342.1,116.5 L342.9,103.9 L343.7,110.1 L344.4,108.7 L345.2,109.7 L346.0,108.3 L346.7,103.9 L347.5,107.8 L348.3,113.5 L349.0,102.2 L349.8,100.7 L350.6,94.3 L351.3,84.5 L352.1,88.7 L352.9,90.3 L353.6,94.8 L354.4,102.8 L355.2,108.1 L355.9,114.4 L356.7,109.4 L357.5,114.6 L358.2,129.6 L359.0,134.2 L359.8,131.9 L360.5,126.5 L361.3,125.1 L362.1,120.7 L362.8,116.3 L363.6,125.9 L364.4,135.4 L365.1,134.7 L365.9,131.4 L366.7,127.4 L367.4,130.6 L368.2,120.6 L369.0,119.6 L369.7,128.8 L370.5,127.5 L371.3,125.1 L372.0,124.5 L372.8,128.5 L373.6,133.9 L374.3,143.3 L375.1,132.8 L375.9,131.9 L376.6,122.6 L377.4,140.1 L378.2,143.2 L378.9,129.5 L379.7,129.2 L380.5,128.2 L381.2,138.1 L382.0,129.9 L382.8,132.2 L383.5,127.7 L384.3,133.9 L385.1,138.9 L385.8,141.4 L386.6,144.6 L387.4,146.1 L388.1,148.6 L388.9,147.7 L389.7,141.0 L390.4,149.1 L391.2,144.4 L392.0,144.5 L392.7,148.8 L393.5,147.5 L394.3,160.7 L395.0,156.2 L395.8,157.0 L396.6,159.8 L397.3,154.0 L398.1,151.8 L398.9,147.1 L399.6,147.9 L400.4,151.2 L401.2,160.6 L401.9,157.0 L402.7,163.2 L403.5,164.6 L404.2,161.3 L405.0,157.6 L405.8,160.3 L406.5,156.6 L407.3,157.9 L408.1,161.0 L408.8,158.4 L409.6,159.6 L410.4,164.0 L411.1,158.9 L411.9,147.6 L412.7,136.5 L413.4,134.9 L414.2,137.6 L415.0,134.0 L415.7,124.2 L416.5,118.8 L417.3,118.2 L418.0,117.0 L418.8,107.0 L419.6,105.1 L420.3,105.8 L421.1,102.4 L421.9,101.1 L422.6,90.5 L423.4,97.1 L424.2,77.7 L424.9,87.2 L425.7,86.8 L426.5,97.1 L427.2,98.4 L428.0,94.4 L428.8,85.4 L429.5,81.9 L430.3,77.4 L431.1,75.2 L431.8,76.9 L432.6,81.8 L433.4,86.6 L434.1,93.5 L434.9,88.7 L435.7,87.4 L436.4,95.6 L437.2,95.4 L438.0,100.5 L438.7,108.0 L439.5,117.4 L440.3,121.6 L441.0,125.5 L441.8,136.4 L442.6,128.9 L443.3,136.5 L444.1,136.5 L444.9,138.9 L445.6,144.2 L446.4,140.6 L447.2,143.4 L447.9,143.1 L448.7,140.3 L449.5,150.2 L450.2,157.6 L451.0,161.1 L451.8,158.7 L452.5,169.2 L453.3,172.9 L454.1,164.8 L454.8,171.6 L455.6,168.6 L456.4,174.0 L457.1,165.1 L457.9,166.4 L458.7,169.4 L459.4,175.7 L460.2,168.1 L461.0,161.1 L461.7,158.7 L462.5,162.3 L463.3,158.8 L464.0,163.2 L464.8,159.1 L465.6,171.2 L466.3,163.1 L467.1,149.3 L467.9,147.8 L468.6,146.7 L469.4,149.1 L470.2,150.4 L470.9,155.2 L471.7,153.8 L472.5,149.7 L473.2,143.5 L474.0,143.4 L474.8,145.2 L475.5,154.3 L476.3,148.5 L477.1,147.8 L477.8,140.9 L478.6,133.8 L479.4,130.7 L480.1,128.2 L480.9,127.7 L481.7,124.9 L482.4,117.2 L483.2,118.9 L484.0,131.9 L484.7,132.9 L485.5,134.8 L486.3,135.0 L487.0,130.4 L487.8,134.6 L488.6,122.8 L489.3,119.3 L490.1,121.3 L490.9,121.5 L491.6,131.9 L492.4,138.6 L493.2,138.4 L493.9,150.0 L494.7,156.7 L495.5,153.2 L496.2,153.2 L497.0,151.7 L497.8,156.5 L498.5,154.7 L499.3,155.3 L500.1,152.1 L500.8,156.6 L501.6,172.2 L502.4,165.0 L503.1,165.8 L503.9,167.3 L504.7,163.5 L505.4,154.4 L506.2,155.8 L507.0,155.2 L507.7,149.6 L508.5,154.8 L509.3,157.2 L510.0,163.0 L510.8,151.6 L511.6,151.3 L512.3,154.1 L513.1,142.1 L513.9,138.2 L514.6,150.7 L515.4,155.4 L516.2,146.4 L516.9,141.5 L517.7,135.5 L518.5,136.0 L519.2,136.1" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <path d="M60.0,135.0 L60.8,136.2 L61.5,135.8 L62.3,134.6 L63.1,135.0 L63.8,136.3 L64.6,134.4 L65.4,135.2 L66.1,135.4 L66.9,135.8 L67.7,136.0 L68.4,135.5 L69.2,136.4 L70.0,134.5 L70.7,132.7 L71.5,135.4 L72.3,134.3 L73.0,134.1 L73.8,134.2 L74.6,134.8 L75.3,136.0 L76.1,134.7 L76.9,133.9 L77.6,133.8 L78.4,134.0 L79.2,134.6 L79.9,135.3 L80.7,135.2 L81.5,135.6 L82.2,136.4 L83.0,135.8 L83.8,134.2 L84.5,134.1 L85.3,135.0 L86.1,134.1 L86.8,134.1 L87.6,134.1 L88.4,134.4 L89.1,135.9 L89.9,134.5 L90.7,134.8 L91.4,136.0 L92.2,134.2 L93.0,134.8 L93.7,134.9 L94.5,134.6 L95.3,135.5 L96.0,134.7 L96.8,134.8 L97.6,134.6 L98.3,135.0 L99.1,133.5 L99.9,133.0 L100.6,134.5 L101.4,134.7 L102.2,135.2 L102.9,136.1 L103.7,134.8 L104.5,134.0 L105.2,135.3 L106.0,136.0 L106.8,135.9 L107.5,133.3 L108.3,133.8 L109.1,134.7 L109.8,135.5 L110.6,134.4 L111.4,135.7 L112.1,134.2 L112.9,135.2 L113.7,135.0 L114.4,135.9 L115.2,134.7 L116.0,134.6 L116.7,134.4 L117.5,134.0 L118.3,134.6 L119.0,134.2 L119.8,136.0 L120.6,135.0 L121.3,134.2 L122.1,135.1 L122.9,135.8 L123.6,135.5 L124.4,135.1 L125.2,133.6 L125.9,134.7 L126.7,134.3 L127.5,134.4 L128.2,135.8 L129.0,135.0 L129.8,135.0 L130.5,135.3 L131.3,134.9 L132.1,136.5 L132.8,134.8 L133.6,134.6 L134.4,135.6 L135.1,136.3 L135.9,135.1 L136.7,136.8 L137.4,134.4 L138.2,135.3 L139.0,133.6 L139.7,136.1 L140.5,137.0 L141.3,134.3 L142.0,135.6 L142.8,135.5 L143.6,134.5 L144.3,135.5 L145.1,135.8 L145.9,134.6 L146.6,133.9 L147.4,134.7 L148.2,133.9 L148.9,135.2 L149.7,135.3 L150.5,134.1 L151.2,134.4 L152.0,135.1 L152.8,133.7 L153.5,134.8 L154.3,134.7 L155.1,134.9 L155.8,135.7 L156.6,135.7 L157.4,134.5 L158.1,134.7 L158.9,136.1 L159.7,134.1 L160.4,136.0 L161.2,135.0 L162.0,134.7 L162.7,134.0 L163.5,135.6 L164.3,134.0 L165.0,134.3 L165.8,134.6 L166.6,135.7 L167.3,134.9 L168.1,134.9 L168.9,136.2 L169.6,134.6 L170.4,135.2 L171.2,136.2 L171.9,135.3 L172.7,134.5 L173.5,135.2 L174.2,135.3 L175.0,133.9 L175.8,133.7 L176.5,135.3 L177.3,135.4 L178.1,134.8 L178.8,135.9 L179.6,133.4 L180.4,134.1 L181.1,135.1 L181.9,136.0 L182.7,135.0 L183.4,134.8 L184.2,135.2 L185.0,133.8 L185.7,135.1 L186.5,134.4 L187.3,134.6 L188.0,135.3 L188.8,134.6 L189.6,135.2 L190.3,135.8 L191.1,135.1 L191.9,135.3 L192.6,135.1 L193.4,133.8 L194.2,135.5 L194.9,136.7 L195.7,135.4 L196.5,134.8 L197.2,134.7 L198.0,135.0 L198.8,135.5 L199.5,135.5 L200.3,134.9 L201.1,135.0 L201.8,135.7 L202.6,134.4 L203.4,134.5 L204.1,134.8 L204.9,135.0 L205.7,134.3 L206.4,134.5 L207.2,134.0 L208.0,134.8 L208.7,133.3 L209.5,134.3 L210.3,134.7 L211.0,135.3 L211.8,135.7 L212.6,136.0 L213.3,134.8 L214.1,136.1 L214.9,135.7 L215.6,134.5 L216.4,133.0 L217.2,133.6 L217.9,134.3 L218.7,134.7 L219.5,134.6 L220.2,133.4 L221.0,134.9 L221.8,135.3 L222.5,132.6 L223.3,134.3 L224.1,136.1 L224.8,135.7 L225.6,135.8 L226.4,135.0 L227.1,134.1 L227.9,134.7 L228.7,135.9 L229.4,134.2 L230.2,135.9 L231.0,136.0 L231.7,135.0 L232.5,134.8 L233.3,135.3 L234.0,135.4 L234.8,133.9 L235.6,135.0 L236.3,134.3 L237.1,135.2 L237.9,134.1 L238.6,135.5 L239.4,136.0 L240.2,136.3 L240.9,135.0 L241.7,134.7 L242.5,135.1 L243.2,133.8 L244.0,136.8 L244.8,134.6 L245.5,136.0 L246.3,136.1 L247.1,134.1 L247.8,135.0 L248.6,133.1 L249.4,135.1 L250.1,135.6 L250.9,134.9 L251.7,135.5 L252.4,135.6 L253.2,134.6 L254.0,135.2 L254.7,134.5 L255.5,132.8 L256.3,133.6 L257.0,134.1 L257.8,134.1 L258.6,135.2 L259.3,135.4 L260.1,135.9 L260.9,134.2 L261.6,135.2 L262.4,135.4 L263.2,134.2 L263.9,133.2 L264.7,135.3 L265.5,133.5 L266.2,135.1 L267.0,133.6 L267.8,134.5 L268.5,133.6 L269.3,135.9 L270.1,135.2 L270.8,134.6 L271.6,135.2 L272.4,136.4 L273.1,134.2 L273.9,133.6 L274.7,134.0 L275.4,134.1 L276.2,134.6 L277.0,136.7 L277.7,135.5 L278.5,134.6 L279.3,135.2 L280.0,135.3 L280.8,135.7 L281.6,134.6 L282.3,134.9 L283.1,135.6 L283.9,136.7 L284.6,135.1 L285.4,134.6 L286.2,135.0 L286.9,134.7 L287.7,135.2 L288.5,135.3 L289.2,136.1 L290.0,134.7 L290.8,134.7 L291.5,135.2 L292.3,135.9 L293.1,135.4 L293.8,136.6 L294.6,134.4 L295.4,135.8 L296.1,135.0 L296.9,135.4 L297.7,134.9 L298.4,136.0 L299.2,134.9 L300.0,135.3 L300.7,137.2 L301.5,135.3 L302.3,136.2 L303.0,134.0 L303.8,134.4 L304.6,134.2 L305.3,134.2 L306.1,135.1 L306.9,135.2 L307.6,135.9 L308.4,133.7 L309.2,135.0 L309.9,135.0 L310.7,134.6 L311.5,135.0 L312.2,134.8 L313.0,134.2 L313.8,134.8 L314.5,135.1 L315.3,134.8 L316.1,135.6 L316.8,135.2 L317.6,134.5 L318.4,134.5 L319.1,136.8 L319.9,135.5 L320.7,135.9 L321.4,134.2 L322.2,135.0 L323.0,136.1 L323.7,133.7 L324.5,133.2 L325.3,135.6 L326.0,134.8 L326.8,134.3 L327.6,135.2 L328.3,135.7 L329.1,135.2 L329.9,135.4 L330.6,136.0 L331.4,135.1 L332.2,135.6 L332.9,136.2 L333.7,135.7 L334.5,132.8 L335.2,135.8 L336.0,135.4 L336.8,133.2 L337.5,135.2 L338.3,135.2 L339.1,136.0 L339.8,134.6 L340.6,135.3 L341.4,135.1 L342.1,135.3 L342.9,134.4 L343.7,134.8 L344.4,134.9 L345.2,135.1 L346.0,133.2 L346.7,134.5 L347.5,133.7 L348.3,135.2 L349.0,135.0 L349.8,135.3 L350.6,135.7 L351.3,135.1 L352.1,134.9 L352.9,135.8 L353.6,135.6 L354.4,135.1 L355.2,133.7 L355.9,134.5 L356.7,134.8 L357.5,135.7 L358.2,134.5 L359.0,135.8 L359.8,134.6 L360.5,135.7 L361.3,135.0 L362.1,135.2 L362.8,135.0 L363.6,135.7 L364.4,134.3 L365.1,133.9 L365.9,135.4 L366.7,134.1 L367.4,136.1 L368.2,135.3 L369.0,135.9 L369.7,135.7 L370.5,135.2 L371.3,134.4 L372.0,135.5 L372.8,133.8 L373.6,134.1 L374.3,135.3 L375.1,135.5 L375.9,133.2 L376.6,136.3 L377.4,134.9 L378.2,136.1 L378.9,136.2 L379.7,134.7 L380.5,136.2 L381.2,133.9 L382.0,135.1 L382.8,135.9 L383.5,135.0 L384.3,134.7 L385.1,134.9 L385.8,135.0 L386.6,135.8 L387.4,136.1 L388.1,136.6 L388.9,135.8 L389.7,135.4 L390.4,134.5 L391.2,134.7 L392.0,135.5 L392.7,133.9 L393.5,134.6 L394.3,134.7 L395.0,136.1 L395.8,134.0 L396.6,134.7 L397.3,135.3 L398.1,136.0 L398.9,134.6 L399.6,134.0 L400.4,134.8 L401.2,134.2 L401.9,135.1 L402.7,135.7 L403.5,135.1 L404.2,135.0 L405.0,134.3 L405.8,134.9 L406.5,133.9 L407.3,134.9 L408.1,135.2 L408.8,135.1 L409.6,134.5 L410.4,135.3 L411.1,135.7 L411.9,136.7 L412.7,133.8 L413.4,134.6 L414.2,134.3 L415.0,135.6 L415.7,135.7 L416.5,134.9 L417.3,135.1 L418.0,134.1 L418.8,134.6 L419.6,137.1 L420.3,135.9 L421.1,134.7 L421.9,134.7 L422.6,134.8 L423.4,134.7 L424.2,136.1 L424.9,134.4 L425.7,134.9 L426.5,135.2 L427.2,133.2 L428.0,134.8 L428.8,134.8 L429.5,135.5 L430.3,134.7 L431.1,135.6 L431.8,135.3 L432.6,134.7 L433.4,135.7 L434.1,135.2 L434.9,135.7 L435.7,135.1 L436.4,134.1 L437.2,134.9 L438.0,135.0 L438.7,134.5 L439.5,135.1 L440.3,133.6 L441.0,134.7 L441.8,133.7 L442.6,135.7 L443.3,134.8 L444.1,135.5 L444.9,137.1 L445.6,136.4 L446.4,135.0 L447.2,134.7 L447.9,135.1 L448.7,135.0 L449.5,134.6 L450.2,134.6 L451.0,134.5 L451.8,135.1 L452.5,136.2 L453.3,136.0 L454.1,135.8 L454.8,133.5 L455.6,136.4 L456.4,133.8 L457.1,136.1 L457.9,135.1 L458.7,135.6 L459.4,136.0 L460.2,133.4 L461.0,134.2 L461.7,135.4 L462.5,134.4 L463.3,135.6 L464.0,134.0 L464.8,135.9 L465.6,134.2 L466.3,134.8 L467.1,137.0 L467.9,135.4 L468.6,135.5 L469.4,135.0 L470.2,134.7 L470.9,135.2 L471.7,134.6 L472.5,135.9 L473.2,135.9 L474.0,136.0 L474.8,134.3 L475.5,134.9 L476.3,135.6 L477.1,136.4 L477.8,135.5 L478.6,135.3 L479.4,134.3 L480.1,133.8 L480.9,135.3 L481.7,134.4 L482.4,134.8 L483.2,135.1 L484.0,134.4 L484.7,135.7 L485.5,134.4 L486.3,134.0 L487.0,135.5 L487.8,135.2 L488.6,133.4 L489.3,135.5 L490.1,135.6 L490.9,134.2 L491.6,136.2 L492.4,134.8 L493.2,133.8 L493.9,135.7 L494.7,134.7 L495.5,134.9 L496.2,134.8 L497.0,135.0 L497.8,133.8 L498.5,135.3 L499.3,134.8 L500.1,136.6 L500.8,135.6 L501.6,135.2 L502.4,134.5 L503.1,135.4 L503.9,135.4 L504.7,134.4 L505.4,135.3 L506.2,135.5 L507.0,134.8 L507.7,133.5 L508.5,132.8 L509.3,134.8 L510.0,136.3 L510.8,136.2 L511.6,134.8 L512.3,134.6 L513.1,135.5 L513.9,134.7 L514.6,135.3 L515.4,134.2 L516.2,134.0 L516.9,135.1 L517.7,136.2 L518.5,135.3 L519.2,135.4" fill="none" class="ln-time" stroke-width="2.5"/>
+        <text x="70" y="36" class="t-muted" font-size="12">ruido blanco de 1 m</text>
+        <text x="380" y="36" class="t-accent" font-size="12">Gauss-Markov, 1 m y 60 s</text>
+        <text x="380" y="222" class="t-time" font-size="12">PX4 simulado (2,5 cm, casi plano)</text>
+        <text x="300" y="286" text-anchor="middle" class="t-muted" font-size="13">tiempo; error de posición en un eje</text>
+      </svg>
+      <figcaption>Tres modelos de error horizontal a 8 Hz durante 10 min. El de Gauss-Markov (1 m, 60 s) es un ejemplo con parámetros supuestos. <code>figuras_b3a.py</code>, sección 6.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Fuentes:</strong> reloj y efemérides de los satélites, ionosfera, troposfera, multitrayecto y ruido del receptor. Las primeras varían en minutos: el error de posición está correlacionado en el tiempo.</li>
+        <li><strong>Gauss-Markov de primer orden:</strong> \(e_k = a\,e_{k-1} + \sigma\sqrt{1-a^2}\,w_k\), \(a = e^{-\Delta t/\tau}\).</li>
+        <li><strong>Consecuencia:</strong> promediar no ayuda dentro de \(\tau\), y la velocidad derivada de la posición es mucho mejor que con ruido blanco: 0,52 m/s frente a 11,2 m/s de desviación al diferenciar a 8 Hz.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">PX4, leído en el código</span><code>sensor_gps_sim</code> a 8 Hz: \(e_k = 0{,}76\,e_{k-1} + 0{,}016\,w_k\), es decir, 2,5 cm de desviación y \(\tau\) ≈ 0,46 s. Declara <code>eph</code> = 0,9 m y <code>epv</code> = 1,78 m sin RTK <a class="cite" data-ref="px4gpssim"></a>. El EKF recibe una incertidumbre unas 36 veces mayor que el error real simulado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GNSS · cifras reales</p>
+  <h2>Cuánto se equivoca un GNSS real</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Fuente</th><th>Cifra</th></tr></thead>
+          <tbody>
+            <tr><td>GPS, servicio estándar, media global <a class="cite" data-ref="gpssps"></a></td><td>≤ 8 m horizontal y ≤ 13 m vertical (95 %)</td></tr>
+            <tr><td>u-blox NEO-M9N (una frecuencia) <a class="cite" data-ref="ubloxm9n"></a></td><td>2,0 m CEP</td></tr>
+            <tr><td>u-blox ZED-F9P: sin y con RTK <a class="cite" data-ref="ubloxf9p"></a></td><td>1,5 m CEP; 0,01 m + 1 ppm, convergencia &lt; 10 s</td></tr>
+            <tr><td>Latencia y frecuencia típicas (AirSim) <a class="cite" data-ref="shah2017"></a></td><td>200 ms y 50 Hz</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Las cifras de receptores son de sus fabricantes, en condiciones de cielo abierto.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Lo que importa en un dron</span>(1) Error correlacionado de metros; (2) retardo de 100–200 ms (A4a: compensarlo con horizonte retrasado); (3) saltos cuando cambia la constelación o hay multitrayecto cerca de edificios; (4) pérdida total bajo puentes o en interiores.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>«Entornos parcialmente observables» incluye perder el GNSS. Un belief que solo ha visto GNSS perfecto no sabe qué hacer cuando desaparece o salta 5 m. Simula pérdidas, saltos y degradaciones con el <code>eph</code> correspondiente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Barómetro y magnetómetro</p>
+  <h2>Altura y rumbo: dos sensores sencillos con perturbaciones propias</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0">Barómetro</h3>
+      <ul class="small">
+        <li>\(dp = -\rho g\,dh\): 1 Pa equivale a 8,3 cm. El x500 de Gazebo usa 3 Pa de ruido (25 cm) a 50 Hz <a class="cite" data-ref="px4gzmodels"></a>; el simulador de barómetro de PX4, 1 Pa más una deriva lineal <a class="cite" data-ref="px4barosim"></a>.</li>
+        <li>En el real, la presión atmosférica y la temperatura del sensor cambian durante el vuelo (deriva lenta de la altura), y el chorro de los rotores y el efecto suelo cambian la presión cerca del suelo: PX4 aplica una zona muerta a las innovaciones negativas del barómetro (<code>EKF2_GND_EFF_DZ</code>, 4 m por defecto) <a class="cite" data-ref="px4ekfbaro"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0">Magnetómetro</h3>
+      <ul class="small">
+        <li>El mundo de PX4 en Gazebo tiene un campo de 48,3 µT; el ruido de 3·10⁻⁷ T del x500 es el 0,6 % (unos 0,7° de rumbo por muestra) <a class="cite" data-ref="px4gzmodels"></a>.</li>
+        <li>En el real, la corriente de los motores genera un campo que cambia con el empuje. PX4 lo compensa por empuje o por corriente (<code>CAL_MAG_COMP_TYP</code>, desactivado por defecto) <a class="cite" data-ref="px4mag"></a>. Ningún simulador por defecto lo modela.</li>
+        <li>Hierro duro y blando de la estructura: se calibran, pero cambian si cambias la carga.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Error frecuente</span>Simular un magnetómetro perfecto y descubrir en vuelo que el rumbo salta al acelerar. En A4a viste que sin magnetómetro la guiñada no es observable: con uno malo, es peor que no tenerlo.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hilo de latencia y frecuencia</p>
+  <h2>Cada sensor llega a su ritmo y con su retraso</h2>
+  <div class="cols">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>Sensor</th><th>Frecuencia</th><th>Fuente</th></tr></thead>
+        <tbody>
+          <tr><td>Giróscopo en la controladora</td><td class="n"><span class="hz">≈ 8 kHz</span> en bruto; lazo de <em>rate</em> a <span class="hz">800 Hz</span></td><td>PX4 <a class="cite" data-ref="px4gyro"></a></td></tr>
+          <tr><td>IMU de datasets (EuRoC, TUM VI)</td><td class="n"><span class="hz">200 Hz</span></td><td><a class="cite" data-ref="openvins,tumvi"></a></td></tr>
+          <tr><td>Cámaras de VIO (TUM VI, obturador rodante)</td><td class="n"><span class="hz">20 Hz</span></td><td><a class="cite" data-ref="schubert2019"></a></td></tr>
+          <tr><td>Cámara de eventos</td><td class="n">asíncrona, <span class="hz">15 µs</span> de latencia</td><td><a class="cite" data-ref="lichtsteiner2008"></a></td></tr>
+          <tr><td>LiDAR (MARSIM, Livox Avia)</td><td class="n"><span class="hz">10 Hz</span></td><td><a class="cite" data-ref="kong2023"></a></td></tr>
+          <tr><td>GNSS de una frecuencia</td><td class="n">hasta <span class="hz">25 Hz</span></td><td><a class="cite" data-ref="ubloxm9n"></a></td></tr>
+          <tr><td>GNSS RTK</td><td class="n"><span class="hz">7–20 Hz</span> según constelaciones</td><td><a class="cite" data-ref="ubloxf9p"></a></td></tr>
+          <tr><td>Barómetro y magnetómetro del x500 simulado</td><td class="n"><span class="hz">50</span> y <span class="hz">100 Hz</span></td><td><a class="cite" data-ref="px4gzmodels"></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li>El retardo importa tanto como la frecuencia: la posición del GNSS llega con un retardo del orden de <span class="hz">200 ms</span> en el modelo de AirSim <a class="cite" data-ref="shah2017"></a>; una imagen, con el de exposición, lectura y transmisión (el desfase de A4b).</li>
+        <li>Un barrido de LiDAR o una imagen con obturador rodante no corresponden a un instante, sino a un intervalo de decenas de milisegundos.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Para el simulador</span>Cada sensor necesita su propio reloj: frecuencia, retardo, <em>jitter</em> y el intervalo que cubre cada medida. Es exactamente el tema B4.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Un belief que integra observaciones de frecuencias y retardos distintos tiene que saber <em>cuándo</em> se tomó cada una, no solo cuándo llegó.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Validar un modelo de sensor</p>
+  <h2>Cuatro pruebas antes de fiarte de un sensor simulado</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card"><span class="meta">1 · MOMENTOS</span><h3>Varianza y sesgo</h3><p>En reposo o con verdad conocida: media y desviación por muestra frente a las reales, por eje y por nivel de señal (en la cámara, varianza frente a media: la recta del método de transferencia de fotones de EMVA 1288).</p></div>
+    <div class="card"><span class="meta">2 · ESCALAS DE TIEMPO</span><h3>Allan y espectro</h3><p>La desviación de Allan y la densidad espectral de la serie simulada deben solaparse con las reales en todo el rango de \(\tau\) que te importe, no solo en 1 s.</p></div>
+    <div class="card"><span class="meta">3 · CORRELACIÓN</span><h3>Autocorrelación</h3><p>Para GNSS, barómetro y sesgos: la autocorrelación del error decide cuánto ayuda promediar. Un modelo blanco con la varianza correcta falla aquí.</p></div>
+    <div class="card"><span class="meta">4 · TAREA</span><h3>El efecto aguas abajo</h3><p>Lo que cuenta es la tarea: NEES del estimador, error del VIO, detecciones en datos reales (como el mAP de LiDARsim) o el éxito de la política, con el sensor simulado frente al real.</p></div>
+  </div>
+  <div class="callout error"><span class="tag">Error frecuente</span>Validar solo la varianza por muestra. Dos ruidos con la misma varianza pueden tener efectos opuestos en un filtro (blanco frente a Gauss-Markov) o en una red (ruido por píxel frente a desenfoque).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen por sensor</p>
+  <h2>Qué modelar, con qué parámetros y cómo comprobarlo</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Sensor</th><th>Modelo mínimo creíble</th><th>Parámetros de</th><th>Validación</th></tr></thead>
+      <tbody>
+        <tr><td>IMU</td><td>Blanco + paseo del sesgo + vibración a la frecuencia de los rotores; filtro de PX4</td><td>Allan en reposo (horas) e inflado para el filtro</td><td>Allan y espectro de un log real</td></tr>
+        <tr><td>Cámara</td><td>Render + desenfoque + obturador + ruido de disparo y oscuro + cuantización</td><td>EMVA 1288 o calibración propia</td><td>Histogramas de ruido por nivel; VIO en sim y real</td></tr>
+        <tr><td>Eventos</td><td>Umbral por píxel con dispersión, refractario, fuga, ancho de banda</td><td>Medidas del sensor o v2e</td><td>Tasa de eventos y ruido en escena estática</td></tr>
+        <tr><td>LiDAR</td><td>Ray casting + ruido de distancia + pérdida de retornos + distorsión por movimiento</td><td>Hoja de datos y escaneos reales</td><td>Densidad de puntos y retornos en objetos finos</td></tr>
+        <tr><td>GNSS</td><td>Gauss-Markov de metros + retardo + saltos y pérdidas, con <code>eph</code> coherente</td><td>Logs estáticos largos</td><td>Autocorrelación del error</td></tr>
+        <tr><td>Baro y mag</td><td>Deriva lenta + perturbación por rotores o corriente</td><td>Logs con y sin motores</td><td>Error frente a empuje</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Hacia dónde va y conexión con tu tesis</p>
+  <h2>Sensores simulados más baratos, más realistas o aprendidos</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Hecho</span>Profundidad por ray casting en GPU para miles de entornos (Aerial Gym, B1) y simuladores de eventos y LiDAR que imitan los defectos del sensor real <a class="cite" data-ref="hu2021,manivasagam2020"></a>.</div>
+      <div class="callout clave"><span class="tag">Tendencia</span>Simulación de cámara y LiDAR en tiempo real con modelos de sensor arbitrarios sobre escenas reconstruidas: SimULi (ICLR 2026, en conducción) dice reducir hasta un 40 % el error de cámara y profundidad y ser de 10 a 20 veces más rápido que el trazado de rayos <a class="cite" data-ref="turki2026"></a>.</div>
+      <div class="callout clave"><span class="tag">Previsión</span>Render neuronal (3DGS, B3b) con modelos de sensor encima: escenas reales con el ruido, el desenfoque y el obturador de tu cámara. Es una previsión.</div>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>
+        <ul class="small" style="margin:6px 0 0 18px; padding:0;">
+          <li>El modelo de observación \(p(o\mid s)\) de tu POMDP es la suma de los modelos de este tema. Si lo simplificas, tu belief resuelve un problema más fácil que el real.</li>
+          <li>Los errores correlacionados (sesgos, GNSS, deriva del barómetro) son estado oculto: un belief bien hecho los estima, uno mal entrenado los ignora.</li>
+          <li>Pregunta abierta: ¿aprende un world model a representar el sesgo de la IMU o el error del GNSS si lo entrenas con observaciones que los contienen? Puedes comprobarlo con una sonda lineal sobre el estado latente.</li>
+        </ul>
+      </div>
+      <div class="callout clave"><span class="tag">Para el hito H2</span>IMU con paseo del sesgo y vibración, GNSS de Gauss-Markov con retardo y pérdidas, barómetro con deriva, profundidad con ruido estéreo. Cada uno con su interruptor.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de B3a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>IMU: \(\tilde\omega = \omega + b + n\); en discreto, \(\sigma_d = \sigma/\sqrt{\Delta t}\) y paso del sesgo \(\sigma_b\sqrt{\Delta t}\). No confundas densidad con desviación por muestra.</li>
+    <li>Allan: pendiente −1/2 (lee \(N\) en 1 s), mínimo = 0,664 \(B\), +1/2 (lee \(K\) en 3 s). Hacen falta horas en reposo; los valores se inflan para el filtro (TUM VI: ×2 y ×10 para Kalibr).</li>
+    <li>Navegación a ciegas: \(t^{3/2}\), \(t^{5/2}\) y \(t^{7/2}\); con la IMU de EuRoC, 25 cm en 10 s y 29 m en 60 s.</li>
+    <li>Cámara: ruido de disparo y oscuro (EMVA 1288); desenfoque \(f\omega t_{\exp}\); obturador rodante \(f\omega t_{ro}\), 69 px a 5 rad/s.</li>
+    <li>Eventos: \(\Delta\ln I = \pm C\); simular exige render adaptativo (ESIM) y los defectos del sensor (v2e).</li>
+    <li>LiDAR: ray casting más ruido, pérdida de retornos y distorsión; los objetos finos desaparecen con la distancia.</li>
+    <li>GNSS: error de Gauss-Markov de metros con retardo; el simulador de PX4 usa 2,5 cm y declara 0,9 m.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>IMU</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Una hoja de datos da un ruido del giróscopo de 0,01 °/s/√Hz y lo muestreas a 400 Hz con un filtro antialiasing correcto. ¿Desviación típica por muestra?</p>
+      <ol class="opts">
+        <li><button type="button">0,01 °/s</button></li>
+        <li><button type="button">0,0005 °/s</button></li>
+        <li><button type="button">0,2 °/s</button></li>
+        <li><button type="button">4 °/s</button></li>
+      </ol>
+      <p class="explain">\(\sigma_d = \sigma/\sqrt{\Delta t} = 0{,}01\cdot\sqrt{400} = 0{,}2\) °/s.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. En una desviación de Allan, la curva baja con pendiente −1/2 hasta 100 s, se aplana y sube con +1/2. ¿Dónde lees el paseo aleatorio del sesgo?</p>
+      <ol class="opts">
+        <li><button type="button">En \(\tau\) = 1 s sobre la curva medida</button></li>
+        <li><button type="button">En \(\tau\) = 3 s sobre la recta +1/2 ajustada (extrapolada)</button></li>
+        <li><button type="button">En el mínimo, dividido entre 0,664</button></li>
+        <li><button type="button">En el \(\tau\) más largo medido</button></li>
+      </ol>
+      <p class="explain">\(\sigma(\tau) = K\sqrt{\tau/3}\) vale \(K\) en \(\tau\) = 3 s. Como a 3 s domina el ruido blanco, se lee sobre la recta +1/2 extrapolada. El mínimo da la inestabilidad del sesgo, y \(\tau\) = 1 s, el ruido blanco.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Cámaras y LiDAR</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Cámara con \(f\) = 400 px, lectura de 25 ms y exposición de 4 ms; el dron gira a 3 rad/s. ¿Cizalla por obturador rodante y desenfoque?</p>
+      <ol class="opts">
+        <li><button type="button">3 px y 0,5 px</button></li>
+        <li><button type="button">10 px y 1,2 px</button></li>
+        <li><button type="button">12 px y 30 px</button></li>
+        <li><button type="button">30 px y 4,8 px</button></li>
+      </ol>
+      <p class="explain">\(f\omega t_{ro} = 400\cdot3\cdot0{,}025 = 30\) px; \(f\omega t_{\exp} = 400\cdot3\cdot0{,}004 = 4{,}8\) px.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. Un LiDAR con 0,2° de resolución horizontal. ¿Hasta qué distancia recibe al menos un rayo por barrido un cable de 1 cm?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 2,9 m</button></li>
+        <li><button type="button">≈ 14 m</button></li>
+        <li><button type="button">≈ 29 m</button></li>
+        <li><button type="button">Siempre, con ray casting</button></li>
+      </ol>
+      <p class="explain">\(r = w/\Delta\theta = 0{,}01/(0{,}2\pi/180) = 2{,}9\) m. Más lejos, el cable cae entre rayos en algunos barridos, y en el real además la divergencia del haz y la baja reflectividad lo empeoran.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>GNSS y diseño</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. Modelas el error del GNSS como ruido blanco de 1 m a 8 Hz en vez de Gauss-Markov de 1 m y 60 s. ¿Qué le pasa a tu estimador simulado?</p>
+      <ol class="opts">
+        <li><button type="button">Nada: la varianza es la misma</button></li>
+        <li><button type="button">Peor posición y peor velocidad</button></li>
+        <li><button type="button">Mejor posición que en el real (promedia el ruido) y peor velocidad derivada</button></li>
+        <li><button type="button">Diverge</button></li>
+      </ol>
+      <p class="explain">El ruido blanco se promedia: en 60 s a 8 Hz el filtro reduce el error de posición mucho más de lo que podrá con el error real, que está correlacionado. Diferenciar ruido blanco da, en cambio, velocidades malísimas (11 m/s de desviación frente a 0,5 m/s).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: vas a entrenar en simulación una política que navega en interiores con IMU, cámara de profundidad y, a ratos, GNSS (al salir por una ventana). ¿Qué modelos de sensor metes en el simulador y con qué parámetros?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">IMU con los valores de Allan de un MEMS de la clase de tu dron (o de TUM VI), paseo del sesgo, sesgo inicial aleatorio y vibración a la frecuencia de los rotores, filtrada como en PX4. Profundidad con ruido que crece con \(Z^2\), huecos en superficies sin textura o reflectantes y la latencia de la cámara. GNSS ausente en interiores y, al salir, con un transitorio de convergencia: error de Gauss-Markov de metros que se reduce en decenas de segundos, retardo de 100–200 ms y un <code>eph</code> coherente con el error. Barómetro con deriva y el efecto de los rotores cerca del suelo. Todos los parámetros aleatorizados alrededor de sus valores medidos, y una evaluación separada con los valores extremos.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 30 MIN · WIKI</span>
+      <h3>Modelo de ruido de IMU de Kalibr <a class="cite" data-ref="kalibrwiki"></a></h3>
+      <p><strong>Lee:</strong> el modelo continuo, su versión discreta y cómo leer los parámetros en la desviación de Allan.</p>
+      <p><strong>Busca:</strong> la nota sobre submuestrear sin filtrar y el aviso sobre sensores baratos.</p>
+      <p><strong>Responde:</strong> ¿qué parámetros pondrías en tu simulador y cuáles en tu filtro?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · TESIS, CAP. 4</span>
+      <h3>Allan para sensores inerciales <a class="cite" data-ref="hou2004"></a></h3>
+      <p><strong>Lee:</strong> la definición, los términos de ruido (§4.3) y la incertidumbre de la estimación (§4.5).</p>
+      <p><strong>Busca:</strong> la fórmula del error de estimación frente al número de ventanas.</p>
+      <p><strong>Responde:</strong> ¿cuántas horas necesitas para leer \(K\) con un 10 % de error?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ARXIV</span>
+      <h3>v2e <a class="cite" data-ref="hu2021"></a></h3>
+      <p><strong>Lee:</strong> el modelo de píxel DVS y cada fuente de ruido que añade.</p>
+      <p><strong>Busca:</strong> cómo cambian los eventos con la iluminación.</p>
+      <p><strong>Responde:</strong> ¿qué defectos del sensor añadirías a tu simulador si tu dron llevara una cámara de eventos?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> IEEE Std 952 <a class="cite" data-ref="ieee952"></a>; El-Sheimy et al., la versión en revista <a class="cite" data-ref="elsheimy2008"></a>; EMVA 1288 <a class="cite" data-ref="emva1288"></a>; ESIM <a class="cite" data-ref="rebecq2018"></a>; la revisión de visión por eventos <a class="cite" data-ref="gallego2022"></a>; LiDARsim <a class="cite" data-ref="manivasagam2020"></a>; TUM VI <a class="cite" data-ref="tumvi"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Varianza de Allan de una IMU real y un modelo de IMU validado</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Allan de TUM VI:</strong> con la secuencia <em>imu-static</em> (111 h en reposo), calcula la desviación de Allan solapada de los seis ejes y lee \(N\), \(B\) y \(K\).</li>
+        <li><strong>Modelo de IMU</strong> en JAX con esos parámetros; valida que su Allan coincide con la real.</li>
+        <li><strong>Deriva:</strong> navegación pura con la IMU simulada y comparación con las fórmulas.</li>
+        <li><strong>Vibración y filtro:</strong> añade la vibración de los rotores y el filtro de PX4; mira su efecto en Allan y en el ESKF de A4a.</li>
+        <li><strong>GNSS y cámara</strong> (opcional): Gauss-Markov con retardo y obturador rodante sobre las imágenes de EuRoC.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Los valores de Allan publicados por TUM VI; la pendiente −1/2 y +1/2; la deriva de 25 cm a 10 s con la IMU de EuRoC; la cizalla \(f\omega t_{ro}\).</div>
+      <div class="callout realidad"><span class="tag">Sin hardware</span>Todo en CPU con numpy o JAX. El cálculo de Allan de 111 h a 200 Hz cabe en memoria si lo haces por bloques o con la suma acumulada.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b3a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 3</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-px4gzmodels">PX4. PX4-gazebo-models: modelo <code>x500_base</code> (IMU, barómetro y magnetómetro) y mundo <code>default</code>, consultado el 7 de noviembre de 2026. <a href="https://github.com/PX4/PX4-gazebo-models">github.com/PX4/PX4-gazebo-models</a></li>
+    <li id="ref-px4sih">PX4. <code>sih.cpp</code> del simulador SIH, rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4gpssim">PX4. <code>SensorGpsSim.cpp</code>, <code>SensorGpsSim.hpp</code> y <code>GZBridge.cpp</code>, rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-allan1966">Allan, D. W. (1966). Statistics of atomic frequency standards. <span class="venue">Proceedings of the IEEE</span>, 54(2), 221–230. <a href="https://doi.org/10.1109/PROC.1966.4634">doi:10.1109/PROC.1966.4634</a></li>
+    <li id="ref-ieee952">IEEE (1998). IEEE Standard Specification Format Guide and Test Procedure for Single-Axis Interferometric Fiber Optic Gyros. <span class="venue">IEEE Std 952-1997</span>. <a href="https://doi.org/10.1109/IEEESTD.1998.86153">doi:10.1109/IEEESTD.1998.86153</a></li>
+    <li id="ref-lichtsteiner2008">Lichtsteiner, P., Posch, C., Delbruck, T. (2008). A 128×128 120 dB 15 µs latency asynchronous temporal contrast vision sensor. <span class="venue">IEEE Journal of Solid-State Circuits</span>, 43(2), 566–576. <a href="https://doi.org/10.1109/JSSC.2007.914337">doi:10.1109/JSSC.2007.914337</a></li>
+    <li id="ref-elsheimy2008">El-Sheimy, N., Hou, H., Niu, X. (2008). Analysis and modeling of inertial sensors using Allan variance. <span class="venue">IEEE Transactions on Instrumentation and Measurement</span>, 57(1), 140–149. <a href="https://doi.org/10.1109/TIM.2007.908635">doi:10.1109/TIM.2007.908635</a></li>
+    <li id="ref-furgale2013">Furgale, P., Rehder, J., Siegwart, R. (2013). Unified temporal and spatial calibration for multi-sensor systems. <span class="venue">IROS 2013</span>, 1280–1286. <a href="https://doi.org/10.1109/IROS.2013.6696514">doi:10.1109/IROS.2013.6696514</a></li>
+    <li id="ref-kalibrwiki">ETH Zürich ASL. Kalibr, página <em>IMU Noise Model</em> de la wiki, consultado el 7 de noviembre de 2026. <a href="https://github.com/ethz-asl/kalibr/wiki/IMU-Noise-Model">github.com/ethz-asl/kalibr/wiki</a></li>
+    <li id="ref-rebecq2018">Rebecq, H., Gehrig, D., Scaramuzza, D. (2018). ESIM: an open event camera simulator. <span class="venue">Conference on Robot Learning (CoRL 2018)</span>, PMLR 87. <a href="https://proceedings.mlr.press/v87/rebecq18a/rebecq18a.pdf">proceedings.mlr.press</a></li>
+    <li id="ref-hu2021">Hu, Y., Liu, S.-C., Delbruck, T. (2021). v2e: From video frames to realistic DVS events. <span class="venue">CVPR Workshops 2021</span>, 1312–1321. <a href="https://doi.org/10.1109/CVPRW53098.2021.00144">doi:10.1109/CVPRW53098.2021.00144</a>. <a href="https://arxiv.org/abs/2006.07722">arXiv:2006.07722</a></li>
+    <li id="ref-manivasagam2020">Manivasagam, S., Wang, S., Wong, K., Zeng, W., Sazanovich, M., Tan, S., Yang, B., Ma, W.-C., Urtasun, R. (2020). LiDARsim: Realistic LiDAR simulation by leveraging the real world. <span class="venue">CVPR 2020</span>, 11164–11173. <a href="https://doi.org/10.1109/CVPR42600.2020.01118">doi:10.1109/CVPR42600.2020.01118</a></li>
+    <li id="ref-kong2023">Kong, F., Liu, X., Tang, B., Lin, J., Ren, Y., Cai, Y., Zhu, F., Chen, N., Zhang, F. (2023). MARSIM: A light-weight point-realistic simulator for LiDAR-based UAVs. <span class="venue">IEEE Robotics and Automation Letters</span>, 8(5), 2954–2961. <a href="https://doi.org/10.1109/LRA.2023.3264163">doi:10.1109/LRA.2023.3264163</a>. <a href="https://arxiv.org/abs/2211.10716">arXiv:2211.10716</a></li>
+    <li id="ref-hou2004">Hou, H. (2004). <em>Modeling Inertial Sensors Errors Using Allan Variance</em>. Tesis de máster, Department of Geomatics Engineering, University of Calgary (UCGE Report 20201), cap. 4. <a href="https://www.ucalgary.ca/engo_webdocs/NES/04.20201.HaiyingHou.pdf">ucalgary.ca</a></li>
+    <li id="ref-tumvi">Schubert, D., Goll, T., Demmel, N., Usenko, V., Stückler, J., Cremers, D. (2018). The TUM VI benchmark for evaluating visual-inertial odometry. <span class="venue">IROS 2018</span>, 1680–1687. <a href="https://doi.org/10.1109/IROS.2018.8593419">doi:10.1109/IROS.2018.8593419</a>. Valores de Allan e inflado, en la página del dataset: <a href="https://cvg.cit.tum.de/data/datasets/visual-inertial-dataset">cvg.cit.tum.de</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="16">
+    <li id="ref-openvins">RPNG. OpenVINS, configuración <code>kalibr_imu_chain.yaml</code> de EuRoC, consultado el 7 de noviembre de 2026. <a href="https://github.com/rpng/open_vins">github.com/rpng/open_vins</a></li>
+    <li id="ref-bmi088">Bosch Sensortec. <em>BMI088 Data Sheet</em>, BST-BMI088-DS000-19, rev. 1.9 (enero de 2024), tablas 4 y 5. Afirmaciones del fabricante. <a href="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi088-ds001.pdf">bosch-sensortec.com</a></li>
+    <li id="ref-icm42688">TDK InvenSense. <em>ICM-42688-P Datasheet</em>, DS-000347, rev. 1.6 (2021), tablas 1 y 2. Afirmaciones del fabricante; leída en una copia de terceros de ese documento.</li>
+    <li id="ref-px4gyro">PX4. <code>imu_gyro_parameters.yaml</code> (<code>IMU_GYRO_CUTOFF</code>, <code>IMU_GYRO_RATEMAX</code>, notch dinámicos), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-gznoise">Gazebo. gz-sensors, <code>GaussianNoiseModel.cc</code> (sesgo dinámico de Gauss-Markov y cuantización), consultado el 7 de noviembre de 2026. <a href="https://github.com/gazebosim/gz-sensors">github.com/gazebosim/gz-sensors</a></li>
+    <li id="ref-emva1288">European Machine Vision Association (2021). <em>EMVA Standard 1288: Standard for Characterization of Image Sensors and Cameras</em>, Release 4.0 Linear, §2.4, ec. (13)–(15). <a href="https://www.emva.org/wp-content/uploads/EMVA1288Linear_4.0Release.pdf">emva.org</a></li>
+    <li id="ref-schubert2019">Schubert, D., Demmel, N., von Stumberg, L., Usenko, V., Cremers, D. (2019). Rolling-shutter modelling for direct visual-inertial odometry. <span class="venue">IROS 2019</span>, 2462–2469. <a href="https://doi.org/10.1109/IROS40897.2019.8968539">doi:10.1109/IROS40897.2019.8968539</a>. <a href="https://arxiv.org/abs/1911.01015">arXiv:1911.01015</a></li>
+    <li id="ref-gallego2022">Gallego, G., Delbruck, T., Orchard, G., Bartolozzi, C., Taba, B., Censi, A., Leutenegger, S., Davison, A. J., Conradt, J., Daniilidis, K., Scaramuzza, D. (2022). Event-based vision: A survey. <span class="venue">IEEE TPAMI</span>, 44(1), 154–180. <a href="https://doi.org/10.1109/TPAMI.2020.3008413">doi:10.1109/TPAMI.2020.3008413</a>. <a href="https://arxiv.org/abs/1904.08405">arXiv:1904.08405</a></li>
+    <li id="ref-chanda2025">Chanda, K., Verma, A. A., Vaghela, A., Yang, Y., Chakravarthi, B. (2025). Event Quality Score (EQS): Assessing the realism of simulated event camera streams via distances in latent space. <a href="https://arxiv.org/abs/2504.12515">arXiv:2504.12515</a> (CVPR Workshops 2025 según los autores)</li>
+    <li id="ref-gpssps">U.S. Department of Defense (2020). <em>Global Positioning System Standard Positioning Service Performance Standard</em>, 5.ª ed., tablas 3.4-1 y 3.8-3. <a href="https://archive.gps.gov/technical/ps/2020-SPS-performance-standard.pdf">archive.gps.gov</a></li>
+    <li id="ref-ubloxm9n">u-blox. <em>NEO-M9N-00B Data sheet</em>, UBX-19014285, R08 (2025), tabla 1. Afirmación del fabricante. <a href="https://content.u-blox.com/sites/default/files/NEO-M9N-00B_DataSheet_UBX-19014285.pdf">u-blox.com</a></li>
+    <li id="ref-ubloxf9p">u-blox. <em>ZED-F9P-04B Data sheet</em>, UBX-21044850, R05 (2024), tablas 2 y 3. Afirmación del fabricante. <a href="https://content.u-blox.com/sites/default/files/ZED-F9P-04B_DataSheet_UBX-21044850.pdf">u-blox.com</a></li>
+    <li id="ref-shah2017">Shah, S., Dey, D., Lovett, C., Kapoor, A. (2018). AirSim: High-fidelity visual and physical simulation for autonomous vehicles. En <span class="venue">Field and Service Robotics</span>, 621–635. <a href="https://doi.org/10.1007/978-3-319-67361-5_40">doi:10.1007/978-3-319-67361-5_40</a></li>
+    <li id="ref-px4barosim">PX4. <code>SensorBaroSim.cpp</code>, rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-px4ekfbaro">PX4. <code>params_barometer.yaml</code> de EKF2 (<code>EKF2_GND_EFF_DZ</code>), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 3</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="31">
+    <li id="ref-px4mag">PX4. <code>sensor_params_mag.yaml</code> (<code>CAL_MAG_COMP_TYP</code>), rama main (commit 95a0c23). <a href="https://github.com/PX4/PX4-Autopilot">github.com/PX4/PX4-Autopilot</a></li>
+    <li id="ref-turki2026">Turki, H., Wu, Q., Kang, X., Martinez Esturo, J., Huang, S., Li, R., Gojcic, Z., de Lutio, R., et al. (2025). SimULi: Real-time LiDAR and camera simulation with unscented transforms. <a href="https://arxiv.org/abs/2510.12901">arXiv:2510.12901</a> (ICLR 2026 según los autores)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
