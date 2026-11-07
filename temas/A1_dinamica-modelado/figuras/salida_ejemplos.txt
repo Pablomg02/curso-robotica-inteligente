@@ -1,0 +1,181 @@
+========================================================================
+EJEMPLO 1. Término giroscópico en el x500 (voltereta en alabeo con algo de guiñada)
+  omega = [10.  0.  1.] rad/s; J = diag(0.0239, 0.0239, 0.044) kg m2
+  J omega = [0.239 0.    0.044]
+  omega x J omega = [ 0.    -0.201  0.   ] N m
+  sin par: J domega = -omega x J omega -> domega = [-0.    8.41 -0.  ] rad/s2
+  par de cabeceo máximo (dos motores a tope, dos parados) = 2.975 N m; el giroscópico es el 6.8 %
+========================================================================
+EJEMPLO 2. Eje intermedio con la inercia de NeuroBEM
+  (Jz-Jx)(Jx-Jy)/(Jy Jz) = (0.0018)(0.0004)/(0.0021*0.0043) = 0.0797
+  lambda = omega0 sqrt(coef) = 20.0 * 0.2824 = 5.647 1/s; se multiplica por e cada 177 ms; por 10 cada 408 ms
+  giro en z (eje mayor): coeficiente = -0.7543 < 0 -> oscila a 17.37 rad/s
+  giro en y (eje menor): coeficiente = -0.0819 < 0 -> oscila
+  x500 (Jx = Jy): coeficiente en x = 0.0000: ni crece ni oscila a primer orden
+========================================================================
+EJEMPLO 3. Disco actuador en estacionario: dron de NeuroBEM (752 g, hélices de 5 pulgadas)
+  T por rotor = m g / 4 = 1.844 N; R = 6.35 cm; A = pi R^2 = 0.01267 m2
+  v_h = sqrt(T / (2 rho A)) = sqrt(1.844 / (2*1.225*0.01267)) = 7.71 m/s
+  flujo másico = rho A v_h = 0.1196 kg/s; estela w = 2 v_h = 15.42 m/s
+  comprobación T = mdot w = 1.844 N; potencia = T v_h = 14.22 W por rotor; 1/2 mdot w^2 = 14.22 W
+  cuatro rotores: P_ideal = 56.9 W
+========================================================================
+EJEMPLO 4. Subida y descenso axial con el mismo rotor
+  V_c = 2.0 m/s: V_c/(2 v_h) = 0.130; v_i/v_h = 0.879; v_i = 6.77 m/s; P = T (V_c + v_i) = 16.2 W por rotor (hover 14.2 W)
+  V_c = 5.0 m/s: V_c/(2 v_h) = 0.324; v_i/v_h = 0.727; v_i = 5.60 m/s; P = T (V_c + v_i) = 19.6 W por rotor (hover 14.2 W)
+  V_c = -5.0 m/s (descenso): la fórmula daría v_i = 10.60 m/s; aire lejano arriba -5.0 m/s (sube), estela +16.2 m/s (baja): no hay un tubo de corriente único
+  banda sin solución: -2 v_h = -15.4 m/s < V_c < 0
+========================================================================
+EJEMPLO 5. T = k_T Omega^2 en el x500
+  Omega =    500 rad/s (  50 % de Omega_max): T = 2.14 N (25.0 % del máximo)
+  Omega =    770 rad/s (  77 % de Omega_max): T = 5.06 N (59.2 % del máximo)
+  Omega =   1000 rad/s ( 100 % de Omega_max): T = 8.55 N (100.0 % del máximo)
+  (Omega_max / Omega_h)^2 = 1.689 = empuje/peso
+========================================================================
+EJEMPLO 6. Arrastre de rotor: de un rotor a la matriz D (x500 de Gazebo y Faessler et al.)
+  un rotor: f = -|Omega| lambda1 v_perp; cuatro a Omega_h = 770 rad/s: d = 4 lambda1 Omega_h / m = 4*8.064e-05*770/2.064 = 0.120 1/s
+  v_B = (5.0, 0, 0) m/s: x500 a_x = -d v = -0.60 m/s2 (fuerza 1.24 N); dron de Faessler (d_x = 0,544) a_x = -2.72 m/s2
+  v_B = (10.0, 0, 0) m/s: x500 a_x = -d v = -1.20 m/s2 (fuerza 2.48 N); dron de Faessler (d_x = 0,544) a_x = -5.44 m/s2
+========================================================================
+EJEMPLO 7. Efecto suelo de Cheeseman y Bennett a potencia constante
+  z/R = 0.5: dv_i/v_i = (R/4z)^2 = 0.2500; T_IGE/T_OGE = 1/(1 - 0.2500) = 1.333
+  z/R = 1.0: dv_i/v_i = (R/4z)^2 = 0.0625; T_IGE/T_OGE = 1/(1 - 0.0625) = 1.067
+  z/R = 2.0: dv_i/v_i = (R/4z)^2 = 0.0156; T_IGE/T_OGE = 1/(1 - 0.0156) = 1.016
+========================================================================
+EJEMPLO 8. Motor de primer orden: escalón y respuesta en frecuencia (x500, tau = 12,5 ms al subir)
+  t = 1 tau = 12.5 ms: fracción del escalón = 0.632
+  t = 2.3 tau = 28.7 ms: fracción del escalón = 0.900
+  t = 3 tau = 37.5 ms: fracción del escalón = 0.950
+  escalón de Omega_h = 770 a 1000 rad/s: a los 12,5 ms va por 915 rad/s
+  f = 6.4 Hz: omega tau = 0.503; |G| = 0.893; fase = -26.7 deg
+  f = 10.0 Hz: omega tau = 0.785; |G| = 0.786; fase = -38.1 deg
+  f = 12.7 Hz: omega tau = 0.997; |G| = 0.708; fase = -44.9 deg
+========================================================================
+EJEMPLO 9. Asignación del x500 (PX4, FRD): un mando de alabeo y la eficacia de guiñada
+  llave pedida (T, tau_x, tau_y, tau_z) = [20.251  0.5    0.     0.   ]
+  T_i = M^-1 llave = [4.344 5.781 5.781 4.344] N; Omega_i = [713. 822. 822. 713.] rad/s
+  comprobación M T_i = [20.2509  0.5     0.      0.    ]
+  guiñada tau_z = 0,1 N m pedida con KM = 0,05: T_i = [5.563 5.563 4.563 4.563]
+  la planta (momentConstant 0,016) da tau_z = 0,016 * sum(s_i T_i) = 0.0320 N m (3.12 veces menos)
+========================================================================
+EJEMPLO 10. Conjunto factible en el plano (T, tau_x) del x500, con tau_y = tau_z = 0
+  T_i = T/4 +- 1.4368 tau_x; 0 <= T_i <= 8.55 N
+  vértices (T, tau_x): [(0.0, 0.0), (17.1, 2.975), (34.19, 0.0), (17.1, -2.975)]
+  en estacionario T = 20.25 N: |tau_x| <= 2.426 N m (lo limita el motor que sube)
+  polígono: 60.0,160.0 259.5,39.1 458.9,160.0 259.5,280.9
+  hover: (296.3, 160.0); margen arriba y = 61.4, abajo y = 258.6
+  ejes x T: [(0, 60.0), (10, 176.7), (20, 293.3), (30, 410.0)]
+  ejes y tau: [(-3, 281.9), (-2, 241.2), (-1, 200.6), (0, 160.0), (1, 119.4), (2, 78.8), (3, 38.1)]
+========================================================================
+EJEMPLO 11. Planitud, empuje y actitud: x500 acelerando 3 m/s2 hacia delante con psi = 0 (ENU)
+  t = a + g e3 = [3.   0.   9.81]; |t| = 10.258 m/s2; T = m |t| = 21.18 N (hover 20.25 N)
+  z_B = [0.292 0.    0.956]; inclinación = 17.0 deg
+  y_B = [0. 1. 0.]; x_B = [ 0.956  0.    -0.292] (el morro baja)
+  por motor: 5.29 N, Omega = 787 rad/s
+========================================================================
+EJEMPLO 12. Planitud, velocidades angulares y pares: x500 en estacionario
+  jerk j = [2. 0. 0.] m/s3: T dot = m z_B.j = 0.00 N/s; h = (m/T)(j - (z.j)z) = [0.2039 0.     0.    ]
+  omega_x = -h.y_B = 0.0000; omega_y = h.x_B = 0.2039 rad/s (11.7 deg/s)
+  snap = [10.  0.  0.] m/s4 con jerk nulo en ese instante: domega_y = s_x/g = 1.019 rad/s2
+  tau_y = J_yy domega_y = 0.0244 N m; diferencia por motor = 0.0350 N
+========================================================================
+EJEMPLO 13. Planitud con arrastre isótropo d = 0,465 1/s en vuelo recto y nivelado
+  v = 4.0 m/s: t = (d v, 0, g) = (1.86, 0, 9.81); inclinación = 10.7 deg (sin modelo de arrastre: 0 deg); |t| = 9.98 m/s2
+  v = 10.0 m/s: t = (d v, 0, g) = (4.65, 0, 9.81); inclinación = 25.4 deg (sin modelo de arrastre: 0 deg); |t| = 10.86 m/s2
+========================================================================
+EJEMPLO 14. Ala fija: velocidad relativa y ángulos del Aerosonde en el equilibrio a 25 m/s
+  u = 24.969 m/s, w = 1.242 m/s, v = 0: V_a = 25.00 m/s; alpha = atan2(w, u) = 2.85 deg; beta = 0
+  viento de cara de 5.0 m/s: V_g = V_a - 5.0 = 20.0 m/s; alcance por unidad de tiempo x0.80
+  viento de cara de 12.5 m/s: V_g = V_a - 12.5 = 12.5 m/s; alcance por unidad de tiempo x0.50
+========================================================================
+EJEMPLO 15. Ala fija: fuerzas y momento en el equilibrio, término a término
+  presión dinámica 1/2 rho V^2 = 0,5*1.2682*25.0^2 = 396.3 Pa; por S = 0.55: 218.0 N
+  C_L = C_L0 + C_La alpha + C_Lde de = 0.23 + 5.61*0.0497 + 0.13*(-0.1239) = 0.4927 -> L = 107.4 N; peso = 107.9 N
+  AR = b^2/S = 15.24; C_D = 0.043 + 0.0060 (inducida) -0.0017 (elevador) = 0.0473 -> D = 10.32 N
+  C_m = 0.0135 + (-2.74)*0.0497 + (-0.99)*(-0.1239) = 0.00000 (equilibrio en cabeceo)
+  empuje de la hélice 10.33 N; f_x = 0.000 N, f_z = 0.000 N (cero con theta = alpha)
+========================================================================
+EJEMPLO 16. Curva de sustentación con el modelo de mezcla del Aerosonde (figura)
+  alpha =  0 deg: lineal 0.230, placa 0.000, sigma 0.000, mezcla 0.230
+  alpha = 10 deg: lineal 1.209, placa 0.059, sigma 0.000, mezcla 1.209
+  alpha = 20 deg: lineal 2.188, placa 0.220, sigma 0.002, mezcla 2.184
+  alpha = 27 deg: lineal 2.874, placa 0.367, sigma 0.515, mezcla 1.582
+  alpha = 35 deg: lineal 3.657, placa 0.539, sigma 0.999, mezcla 0.542
+  alpha = 45 deg: lineal 4.636, placa 0.707, sigma 1.000, mezcla 0.707
+  máximo de la mezcla: C_L = 2.424 a 23.5 deg
+  path lineal: M60.0,257.1 L63.1,254.3 L66.3,251.4 L69.4,248.6 L72.6,245.8 L75.7,243.0 L78.9,240.2 L82.0,237.4 L85.1,234.6 L88.3,231.7 L91.4,228.9 L94.6,226.1 L97.7,223.3 L100.9,220.5 L104.0,217.7 L107.1,214.8 L110.3,212.0 L113.4,209.2 L116.6,206.4 L119.7,203.6 L122.9,200.8 L126.0,198.0 L129.1,195.1 L132.3,192.3 L135.4,189.5 L138.6,186.7 L141.7,183.9 L144.9,181.1 L148.0,178.3 L151.1,175.4 L154.3,172.6 L157.4,169.8 L160.6,167.0 L163.7,164.2 L166.9,161.4 L170.0,158.6 L173.1,155.7 L176.3,152.9 L179.4,150.1 L182.6,147.3 L185.7,144.5 L188.9,141.7 L192.0,138.8 L195.1,136.0 L198.3,133.2 L201.4,130.4 L204.6,127.6 L207.7,124.8 L210.9,122.0 L214.0,119.1 L217.1,116.3 L220.3,113.5 L223.4,110.7 L226.6,107.9 L229.7,105.1 L232.9,102.3 L236.0,99.4 L239.1,96.6 L242.3,93.8 L245.4,91.0 L248.6,88.2 L251.7,85.4 L254.9,82.5 L258.0,79.7 L261.1,76.9 L264.3,74.1 L267.4,71.3 L270.6,68.5 L273.7,65.7 L276.9,62.8 L280.0,60.0 L283.1,57.2 L286.3,54.4 L289.4,51.6 L292.6,48.8 L295.7,46.0 L298.9,43.1 L302.0,40.3 L305.1,37.5 L308.3,34.7 L311.4,31.9
+  path placa: M60.0,217.4 L63.1,217.1 L66.3,216.8 L69.4,216.5 L72.6,216.2 L75.7,215.9 L78.9,215.7 L82.0,215.5 L85.1,215.2 L88.3,215.1 L91.4,214.9 L94.6,214.7 L97.7,214.6 L100.9,214.4 L104.0,214.3 L107.1,214.2 L110.3,214.1 L113.4,214.1 L116.6,214.0 L119.7,214.0 L122.9,214.0 L126.0,214.0 L129.1,214.0 L132.3,213.9 L135.4,213.9 L138.6,213.8 L141.7,213.7 L144.9,213.6 L148.0,213.4 L151.1,213.3 L154.3,213.1 L157.4,212.9 L160.6,212.8 L163.7,212.5 L166.9,212.3 L170.0,212.1 L173.1,211.8 L176.3,211.5 L179.4,211.2 L182.6,210.9 L185.7,210.6 L188.9,210.2 L192.0,209.9 L195.1,209.5 L198.3,209.1 L201.4,208.7 L204.6,208.3 L207.7,207.9 L210.9,207.5 L214.0,207.0 L217.1,206.6 L220.3,206.1 L223.4,205.6 L226.6,205.1 L229.7,204.6 L232.9,204.1 L236.0,203.6 L239.1,203.0 L242.3,202.5 L245.4,201.9 L248.6,201.4 L251.7,200.8 L254.9,200.2 L258.0,199.6 L261.1,199.0 L264.3,198.4 L267.4,197.8 L270.6,197.2 L273.7,196.6 L276.9,196.0 L280.0,195.4 L283.1,194.8 L286.3,194.1 L289.4,193.5 L292.6,192.9 L295.7,192.3 L298.9,191.6 L302.0,191.0 L305.1,190.4 L308.3,189.7 L311.4,189.1 L314.6,188.5 L317.7,187.9 L320.9,187.2 L324.0,186.6 L327.1,186.0 L330.3,185.4 L333.4,184.8 L336.6,184.2 L339.7,183.6 L342.9,183.0 L346.0,182.4 L349.1,181.9 L352.3,181.3 L355.4,180.7 L358.6,180.2 L361.7,179.7 L364.9,179.1 L368.0,178.6 L371.1,178.1 L374.3,177.6 L377.4,177.1 L380.6,176.6 L383.7,176.2 L386.9,175.7 L390.0,175.3 L393.1,174.9 L396.3,174.5 L399.4,174.1 L402.6,173.7 L405.7,173.3 L408.9,173.0 L412.0,172.7 L415.1,172.3 L418.3,172.0 L421.4,171.8 L424.6,171.5 L427.7,171.3 L430.9,171.0 L434.0,170.8 L437.1,170.6 L440.3,170.4 L443.4,170.3 L446.6,170.2 L449.7,170.0 L452.9,169.9 L456.0,169.9 L459.1,169.8 L462.3,169.8 L465.4,169.7 L468.6,169.7 L471.7,169.8 L474.9,169.8 L478.0,169.9 L481.1,169.9 L484.3,170.0 L487.4,170.2 L490.6,170.3 L493.7,170.5 L496.9,170.7 L500.0,170.9
+  path mezcla: M60.0,257.1 L63.1,254.3 L66.3,251.4 L69.4,248.6 L72.6,245.8 L75.7,243.0 L78.9,240.2 L82.0,237.4 L85.1,234.6 L88.3,231.7 L91.4,228.9 L94.6,226.1 L97.7,223.3 L100.9,220.5 L104.0,217.7 L107.1,214.8 L110.3,212.0 L113.4,209.2 L116.6,206.4 L119.7,203.6 L122.9,200.8 L126.0,198.0 L129.1,195.1 L132.3,192.3 L135.4,189.5 L138.6,186.7 L141.7,183.9 L144.9,181.1 L148.0,178.3 L151.1,175.4 L154.3,172.6 L157.4,169.8 L160.6,167.0 L163.7,164.2 L166.9,161.4 L170.0,158.6 L173.1,155.7 L176.3,152.9 L179.4,150.1 L182.6,147.3 L185.7,144.5 L188.9,141.7 L192.0,138.8 L195.1,136.0 L198.3,133.2 L201.4,130.4 L204.6,127.6 L207.7,124.8 L210.9,122.0 L214.0,119.1 L217.1,116.3 L220.3,113.5 L223.4,110.7 L226.6,107.9 L229.7,105.1 L232.9,102.3 L236.0,99.5 L239.1,96.7 L242.3,93.9 L245.4,91.2 L248.6,88.4 L251.7,85.8 L254.9,83.2 L258.0,80.8 L261.1,78.5 L264.3,76.7 L267.4,75.3 L270.6,74.6 L273.7,75.1 L276.9,77.1 L280.0,81.2 L283.1,87.9 L286.3,97.4 L289.4,109.4 L292.6,123.1 L295.7,137.0 L298.9,149.7 L302.0,160.5 L305.1,168.8 L308.3,174.9 L311.4,179.0 L314.6,181.7 L317.7,183.4 L320.9,184.3 L324.0,184.6 L327.1,184.7 L330.3,184.5 L333.4,184.2 L336.6,183.8 L339.7,183.4 L342.9,182.9 L346.0,182.3 L349.1,181.8 L352.3,181.2 L355.4,180.7 L358.6,180.2 L361.7,179.6 L364.9,179.1 L368.0,178.6 L371.1,178.1 L374.3,177.6 L377.4,177.1 L380.6,176.6 L383.7,176.2 L386.9,175.7 L390.0,175.3 L393.1,174.9 L396.3,174.5 L399.4,174.1 L402.6,173.7 L405.7,173.3 L408.9,173.0 L412.0,172.7 L415.1,172.3 L418.3,172.0 L421.4,171.8 L424.6,171.5 L427.7,171.3 L430.9,171.0 L434.0,170.8 L437.1,170.6 L440.3,170.4 L443.4,170.3 L446.6,170.2 L449.7,170.0 L452.9,169.9 L456.0,169.9 L459.1,169.8 L462.3,169.8 L465.4,169.7 L468.6,169.7 L471.7,169.8 L474.9,169.8 L478.0,169.9 L481.1,169.9 L484.3,170.0 L487.4,170.2 L490.6,170.3 L493.7,170.5 L496.9,170.7 L500.0,170.9
+  ejes x: [(-10, 60.0), (0, 122.9), (10, 185.7), (20, 248.6), (30, 311.4), (40, 374.3), (50, 437.1), (60, 500.0)]
+  ejes y: [(-0.5, 242.8), (0, 214.0), (0.5, 185.2), (1, 156.5), (1.5, 127.8), (2, 99.0), (2.5, 70.2), (3, 41.5)]
+  alpha0 = 27 deg -> x = 292.6; trim alpha = 2,85 deg -> (140.8, 184.7)
+========================================================================
+EJEMPLO 17. Linealización: cuánto acopla A los subsistemas longitudinal y lateral
+  A longitudinal (u, w, q, theta):
+ [[-0.282  0.495 -1.212 -9.798]
+ [-0.561 -4.498 24.371 -0.487]
+ [ 0.199 -3.993 -5.295  0.   ]
+ [ 0.     0.     1.     0.   ]]
+  A lateral (v, p, r, phi):
+ [[ -0.777   1.242 -24.969   9.798]
+ [ -3.867 -22.629  10.905   0.   ]
+ [  0.783  -0.115  -1.228   0.   ]
+ [  0.      1.      0.05    0.   ]]
+  máx |A_lon|, |A_lat| = 24.37, 24.97; máx |bloques cruzados| = 0.0052, 0.1807
+  mayor cruce lon<-lat: d(w)/d(phi) = 0.0052
+  mayor cruce lat<-lon: d(p)/d(u) = 0.1807
+  autovalores de A (8 estados) frente a los de los dos bloques:
+    [-22.4431+0.j      -4.8948-9.8697j  -4.8948+9.8697j  -1.1397-4.6553j
+  -1.1397+4.6553j  -0.1426-0.478j   -0.1426+0.478j    0.0892+0.j    ]
+    [-22.4431+0.j      -4.8948-9.8697j  -4.8948+9.8697j  -1.1397-4.6553j
+  -1.1397+4.6553j  -0.1426-0.478j   -0.1426+0.478j    0.0892+0.j    ]
+========================================================================
+EJEMPLO 18. De autovalores a modos y qué estados se mueven en cada uno
+  longitudinal: lambda = -4.8948 +9.8697j -> wn = |lambda| = sqrt(-4.895^2 + 9.870^2) = 11.017 rad/s; zeta = -Re/|lambda| = 0.444; periodo = 2 pi/Im = 0.64 s
+      peso relativo en el autovector (u,v,w/Va; p,q,r/|lambda|): u 0.04, w 1.00, q 0.92, theta 0.92
+  longitudinal: lambda = -0.1426 +0.4780j -> wn = |lambda| = sqrt(-0.143^2 + 0.478^2) = 0.499 rad/s; zeta = -Re/|lambda| = 0.286; periodo = 2 pi/Im = 13.14 s
+      peso relativo en el autovector (u,v,w/Va; p,q,r/|lambda|): u 0.78, w 0.01, q 1.00, theta 1.00
+  lateral: lambda = -22.4431 +0.0000j -> tau = -1/lambda = 45 ms
+      peso relativo en el autovector (u,v,w/Va; p,q,r/|lambda|): v 0.03, p 1.00, r 0.01, phi 1.00
+  lateral: lambda = -1.1397 +4.6553j -> wn = |lambda| = sqrt(-1.140^2 + 4.655^2) = 4.793 rad/s; zeta = -Re/|lambda| = 0.238; periodo = 2 pi/Im = 1.35 s
+      peso relativo en el autovector (u,v,w/Va; p,q,r/|lambda|): v 0.98, p 0.99, r 0.88, phi 1.00
+  lateral: lambda = 0.0892 +0.0000j -> inestable; dobla en ln2/lambda = 7.77 s
+      peso relativo en el autovector (u,v,w/Va; p,q,r/|lambda|): v 0.01, p 0.19, r 1.00, phi 0.24
+  puntos (Re, Im) -> (x, y):
+    (-22.4431,   0.0000) -> (78.7, 150.0)
+    ( -4.8948,  -9.8697) -> (402.7, 257.7)
+    ( -4.8948,   9.8697) -> (402.7, 42.3)
+    ( -1.1397,  -4.6553) -> (472.0, 200.8)
+    ( -1.1397,   4.6553) -> (472.0, 99.2)
+    ( -0.1426,  -0.4780) -> (490.4, 155.2)
+    ( -0.1426,   0.4780) -> (490.4, 144.8)
+    (  0.0892,   0.0000) -> (494.7, 150.0)
+  ejes x: [(-24, 50.0), (-20, 123.8), (-15, 216.2), (-10, 308.5), (-5, 400.8), (0, 493.1)]
+  ejes y: [(-10, 259.1), (-5, 204.5), (0, 150.0), (5, 95.5), (10, 40.9)]
+    zoom (-0.1426, 0.4780) -> (166.7, 190.1)
+    zoom (-0.1426, -0.4780) -> (166.7, 253.9)
+    zoom (0.0892, 0.0000) -> (250.1, 222.0)
+  zoom ejes: [(-0.3, 110.0), (-0.2, 146.0), (-0.1, 182.0), (0, 218.0), (0.1, 254.0), (0.2, 290.0)] [(-0.5, 255.3), (0, 222.0), (0.5, 188.7)]
+========================================================================
+EJEMPLO 19. Fugoide de Lanchester a 25 m/s
+  omega_ph = sqrt(2) g / V0 = 1,414*9,81/25 = 0.5549 rad/s; T_ph = 2 pi/omega = 11.32 s
+  coeficiente 2 g^2 / V0^2 = 0.3080 1/s2
+  si sube 10.0 m desde V0 = 25 m/s: V = sqrt(V0^2 - 2 g dh) = 20.71 m/s; L/W = V^2/V0^2 = 0.686
+========================================================================
+EJEMPLO 20. Leyes de escala: exponentes y comprobación con x500 frente a Crazyflie 2.1
+  Mach (nD cte): n ~ L^-1.0; T ~ L^2.0; T/W ~ L^-1.0; tau ~ L^3.0; alpha ~ L^-2.0; t ~ L^1.0
+  Froude (n^2 D cte): n ~ L^-0.5; T ~ L^3.0; T/W ~ L^0.0; tau ~ L^4.0; alpha ~ L^-1.0; t ~ L^0.5
+  L_x500 / L_CF = (m_x500/m_CF)^(1/3) = (2.064/0,027)^(1/3) = 4.24
+  Froude: alpha x4.24; Mach: alpha x18.0; datos 526/125 = 4.21
+  mitad de tamaño con Froude: alpha x2, tiempo de giro x0.707
+========================================================================
+EJEMPLO 21. Identificabilidad: el x500 y su gemelo escalado por s = 2
+  s = 0.5: m = 1.032 kg, k_T = 4.274e-06, J_xx = 0.0120: k_T/m = 4.1411e-06; Omega_h = 770 rad/s; alpha_max = 124.5 rad/s2
+  s = 1.0: m = 2.064 kg, k_T = 8.549e-06, J_xx = 0.0239: k_T/m = 4.1411e-06; Omega_h = 770 rad/s; alpha_max = 124.5 rad/s2
+  s = 2.0: m = 4.129 kg, k_T = 1.710e-05, J_xx = 0.0478: k_T/m = 4.1411e-06; Omega_h = 770 rad/s; alpha_max = 124.5 rad/s2
+  rayo k_T/m cte: de (0,0) a (460.0, 43.5)
+    punto s = 0.5: (142.6, 215.3)
+    punto s = 1.0: (225.1, 170.6)
+    punto s = 2.0: (390.3, 81.3)
+  ejes x: [(0, 60.0), (1, 140.0), (2, 220.0), (3, 300.0), (4, 380.0), (5, 460.0)]
+  ejes y: [(0, 260.0), (0.5, 207.7), (1, 155.5), (1.5, 103.2), (2, 50.9)]
