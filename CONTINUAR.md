@@ -60,6 +60,14 @@ Basada en M0 y M1, entre 40 y 60 hojas según la profundidad (más si el tema es
 - un **ejemplo numérico** con números pequeños que se puedan seguir a mano, calculado en el script de `figuras/`;
 - mejor partir en dos o tres hojas que comprimir: una idea por hoja.
 
+**Segunda petición del 2026-11-07** (tras revisar A2, A4a y A7a; se aplica a todos los temas):
+
+- **Ningún símbolo sin definir en la hoja donde aparece** (o en la hoja de notación inmediatamente anterior). El glosario de la tecla `G` es una ayuda, no un sustituto: una hoja con \(K, T_i, T_d, FF\) sin decir qué es cada uno no se puede seguir.
+- **Antes de una formulación, un esquema**: qué problema resolvemos, qué entra y qué sale, con un dibujo (diagrama de bloques, línea temporal, árbol…) y un ejemplo concreto. La fórmula llega después.
+- **Las fórmulas fundamentales del tema** (las que el resto del tema usa) se derivan en la hoja, con su tabla «paso / por qué» y su ejemplo numérico, repartidas en las hojas que hagan falta.
+- **Nada plegado salvo las respuestas** de la autoevaluación y de los exámenes. Lo secundario va en un `div.aparte` (recuadro punteado, siempre abierto, texto gris a tamaño de lectura) y sin comprimir: si no cabe, otra hoja.
+- **Sin letra pequeña para el contenido**: `.small` (16 px) solo para pies y notas; el texto que hay que leer para entender va a tamaño normal. Si la hoja no cabe, se parte.
+
 En HTML, el signo «menor que» dentro de una fórmula se escribe `\lt` (o `&lt;`): `a_{<t}` lo interpreta el navegador como una etiqueta y se come el resto de la fórmula sin dar error.
 
 1. **Portada** (`title-slide`): kicker con fase y jornada, título, subtítulo y meta (duración, prerrequisitos, qué prepara).
@@ -86,7 +94,7 @@ Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.h
 
 Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `G` glosario, `T` tema) y modo lectura automático en pantallas estrechas.
 
-**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=9`, `curso.js?v=4`.
+**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=10`, `curso.js?v=4`.
 
 Componentes disponibles:
 
@@ -102,7 +110,8 @@ Componentes disponibles:
 | `.table-wrap > table.t`, `td.n` | Tablas; `td.n` para cifras en monoespaciada. |
 | `figure.fig > svg` + `figcaption` | Figuras. Clases SVG: `box`, `box-accent`, `box-time`, `box-tesis`, `box-soft`, `ln`, `ln-accent`, `ln-time`, `ln-tesis`, `ln-dash`, `ln-rule`, `fill-*`, `t-mono`, `t-muted`, `t-faint`, `t-accent`, `t-time`, `t-tesis`, `t-bold`. Todo color sale de las variables del tema: así funcionan claro y oscuro. |
 | `.tl > .ev > .yr` | Línea temporal. |
-| `details.deriv > summary` | Derivación plegable (`open` para que salga desplegada). |
+| `details.deriv > summary` | Plegable. **Solo para respuestas** de la autoevaluación y de los exámenes (desde el 2026-11-07). |
+| `div.aparte > span.rotulo + …` | Material secundario siempre visible: recuadro punteado, texto gris a 18 px (desde `curso.css?v=10`). El rótulo dice qué es («Por qué funciona», «Comprobación», «Caso particular»). |
 | `.quiz[data-answer="i"]` con `ol.opts > li > button` y `p.explain` | Test de opción múltiple; `i` es el índice (desde 0) de la respuesta correcta. |
 | `<a class="cite" data-ref="clave1,clave2"></a>` | Cita; el número se calcula solo. |
 | `ol.refs[start=N] > li#ref-clave` | Referencias. Cada clave citada debe existir y cada referencia debe citarse al menos una vez. |
