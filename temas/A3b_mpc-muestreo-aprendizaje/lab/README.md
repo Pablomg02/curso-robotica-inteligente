@@ -13,8 +13,9 @@ Construir en el proyecto hilo un planificador por muestreo (CEM y MPPI) vectoriz
 | Éxito con \(K\) = 1024 | 75 %, 90 %, 100 % | 1 |
 | Tiempo medio a la meta con \(K\) = 1024: CEM frente a MPPI | 3,1 s frente a 5,4 s | 1 |
 | Tamaño efectivo de muestra con 1024 trayectorias desde el inicio | 1 con \(\lambda \le 1\); 2,8 con 10; 611 con 100 | 2 |
+| Ejemplo a mano de cinco muestras con \(\lambda\) = 1: pesos de MPPI y tamaño efectivo | 0,490 · 0,180 · 0,297 · 0,024 · 0,009; 2,77 | 1 |
 
-El script de las figuras, en numpy, está en `../figuras/figuras_a3b.py`. Úsalo como referencia: tu versión en JAX debe dar las mismas cifras (salvo el ruido de las semillas).
+El script de las figuras, en numpy, está en `../figuras/figuras_a3b.py`. Los ejemplos a mano de las hojas (cinco muestras, CEM, MPPI, temperatura, ruido correlado, modelo aprendido) están en `../figuras/ejemplos_a3b.py`. Úsalo como referencia: tu versión en JAX debe dar las mismas cifras (salvo el ruido de las semillas).
 
 ## 1. CEM y MPPI en el escenario 2D (60 min)
 
@@ -56,7 +57,7 @@ Mide el tiempo de un paso de MPPI del paso 3 con \(K\) de 64 a 16 384, en CPU y,
 
 ## Entregables
 
-- `planificacion/muestreo.py` y `planificacion/mppi_x500.py`, con tests: los pesos de MPPI suman 1 y son invariantes a sumar una constante al coste; con \(\lambda\to\infty\) la actualización tiende a la media del ruido.
+- `planificacion/muestreo.py` y `planificacion/mppi_x500.py`, con tests: los pesos de MPPI suman 1 y son invariantes a sumar una constante al coste; con \(\lambda\to\infty\) la actualización tiende a la media del ruido; con las cinco secuencias del ejemplo a mano, `mppi_paso` devuelve \(U = (1{,}14;\ 0{,}50)\) con \(\lambda = 1\) y el CEM con dos élites, \(\mu = (1;\ 0{,}5)\), \(\sigma = (0;\ 0{,}5)\).
 - `experimentos/a3b_muestreo.py`, que genere: éxito frente a \(K\) para los tres métodos, tamaño efectivo frente a \(\lambda\), trayectorias del x500 entre obstáculos y tiempo por paso frente a \(K\).
 - Una tabla con tus valores frente a los de la presentación.
 

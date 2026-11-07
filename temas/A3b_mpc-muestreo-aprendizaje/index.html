@@ -25,7 +25,7 @@
   <h1>MPC por muestreo, MPC con aprendizaje y MPC frente a RL</h1>
   <p class="subtitle">Cuando el modelo no es diferenciable, el coste no es convexo o el modelo es una red: MPPI y CEM, modelos aprendidos dentro del MPC, planificación con world models y la comparación honesta entre control óptimo y RL en drones.</p>
   <div class="meta-row">
-    <span><b>Duración</b> ≈ 3,5 h + laboratorio</span>
+    <span><b>Duración</b> ≈ 4,5 h + laboratorio</span>
     <span><b>Prerrequisitos</b> A3a (MPC, RTI), RL (tu punto fuerte)</span>
     <span><b>Prepara</b> A6, A8 (world models), A9, A10, A13</span>
   </div>
@@ -34,9 +34,10 @@
 <section class="slide">
   <p class="kicker">Objetivos de A3b</p>
   <h2>Al terminar esta jornada deberías poder…</h2>
-  <ol class="body" style="font-size:20px; gap:10px;">
+  <ol class="body" style="font-size:20px; gap:9px;">
+    <li>Hacer a mano un paso de disparo aleatorio, CEM y MPPI con cinco muestras, y calcular su tamaño efectivo de muestra.</li>
     <li>Derivar MPPI desde la energía libre y explicar el papel de la temperatura con el tamaño efectivo de muestra.</li>
-    <li>Derivar el método de entropía cruzada (CEM) y decir cuándo conviene frente a MPPI.</li>
+    <li>Derivar el método de entropía cruzada (CEM) como máxima verosimilitud de las élites y decir cuándo conviene frente a MPPI.</li>
     <li>Clasificar las formas de meter aprendizaje en un MPC: modelo, coste, valor terminal, política de arranque.</li>
     <li>Explicar cómo planifican PETS, PlaNet, TD-MPC y TD-MPC2, con sus horizontes, muestras e iteraciones.</li>
     <li>Argumentar con datos de vuelo cuándo gana el RL y cuándo el MPC, y qué los diferencia de verdad.</li>
@@ -48,7 +49,7 @@
   <h2>Planificar con un world model es MPC por muestreo con un modelo aprendido</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>El NMPC de A3a necesita un modelo diferenciable, restricciones suaves y un buen arranque. Un world model latente no cumple casi nada de eso.</li>
         <li><strong>Muestrear trayectorias</strong> solo necesita poder simular el modelo hacia delante, y se paraleliza en una GPU: miles de trayectorias por paso.</li>
         <li>Es lo que hacen los agentes basados en modelo que conoces: PETS y PlaNet planifican con CEM; TD-MPC y TD-MPC2, con una variante de MPPI sobre un latente y un valor terminal aprendido <a class="cite" data-ref="chua2018,hafner2019,hansen2022,hansen2024"></a>.</li>
@@ -90,6 +91,7 @@
 </section>
 
 <!-- ============ PARTE 1 · MPC POR MUESTREO ============ -->
+
 <section class="slide divider" data-section="1 · MPC por muestreo">
   <p class="num">Parte 1</p>
   <h2>MPC por muestreo</h2>
@@ -97,43 +99,589 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Entropía cruzada (CEM)</p>
-  <h2>Muestrear, quedarse con las mejores y reajustar la distribución</h2>
+  <p class="kicker">Notación de la parte 1</p>
+  <h2>Qué es cada letra antes de empezar</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:17%">Símbolo</th><th>Qué es</th><th style="width:31%">En el escenario del tema</th></tr>
+      <tr><td>\(x_t\)</td><td>Estado en el paso \(t\) del horizonte</td><td>Posición y velocidad del punto, \(x = (\mathbf p, \mathbf v)\in\mathbb R^4\)</td></tr>
+      <tr><td>\(u_t\), \(m\)</td><td>Mando del paso \(t\) y su número de componentes</td><td>\((a_x, a_y)\), \(m = 2\) (x500 con CTBR: 4)</td></tr>
+      <tr><td>\(H\), \(\Delta t\)</td><td>Horizonte en pasos y paso de la malla de planificación</td><td>\(H = 30\), \(\Delta t = 0{,}05\) s: 1,5 s</td></tr>
+      <tr><td>\(U\)</td><td>Secuencia nominal \((u_0,\dots,u_{H-1})\), \(H\times m\): lo que se optimiza</td><td>30 × 2 = 60 números</td></tr>
+      <tr><td>\(K\), \(k\)</td><td>Número de secuencias muestreadas por paso y su índice</td><td>\(K = 256\)</td></tr>
+      <tr><td>\(E^k\), \(\varepsilon^k_t\)</td><td>Ruido de la muestra \(k\) (secuencia entera) y su paso \(t\)</td><td>\(\varepsilon^k_t\sim\mathcal N(0,\Sigma)\), \(\Sigma = 2^2 I\) (m/s²)²</td></tr>
+      <tr><td>\(V^k\), \(v^k_t\)</td><td>Secuencia muestreada \(V^k = U + E^k\) y su paso \(t\): lo que se simula</td><td>\(v^k_t = u_t + \varepsilon^k_t\)</td></tr>
+      <tr><td>\(S(V)\), \(S_k\)</td><td>Coste de una secuencia: se simula con el modelo y se suma. \(S_k = S(V^k)\)</td><td>Quedarse quieto cuesta 736</td></tr>
+      <tr><td>\(\lambda\), \(w_k\)</td><td>Temperatura de MPPI (unidades de coste) y peso de la muestra \(k\)</td><td>\(\lambda = 10\)</td></tr>
+      <tr><td>\(\mu\), \(\sigma\), \(n\), \(n_e\)</td><td>CEM: media y desviación (forma \(H\times m\)), muestras por iteración, élites</td><td>\(n = K/4 = 64\), \(n_e = 6\)</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Dos letras cambian respecto a A3a</span>En A3a el horizonte era \(N\), \(K\) la ganancia y \(H\) la hessiana. Aquí \(H\) es el horizonte y \(K\) el número de muestras, como en los artículos de MPPI y TD-MPC.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El problema · 1</p>
+  <h2>Elegir 60 números que minimicen un coste que solo sabemos simular</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Secuencias de mandos \(U\in\mathbb R^{H\times m}\) muestreadas de \(\mathcal N(\mu, \operatorname{diag}\sigma^2)\). En cada iteración:</p>
-      <ol class="small">
-        <li>Muestrear \(n\) secuencias, simularlas con el modelo y calcular su coste \(S_i\).</li>
-        <li>Quedarse con las \(n_e\) de menor coste (las élites).</li>
-        <li>Reajustar \(\mu\) y \(\sigma\) a la media y la desviación de las élites.</li>
-      </ol>
-      <p class="small">Tras unas pocas iteraciones se aplica \(\mu_0\) y se desplaza la secuencia para la muestra siguiente (arranque en caliente).</p>
+      <p>Un punto con aceleración acotada va de \((0, 0)\) a la meta \(\mathbf p_{\text{meta}} = (8, 0)\) entre dos obstáculos. El problema de cada paso es</p>
+      \[ \begin{aligned} \min_{U}\ S(U) &= \sum_{t=0}^{H-1} c(x_{t+1}, u_t) + \phi(x_H)\\ \text{con}\quad x_{t+1} &= f\big(x_t, \operatorname{sat}(u_t)\big) \end{aligned} \]
+      <ul>
+        <li>\(f\): \(\mathbf v_{t+1} = \mathbf v_t + \Delta t\,\mathbf a_t\), \(\mathbf p_{t+1} = \mathbf p_t + \Delta t\,\mathbf v_{t+1}\), con \(\mathbf a_t = \operatorname{sat}(u_t)\) recortada a ±4 m/s² por eje.</li>
+        <li>\(c\), coste de etapa: \(\Delta t\,\|\mathbf p_{t+1}-\mathbf p_{\text{meta}}\|^2\) (distancia) \(+\ 0{,}01\,\Delta t\,\|\mathbf a_t\|^2\) (mando) \(+\ 10^3\cdot\mathbb 1[\text{choque}]\), donde el choque es estar a menos de 15 cm del borde de un obstáculo.</li>
+        <li>\(\phi\), coste terminal: \(10\,\|\mathbf p_H-\mathbf p_{\text{meta}}\|^2 + \|\mathbf v_H\|^2\): acabar cerca y despacio.</li>
+      </ul>
     </div>
     <div class="stack">
-      <details class="deriv" open><summary>Por qué reajustar a las élites</summary>
-        <p class="small">Se busca la distribución \(q_\phi\) más cercana, en divergencia KL, a la uniforme sobre el conjunto de buenas secuencias \(\{U: S(U)\le\gamma\}\), con \(\gamma\) el cuantil de las élites. Minimizar \(\mathrm{KL}(\mathbb 1_{S\le\gamma}/Z\,\|\,q_\phi)\) equivale a maximizar \(\mathbb E[\mathbb 1_{S\le\gamma}\log q_\phi(U)]\), que con muestras es la log-verosimilitud de las élites: para una gaussiana, su media y su varianza muestrales <a class="cite" data-ref="deboer2005"></a>.</p>
-      </details>
-      <div class="callout error"><span class="tag">Error frecuente</span>La varianza colapsa: tras unas iteraciones todas las muestras son casi iguales y el método deja de explorar. Williams et al. lo señalan como problema del CEM en MPC <a class="cite" data-ref="williams2018"></a>; las versiones prácticas fijan un mínimo de varianza o, como iCEM, guardan élites entre muestras y usan ruido coloreado <a class="cite" data-ref="pinneri2020"></a>.</div>
+      <figure class="fig">
+        <svg viewBox="20 30 490 200" style="max-height:150px" role="img" aria-label="Escenario: inicio a la izquierda, meta a la derecha y dos obstáculos circulares entre ellos">
+          <ellipse class="box-soft" cx="218.9" cy="114.8" rx="51.1" ry="51.0"/>
+          <ellipse class="box-soft" cx="346.7" cy="155.6" rx="40.9" ry="40.8"/>
+          <line class="ln-dash" x1="65.6" y1="125" x2="474.4" y2="125"/>
+          <circle class="fill-ink3" cx="65.6" cy="125.0" r="5"/>
+          <circle class="fill-tesis" cx="474.4" cy="125.0" r="6"/>
+          <g font-size="13">
+            <text x="40" y="150" class="t-muted">inicio (0, 0)</text>
+            <text x="430" y="108" class="t-tesis">meta (8, 0)</text>
+            <text x="190" y="50" class="t-muted">r = 1 m</text>
+            <text x="322" y="218" class="t-muted">r = 0,8 m</text>
+          </g>
+        </svg>
+        <figcaption>La recta atraviesa el primer obstáculo. <code>figuras_a3b.py</code>.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">Dos secuencias, con números</span>Quedarse quieto (\(U = 0\)): etapa 96 + mando 0 + choque 0 + terminal 640 = <strong>736</strong>. Acelerar a tope hacia la meta: 63,5 + 0,24 + <strong>10 000</strong> + 148,2 = 10 212, con diez pasos dentro del obstáculo. <span class="muted">Ejemplo 1.</span></div>
+      <div class="callout clave"><span class="tag">Por qué muestrear</span>El indicador de choque no tiene gradiente útil (es 0 casi en todas partes) y la saturación no es derivable en sus bordes: el NMPC de A3a no sabría qué hacer. Muestrear solo pide <em>evaluar</em> \(S\).</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">MPPI</p>
+  <p class="kicker">El problema · 2 · el bucle</p>
+  <h2>Cada 50 ms: muestrear, simular, puntuar, combinar, aplicar y desplazar</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 300" style="max-height:290px" role="img" aria-label="Bucle del MPC por muestreo: seis bloques en ciclo, con el estado medido como entrada y el primer mando como salida">
+      <defs><marker id="a3bl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="40" y="40" width="300" height="70" rx="8" class="box"/>
+      <text x="190" y="68" text-anchor="middle" font-size="17" class="t-bold">1 · Muestrear</text>
+      <text x="190" y="93" text-anchor="middle" font-size="14" class="t-mono t-muted">V^k = U + E^k, k = 1…K</text>
+      <rect x="440" y="40" width="300" height="70" rx="8" class="box"/>
+      <text x="590" y="68" text-anchor="middle" font-size="17" class="t-bold">2 · Simular con el modelo</text>
+      <text x="590" y="93" text-anchor="middle" font-size="14" class="t-mono t-muted">K trayectorias en paralelo</text>
+      <rect x="840" y="40" width="300" height="70" rx="8" class="box"/>
+      <text x="990" y="68" text-anchor="middle" font-size="17" class="t-bold">3 · Puntuar</text>
+      <text x="990" y="93" text-anchor="middle" font-size="14" class="t-mono t-muted">S_k = S(V^k)</text>
+      <rect x="840" y="190" width="300" height="70" rx="8" class="box-accent"/>
+      <text x="990" y="218" text-anchor="middle" font-size="17" class="t-bold">4 · Combinar → U nueva</text>
+      <text x="990" y="243" text-anchor="middle" font-size="14" class="t-accent">aquí difieren los métodos</text>
+      <rect x="440" y="190" width="300" height="70" rx="8" class="box-time"/>
+      <text x="590" y="218" text-anchor="middle" font-size="17" class="t-bold">5 · Aplicar u₀</text>
+      <text x="590" y="243" text-anchor="middle" font-size="14" class="t-mono t-muted">al dron (CTBR) o al punto</text>
+      <rect x="40" y="190" width="300" height="70" rx="8" class="box"/>
+      <text x="190" y="218" text-anchor="middle" font-size="17" class="t-bold">6 · Desplazar U un paso</text>
+      <text x="190" y="243" text-anchor="middle" font-size="14" class="t-mono t-muted">arranque en caliente</text>
+      <path d="M340 75 H436" class="ln" marker-end="url(#a3bl)"/>
+      <path d="M740 75 H836" class="ln" marker-end="url(#a3bl)"/>
+      <path d="M990 110 V186" class="ln" marker-end="url(#a3bl)"/>
+      <path d="M840 225 H744" class="ln" marker-end="url(#a3bl)"/>
+      <path d="M440 225 H344" class="ln" marker-end="url(#a3bl)"/>
+      <path d="M190 190 V114" class="ln" marker-end="url(#a3bl)"/>
+      <text x="200" y="158" font-size="13" class="t-muted">siguiente paso (+Δt)</text>
+      <path d="M840 205 C 780 160, 400 160, 300 114" class="ln-dash" fill="none" marker-end="url(#a3bl)"/>
+      <text x="600" y="134" font-size="13" text-anchor="middle" class="t-time">CEM: repetir 1–4 varias veces en el mismo paso</text>
+      <path d="M590 6 V36" class="ln-accent" marker-end="url(#a3bl)"/>
+      <text x="604" y="22" font-size="14" class="t-accent">estado medido x̂ (es el x₀ de las simulaciones)</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p><strong>Entra</strong> el estado medido y la secuencia del paso anterior; <strong>sale</strong> un solo mando. Las \(K\) trayectorias se tiran: solo sirven para decidir. Es el horizonte deslizante de A3a (parte 2) con un optimizador distinto.</p>
+    <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>En el escenario, \(K = 256\) por \(H = 30\) son 7680 pasos del modelo en cada replanificación y 153 600 por segundo a <span class="hz">20 Hz</span>. Todo el bucle tiene que caber en los <span class="hz">50 ms</span> entre dos muestras.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El problema · 3 · arranque en caliente</p>
+  <h2>Desplazar el plan un paso es la mejor conjetura para la muestra siguiente</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 210" style="max-height:200px" role="img" aria-label="La secuencia u0 a u29 se aplica en su primer elemento y se desplaza: el nuevo plan empieza en u1 y repite u29 al final">
+          <defs><marker id="a3bd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+          <text x="10" y="44" font-size="14" class="t-muted">plan en t</text>
+          <rect x="110" y="20" width="56" height="40" rx="4" class="box-time"/><text x="138" y="46" text-anchor="middle" class="t-mono" font-size="14">u₀</text>
+          <rect x="170" y="20" width="56" height="40" rx="4" class="box"/><text x="198" y="46" text-anchor="middle" class="t-mono" font-size="14">u₁</text>
+          <rect x="230" y="20" width="56" height="40" rx="4" class="box"/><text x="258" y="46" text-anchor="middle" class="t-mono" font-size="14">u₂</text>
+          <text x="318" y="46" text-anchor="middle" class="t-mono t-muted" font-size="14">…</text>
+          <rect x="350" y="20" width="56" height="40" rx="4" class="box"/><text x="378" y="46" text-anchor="middle" class="t-mono" font-size="13">u₂₈</text>
+          <rect x="410" y="20" width="56" height="40" rx="4" class="box"/><text x="438" y="46" text-anchor="middle" class="t-mono" font-size="13">u₂₉</text>
+          <text x="10" y="164" font-size="14" class="t-muted">plan en t+1</text>
+          <rect x="110" y="140" width="56" height="40" rx="4" class="box"/><text x="138" y="166" text-anchor="middle" class="t-mono" font-size="14">u₁</text>
+          <rect x="170" y="140" width="56" height="40" rx="4" class="box"/><text x="198" y="166" text-anchor="middle" class="t-mono" font-size="14">u₂</text>
+          <text x="258" y="166" text-anchor="middle" class="t-mono t-muted" font-size="14">…</text>
+          <rect x="290" y="140" width="56" height="40" rx="4" class="box"/><text x="318" y="166" text-anchor="middle" class="t-mono" font-size="13">u₂₈</text>
+          <rect x="350" y="140" width="56" height="40" rx="4" class="box"/><text x="378" y="166" text-anchor="middle" class="t-mono" font-size="13">u₂₉</text>
+          <rect x="410" y="140" width="56" height="40" rx="4" class="box-soft" stroke-dasharray="4 3"/><text x="438" y="166" text-anchor="middle" class="t-mono t-muted" font-size="13">u₂₉</text>
+          <path d="M198 62 L140 136" class="ln" marker-end="url(#a3bd)"/>
+          <path d="M258 62 L200 136" class="ln" marker-end="url(#a3bd)"/>
+          <path d="M378 62 L320 136" class="ln" marker-end="url(#a3bd)"/>
+          <path d="M438 62 L380 136" class="ln" marker-end="url(#a3bd)"/>
+          <path d="M440 62 L440 136" class="ln-dash" marker-end="url(#a3bd)"/>
+          <text x="138" y="84" text-anchor="middle" font-size="13" class="t-time">se aplica</text>
+          <text x="470" y="108" font-size="12" class="t-muted" text-anchor="end">se repite</text>
+        </svg>
+        <figcaption>En el script: <code>U = np.vstack([U[1:], U[-1:]])</code>.</figcaption>
+      </figure>
+      <p>50 ms después el objetivo es el mismo y el estado ha cambiado poco: el resto del plan sigue siendo bueno, y el ruido se muestrea <em>alrededor</em> de él. Es el desplazamiento del RTI de A3a (parte 3).</p>
+    </div>
+    <div class="stack">
+      <p>El paso 4 del bucle, combinar, es lo único que cambia entre los tres métodos de esta parte:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Método</th><th>Cómo combina las muestras</th><th>Iteraciones por paso</th></tr>
+          <tr><td>Disparo aleatorio</td><td>Se queda con la mejor</td><td class="n">1</td></tr>
+          <tr><td>CEM</td><td>Media y desviación de las \(n_e\) mejores; vuelve a muestrear</td><td class="n">varias (4 en el script)</td></tr>
+          <tr><td>MPPI</td><td>Media de todas, cada una pesada por \(e^{-S_k/\lambda}\)</td><td class="n">1</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Por qué importa</span>Sin desplazar, cada paso empezaría desde cero. Con el desplazamiento, la mejora de un paso se hereda en el siguiente: por eso MPPI, con una sola iteración, acaba siendo un buen optimizador.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Un ejemplo a mano</p>
+  <h2>Cinco secuencias de dos mandos, en un problema que se calcula de cabeza</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <p>Un punto en una recta: \(x_{t+1} = x_t + u_t\), con \(x_0 = 0\), meta \(x = 2\), \(H = 2\) y \(m = 1\). Nominal \(U = (0, 0)\), así que cada muestra es su ruido, \(V^k = E^k\). Coste: no llegar cuesta error, llegar cuesta mando:</p>
+      \[ S(U) = (x_2 - 2)^2 + \tfrac12\big(u_0^2 + u_1^2\big),\qquad x_2 = u_0 + u_1 \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(k\)</th><th>\(E^k = (u_0, u_1)\)</th><th>\(x_1,\ x_2\)</th><th>\((x_2-2)^2\)</th><th>\(\tfrac12(u_0^2+u_1^2)\)</th><th>\(S_k\)</th></tr>
+          <tr><td>1</td><td class="n">(1, 1)</td><td class="n">1, 2</td><td class="n">0</td><td class="n">1</td><td class="n"><strong>1,0</strong></td></tr>
+          <tr><td>2</td><td class="n">(2, 0)</td><td class="n">2, 2</td><td class="n">0</td><td class="n">2</td><td class="n">2,0</td></tr>
+          <tr><td>3</td><td class="n">(1, 0)</td><td class="n">1, 1</td><td class="n">1</td><td class="n">0,5</td><td class="n">1,5</td></tr>
+          <tr><td>4</td><td class="n">(0, 0)</td><td class="n">0, 0</td><td class="n">4</td><td class="n">0</td><td class="n">4,0</td></tr>
+          <tr><td>5</td><td class="n">(−1, 1)</td><td class="n">−1, 0</td><td class="n">4</td><td class="n">1</td><td class="n">5,0</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">El óptimo, para comparar</span>
+        <p>Por simetría \(u_0 = u_1 = u\): \(S = (2u-2)^2 + u^2\), cuya derivada \(8u - 8 + 2u\) se anula en \(u = 0{,}8\). El óptimo es \(U^\star = (0{,}8;\ 0{,}8)\) con \(S^\star = 0{,}16 + 0{,}64 = 0{,}80\). Ninguna de las cinco muestras está ahí.</p>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 370 250" style="max-height:250px" role="img" aria-label="Trayectorias x_t de las cinco muestras en dos pasos; la meta es x igual a 2">
+          <line class="ln-rule" x1="60" y1="220" x2="320" y2="220"/>
+          <line class="ln-rule" x1="60" y1="20" x2="60" y2="220"/>
+          <line class="ln-dash" x1="60" y1="42.2" x2="320" y2="42.2"/>
+          <path class="ln-accent" fill="none" stroke-width="2.6" d="M60.0,153.3 L180.0,97.8 L300.0,42.2"/>
+          <path class="ln-time" fill="none" stroke-width="2" d="M60.0,153.3 L180.0,42.2 L300.0,42.2"/>
+          <path class="ln" fill="none" stroke-width="2" d="M60.0,153.3 L180.0,97.8 L300.0,97.8"/>
+          <path class="ln" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M60.0,153.3 L180.0,153.3 L300.0,153.3"/>
+          <path class="ln-tesis" fill="none" stroke-width="1.8" d="M60.0,153.3 L180.0,208.9 L300.0,153.3"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="60" y="238" text-anchor="middle">t = 0</text>
+            <text x="180" y="238" text-anchor="middle">1</text>
+            <text x="300" y="238" text-anchor="middle">2</text>
+            <text x="52" y="212" text-anchor="end">−1</text>
+            <text x="52" y="157" text-anchor="end">0</text>
+            <text x="52" y="102" text-anchor="end">1</text>
+            <text x="52" y="46" text-anchor="end">2</text>
+          </g>
+          <g font-size="13">
+            <text x="312" y="47" class="t-accent">1 y 2</text>
+            <text x="312" y="102">3</text>
+            <text x="312" y="158" class="t-muted">4 y 5</text>
+            <text x="190" y="214" class="t-tesis">5</text>
+            <text x="190" y="36" class="t-time">2</text>
+            <text x="70" y="36" class="t-muted">meta</text>
+          </g>
+        </svg>
+        <figcaption>\(x_t\) de cada muestra. <code>figuras/ejemplos_a3b.py</code>, ejemplos 2 y 8.</figcaption>
+      </figure>
+      <p>Las hojas 11, 13 y 16 combinan <strong>estas mismas cinco muestras</strong> con cada método.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Disparo aleatorio</p>
+  <h2>El método más simple: quedarse con la mejor muestra</h2>
+  <div class="cols">
+    <div class="stack">
+      \[ k^\star = \arg\min_k S_k,\qquad U \leftarrow U + E^{k^\star} \]
+      <p>\(k^\star\) es el índice de la muestra de menor coste. Se aplica el primer mando de esa secuencia, se desplaza y, en el paso siguiente, se muestrea alrededor de ella (<em>random shooting</em>).</p>
+      <p><strong>En el ejemplo:</strong> \(k^\star = 1\), \(U = (1, 1)\) y \(S = 1{,}00\). El óptimo es 0,80: la mejor de cinco muestras está cerca, pero no encima. <span class="muted">Ejemplo 3.</span></p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Lo que desperdicia:</strong> de cinco simulaciones usa una. Las otras cuatro dicen algo (la 2 y la 3 indican que hace falta mover \(u_0\) a positivo) y se tiran.</li>
+        <li><strong>Lo que aprovecha:</strong> el arranque en caliente. Cada paso parte de la mejor muestra del anterior, así que la mejora se acumula, aunque despacio.</li>
+        <li><strong>Lo que le cuesta la dimensión:</strong> en 60 dimensiones, una muestra al azar casi nunca cae cerca del óptimo, y el resultado no es mejor que la mejor muestra.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">En el escenario</span>Llega a la meta en el 20 % de los episodios con \(K = 16\) y en el 75 % con \(K = 1024\) (tabla de la hoja 26).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entropía cruzada (CEM) · 1 · el algoritmo</p>
+  <h2>Muestrear, quedarse con las mejores y reajustar la distribución</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Las secuencias se muestrean de una gaussiana \(\mathcal N(\mu, \operatorname{diag}\sigma^2)\): \(\mu\) y \(\sigma\) tienen la forma de \(U\), una media y una desviación por paso y por componente, independientes entre sí. En cada iteración:</p>
+      <ol>
+        <li>Muestrear \(n\) secuencias, simularlas y calcular su coste \(S_i\).</li>
+        <li>Ordenar y quedarse con las \(n_e\) de menor coste: las <strong>élites</strong>.</li>
+        <li>\(\mu\) y \(\sigma\) pasan a ser la media y la desviación de las élites, componente a componente.</li>
+      </ol>
+      <p>Tras \(I\) iteraciones se aplica \(\mu_0\), el primer paso de la media, se desplaza \(\mu\) y se reinicia \(\sigma\) para la muestra siguiente.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 262" style="max-height:230px" role="img" aria-label="CEM en una dimensión: la gaussiana se estrecha hacia el mínimo del coste en tres iteraciones">
+          <line class="ln-rule" x1="40" y1="200" x2="500" y2="200"/>
+          <path class="ln" fill="none" stroke-width="1.6" stroke-dasharray="5 4" d="M40.0,30.0 L43.3,30.0 L46.6,30.0 L49.9,30.0 L53.1,30.0 L56.4,30.0 L59.7,30.0 L63.0,30.0 L66.3,30.0 L69.6,30.0 L72.9,30.0 L76.1,30.0 L79.4,30.0 L82.7,30.0 L86.0,30.0 L89.3,30.0 L92.6,30.0 L95.9,30.0 L99.1,30.0 L102.4,30.0 L105.7,30.0 L109.0,30.0 L112.3,30.0 L115.6,30.0 L118.9,30.0 L122.1,30.0 L125.4,30.0 L128.7,30.0 L132.0,30.0 L135.3,32.4 L138.6,37.6 L141.9,42.7 L145.1,47.7 L148.4,52.7 L151.7,57.5 L155.0,62.3 L158.3,66.9 L161.6,71.5 L164.9,76.0 L168.1,80.3 L171.4,84.6 L174.7,88.8 L178.0,93.0 L181.3,97.0 L184.6,100.9 L187.9,104.8 L191.1,108.5 L194.4,112.2 L197.7,115.7 L201.0,119.2 L204.3,122.6 L207.6,125.9 L210.9,129.1 L214.1,132.2 L217.4,135.2 L220.7,138.1 L224.0,141.0 L227.3,143.7 L230.6,146.4 L233.9,149.0 L237.1,151.4 L240.4,153.8 L243.7,156.1 L247.0,158.3 L250.3,160.4 L253.6,162.4 L256.9,164.4 L260.1,166.2 L263.4,167.9 L266.7,169.6 L270.0,171.2 L273.3,172.6 L276.6,174.0 L279.9,175.3 L283.1,176.5 L286.4,177.6 L289.7,178.6 L293.0,179.6 L296.3,180.4 L299.6,181.1 L302.9,181.8 L306.1,182.3 L309.4,182.8 L312.7,183.2 L316.0,183.5 L319.3,183.7 L322.6,183.8 L325.9,183.8 L329.1,183.7 L332.4,183.6 L335.7,183.3 L339.0,183.0 L342.3,182.5 L345.6,182.0 L348.9,181.4 L352.1,180.6 L355.4,179.8 L358.7,178.9 L362.0,178.0 L365.3,176.9 L368.6,175.7 L371.9,174.5 L375.1,173.1 L378.4,171.7 L381.7,170.1 L385.0,168.5 L388.3,166.8 L391.6,165.0 L394.9,163.1 L398.1,161.1 L401.4,159.0 L404.7,156.8 L408.0,154.6 L411.3,152.2 L414.6,149.8 L417.9,147.3 L421.1,144.6 L424.4,141.9 L427.7,139.1 L431.0,136.2 L434.3,133.2 L437.6,130.1 L440.9,127.0 L444.1,123.7 L447.4,120.3 L450.7,116.9 L454.0,113.4 L457.3,109.7 L460.6,106.0 L463.9,102.2 L467.1,98.3 L470.4,94.3 L473.7,90.2 L477.0,86.1 L480.3,81.8 L483.6,77.4 L486.9,73.0 L490.1,68.4 L493.4,63.8 L496.7,59.1 L500.0,54.3"/>
+          <path class="ln-tesis" fill="none" stroke-width="1.8" d="M40.0,177.0 L43.3,175.4 L46.6,173.8 L49.9,172.0 L53.1,170.2 L56.4,168.3 L59.7,166.4 L63.0,164.3 L66.3,162.2 L69.6,159.9 L72.9,157.6 L76.1,155.2 L79.4,152.7 L82.7,150.2 L86.0,147.5 L89.3,144.8 L92.6,142.0 L95.9,139.1 L99.1,136.2 L102.4,133.2 L105.7,130.1 L109.0,127.0 L112.3,123.8 L115.6,120.5 L118.9,117.3 L122.1,113.9 L125.4,110.6 L128.7,107.2 L132.0,103.8 L135.3,100.3 L138.6,96.9 L141.9,93.5 L145.1,90.0 L148.4,86.6 L151.7,83.2 L155.0,79.9 L158.3,76.6 L161.6,73.3 L164.9,70.1 L168.1,66.9 L171.4,63.9 L174.7,60.9 L178.0,58.0 L181.3,55.2 L184.6,52.5 L187.9,50.0 L191.1,47.5 L194.4,45.2 L197.7,43.1 L201.0,41.1 L204.3,39.2 L207.6,37.5 L210.9,35.9 L214.1,34.6 L217.4,33.4 L220.7,32.3 L224.0,31.5 L227.3,30.8 L230.6,30.4 L233.9,30.1 L237.1,30.0 L240.4,30.1 L243.7,30.4 L247.0,30.8 L250.3,31.5 L253.6,32.3 L256.9,33.4 L260.1,34.6 L263.4,35.9 L266.7,37.5 L270.0,39.2 L273.3,41.1 L276.6,43.1 L279.9,45.2 L283.1,47.5 L286.4,50.0 L289.7,52.5 L293.0,55.2 L296.3,58.0 L299.6,60.9 L302.9,63.9 L306.1,66.9 L309.4,70.1 L312.7,73.3 L316.0,76.6 L319.3,79.9 L322.6,83.2 L325.9,86.6 L329.1,90.0 L332.4,93.5 L335.7,96.9 L339.0,100.3 L342.3,103.8 L345.6,107.2 L348.9,110.6 L352.1,113.9 L355.4,117.3 L358.7,120.5 L362.0,123.8 L365.3,127.0 L368.6,130.1 L371.9,133.2 L375.1,136.2 L378.4,139.1 L381.7,142.0 L385.0,144.8 L388.3,147.5 L391.6,150.2 L394.9,152.7 L398.1,155.2 L401.4,157.6 L404.7,159.9 L408.0,162.2 L411.3,164.3 L414.6,166.4 L417.9,168.3 L421.1,170.2 L424.4,172.0 L427.7,173.8 L431.0,175.4 L434.3,177.0 L437.6,178.5 L440.9,179.9 L444.1,181.3 L447.4,182.5 L450.7,183.7 L454.0,184.9 L457.3,186.0 L460.6,187.0 L463.9,187.9 L467.1,188.8 L470.4,189.7 L473.7,190.5 L477.0,191.2 L480.3,191.9 L483.6,192.5 L486.9,193.1 L490.1,193.7 L493.4,194.2 L496.7,194.7 L500.0,195.1"/>
+          <path class="ln-time" fill="none" stroke-width="2" d="M40.0,200.0 L43.3,200.0 L46.6,200.0 L49.9,200.0 L53.1,200.0 L56.4,200.0 L59.7,200.0 L63.0,200.0 L66.3,200.0 L69.6,200.0 L72.9,200.0 L76.1,200.0 L79.4,200.0 L82.7,200.0 L86.0,200.0 L89.3,200.0 L92.6,200.0 L95.9,200.0 L99.1,200.0 L102.4,200.0 L105.7,200.0 L109.0,200.0 L112.3,200.0 L115.6,200.0 L118.9,200.0 L122.1,200.0 L125.4,200.0 L128.7,200.0 L132.0,200.0 L135.3,200.0 L138.6,200.0 L141.9,200.0 L145.1,200.0 L148.4,200.0 L151.7,200.0 L155.0,200.0 L158.3,200.0 L161.6,200.0 L164.9,200.0 L168.1,200.0 L171.4,200.0 L174.7,200.0 L178.0,200.0 L181.3,200.0 L184.6,200.0 L187.9,200.0 L191.1,200.0 L194.4,200.0 L197.7,200.0 L201.0,200.0 L204.3,200.0 L207.6,200.0 L210.9,200.0 L214.1,200.0 L217.4,200.0 L220.7,200.0 L224.0,200.0 L227.3,200.0 L230.6,200.0 L233.9,199.9 L237.1,199.9 L240.4,199.8 L243.7,199.7 L247.0,199.5 L250.3,199.1 L253.6,198.6 L256.9,197.8 L260.1,196.6 L263.4,194.9 L266.7,192.5 L270.0,189.3 L273.3,184.9 L276.6,179.3 L279.9,172.3 L283.1,163.6 L286.4,153.2 L289.7,141.3 L293.0,127.9 L296.3,113.3 L299.6,98.1 L302.9,82.9 L306.1,68.3 L309.4,55.2 L312.7,44.2 L316.0,36.0 L319.3,31.2 L322.6,30.1 L325.9,32.7 L329.1,38.8 L332.4,48.1 L335.7,60.0 L339.0,73.8 L342.3,88.8 L345.6,104.1 L348.9,119.1 L352.1,133.2 L355.4,146.1 L358.7,157.4 L362.0,167.1 L365.3,175.2 L368.6,181.7 L371.9,186.7 L375.1,190.6 L378.4,193.5 L381.7,195.6 L385.0,197.1 L388.3,198.1 L391.6,198.8 L394.9,199.3 L398.1,199.6 L401.4,199.7 L404.7,199.8 L408.0,199.9 L411.3,200.0 L414.6,200.0 L417.9,200.0 L421.1,200.0 L424.4,200.0 L427.7,200.0 L431.0,200.0 L434.3,200.0 L437.6,200.0 L440.9,200.0 L444.1,200.0 L447.4,200.0 L450.7,200.0 L454.0,200.0 L457.3,200.0 L460.6,200.0 L463.9,200.0 L467.1,200.0 L470.4,200.0 L473.7,200.0 L477.0,200.0 L480.3,200.0 L483.6,200.0 L486.9,200.0 L490.1,200.0 L493.4,200.0 L496.7,200.0 L500.0,200.0"/>
+          <path class="ln-accent" fill="none" stroke-width="2.4" d="M40.0,200.0 L43.3,200.0 L46.6,200.0 L49.9,200.0 L53.1,200.0 L56.4,200.0 L59.7,200.0 L63.0,200.0 L66.3,200.0 L69.6,200.0 L72.9,200.0 L76.1,200.0 L79.4,200.0 L82.7,200.0 L86.0,200.0 L89.3,200.0 L92.6,200.0 L95.9,200.0 L99.1,200.0 L102.4,200.0 L105.7,200.0 L109.0,200.0 L112.3,200.0 L115.6,200.0 L118.9,200.0 L122.1,200.0 L125.4,200.0 L128.7,200.0 L132.0,200.0 L135.3,200.0 L138.6,200.0 L141.9,200.0 L145.1,200.0 L148.4,200.0 L151.7,200.0 L155.0,200.0 L158.3,200.0 L161.6,200.0 L164.9,200.0 L168.1,200.0 L171.4,200.0 L174.7,200.0 L178.0,200.0 L181.3,200.0 L184.6,200.0 L187.9,200.0 L191.1,200.0 L194.4,200.0 L197.7,200.0 L201.0,200.0 L204.3,200.0 L207.6,200.0 L210.9,200.0 L214.1,200.0 L217.4,200.0 L220.7,200.0 L224.0,200.0 L227.3,200.0 L230.6,200.0 L233.9,200.0 L237.1,200.0 L240.4,200.0 L243.7,200.0 L247.0,200.0 L250.3,200.0 L253.6,200.0 L256.9,200.0 L260.1,200.0 L263.4,200.0 L266.7,200.0 L270.0,200.0 L273.3,200.0 L276.6,200.0 L279.9,200.0 L283.1,200.0 L286.4,200.0 L289.7,200.0 L293.0,200.0 L296.3,200.0 L299.6,200.0 L302.9,200.0 L306.1,200.0 L309.4,200.0 L312.7,200.0 L316.0,200.0 L319.3,200.0 L322.6,198.7 L325.9,46.8 L329.1,185.5 L332.4,200.0 L335.7,200.0 L339.0,200.0 L342.3,200.0 L345.6,200.0 L348.9,200.0 L352.1,200.0 L355.4,200.0 L358.7,200.0 L362.0,200.0 L365.3,200.0 L368.6,200.0 L371.9,200.0 L375.1,200.0 L378.4,200.0 L381.7,200.0 L385.0,200.0 L388.3,200.0 L391.6,200.0 L394.9,200.0 L398.1,200.0 L401.4,200.0 L404.7,200.0 L408.0,200.0 L411.3,200.0 L414.6,200.0 L417.9,200.0 L421.1,200.0 L424.4,200.0 L427.7,200.0 L431.0,200.0 L434.3,200.0 L437.6,200.0 L440.9,200.0 L444.1,200.0 L447.4,200.0 L450.7,200.0 L454.0,200.0 L457.3,200.0 L460.6,200.0 L463.9,200.0 L467.1,200.0 L470.4,200.0 L473.7,200.0 L477.0,200.0 L480.3,200.0 L483.6,200.0 L486.9,200.0 L490.1,200.0 L493.4,200.0 L496.7,200.0 L500.0,200.0"/>
+          <line class="ln-rule" x1="324.8" y1="200" x2="324.8" y2="206"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="105.7" y="218" text-anchor="middle">−2</text>
+            <text x="237.1" y="218" text-anchor="middle">0</text>
+            <text x="368.6" y="218" text-anchor="middle">2</text>
+            <text x="500" y="218" text-anchor="end">u</text>
+          </g>
+          <text x="44" y="60" font-size="14" class="t-muted">coste S(u), escalado</text>
+          <g font-size="14">
+            <line class="ln-tesis" x1="40" y1="250" x2="64" y2="250" stroke-width="1.8"/><text x="70" y="255" class="t-tesis">iter. 0: σ = 1,5</text>
+            <line class="ln-time" x1="200" y1="250" x2="224" y2="250" stroke-width="2"/><text x="230" y="255" class="t-time">iter. 1: σ = 0,34</text>
+            <line class="ln-accent" x1="370" y1="250" x2="394" y2="250" stroke-width="2.4"/><text x="400" y="255" class="t-accent">iter. 2: σ = 0,02</text>
+          </g>
+        </svg>
+        <figcaption>\(S(u) = (u-2)^2 + \tfrac12u^2\), mínimo en \(u = 4/3\); 20 muestras y 4 élites por iteración. Ejemplo 15.</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Cómputo</span>CEM gasta \(I\times n\) simulaciones por paso. Para comparar con MPPI a igualdad de cómputo, el script usa \(I = 4\) iteraciones de \(n = K/4\) muestras con \(n_e = n/10\) élites, y suma 0,05 a \(\sigma\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entropía cruzada (CEM) · 2 · a mano</p>
+  <h2>Con dos élites, la media mejora y una de las desviaciones se hace cero</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Las cinco muestras del ejemplo, con \(n_e = 2\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:50%">Paso</th><th>Resultado</th></tr>
+          <tr><td><strong>1</strong></td><td>Ordenar los costes</td><td class="n">1,0 · 1,5 · 2,0 · 4,0 · 5,0<br>(k = 1, 3, 2, 4, 5)</td></tr>
+          <tr><td><strong>2</strong></td><td>Élites</td><td class="n">(1, 1) y (1, 0)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mu = \tfrac12\big[(1,1) + (1,0)\big]\)</td><td class="n">(1; 0,5)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\sigma_j = \sqrt{\tfrac12\sum_i (u_{i,j}-\mu_j)^2}\)</td><td class="n">(0; 0,5)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(S(\mu) = (1{,}5-2)^2 + \tfrac12(1 + 0{,}25)\)</td><td class="n"><strong>0,875</strong></td></tr>
+        </table>
+      </div>
+      <p>La media de las dos élites (0,875) es mejor que la mejor muestra (1,00): promediar dos secuencias buenas que se equivocan en direcciones distintas baja el coste hacia el del óptimo (0,80). <span class="muted">Ejemplo 4.</span></p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 380 296" style="max-height:255px" role="img" aria-label="Plano de los dos mandos con curvas de nivel del coste, las cinco muestras, las dos élites y la nueva media de CEM">
+          <path class="ln-rule" fill="none" d="M79.4,33.2 L84.8,29.3 L91.2,26.2 L98.5,24.1 L106.6,22.8 L115.5,22.5 L125.1,23.2 L135.3,24.7 L146.0,27.2 L157.2,30.6 L168.8,34.8 L180.7,39.9 L192.7,45.8 L204.9,52.4 L217.1,59.8 L229.3,67.8 L241.2,76.3 L252.9,85.4 L264.3,95.0 L275.2,104.9 L285.6,115.2 L295.4,125.6 L304.5,136.3 L312.9,146.9 L320.5,157.6 L327.2,168.2 L333.0,178.6 L337.9,188.7 L341.8,198.5 L344.6,207.9 L346.4,216.8 L347.1,225.2 L346.8,233.0 L345.4,240.1 L342.9,246.4 L339.4,252.0 L334.9,256.8 L329.5,260.7 L323.1,263.8 L315.8,265.9 L307.7,267.2 L298.8,267.5 L289.2,266.8 L279.0,265.3 L268.3,262.8 L257.1,259.4 L245.5,255.2 L233.6,250.1 L221.5,244.2 L209.4,237.6 L197.1,230.2 L185.0,222.2 L173.1,213.7 L161.4,204.6 L150.0,195.0 L139.1,185.1 L128.7,174.8 L118.9,164.4 L109.7,153.7 L101.4,143.1 L93.8,132.4 L87.0,121.8 L81.2,111.4 L76.4,101.3 L72.5,91.5 L69.7,82.1 L67.9,73.2 L67.2,64.8 L67.5,57.0 L68.9,49.9 L71.4,43.6 L74.9,38.0 L79.4,33.2 Z"/>
+          <path class="ln-rule" fill="none" d="M128.9,76.5 L132.2,74.1 L136.2,72.3 L140.6,70.9 L145.6,70.2 L151.0,70.0 L156.9,70.4 L163.1,71.4 L169.7,72.9 L176.6,74.9 L183.7,77.5 L190.9,80.6 L198.3,84.3 L205.8,88.3 L213.3,92.8 L220.7,97.7 L228.0,103.0 L235.2,108.5 L242.1,114.4 L248.8,120.5 L255.2,126.7 L261.2,133.1 L266.8,139.6 L271.9,146.2 L276.6,152.7 L280.7,159.2 L284.2,165.6 L287.2,171.8 L289.6,177.8 L291.3,183.5 L292.4,189.0 L292.8,194.1 L292.6,198.9 L291.8,203.2 L290.3,207.1 L288.1,210.5 L285.4,213.5 L282.0,215.9 L278.1,217.7 L273.7,219.1 L268.7,219.8 L263.3,220.0 L257.4,219.6 L251.2,218.6 L244.6,217.1 L237.7,215.1 L230.6,212.5 L223.4,209.4 L216.0,205.7 L208.5,201.7 L201.0,197.2 L193.6,192.3 L186.3,187.0 L179.1,181.5 L172.2,175.6 L165.5,169.5 L159.1,163.3 L153.1,156.9 L147.5,150.4 L142.4,143.8 L137.7,137.3 L133.6,130.8 L130.0,124.4 L127.1,118.2 L124.7,112.2 L123.0,106.5 L121.9,101.0 L121.4,95.9 L121.6,91.1 L122.5,86.8 L124.0,82.9 L126.1,79.5 L128.9,76.5 Z"/>
+          <path class="ln-rule" fill="none" d="M175.2,117.0 L176.6,116.1 L178.2,115.3 L180.0,114.8 L182.0,114.5 L184.2,114.4 L186.6,114.5 L189.2,114.9 L191.9,115.6 L194.7,116.4 L197.6,117.5 L200.5,118.7 L203.5,120.2 L206.6,121.9 L209.6,123.7 L212.7,125.7 L215.7,127.8 L218.6,130.1 L221.4,132.5 L224.2,135.0 L226.8,137.5 L229.2,140.2 L231.5,142.8 L233.6,145.5 L235.5,148.2 L237.2,150.8 L238.6,153.4 L239.8,155.9 L240.8,158.4 L241.5,160.7 L241.9,163.0 L242.1,165.0 L242.0,167.0 L241.7,168.8 L241.1,170.4 L240.2,171.8 L239.1,173.0 L237.7,173.9 L236.1,174.7 L234.3,175.2 L232.3,175.5 L230.1,175.6 L227.7,175.5 L225.1,175.1 L222.4,174.4 L219.6,173.6 L216.7,172.5 L213.8,171.3 L210.7,169.8 L207.7,168.1 L204.6,166.3 L201.6,164.3 L198.6,162.2 L195.7,159.9 L192.9,157.5 L190.1,155.0 L187.5,152.5 L185.1,149.8 L182.8,147.2 L180.7,144.5 L178.8,141.8 L177.1,139.2 L175.7,136.6 L174.5,134.1 L173.5,131.6 L172.8,129.3 L172.3,127.0 L172.2,125.0 L172.2,123.0 L172.6,121.2 L173.2,119.6 L174.1,118.2 L175.2,117.0 Z"/>
+          <line class="ln-rule" x1="50" y1="270" x2="350" y2="270"/>
+          <line class="ln-rule" x1="50" y1="20" x2="50" y2="270"/>
+          <circle class="fill-ink3" cx="292.9" cy="195.0" r="5"/>
+          <circle class="fill-ink3" cx="150.0" cy="195.0" r="5"/>
+          <circle class="fill-ink3" cx="78.6" cy="132.5" r="5"/>
+          <circle class="fill-time" cx="221.4" cy="132.5" r="7"/>
+          <circle class="fill-time" cx="221.4" cy="195.0" r="7"/>
+          <rect class="fill-accent" x="215.4" y="157.8" width="12" height="12"/>
+          <path class="ln-tesis" d="M201 139 L213 151 M213 139 L201 151" stroke-width="2.4"/>
+          <g font-size="13">
+            <text x="230" y="126" class="t-time">1 (élite)</text>
+            <text x="230" y="214" class="t-time">3 (élite)</text>
+            <text x="300" y="214">2</text>
+            <text x="140" y="214">4</text>
+            <text x="70" y="124">5</text>
+            <text x="234" y="170" class="t-accent">μ nueva</text>
+            <text x="196" y="132" class="t-tesis" text-anchor="end">U* = (0,8; 0,8)</text>
+            <text x="98" y="58" class="t-muted">S = 2</text>
+          </g>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="78.6" y="288" text-anchor="middle">−1</text>
+            <text x="150" y="288" text-anchor="middle">0</text>
+            <text x="221.4" y="288" text-anchor="middle">1</text>
+            <text x="292.9" y="288" text-anchor="middle">2</text>
+            <text x="345" y="262" text-anchor="end">u₀</text>
+            <text x="44" y="199" text-anchor="end">0</text>
+            <text x="44" y="136" text-anchor="end">1</text>
+            <text x="44" y="74" text-anchor="end">2</text>
+            <text x="58" y="32">u₁</text>
+          </g>
+        </svg>
+        <figcaption>Curvas \(S\) = 1, 2 y 4. Ejemplo 7.</figcaption>
+      </figure>
+      <div class="callout error"><span class="tag">La varianza colapsa</span>Las dos élites tienen \(u_0 = 1\), así que \(\sigma_0 = 0\): la iteración siguiente ya no puede mover \(u_0\) hacia 0,8. Williams et al. lo señalan como problema del CEM en MPC <a class="cite" data-ref="williams2018"></a>; se fija un mínimo (el +0,05 del script) o, como iCEM, se guardan élites entre pasos y se usa ruido coloreado <a class="cite" data-ref="pinneri2020"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entropía cruzada (CEM) · 3 · de dónde sale</p>
+  <h2>Reajustar a las élites es máxima verosimilitud, y eso minimiza una KL</h2>
+  <p>Objetivo: la gaussiana actual \(q_{\text{ant}}\) restringida a las secuencias con coste \(\le\gamma\) (el de la peor élite) y renormalizada, \(q_\gamma(U) = \mathbb 1_{S(U)\le\gamma}\,q_{\text{ant}}(U)/Z\), con \(Z\) la probabilidad de que una muestra sea buena. Se busca la gaussiana \(q_{\mu,\sigma}\) más cercana a ella <a class="cite" data-ref="deboer2005"></a>:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:5%">#</th><th style="width:48%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathrm{KL}(q_\gamma\,\|\,q_{\mu,\sigma}) = \mathbb E_{q_\gamma}[\log q_\gamma] - \mathbb E_{q_\gamma}[\log q_{\mu,\sigma}]\)</td><td>Definición de la divergencia KL</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\min_{\mu,\sigma}\mathrm{KL} \iff \max_{\mu,\sigma}\ \mathbb E_{q_\gamma}[\log q_{\mu,\sigma}(U)]\)</td><td>El primer término no depende de \(\mu,\sigma\). \(-\mathbb E_{q_\gamma}[\log q_{\mu,\sigma}]\) es la <strong>entropía cruzada</strong>: de ahí el nombre</td></tr>
+      <tr><td><strong>3</strong></td><td>\(= \tfrac1Z\,\mathbb E_{q_{\text{ant}}}\big[\mathbb 1_{S\le\gamma}\log q_{\mu,\sigma}(U)\big]\)</td><td>Integrar contra \(q_\gamma\) es integrar contra \(q_{\text{ant}}\) con el indicador delante</td></tr>
+      <tr><td><strong>4</strong></td><td>\(\approx \tfrac{1}{Zn}\sum_{i\,\in\,\text{élites}}\log q_{\mu,\sigma}(U_i)\)</td><td>Monte Carlo con las \(n\) muestras de \(q_{\text{ant}}\): el indicador deja solo las élites, sin pesos. Por eso \(q_{\text{ant}}\) va dentro del objetivo</td></tr>
+      <tr><td><strong>5</strong></td><td>\(\mu = \tfrac{1}{n_e}\sum_{i}U_i,\quad \sigma^2 = \tfrac1{n_e}\sum_{i}(U_i-\mu)^2\)</td><td>Es la log-verosimilitud de las élites: en una gaussiana diagonal, la maximizan su media y su varianza muestrales</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">Paso 5 en una componente</span>
+    <p>\(\log\mathcal N(u;\mu,\sigma^2) = -\tfrac12\log(2\pi\sigma^2) - (u-\mu)^2/(2\sigma^2)\). Derivando la suma sobre las élites: respecto a \(\mu\), \(\sum_i(u_i-\mu)/\sigma^2 = 0\); respecto a \(\sigma^2\), \(-n_e/(2\sigma^2) + \sum_i(u_i-\mu)^2/(2\sigma^4) = 0\).</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 1 · la regla</p>
   <h2>Promediar todas las muestras, pesadas por la exponencial de su coste</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Mandos ruidosos \(v_t\sim\mathcal N(u_t,\Sigma)\), muestras \(U + E^k\). Con \(\rho = \min_k S_k\):</p>
-      \[ w_k = \frac{e^{-(S_k-\rho)/\lambda}}{\sum_j e^{-(S_j-\rho)/\lambda}},\qquad U \leftarrow U + \sum_k w_kE^k \]
-      <details class="deriv" open><summary>Derivación desde la energía libre</summary>
-        <p class="small">Sea \(p\) la distribución de trayectorias con el ruido de los mandos. La energía libre \(\mathcal F = -\lambda\log\mathbb E_p[e^{-S/\lambda}]\) acota por debajo el coste esperado más \(\lambda\) veces la KL a \(p\) de cualquier otra distribución \(q\) (desigualdad de Jensen). La cota se alcanza con \(q^\star(V) = \tfrac1\eta\,e^{-S(V)/\lambda}p(V)\). No se puede muestrear de \(q^\star\), pero sí aproximar su media por muestreo por importancia desde \(p\): los pesos son exactamente \(w_k\). Restar \(\rho\) no cambia los pesos normalizados y evita el desbordamiento numérico <a class="cite" data-ref="williams2018"></a>.</p>
-      </details>
+      \[ w_k = \frac{e^{-(S_k-\rho)/\lambda}}{\sum_{j=1}^{K} e^{-(S_j-\rho)/\lambda}},\qquad U \leftarrow U + \sum_{k=1}^{K} w_k\,E^k \]
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:26%">Término</th><th>Qué es</th></tr>
+          <tr><td>\(S_k\)</td><td>Coste de la muestra \(k\): se simula \(V^k = U + E^k\)</td></tr>
+          <tr><td>\(\rho = \min_k S_k\)</td><td>El menor coste. Se resta para que la mejor tenga exponente 0 y nada se desborde; no cambia los pesos, porque \(e^{\rho/\lambda}\) aparece arriba y abajo</td></tr>
+          <tr><td>\(\lambda\)</td><td>Temperatura, en unidades de coste: una muestra que cuesta \(\lambda\) más que otra pesa \(e^{-1}\approx 0{,}37\) veces lo que ella</td></tr>
+          <tr><td>denominador</td><td>Normaliza: los pesos suman 1</td></tr>
+          <tr><td>\(\sum_k w_kE^k\)</td><td>El paso que se da: la media ponderada del ruido</td></tr>
+        </table>
+      </div>
     </div>
     <div class="stack">
-      <ul class="small">
-        <li><strong>Una sola iteración por muestra</strong>, sin ordenar: todo es una media ponderada, ideal para GPU.</li>
-        <li>Los mandos se saturan dentro de la simulación; un filtro de suavizado (Savitzky-Golay) evita mandos con ruido <a class="cite" data-ref="williams2018"></a>.</li>
-        <li>Una fracción de las muestras se genera alrededor de cero para poder «reiniciar» tras una perturbación fuerte.</li>
+      <ul>
+        <li><strong>Es un softmax</strong> de \(-S_k/\lambda\) sobre las muestras, como el de una política de Boltzmann en RL.</li>
+        <li><strong>Una sola iteración por paso</strong>, sin ordenar: todo son sumas, ideal para GPU <a class="cite" data-ref="williams2018"></a>.</li>
+        <li><strong>Frente a CEM</strong>: CEM da el mismo peso a las élites aunque sus costes sean muy distintos, y cero al resto; MPPI discrimina entre todas. Williams et al. lo señalan como la diferencia importante al planificar trayectorias <a class="cite" data-ref="williams2018"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Qué falta</span>¿Por qué una exponencial y no otra función decreciente? Sale de una cota de teoría de la información: hojas 17 a 19, paso a paso. Antes, la regla con las cinco muestras.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 2 · a mano</p>
+  <h2>Con λ = 1, la media ponderada cuesta menos que cualquier muestra</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(k\)</th><th>\(S_k\)</th><th>\(S_k-\rho\)</th><th>\(e^{-(S_k-\rho)}\)</th><th>\(w_k\)</th><th>\(w_kE^k\)</th></tr>
+          <tr><td>1</td><td class="n">1,0</td><td class="n">0</td><td class="n">1</td><td class="n">0,490</td><td class="n">(0,490; 0,490)</td></tr>
+          <tr><td>2</td><td class="n">2,0</td><td class="n">1,0</td><td class="n">0,368</td><td class="n">0,180</td><td class="n">(0,360; 0)</td></tr>
+          <tr><td>3</td><td class="n">1,5</td><td class="n">0,5</td><td class="n">0,607</td><td class="n">0,297</td><td class="n">(0,297; 0)</td></tr>
+          <tr><td>4</td><td class="n">4,0</td><td class="n">3,0</td><td class="n">0,050</td><td class="n">0,024</td><td class="n">(0; 0)</td></tr>
+          <tr><td>5</td><td class="n">5,0</td><td class="n">4,0</td><td class="n">0,018</td><td class="n">0,009</td><td class="n">(−0,009; 0,009)</td></tr>
+          <tr><td colspan="3">Suma</td><td class="n">2,043</td><td class="n">1</td><td class="n"><strong>(1,138; 0,499)</strong></td></tr>
+        </table>
+      </div>
+      <p>\(\rho = 1\) y \(\lambda = 1\). Cada \(w_k\) es su exponencial dividida por 2,043. La nueva secuencia es \(U = (1{,}14;\ 0{,}50)\), con \(x_2 = 1{,}64\) y \(S = 0{,}13 + 0{,}77 = \mathbf{0{,}904}\): mejor que la mejor muestra (1,00) sin haber probado esa secuencia. <span class="muted">Ejemplo 5.</span></p>
+      <p>La muestra 2 (\(u_0 = 2\)) tira de \(u_0\) hacia arriba y la 3 baja \(u_1\): MPPI aprovecha lo que el disparo aleatorio tiraba.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 380 296" style="max-height:270px" role="img" aria-label="Plano de los dos mandos: las cinco muestras con tamaño proporcional a su peso y la media ponderada de MPPI">
+          <path class="ln-rule" fill="none" d="M79.4,33.2 L84.8,29.3 L91.2,26.2 L98.5,24.1 L106.6,22.8 L115.5,22.5 L125.1,23.2 L135.3,24.7 L146.0,27.2 L157.2,30.6 L168.8,34.8 L180.7,39.9 L192.7,45.8 L204.9,52.4 L217.1,59.8 L229.3,67.8 L241.2,76.3 L252.9,85.4 L264.3,95.0 L275.2,104.9 L285.6,115.2 L295.4,125.6 L304.5,136.3 L312.9,146.9 L320.5,157.6 L327.2,168.2 L333.0,178.6 L337.9,188.7 L341.8,198.5 L344.6,207.9 L346.4,216.8 L347.1,225.2 L346.8,233.0 L345.4,240.1 L342.9,246.4 L339.4,252.0 L334.9,256.8 L329.5,260.7 L323.1,263.8 L315.8,265.9 L307.7,267.2 L298.8,267.5 L289.2,266.8 L279.0,265.3 L268.3,262.8 L257.1,259.4 L245.5,255.2 L233.6,250.1 L221.5,244.2 L209.4,237.6 L197.1,230.2 L185.0,222.2 L173.1,213.7 L161.4,204.6 L150.0,195.0 L139.1,185.1 L128.7,174.8 L118.9,164.4 L109.7,153.7 L101.4,143.1 L93.8,132.4 L87.0,121.8 L81.2,111.4 L76.4,101.3 L72.5,91.5 L69.7,82.1 L67.9,73.2 L67.2,64.8 L67.5,57.0 L68.9,49.9 L71.4,43.6 L74.9,38.0 L79.4,33.2 Z"/>
+          <path class="ln-rule" fill="none" d="M128.9,76.5 L132.2,74.1 L136.2,72.3 L140.6,70.9 L145.6,70.2 L151.0,70.0 L156.9,70.4 L163.1,71.4 L169.7,72.9 L176.6,74.9 L183.7,77.5 L190.9,80.6 L198.3,84.3 L205.8,88.3 L213.3,92.8 L220.7,97.7 L228.0,103.0 L235.2,108.5 L242.1,114.4 L248.8,120.5 L255.2,126.7 L261.2,133.1 L266.8,139.6 L271.9,146.2 L276.6,152.7 L280.7,159.2 L284.2,165.6 L287.2,171.8 L289.6,177.8 L291.3,183.5 L292.4,189.0 L292.8,194.1 L292.6,198.9 L291.8,203.2 L290.3,207.1 L288.1,210.5 L285.4,213.5 L282.0,215.9 L278.1,217.7 L273.7,219.1 L268.7,219.8 L263.3,220.0 L257.4,219.6 L251.2,218.6 L244.6,217.1 L237.7,215.1 L230.6,212.5 L223.4,209.4 L216.0,205.7 L208.5,201.7 L201.0,197.2 L193.6,192.3 L186.3,187.0 L179.1,181.5 L172.2,175.6 L165.5,169.5 L159.1,163.3 L153.1,156.9 L147.5,150.4 L142.4,143.8 L137.7,137.3 L133.6,130.8 L130.0,124.4 L127.1,118.2 L124.7,112.2 L123.0,106.5 L121.9,101.0 L121.4,95.9 L121.6,91.1 L122.5,86.8 L124.0,82.9 L126.1,79.5 L128.9,76.5 Z"/>
+          <path class="ln-rule" fill="none" d="M175.2,117.0 L176.6,116.1 L178.2,115.3 L180.0,114.8 L182.0,114.5 L184.2,114.4 L186.6,114.5 L189.2,114.9 L191.9,115.6 L194.7,116.4 L197.6,117.5 L200.5,118.7 L203.5,120.2 L206.6,121.9 L209.6,123.7 L212.7,125.7 L215.7,127.8 L218.6,130.1 L221.4,132.5 L224.2,135.0 L226.8,137.5 L229.2,140.2 L231.5,142.8 L233.6,145.5 L235.5,148.2 L237.2,150.8 L238.6,153.4 L239.8,155.9 L240.8,158.4 L241.5,160.7 L241.9,163.0 L242.1,165.0 L242.0,167.0 L241.7,168.8 L241.1,170.4 L240.2,171.8 L239.1,173.0 L237.7,173.9 L236.1,174.7 L234.3,175.2 L232.3,175.5 L230.1,175.6 L227.7,175.5 L225.1,175.1 L222.4,174.4 L219.6,173.6 L216.7,172.5 L213.8,171.3 L210.7,169.8 L207.7,168.1 L204.6,166.3 L201.6,164.3 L198.6,162.2 L195.7,159.9 L192.9,157.5 L190.1,155.0 L187.5,152.5 L185.1,149.8 L182.8,147.2 L180.7,144.5 L178.8,141.8 L177.1,139.2 L175.7,136.6 L174.5,134.1 L173.5,131.6 L172.8,129.3 L172.3,127.0 L172.2,125.0 L172.2,123.0 L172.6,121.2 L173.2,119.6 L174.1,118.2 L175.2,117.0 Z"/>
+          <line class="ln-rule" x1="50" y1="270" x2="350" y2="270"/>
+          <line class="ln-rule" x1="50" y1="20" x2="50" y2="270"/>
+          <circle class="fill-time" cx="221.4" cy="132.5" r="14"/>
+          <circle class="fill-time" cx="292.9" cy="195.0" r="8.5"/>
+          <circle class="fill-time" cx="221.4" cy="195.0" r="10.9"/>
+          <circle class="fill-time" cx="150.0" cy="195.0" r="3.1"/>
+          <circle class="fill-time" cx="78.6" cy="132.5" r="2"/>
+          <rect class="fill-accent" x="225.3" y="157.8" width="12" height="12"/>
+          <circle class="fill-ink3" cx="192.9" cy="170.0" r="4"/>
+          <path class="ln-tesis" d="M201 139 L213 151 M213 139 L201 151" stroke-width="2.4"/>
+          <g font-size="13">
+            <text x="240" y="120" class="t-time">w = 0,49</text>
+            <text x="300" y="220" class="t-time">0,18</text>
+            <text x="200" y="224" class="t-time">0,30</text>
+            <text x="130" y="214" class="t-time">0,02</text>
+            <text x="64" y="120" class="t-time">0,01</text>
+            <text x="244" y="172" class="t-accent">MPPI</text>
+            <text x="120" y="182" class="t-muted">sin pesar</text>
+            <text x="150" y="144" class="t-tesis">U*</text>
+          </g>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="78.6" y="288" text-anchor="middle">−1</text>
+            <text x="150" y="288" text-anchor="middle">0</text>
+            <text x="221.4" y="288" text-anchor="middle">1</text>
+            <text x="292.9" y="288" text-anchor="middle">2</text>
+            <text x="345" y="262" text-anchor="end">u₀</text>
+            <text x="44" y="199" text-anchor="end">0</text>
+            <text x="44" y="136" text-anchor="end">1</text>
+            <text x="44" y="74" text-anchor="end">2</text>
+          </g>
+        </svg>
+        <figcaption>Área de cada círculo proporcional a \(w_k\). «Sin pesar»: la media simple de las cinco, (0,6; 0,4). Ejemplo 7.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 3 · de dónde sale · la cota</p>
+  <h2>La energía libre acota el coste esperado más λ por la KL al prior</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Williams et al. no parten de «pesar con una exponencial»: parten de una cota <a class="cite" data-ref="williams2018"></a>. Se fija una distribución de partida \(p\) sobre secuencias \(V\) (mandos con ruido \(\Sigma\) alrededor de un nominal \(\tilde U\), a menudo cero) y se compara con cualquier otra distribución \(q\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathbb E_p\big[e^{-S/\lambda}\big] = \mathbb E_q\Big[e^{-S/\lambda}\,\dfrac{p(V)}{q(V)}\Big]\)</td><td>Multiplicar y dividir por \(q\) dentro de la integral</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\log\mathbb E_q[Y] \ge \mathbb E_q[\log Y]\)</td><td>Jensen: el logaritmo es cóncavo</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\log\mathbb E_p\big[e^{-S/\lambda}\big] \ge -\tfrac1\lambda\mathbb E_q[S] - \mathrm{KL}(q\,\|\,p)\)</td><td>2 con la \(Y\) de 1: el log del producto es la suma, y \(\mathbb E_q[\log(q/p)]\) es la KL</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathcal F \le \mathbb E_q[S] + \lambda\,\mathrm{KL}(q\,\|\,p)\)</td><td>Multiplicar por \(-\lambda \lt 0\) invierte la desigualdad; \(\mathcal F = -\lambda\log\mathbb E_p[e^{-S/\lambda}]\)</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p><strong>Cómo leer el paso 4.</strong> El lado derecho es un problema de control: coste esperado de las trayectorias de \(q\) más \(\lambda\) por cuánto se aleja \(q\) del prior. \(\mathcal F\), la <em>energía libre</em>, no depende de \(q\): es el mínimo posible de ese lado derecho, si se alcanza (hoja siguiente).</p>
+      <div class="aparte"><span class="rotulo">La KL es un coste de mando</span>
+        <p>Si \(p\) y \(q\) son gaussianas de covarianza \(\Sigma\) con medias \(\tilde U\) y \(U\), \(\mathrm{KL}(q\,\|\,p) = \tfrac12\sum_t(u_t-\tilde u_t)^\top\Sigma^{-1}(u_t-\tilde u_t)\): una penalización cuadrática del mando, como la \(R\) de A3a <a class="cite" data-ref="williams2018"></a>. \(\lambda\) pesa a la vez la temperatura y ese coste.</p>
+      </div>
+      <div class="callout clave"><span class="tag">Para un RL-ero</span>Es el objetivo del RL regularizado con KL hacia una política de referencia; con \(p\) uniforme, el de máxima entropía (lectura nuestra).</div>
+      <p class="xsmall muted">En Williams et al., \(F = \log\mathbb E_p[e^{-S/\lambda}]\) sin el factor \(-\lambda\); su ecuación (9) es nuestro paso 4.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 4 · de dónde sale · la distribución óptima</p>
+  <h2>La distribución óptima q* alcanza la cota, y el mejor plan es su media</h2>
+  <div class="cols">
+    <div class="stack">
+      <p><strong>Quién alcanza la cota.</strong> El prior reponderado por el coste:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:7%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(q^\star(V) = \tfrac1\eta\,e^{-S(V)/\lambda}\,p(V)\)</td><td>Candidata; \(\eta = \mathbb E_p[e^{-S/\lambda}]\) la normaliza</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathrm{KL}(q^\star\|\,p) = \mathbb E_{q^\star}\big[-S/\lambda\big] - \log\eta\)</td><td>\(\log(q^\star/p) = -S/\lambda - \log\eta\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathbb E_{q^\star}[S] + \lambda\,\mathrm{KL}(q^\star\|\,p) = -\lambda\log\eta = \mathcal F\)</td><td>Sustituir 2: los \(\mathbb E[S]\) se cancelan. Igualdad en el paso 4 de la hoja anterior</td></tr>
+        </table>
+      </div>
+      <p>Ninguna distribución tiene menos coste esperado más KL que \(q^\star\).</p>
+    </div>
+    <div class="stack">
+      <p><strong>Pero \(q^\star\) no se puede aplicar</strong>: el dron solo ejecuta un plan \(U\) más ruido \(\Sigma\), una gaussiana \(q_U\). Se busca la \(q_U\) más cercana a \(q^\star\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:7%">#</th><th style="width:55%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>4</strong></td><td>\(\min_U\mathrm{KL}(q^\star\|\,q_U) \iff \max_U\mathbb E_{q^\star}[\log q_U(V)]\)</td><td>Como en CEM: \(\mathbb E_{q^\star}[\log q^\star]\) no depende de \(U\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\log q_U(V) = c - \tfrac12\sum_t (v_t-u_t)^\top\Sigma^{-1}(v_t-u_t)\)</td><td>Gaussiana con \(\Sigma\) fija; \(c\) no depende de \(U\)</td></tr>
+          <tr><td><strong>6</strong></td><td>\(u_t^\star = \mathbb E_{q^\star}[v_t]\) para cada \(t\)</td><td>Una cuadrática en \(u_t\) se minimiza en la media de \(v_t\)</td></tr>
+        </table>
+      </div>
+      <div class="callout clave"><span class="tag">Lo que queda</span>El mejor plan es la <strong>media de la distribución óptima</strong>. No sabemos muestrear de \(q^\star\), pero sí de \(q_U\): la hoja siguiente corrige con muestreo por importancia, y de ahí salen los pesos.</div>
+      <p class="xsmall muted">Williams et al., ecuaciones (14)–(20) <a class="cite" data-ref="williams2018"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 5 · de dónde sale · los pesos</p>
+  <h2>Estimar la media de q* con muestras del plan actual da los pesos w<sub>k</sub></h2>
+  <p>Se muestrea alrededor del plan actual \(\hat U\), \(v_t = \hat u_t + \varepsilon_t\), y se corrige con el cociente de densidades:</p>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:5%">#</th><th style="width:50%">Paso</th><th>Por qué</th></tr>
+      <tr><td><strong>1</strong></td><td>\(\mathbb E_{q^\star}[v_t] = \mathbb E_{q_{\hat U}}\big[\tfrac{q^\star(V)}{q_{\hat U}(V)}\,v_t\big]\)</td><td>Multiplicar y dividir por \(q_{\hat U}\): muestreo por importancia</td></tr>
+      <tr><td><strong>2</strong></td><td>\(\tfrac{q^\star}{q_{\hat U}} = \tfrac1\eta\,e^{-S/\lambda}\,\tfrac{p}{q_{\hat U}}\)</td><td>Definición de \(q^\star\)</td></tr>
+      <tr><td><strong>3</strong></td><td>\(\tfrac{p}{q_{\hat U}} \propto \exp\big(-\sum_t(\hat u_t-\tilde u_t)^\top\Sigma^{-1}v_t\big)\)</td><td>Dos gaussianas con la misma \(\Sigma\): los términos \(v_t^\top\Sigma^{-1}v_t\) se cancelan y lo que no depende de \(V\) va a la constante</td></tr>
+      <tr><td><strong>4</strong></td><td>\(w(V) \propto \exp\big(-\tfrac1\lambda\big[S(V) + \lambda\sum_t(\hat u_t-\tilde u_t)^\top\Sigma^{-1}v_t\big]\big)\)</td><td>Juntar 2 y 3: cada muestra paga su coste más un término de mando</td></tr>
+      <tr><td><strong>5</strong></td><td>\(u_t \leftarrow \sum_k w_k\,v^k_t = \hat u_t + \sum_k w_k\,\varepsilon^k_t\)</td><td>Monte Carlo con \(K\) muestras y pesos normalizados: la regla de la hoja 15</td></tr>
+    </table>
+  </div>
+  <div class="aparte"><span class="rotulo">El término de mando, \(\gamma\,u^\top\Sigma^{-1}v\)</span>
+    <p>Con prior \(\tilde U = \alpha\hat U\), \(0\le\alpha\le1\), el término del paso 4 es \(\lambda(1-\alpha)\,\hat u_t^\top\Sigma^{-1}v_t\): Williams et al. llaman \(\gamma = \lambda(1-\alpha)\) a su peso. Con \(\alpha = 0\) el prior es no mandar y empuja hacia cero; con \(\alpha = 1\) es el plan actual y el término desaparece. El script del tema usa \(\gamma = 0\) y pone el coste de mando dentro de \(S\) <a class="cite" data-ref="williams2018"></a>.</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 6 · lectura bayesiana</p>
+  <h2>q* es un posterior: el prior de mandos por una «verosimilitud» e<sup>−S/λ</sup></h2>
+  <div class="cols">
+    <div class="stack">
+      \[ q^\star(V) \;\propto\; \underbrace{p(V)}_{\text{prior}}\ \underbrace{e^{-S(V)/\lambda}}_{\text{«verosimilitud» de ser bueno}} \]
+      <p>Williams et al. describen la distribución de partida como «aproximadamente análoga a un prior bayesiano» <a class="cite" data-ref="williams2018"></a>. \(\lambda\) hace de temperatura de Boltzmann: con \(\lambda\to0\), \(q^\star\) se concentra en el mínimo de \(S\); con \(\lambda\to\infty\), vuelve al prior.</p>
+      <p><strong>Un paso, a mano.</strong> \(x_1 = u\), \(S(u) = (u-2)^2 + \tfrac12u^2\) (mínimo en \(u = 4/3\)) y prior \(\mathcal N(0, 1)\). El exponente de \(q^\star\) es \(-\tfrac12u^2 - S(u)/\lambda = -\tfrac12\big(1 + \tfrac3\lambda\big)u^2 + \tfrac4\lambda u + \text{cte}\): una gaussiana de precisión \(1 + 3/\lambda\) y media \(4/(\lambda+3)\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(\lambda\)</th><th>0,3</th><th>1</th><th>3</th><th>10</th></tr>
+          <tr><td>media de \(q^\star\)</td><td class="n">1,21</td><td class="n">1,00</td><td class="n">0,67</td><td class="n">0,31</td></tr>
+          <tr><td>desviación</td><td class="n">0,30</td><td class="n">0,50</td><td class="n">0,71</td><td class="n">0,88</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 260" style="max-height:200px" role="img" aria-label="Prior gaussiano centrado en cero, factor de verosimilitud centrado en cuatro tercios y posterior entre ambos">
+          <line class="ln-rule" x1="40" y1="230" x2="500" y2="230"/>
+          <path class="ln" fill="none" stroke-width="1.8" stroke-dasharray="5 4" d="M40.0,221.2 L43.8,220.1 L47.7,218.8 L51.5,217.4 L55.3,215.8 L59.2,214.1 L63.0,212.2 L66.8,210.2 L70.7,207.9 L74.5,205.5 L78.3,202.9 L82.2,200.1 L86.0,197.1 L89.8,193.9 L93.7,190.4 L97.5,186.7 L101.3,182.9 L105.2,178.7 L109.0,174.4 L112.8,169.8 L116.7,165.1 L120.5,160.1 L124.3,154.9 L128.2,149.6 L132.0,144.1 L135.8,138.4 L139.7,132.6 L143.5,126.8 L147.3,120.8 L151.2,114.8 L155.0,108.7 L158.8,102.6 L162.7,96.6 L166.5,90.6 L170.3,84.8 L174.2,79.0 L178.0,73.5 L181.8,68.1 L185.7,62.9 L189.5,58.1 L193.3,53.5 L197.2,49.3 L201.0,45.4 L204.8,41.9 L208.7,38.8 L212.5,36.2 L216.3,34.0 L220.2,32.2 L224.0,31.0 L227.8,30.2 L231.7,30.0 L235.5,30.2 L239.3,31.0 L243.2,32.2 L247.0,34.0 L250.8,36.2 L254.7,38.8 L258.5,41.9 L262.3,45.4 L266.2,49.3 L270.0,53.5 L273.8,58.1 L277.7,62.9 L281.5,68.1 L285.3,73.5 L289.2,79.0 L293.0,84.8 L296.8,90.6 L300.7,96.6 L304.5,102.6 L308.3,108.7 L312.2,114.8 L316.0,120.8 L319.8,126.8 L323.7,132.6 L327.5,138.4 L331.3,144.1 L335.2,149.6 L339.0,154.9 L342.8,160.1 L346.7,165.1 L350.5,169.8 L354.3,174.4 L358.2,178.7 L362.0,182.9 L365.8,186.7 L369.7,190.4 L373.5,193.9 L377.3,197.1 L381.2,200.1 L385.0,202.9 L388.8,205.5 L392.7,207.9 L396.5,210.2 L400.3,212.2 L404.2,214.1 L408.0,215.8 L411.8,217.4 L415.7,218.8 L419.5,220.1 L423.3,221.2 L427.2,222.3 L431.0,223.2 L434.8,224.0 L438.7,224.8 L442.5,225.4 L446.3,226.0 L450.2,226.6 L454.0,227.0 L457.8,227.4 L461.7,227.8 L465.5,228.1 L469.3,228.4 L473.2,228.6 L477.0,228.8 L480.8,229.0 L484.7,229.1 L488.5,229.3 L492.3,229.4 L496.2,229.5 L500.0,229.6"/>
+          <path class="ln-tesis" fill="none" stroke-width="1.8" d="M40.0,230.0 L43.8,230.0 L47.7,230.0 L51.5,230.0 L55.3,230.0 L59.2,230.0 L63.0,230.0 L66.8,230.0 L70.7,230.0 L74.5,230.0 L78.3,230.0 L82.2,230.0 L86.0,230.0 L89.8,230.0 L93.7,230.0 L97.5,230.0 L101.3,230.0 L105.2,230.0 L109.0,230.0 L112.8,230.0 L116.7,230.0 L120.5,230.0 L124.3,230.0 L128.2,230.0 L132.0,230.0 L135.8,230.0 L139.7,230.0 L143.5,230.0 L147.3,230.0 L151.2,230.0 L155.0,229.9 L158.8,229.9 L162.7,229.9 L166.5,229.8 L170.3,229.8 L174.2,229.7 L178.0,229.6 L181.8,229.5 L185.7,229.3 L189.5,229.0 L193.3,228.7 L197.2,228.3 L201.0,227.8 L204.8,227.1 L208.7,226.3 L212.5,225.3 L216.3,224.1 L220.2,222.6 L224.0,220.8 L227.8,218.7 L231.7,216.1 L235.5,213.1 L239.3,209.6 L243.2,205.5 L247.0,200.9 L250.8,195.6 L254.7,189.7 L258.5,183.1 L262.3,175.8 L266.2,167.9 L270.0,159.4 L273.8,150.3 L277.7,140.7 L281.5,130.7 L285.3,120.4 L289.2,109.9 L293.0,99.4 L296.8,89.1 L300.7,79.0 L304.5,69.5 L308.3,60.6 L312.2,52.6 L316.0,45.6 L319.8,39.8 L323.7,35.2 L327.5,32.0 L331.3,30.2 L335.2,30.0 L339.0,31.2 L342.8,34.0 L346.7,38.1 L350.5,43.5 L354.3,50.2 L358.2,57.9 L362.0,66.5 L365.8,75.8 L369.7,85.7 L373.5,95.9 L377.3,106.4 L381.2,116.9 L385.0,127.3 L388.8,137.4 L392.7,147.1 L396.5,156.4 L400.3,165.2 L404.2,173.3 L408.0,180.7 L411.8,187.6 L415.7,193.7 L419.5,199.2 L423.3,204.0 L427.2,208.3 L431.0,212.0 L434.8,215.1 L438.7,217.9 L442.5,220.1 L446.3,222.1 L450.2,223.7 L454.0,225.0 L457.8,226.0 L461.7,226.9 L465.5,227.6 L469.3,228.1 L473.2,228.6 L477.0,228.9 L480.8,229.2 L484.7,229.4 L488.5,229.6 L492.3,229.7 L496.2,229.8 L500.0,229.8"/>
+          <path class="ln-accent" fill="none" stroke-width="2.6" d="M40.0,230.0 L43.8,230.0 L47.7,230.0 L51.5,230.0 L55.3,230.0 L59.2,230.0 L63.0,230.0 L66.8,230.0 L70.7,230.0 L74.5,230.0 L78.3,230.0 L82.2,230.0 L86.0,230.0 L89.8,230.0 L93.7,230.0 L97.5,230.0 L101.3,230.0 L105.2,230.0 L109.0,230.0 L112.8,230.0 L116.7,230.0 L120.5,230.0 L124.3,230.0 L128.2,230.0 L132.0,230.0 L135.8,230.0 L139.7,230.0 L143.5,230.0 L147.3,230.0 L151.2,230.0 L155.0,229.9 L158.8,229.9 L162.7,229.9 L166.5,229.8 L170.3,229.7 L174.2,229.6 L178.0,229.4 L181.8,229.1 L185.7,228.8 L189.5,228.4 L193.3,227.8 L197.2,227.0 L201.0,226.0 L204.8,224.8 L208.7,223.2 L212.5,221.2 L216.3,218.8 L220.2,215.8 L224.0,212.2 L227.8,207.9 L231.7,202.9 L235.5,197.1 L239.3,190.4 L243.2,182.9 L247.0,174.4 L250.8,165.1 L254.7,154.9 L258.5,144.1 L262.3,132.6 L266.2,120.8 L270.0,108.7 L273.8,96.6 L277.7,84.8 L281.5,73.5 L285.3,62.9 L289.2,53.5 L293.0,45.4 L296.8,38.8 L300.7,34.0 L304.5,31.0 L308.3,30.0 L312.2,31.0 L316.0,34.0 L319.8,38.8 L323.7,45.4 L327.5,53.5 L331.3,62.9 L335.2,73.5 L339.0,84.8 L342.8,96.6 L346.7,108.7 L350.5,120.8 L354.3,132.6 L358.2,144.1 L362.0,154.9 L365.8,165.1 L369.7,174.4 L373.5,182.9 L377.3,190.4 L381.2,197.1 L385.0,202.9 L388.8,207.9 L392.7,212.2 L396.5,215.8 L400.3,218.8 L404.2,221.2 L408.0,223.2 L411.8,224.8 L415.7,226.0 L419.5,227.0 L423.3,227.8 L427.2,228.4 L431.0,228.8 L434.8,229.1 L438.7,229.4 L442.5,229.6 L446.3,229.7 L450.2,229.8 L454.0,229.9 L457.8,229.9 L461.7,229.9 L465.5,230.0 L469.3,230.0 L473.2,230.0 L477.0,230.0 L480.8,230.0 L484.7,230.0 L488.5,230.0 L492.3,230.0 L496.2,230.0 L500.0,230.0"/>
+          <path class="ln-time" fill="none" stroke-width="1.8" d="M40.0,228.8 L43.8,228.6 L47.7,228.3 L51.5,228.0 L55.3,227.6 L59.2,227.2 L63.0,226.6 L66.8,226.1 L70.7,225.4 L74.5,224.6 L78.3,223.7 L82.2,222.7 L86.0,221.6 L89.8,220.3 L93.7,218.9 L97.5,217.2 L101.3,215.4 L105.2,213.4 L109.0,211.2 L112.8,208.8 L116.7,206.1 L120.5,203.2 L124.3,200.0 L128.2,196.5 L132.0,192.7 L135.8,188.7 L139.7,184.4 L143.5,179.7 L147.3,174.8 L151.2,169.6 L155.0,164.2 L158.8,158.5 L162.7,152.5 L166.5,146.3 L170.3,139.9 L174.2,133.3 L178.0,126.6 L181.8,119.8 L185.7,112.9 L189.5,106.0 L193.3,99.1 L197.2,92.3 L201.0,85.6 L204.8,79.0 L208.7,72.7 L212.5,66.6 L216.3,60.8 L220.2,55.5 L224.0,50.5 L227.8,46.0 L231.7,41.9 L235.5,38.4 L239.3,35.5 L243.2,33.2 L247.0,31.5 L250.8,30.4 L254.7,30.0 L258.5,30.2 L262.3,31.1 L266.2,32.6 L270.0,34.7 L273.8,37.5 L277.7,40.8 L281.5,44.7 L285.3,49.0 L289.2,53.9 L293.0,59.1 L296.8,64.8 L300.7,70.8 L304.5,77.0 L308.3,83.5 L312.2,90.2 L316.0,97.0 L319.8,103.9 L323.7,110.8 L327.5,117.7 L331.3,124.5 L335.2,131.3 L339.0,137.9 L342.8,144.4 L346.7,150.6 L350.5,156.7 L354.3,162.5 L358.2,168.0 L362.0,173.3 L365.8,178.3 L369.7,183.0 L373.5,187.4 L377.3,191.5 L381.2,195.4 L385.0,198.9 L388.8,202.2 L392.7,205.2 L396.5,208.0 L400.3,210.5 L404.2,212.8 L408.0,214.8 L411.8,216.7 L415.7,218.4 L419.5,219.9 L423.3,221.2 L427.2,222.4 L431.0,223.4 L434.8,224.3 L438.7,225.2 L442.5,225.9 L446.3,226.5 L450.2,227.0 L454.0,227.5 L457.8,227.9 L461.7,228.2 L465.5,228.5 L469.3,228.7 L473.2,229.0 L477.0,229.1 L480.8,229.3 L484.7,229.4 L488.5,229.5 L492.3,229.6 L496.2,229.7 L500.0,229.7"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="78.3" y="248" text-anchor="middle">−2</text>
+            <text x="231.7" y="248" text-anchor="middle">0</text>
+            <text x="385" y="248" text-anchor="middle">2</text>
+            <text x="500" y="248" text-anchor="end">u</text>
+          </g>
+          <g font-size="13">
+            <text x="120" y="80" class="t-muted">prior p</text>
+            <text x="380" y="50" class="t-tesis">e^(−S/λ), λ = 1</text>
+            <text x="250" y="22" class="t-accent">q*, λ = 1</text>
+            <text x="58" y="140" class="t-time">q*, λ = 10</text>
+          </g>
+        </svg>
+        <figcaption>Curvas escaladas a altura 1. Ejemplo 9.</figcaption>
+      </figure>
+      <p>Con \(\lambda\) grande, \(q^\star\) se queda cerca de 0 aunque el mínimo de \(S\) esté en 1,33: pesa más la KL hacia un prior de «no mandar». Williams et al. desacoplan temperatura y coste de mando con \(\alpha\) (hoja anterior).</p>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Es el mismo producto prior × verosimilitud del filtro de Bayes de A4a, pero sobre <em>mandos futuros</em>: el belief es el posterior sobre el estado; \(q^\star\), el posterior sobre el plan.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPPI · 7 · en la práctica</p>
+  <h2>Un paso de MPPI tal como lo ejecuta el coche de Williams et al.</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th>Paso del algoritmo 1</th></tr>
+          <tr><td><strong>1</strong></td><td>Leer el estado del estimador: es el \(x_0\) de todas las simulaciones</td></tr>
+          <tr><td><strong>2</strong></td><td>Para cada \(k\), en paralelo en la GPU: muestrear \(E^k\), simular con el mando <strong>saturado</strong> \(g(v_t)\) y acumular \(S_k\) (más el término \(\gamma\))</td></tr>
+          <tr><td><strong>3</strong></td><td>Pesos con \(\rho\) y \(\lambda\) (algoritmo 2)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(U \leftarrow U + \text{SGF} * \sum_k w_kE^k\): la actualización pasa por un filtro de Savitzky-Golay</td></tr>
+          <tr><td><strong>5</strong></td><td>Enviar \(u_0\) a los actuadores y desplazar \(U\)</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">Williams et al. (2018), algoritmos 1 y 2 y sección III-D <a class="cite" data-ref="williams2018"></a>.</p>
+    </div>
+    <div class="stack">
+      <ul>
+        <li><strong>Saturar dentro del modelo</strong> convierte el problema con límites en uno sin restricciones: las muestras imposibles cuestan lo que costarían de verdad, y no hace falta resolver un QP.</li>
+        <li><strong>Savitzky-Golay</strong> ajusta polinomios locales a la secuencia: equivale a suavizar la media ponderada y quita el temblor que deja el muestreo.</li>
+        <li><strong>Muestras alrededor de cero:</strong> una fracción se genera sin el plan, para poder reiniciarse si una perturbación lo inutiliza; con el peso de importancia correcto no sesga la estimación.</li>
       </ul>
       <div class="callout realidad"><span class="tag">Latencia y frecuencia</span>En el coche AutoRally: 1200 trayectorias de 2,5 s a <span class="hz">40 Hz</span>, unos 4,8 millones de evaluaciones del modelo por segundo, en una GPU GTX 750 Ti a bordo. Con el mismo coste, MPPI fue más fiable que CEM: en uno de sus ensayos a 11 m/s, 100 % de vueltas completas frente a 66 %, aunque CEM era algo más rápido por vuelta <a class="cite" data-ref="williams2018"></a>.</div>
     </div>
@@ -141,7 +689,57 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">La temperatura</p>
+  <p class="kicker">La temperatura · 1 · a mano</p>
+  <h2>λ pequeña: la mejor muestra; λ grande: la media de todas</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th>\(\lambda\)</th><th>Pesos \(w_1,\dots,w_5\)</th><th>Muestras efectivas</th><th>\(U\) nueva</th><th>\(S(U)\)</th></tr>
+      <tr><td class="n">0,1</td><td class="n">0,993 · 0 · 0,007 · 0 · 0</td><td class="n">1,01</td><td class="n">(1,00; 0,99)</td><td class="n">0,993</td></tr>
+      <tr><td class="n">0,3</td><td class="n">0,817 · 0,029 · 0,154 · 0 · 0</td><td class="n">1,45</td><td class="n">(1,03; 0,82)</td><td class="n">0,887</td></tr>
+      <tr><td class="n">1</td><td class="n">0,490 · 0,180 · 0,297 · 0,024 · 0,009</td><td class="n">2,77</td><td class="n">(1,14; 0,50)</td><td class="n">0,904</td></tr>
+      <tr><td class="n">3</td><td class="n">0,313 · 0,224 · 0,265 · 0,115 · 0,083</td><td class="n">4,19</td><td class="n">(0,94; 0,40)</td><td class="n">0,960</td></tr>
+      <tr><td class="n">10</td><td class="n">0,234 · 0,212 · 0,223 · 0,174 · 0,157</td><td class="n">4,89</td><td class="n">(0,72; 0,39)</td><td class="n">1,121</td></tr>
+      <tr><td class="n">1000</td><td class="n">0,2 · 0,2 · 0,2 · 0,2 · 0,2</td><td class="n">5,00</td><td class="n">(0,60; 0,40)</td><td class="n">1,258</td></tr>
+    </table>
+  </div>
+  <div class="cols">
+    <ul>
+      <li>\(\lambda\to0\): todo el peso a la muestra 1, y MPPI es <strong>disparo aleatorio</strong> (\(U = (1,1)\), \(S = 1\)).</li>
+      <li>\(\lambda\to\infty\): pesos iguales; la actualización es la media del ruido y empeora la mejor muestra (1,26 frente a 1,00).</li>
+      <li>Entre medias está lo útil: aquí, \(\lambda\) entre 0,3 y 1. «Muestras efectivas» se explica en la hoja siguiente. <span class="muted">Ejemplo 6.</span></li>
+    </ul>
+    <div class="callout clave"><span class="tag">Lo que importa es la escala</span>Multiplicar todos los costes por 100 y \(\lambda\) por 100 da exactamente los mismos pesos: cuenta \(\lambda\) <em>relativa a la dispersión de los costes</em>. En el ejemplo los costes se separan en unidades; en el escenario 2D, en cientos (de 526 a unos 740), y \(\lambda = 10\).</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La temperatura · 2 · tamaño efectivo de muestra</p>
+  <h2>1/Σw²: cuántas muestras con el mismo peso darían la misma varianza</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Queremos un número entre 1 y \(K\) que diga cuántas muestras están contando de verdad. Se compara la varianza de una media ponderada con la de una media normal. Sean \(z_k\) independientes con varianza \(s^2\) (por ejemplo, una componente del ruido) y pesos fijos que suman 1:</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:7%">#</th><th style="width:52%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\operatorname{Var}\big(\sum_kw_kz_k\big) = s^2\sum_kw_k^2\)</td><td>Independientes: las varianzas se suman, cada una por el cuadrado de su coeficiente</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\operatorname{Var}\big(\tfrac1n\sum_{i=1}^nz_i\big) = s^2/n\)</td><td>Paso 1 con \(n\) pesos iguales a \(1/n\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(n_{\text{ef}} = 1\big/\sum_kw_k^2\)</td><td>Igualar 1 y 2 y despejar \(n\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(w_k = 1/K\Rightarrow n_{\text{ef}} = K\); un \(w_k = 1\Rightarrow n_{\text{ef}} = 1\)</td><td>Los dos extremos de la hoja anterior</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con \(\lambda = 1\) en el ejemplo</span>\(\sum_kw_k^2 = 0{,}490^2 + 0{,}180^2 + 0{,}297^2 + 0{,}024^2 + 0{,}009^2 = 0{,}361\), así que \(n_{\text{ef}} = 2{,}77\) de 5. Comprobado por Monte Carlo con \(z_k\sim\mathcal N(0,1)\): varianza de \(\sum_kw_kz_k\) igual a 0,363. <span class="muted">Ejemplo 10.</span></div>
+      <div class="aparte"><span class="rotulo">Por qué es una aproximación</span>
+        <p>En MPPI los pesos dependen de los costes, y los costes del ruido: no son fijos. \(1/\sum_kw_k^2\) es aun así la medida habitual en muestreo por importancia, y sirve como termómetro barato: se calcula con los mismos pesos, sin simular nada más.</p>
+      </div>
+      <div class="callout clave"><span class="tag">Uso</span>Si en vuelo \(n_{\text{ef}}\approx1\), \(\lambda\) es demasiado pequeña para la dispersión de tus costes; si \(n_{\text{ef}}\approx K\), demasiado grande. El laboratorio ajusta \(\lambda\) en cada paso para fijar \(n_{\text{ef}}\).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">La temperatura · 3 · en el escenario</p>
   <h2>\(\lambda\) decide entre quedarse con la mejor muestra y promediarlas todas</h2>
   <div class="cols w60">
     <figure class="fig">
@@ -163,15 +761,58 @@
           <text x="500" y="72" class="t-time" text-anchor="end">media casi sin pesar</text>
         </g>
       </svg>
-      <figcaption>Tamaño efectivo de muestra \(1/\sum_k w_k^2\) para 1024 trayectorias del escenario de la hoja siguiente (costes entre 526 y unos 740). Calculado en <code>figuras/figuras_a3b.py</code>.</figcaption>
+      <figcaption>Tamaño efectivo de muestra \(1/\sum_k w_k^2\) para 1024 trayectorias del escenario 2D desde el inicio (costes entre 526 y unos 740; resultados en la hoja 26). Calculado en <code>figuras/figuras_a3b.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>\(\lambda \to 0\): los pesos se concentran en la mejor muestra; es disparo aleatorio con arranque en caliente.</li>
         <li>\(\lambda \to \infty\): todas pesan igual y la actualización es la media del ruido, que no lleva a ningún sitio.</li>
         <li>Lo que importa es \(\lambda\) <em>relativo a la dispersión de los costes</em>: cambia la escala del coste y hay que cambiar \(\lambda\).</li>
       </ul>
       <div class="callout clave"><span class="tag">Regla práctica</span>Mira el tamaño efectivo de muestra en vuelo: si es 1, estás desperdiciando muestras; si es casi \(K\), el plan no mejora. Williams et al. muestran el mismo efecto en su figura 3 <a class="cite" data-ref="williams2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Ruido correlado</p>
+  <h2>Ruido correlado: maniobras que el ruido blanco no explora</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>En el integrador doble del escenario, la posición final suma las aceleraciones de todo el horizonte:</p>
+      \[ \mathbf p_H = \mathbf p_0 + H\Delta t\,\mathbf v_0 + \Delta t^2\sum_{t=0}^{H-1}(H-t)\,\mathbf a_t \]
+      <p class="xsmall muted">Sale de sumar \(\mathbf p_{t+1} = \mathbf p_t + \Delta t\,\mathbf v_{t+1}\) con \(\mathbf v_{t+1} = \mathbf v_t + \Delta t\,\mathbf a_t\): \(\mathbf a_t\) cuenta en las \(H-t\) posiciones siguientes.</p>
+      <p>Con ruido <strong>blanco</strong> (independiente entre pasos) de \(\sigma = 2\) m/s², los empujones se cancelan: la desviación de \(\mathbf p_H\) es \(\sigma\Delta t^2\sqrt{\sum_t(H-t)^2} = 0{,}49\) m por eje (0,48 en la tabla, por Monte Carlo). Con ruido <strong>correlado</strong> de la misma \(\sigma\) por paso, los empujones van en el mismo sentido y llegan más lejos.</p>
+      <p>Si esquivar un obstáculo exige desviarse un metro, con ruido blanco casi ninguna muestra lo explora.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 270" style="max-height:165px" role="img" aria-label="Una secuencia de ruido blanco que cambia de signo en cada paso frente a una de ruido correlado que varía despacio">
+          <line class="ln-rule" x1="50" y1="120" x2="500" y2="120"/>
+          <line class="ln-rule" x1="50" y1="20" x2="50" y2="220"/>
+          <path class="ln" fill="none" stroke-width="1.6" d="M50.0,93.1 L65.5,77.9 L81.0,110.2 L96.6,163.5 L112.1,133.2 L127.6,139.9 L143.1,106.8 L158.6,114.0 L174.1,123.3 L189.7,139.2 L205.2,60.0 L220.7,145.3 L236.2,95.4 L251.7,134.5 L267.2,88.1 L282.8,113.9 L298.3,54.2 L313.8,110.9 L329.3,157.2 L344.8,22.7 L360.3,123.2 L375.9,145.7 L391.4,131.8 L406.9,93.7 L422.4,158.6 L437.9,112.7 L453.4,120.8 L469.0,110.9 L484.5,100.8 L500.0,114.2"/>
+          <path class="ln-accent" fill="none" stroke-width="2.6" d="M50.0,91.0 L65.5,90.9 L81.0,112.5 L96.6,138.3 L112.1,136.3 L127.6,132.6 L143.1,118.8 L158.6,114.9 L174.1,115.6 L189.7,110.6 L205.2,86.4 L220.7,101.9 L236.2,90.7 L251.7,92.3 L267.2,76.0 L282.8,72.7 L298.3,57.1 L313.8,77.0 L329.3,90.1 L344.8,59.6 L360.3,92.8 L375.9,115.2 L391.4,115.4 L406.9,109.7 L422.4,126.6 L437.9,115.4 L453.4,111.1 L469.0,104.0 L484.5,97.5 L500.0,97.8"/>
+          <g class="t-mono t-muted" font-size="18">
+            <text x="44" y="57" text-anchor="end">+4</text>
+            <text x="44" y="124" text-anchor="end">0</text>
+            <text x="44" y="191" text-anchor="end">−4</text>
+            <text x="500" y="238" text-anchor="end">paso t (0…29)</text>
+          </g>
+          <line class="ln" x1="60" y1="258" x2="90" y2="258" stroke-width="1.6"/><text x="98" y="264" font-size="19" class="t-muted">blanco (β = 0)</text>
+          <line class="ln-accent" x1="260" y1="258" x2="290" y2="258" stroke-width="2.6"/><text x="298" y="264" font-size="19" class="t-accent">correlado (β = 2)</text>
+        </svg>
+        <figcaption>Una muestra de cada tipo, en m/s². Ejemplo 11.</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>\(1/f^\beta\)</th><th>Correlación con el paso siguiente</th><th>Desv. \(\mathbf p_H\)</th><th>Desv. \(\mathbf v_H\)</th></tr>
+          <tr><td>\(\beta = 0\)</td><td class="n">0,00</td><td class="n">0,48 m</td><td class="n">0,55 m/s</td></tr>
+          <tr><td>\(\beta = 1\)</td><td class="n">0,57</td><td class="n">0,93 m</td><td class="n">1,09 m/s</td></tr>
+          <tr><td>\(\beta = 2\)</td><td class="n">0,88</td><td class="n">1,25 m</td><td class="n">1,47 m/s</td></tr>
+        </table>
+      </div>
+      <p>\(\beta\): pendiente del espectro de potencia (0 es blanco). iCEM usa este ruido <a class="cite" data-ref="pinneri2020"></a>; el filtro de Savitzky-Golay de MPPI ataca lo mismo suavizando la actualización en vez de las muestras.</p>
+      <p class="xsmall muted">20 000 secuencias por fila, filtrando ruido blanco en frecuencia.</p>
     </div>
   </div>
 </section>
@@ -208,7 +849,7 @@
           <tr><td>MPPI (λ = 10)</td><td class="n">25 %</td><td class="n">80 %</td><td class="n">95 %</td><td class="n">100 %</td></tr>
         </table>
       </div>
-      <ul class="small">
+      <ul>
         <li>Con \(K\) = 1024, CEM llega en 3,1 s de media y MPPI en 5,4 s: MPPI promedia y es más prudente cerca de los obstáculos. Es el mismo patrón que Williams et al. midieron en el coche.</li>
         <li>Un paso de MPPI con \(K\) = 1024 cuesta 2,7 ms en numpy en un PC; en GPU, órdenes de magnitud más muestras.</li>
       </ul>
@@ -246,7 +887,7 @@
       <figcaption>Escenario de la hoja anterior, 20 semillas por punto. Calculado en <code>figuras/figuras_a3b.py</code>.</figcaption>
     </figure>
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li><strong>Disparo aleatorio</strong> necesita muchas muestras porque no aprovecha nada entre pasos salvo el arranque.</li>
         <li><strong>CEM</strong> concentra las muestras en varias iteraciones; con pocas muestras por iteración, el reajuste es ruidoso.</li>
         <li><strong>MPPI</strong> acumula información entre pasos a través de la media desplazada: con 64 muestras ya llega al 80 %.</li>
@@ -261,10 +902,10 @@
   <h2>Lo que hace que un MPC por muestreo funcione en un robot</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
-        <li><strong>Coste del mando con el ruido:</strong> MPPI añade \(\gamma\,u^\top\Sigma^{-1}v\) al coste de cada muestra, que sale de la derivación y penaliza alejarse de la media <a class="cite" data-ref="williams2018"></a>.</li>
+      <ul>
+        <li><strong>Coste del mando con el ruido:</strong> MPPI añade \(\gamma\,u^\top\Sigma^{-1}v\) al coste de cada muestra, que sale del cociente de importancia (hoja 19) y penaliza alejarse de la media <a class="cite" data-ref="williams2018"></a>.</li>
         <li><strong>Saturar dentro del modelo:</strong> los mandos se recortan al simular, así que las muestras imposibles cuestan lo que costarían de verdad.</li>
-        <li><strong>Suavizar:</strong> un filtro sobre la actualización (Savitzky-Golay) o ruido coloreado en lugar de blanco. iCEM usa ruido de espectro \(1/f^\beta\) <a class="cite" data-ref="pinneri2020"></a>.</li>
+        <li><strong>Suavizar:</strong> un filtro sobre la actualización (Savitzky-Golay) o ruido coloreado en lugar de blanco. iCEM usa ruido de espectro \(1/f^\beta\) <a class="cite" data-ref="pinneri2020"></a> (hoja 25).</li>
         <li><strong>Costes no diferenciables, a propósito:</strong> un indicador de choque de \(10^6\) en Minařík et al. <a class="cite" data-ref="minarik2024"></a>. Es la gran ventaja sobre el NMPC.</li>
       </ul>
     </div>
@@ -294,10 +935,71 @@
 </section>
 
 <!-- ============ PARTE 2 · MPC CON APRENDIZAJE ============ -->
+
 <section class="slide divider" data-section="2 · MPC con aprendizaje">
   <p class="num">Parte 2</p>
   <h2>MPC con aprendizaje</h2>
   <p>Qué se puede aprender dentro de un MPC: el modelo, el coste, el valor terminal o el arranque; y cómo lo hacen los agentes con world model.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Notación de la parte 2</p>
+  <h2>Las letras de los modelos aprendidos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:33%">Ejemplo</th></tr>
+      <tr><td>\(f_{\text{nom}}\), \(\mathbf g_\phi\)</td><td>Física nominal y residuo aprendido que se le suma; \(\phi\), los pesos del residuo</td><td>\(\mathbf g_\phi\): el arrastre que el modelo de A1 no tiene</td></tr>
+      <tr><td>\(\theta\)</td><td>Parámetros que se aprenden en el MPC diferenciable: pesos del coste o del modelo</td><td>El peso \(r\) del mando en el ejemplo de esa hoja</td></tr>
+      <tr><td>\(z^\star\), \(\mathcal K\)</td><td>Solución del problema de control (primales y duales) y sus condiciones KKT</td><td>\(\mathcal K = \partial J/\partial u = 0\) sin restricciones</td></tr>
+      <tr><td>\(s\), \(a\)</td><td>Estado y acción con la notación de RL: los \(x\), \(u\) de la parte 1</td><td>PETS y TD-MPC2 escriben así</td></tr>
+      <tr><td>\(B\), \(b\), \(\mu_b\), \(\Sigma_b\)</td><td>Número de redes del conjunto, su índice, y media y covarianza que predice la red \(b\)</td><td>PETS: \(B = 5\)</td></tr>
+      <tr><td>\(P\)</td><td>Número de partículas: simulaciones de una misma secuencia candidata</td><td>PETS: \(P = 20\)</td></tr>
+      <tr><td>\(o\), \(z\), \(h\), \(d\)</td><td>Observación, estado latente, codificador \(z = h(o)\) y dinámica latente \(z' = d(z,a)\)</td><td>Una imagen → un vector \(z\)</td></tr>
+      <tr><td>\(R\), \(Q\), \(\pi\), \(\gamma\)</td><td>Recompensa predicha, valor aprendido, política previa y descuento</td><td>TD-MPC2</td></tr>
+    </table>
+  </div>
+  <div class="callout error"><span class="tag">Letras que cambian de sentido</span>\(Q\) y \(R\) son aquí valor y recompensa (en A3a, matrices de pesos); \(\gamma\) es el descuento (en la parte 1, el cuantil de CEM y el peso del término de mando); \(h\) es el codificador (en A3a, una restricción). Y en RL se <em>maximiza</em> la recompensa: es minimizar el coste \(S = -\sum R\).</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Taxonomía · 1 · esquema</p>
+  <h2>El mismo bucle de la parte 1, con cuatro piezas que se pueden aprender</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 250" style="max-height:240px" role="img" aria-label="Bucle del MPC por muestreo con cuatro piezas aprendibles: arranque, modelo, coste y valor terminal">
+      <defs><marker id="a3be" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="20" y="80" width="200" height="80" rx="8" class="box-tesis"/>
+      <text x="120" y="112" text-anchor="middle" font-size="17" class="t-bold">④ Arranque</text>
+      <text x="120" y="138" text-anchor="middle" font-size="14" class="t-muted">U inicial, propuestas</text>
+      <rect x="270" y="80" width="190" height="80" rx="8" class="box"/>
+      <text x="365" y="112" text-anchor="middle" font-size="17" class="t-bold">Muestrear</text>
+      <text x="365" y="138" text-anchor="middle" font-size="14" class="t-muted">V^k = U + E^k</text>
+      <rect x="510" y="80" width="220" height="80" rx="8" class="box-tesis"/>
+      <text x="620" y="112" text-anchor="middle" font-size="17" class="t-bold">① Modelo</text>
+      <text x="620" y="138" text-anchor="middle" font-size="14" class="t-muted">x_t+1 = f(x_t, u_t)</text>
+      <rect x="780" y="20" width="220" height="80" rx="8" class="box-tesis"/>
+      <text x="890" y="52" text-anchor="middle" font-size="17" class="t-bold">② Coste de etapa</text>
+      <text x="890" y="78" text-anchor="middle" font-size="14" class="t-muted">c(x, u) o −R(z, a)</text>
+      <rect x="780" y="140" width="220" height="80" rx="8" class="box-tesis"/>
+      <text x="890" y="172" text-anchor="middle" font-size="17" class="t-bold">③ Valor terminal</text>
+      <text x="890" y="198" text-anchor="middle" font-size="14" class="t-muted">φ(x_H) o −Q(z_H, a_H)</text>
+      <rect x="1040" y="80" width="130" height="80" rx="8" class="box-accent"/>
+      <text x="1105" y="112" text-anchor="middle" font-size="17" class="t-bold">Combinar</text>
+      <text x="1105" y="138" text-anchor="middle" font-size="14" class="t-muted">→ u₀</text>
+      <path d="M220 120 H266" class="ln" marker-end="url(#a3be)"/>
+      <path d="M460 120 H506" class="ln" marker-end="url(#a3be)"/>
+      <path d="M730 105 L776 70" class="ln" marker-end="url(#a3be)"/>
+      <path d="M730 135 L776 170" class="ln" marker-end="url(#a3be)"/>
+      <path d="M1000 60 L1036 100" class="ln" marker-end="url(#a3be)"/>
+      <path d="M1000 180 L1036 140" class="ln" marker-end="url(#a3be)"/>
+      <text x="620" y="240" text-anchor="middle" font-size="14" class="t-muted">los bloques en color se pueden sustituir por algo aprendido</text>
+    </svg>
+  </figure>
+  <div class="cols c4">
+    <p><strong>① Modelo:</strong> un residuo sobre la física, una red entera o un latente (GP-MPC, PETS, PlaNet, TD-MPC2).</p>
+    <p><strong>② Coste:</strong> sus pesos, aprendidos derivando a través del MPC (MPC diferenciable, AC-MPC).</p>
+    <p><strong>③ Valor terminal:</strong> lo que el horizonte corto no ve, con una \(Q\) aprendida (TD-MPC).</p>
+    <p><strong>④ Arranque:</strong> una política que propone secuencias buenas (TD-MPC2).</p>
+  </div>
 </section>
 
 <section class="slide">
@@ -323,7 +1025,7 @@
   <h2>El NMPC con física y un residuo aprendido corrige la aerodinámica que no modela</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Dinámica nominal más un residuo aprendido sobre la aceleración, \(\dot{\mathbf v} = f_{\text{nom}}(\mathbf x,\mathbf u) + \mathbf g_\phi(\mathbf x)\), dentro del NMPC de A3a.</p>
+      <p>Dinámica nominal más un residuo aprendido sobre la aceleración, \(\dot{\mathbf v} = f_{\text{nom}}(\mathbf x,\mathbf u) + \mathbf g_\phi(\mathbf x)\), dentro del NMPC de A3a. Aquí \(\mathbf v\), en negrita, es la velocidad del dron; \(\mathbf x\) y \(\mathbf u\), su estado y su mando; \(\phi\), los pesos del residuo.</p>
       <div class="table-wrap">
         <table class="t">
           <tr><th>Trabajo</th><th>Residuo</th><th>Cómputo</th><th>Error en vuelo real (círculo)</th></tr>
@@ -331,7 +1033,7 @@
           <tr><td>Real-time Neural MPC <a class="cite" data-ref="salzmann2023"></a></td><td>Red neuronal, modelos más de 4000 veces mayores a 50 Hz</td><td>Jetson Xavier NX</td><td class="n">321 → 59 mm (−82 %)</td></tr>
         </table>
       </div>
-      <p class="small">Salzmann et al. mejoran hasta un 55 % al proceso gaussiano en sus pruebas reales <a class="cite" data-ref="salzmann2023"></a>.</p>
+      <p>Salzmann et al. mejoran hasta un 55 % al proceso gaussiano en sus pruebas reales <a class="cite" data-ref="salzmann2023"></a>.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Por qué funciona</span>El residuo solo tiene que aprender lo que la física no explica (arrastre, efectos de rotor de A1), y el NMPC sigue teniendo estructura, restricciones y RTI.</div>
@@ -342,20 +1044,76 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">MPC diferenciable</p>
-  <h2>Derivar a través del óptimo para aprender coste y modelo de extremo a extremo</h2>
+  <p class="kicker">MPC diferenciable · 1 · esquema</p>
+  <h2>Un MPC como capa de una red: hacia delante se resuelve, hacia atrás se deriva</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 190" style="max-height:180px" role="img" aria-label="Los parámetros theta entran en un MPC que devuelve el mando óptimo; la pérdida se deriva hacia atrás hasta theta a través del MPC">
+      <defs><marker id="a3bf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      <marker id="a3bfa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+      <rect x="20" y="40" width="220" height="70" rx="8" class="box-tesis"/>
+      <text x="130" y="70" text-anchor="middle" font-size="17" class="t-bold">θ: coste y modelo</text>
+      <text x="130" y="94" text-anchor="middle" font-size="14" class="t-muted">lo que se aprende</text>
+      <rect x="330" y="40" width="380" height="70" rx="8" class="box"/>
+      <text x="520" y="70" text-anchor="middle" font-size="17" class="t-bold">MPC: u* = argmin J(u; x₀, θ)</text>
+      <text x="520" y="94" text-anchor="middle" font-size="14" class="t-muted">el solver de A3a (iLQR, QP, SQP)</text>
+      <rect x="800" y="40" width="360" height="70" rx="8" class="box-time"/>
+      <text x="980" y="70" text-anchor="middle" font-size="17" class="t-bold">Pérdida L(u*)</text>
+      <text x="980" y="94" text-anchor="middle" font-size="14" class="t-muted">imitar a un experto, o la de la tarea</text>
+      <path d="M240 75 H326" class="ln" marker-end="url(#a3bf)"/>
+      <path d="M710 75 H796" class="ln" marker-end="url(#a3bf)"/>
+      <path d="M980 112 V150 H130 V114" class="ln-accent" fill="none" stroke-dasharray="6 4" marker-end="url(#a3bfa)"/>
+      <text x="520" y="174" text-anchor="middle" font-size="15" class="t-accent">∂L/∂θ = ∂L/∂u* · ∂u*/∂θ, con ∂u*/∂θ del teorema de la función implícita</text>
+    </svg>
+  </figure>
   <div class="cols">
     <div class="stack">
-      <p class="small">Si \(u^\star(\theta)\) resuelve un problema de control óptimo con parámetros \(\theta\), las condiciones KKT en el óptimo, \(\mathcal K(z^\star,\theta) = 0\), definen \(z^\star\) implícitamente. Por el teorema de la función implícita:</p>
-      \[ \frac{\partial z^\star}{\partial\theta} = -\Big(\frac{\partial\mathcal K}{\partial z}\Big)^{-1}\frac{\partial\mathcal K}{\partial\theta} \]
-      <p class="small">Amos et al. lo hacen para un MPC con iLQR: en el punto fijo, la pasada hacia atrás reutiliza la factorización del propio problema, así que sale casi gratis <a class="cite" data-ref="amos2018"></a>.</p>
+      <p>Para entrenar \(\theta\) con descenso por gradiente hace falta \(\partial u^\star/\partial\theta\): cómo cambia el mando óptimo si cambian los pesos del coste o el modelo. Dos formas de obtenerla:</p>
+      <ul>
+        <li><strong>Desenrollar el solver</strong> y derivar a través de todas sus iteraciones: memoria proporcional a las iteraciones, y depende de cuántas se hagan.</li>
+        <li><strong>Usar el óptimo</strong>: en él se cumplen las condiciones KKT, \(\mathcal K(z^\star,\theta) = 0\) (A3a, parte 2), y eso basta para derivar. Es lo que hacen Amos et al. <a class="cite" data-ref="amos2018"></a>.</li>
+      </ul>
     </div>
     <div class="stack">
-      <ul class="small">
+      <p>\(z^\star\) junta los mandos y estados óptimos y los multiplicadores; \(\mathcal K\) es el gradiente del lagrangiano más las restricciones activas. La hoja siguiente deriva la fórmula y la aplica a un MPC de un paso.</p>
+      <ul>
         <li>Permite entrenar coste y dinámica por imitación o por la pérdida de la tarea, con el MPC como capa.</li>
         <li>Es la pieza que usa AC-MPC: un MPC diferenciable como cabeza de un actor entrenado con RL <a class="cite" data-ref="romero2026"></a> (parte 3).</li>
       </ul>
-      <div class="callout error"><span class="tag">Letra pequeña</span>El gradiente es el de la solución que el <em>solver</em> encontró: si no ha convergido, o cambian las restricciones activas, la derivada es aproximada o discontinua.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">MPC diferenciable · 2 · de dónde sale</p>
+  <h2>Si 𝒦(z*(θ), θ) = 0 para todo θ, su derivada también es cero</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:7%">#</th><th style="width:54%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\mathcal K\big(z^\star(\theta),\theta\big) = 0\) para todo \(\theta\)</td><td>\(z^\star(\theta)\) es óptimo para cada \(\theta\): las KKT se cumplen siempre</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\dfrac{\partial\mathcal K}{\partial z}\,\dfrac{\partial z^\star}{\partial\theta} + \dfrac{\partial\mathcal K}{\partial\theta} = 0\)</td><td>Regla de la cadena: una función idénticamente nula tiene derivada nula</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\dfrac{\partial z^\star}{\partial\theta} = -\Big(\dfrac{\partial\mathcal K}{\partial z}\Big)^{-1}\dfrac{\partial\mathcal K}{\partial\theta}\)</td><td>Despejar, si \(\partial\mathcal K/\partial z\) es invertible (óptimo regular)</td></tr>
+        </table>
+      </div>
+      <p>\(\partial\mathcal K/\partial z\) es la matriz KKT que el solver ya factorizó. Por eso, en el MPC con iLQR de Amos et al., la pasada hacia atrás reutiliza esa factorización y sale casi gratis <a class="cite" data-ref="amos2018"></a>.</p>
+      <div class="callout error"><span class="tag">Cuidado</span>El gradiente es el de la solución que el <em>solver</em> encontró: si no ha convergido, o cambian las restricciones activas, es aproximado o discontinuo.</div>
+    </div>
+    <div class="stack">
+      <p><strong>Un MPC de un paso, a mano.</strong> \(x_1 = x_0 + u\), coste \(J = x_1^2 + r\,u^2\) y parámetro aprendible \(\theta = r\), el peso del mando.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:52%">Cantidad</th><th>Con \(x_0 = 1\), \(r = 1\)</th></tr>
+          <tr><td>\(\mathcal K = \partial J/\partial u = 2(x_0+u) + 2ru\)</td><td>se anula en \(u^\star = -x_0/(1+r) = -0{,}5\)</td></tr>
+          <tr><td>\(\partial\mathcal K/\partial u = 2 + 2r\)</td><td class="n">4</td></tr>
+          <tr><td>\(\partial\mathcal K/\partial r = 2u^\star\)</td><td class="n">−1</td></tr>
+          <tr><td>\(\partial u^\star/\partial r = -(-1)/4\)</td><td class="n"><strong>0,25</strong></td></tr>
+          <tr><td>Comprobación: \(x_0/(1+r)^2\); dif. finitas</td><td class="n">0,25; 0,25</td></tr>
+        </table>
+      </div>
+      <div class="aparte"><span class="rotulo">Un paso de aprendizaje</span>
+        <p>Si un experto manda \(-0{,}6\), la pérdida \(L = (u^\star+0{,}6)^2 = 0{,}01\) tiene \(\partial L/\partial r = 2(0{,}1)(0{,}25) = 0{,}05\). Un paso de gradiente de tamaño 1 deja \(r = 0{,}95\) y \(u^\star = -0{,}513\): el MPC se vuelve algo más agresivo, como el experto. <span class="muted">Ejemplo 14.</span></p>
+      </div>
     </div>
   </div>
 </section>
@@ -373,7 +1131,7 @@
     </table>
   </div>
   <div class="cols">
-    <div class="stack small">
+    <div class="stack">
       <ul>
         <li><strong>PETS:</strong> la incertidumbre del modelo (conjunto de redes) se propaga en la planificación; con CEM igualó el rendimiento de los métodos sin modelo con 8 veces menos muestras que SAC y 125 menos que PPO en half-cheetah <a class="cite" data-ref="chua2018"></a>.</li>
         <li><strong>TD-MPC2:</strong> un único agente de 317 M de parámetros para 80 tareas <a class="cite" data-ref="hansen2024"></a>.</li>
@@ -384,35 +1142,122 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">PETS por dentro</p>
-  <h2>Separar la incertidumbre del sistema de la del modelo</h2>
+  <p class="kicker">PETS por dentro · 1 · partículas</p>
+  <h2>Cada partícula sigue a una red; el coste de un plan es la media</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Modelo: conjunto de \(B = 5\) redes, cada una con salida gaussiana \(\mathcal N(\mu_b(s,a), \Sigma_b(s,a))\) <a class="cite" data-ref="chua2018"></a>.</p>
-      <ul class="small">
-        <li><strong>Aleatoria</strong> (ruido del sistema): la varianza \(\Sigma_b\) de cada red.</li>
-        <li><strong>Epistémica</strong> (falta de datos): el desacuerdo entre las cinco redes.</li>
+      <p>Modelo: conjunto de \(B = 5\) redes, cada una con salida gaussiana \(\mathcal N(\mu_b(s,a), \Sigma_b(s,a))\) para el estado siguiente <a class="cite" data-ref="chua2018"></a>.</p>
+      <p><strong>Propagación por partículas</strong> (\(P = 20\)): para evaluar una secuencia candidata se simula \(P\) veces. Cada partícula tiene asignada una red \(b\) y, en cada paso, su estado siguiente se muestrea de la gaussiana de esa red.</p>
+      <ul>
+        <li><strong>TS∞:</strong> la red asignada no cambia en toda la trayectoria.</li>
+        <li><strong>TS1:</strong> se reasigna al azar en cada paso.</li>
       </ul>
-      <p class="small"><strong>Propagación por partículas</strong> (\(P = 20\)): cada partícula se asigna a una red del conjunto. Con TS1 se reasigna en cada paso; con TS∞, durante toda la trayectoria. El coste de una secuencia es la media sobre las partículas, y CEM optimiza esa media.</p>
+      <p>El coste de la secuencia es la media sobre las partículas, y CEM optimiza esa media.</p>
     </div>
     <div class="stack">
-      <div class="callout realidad"><span class="tag">Cifras</span>Igualó el rendimiento asintótico de PPO en menos de 100 episodios en sus cuatro tareas, y en half-cheetah necesitó 8 veces menos muestras que SAC y 125 menos que PPO <a class="cite" data-ref="chua2018"></a>.</div>
+      <figure class="fig">
+        <svg viewBox="0 0 520 250" style="max-height:230px" role="img" aria-label="Esquema: desde un estado inicial salen varias partículas; con TS infinito cada una sigue a la misma red, con TS1 cambia de red en cada paso">
+          <line class="ln-rule" x1="40" y1="225" x2="500" y2="225"/>
+          <circle class="fill-ink3" cx="60" cy="125" r="6"/>
+          <path class="ln-accent" fill="none" stroke-width="2" d="M60 125 L170 100 L280 78 L390 60 L490 45"/>
+          <path class="ln-accent" fill="none" stroke-width="2" d="M60 125 L170 112 L280 104 L390 98 L490 94"/>
+          <path class="ln-accent" fill="none" stroke-width="2" d="M60 125 L170 135 L280 146 L390 160 L490 172"/>
+          <path class="ln-time" fill="none" stroke-width="2" stroke-dasharray="6 4" d="M60 125 L170 120 L280 140 L390 118 L490 150"/>
+          <g font-size="12" class="t-mono">
+            <text x="496" y="44" class="t-accent">b = 2</text>
+            <text x="496" y="98" class="t-accent">b = 5</text>
+            <text x="496" y="176" class="t-accent">b = 1</text>
+            <text x="496" y="154" class="t-time">TS1</text>
+            <text x="170" y="138" class="t-time" text-anchor="middle">3</text>
+            <text x="280" y="158" class="t-time" text-anchor="middle">1</text>
+            <text x="390" y="136" class="t-time" text-anchor="middle">4</text>
+          </g>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="60" y="242" text-anchor="middle">s₀</text>
+            <text x="170" y="242" text-anchor="middle">paso 1</text>
+            <text x="280" y="242" text-anchor="middle">2</text>
+            <text x="390" y="242" text-anchor="middle">3</text>
+          </g>
+          <text x="40" y="22" font-size="13" class="t-muted">continuas: TS∞ (red fija); discontinua: TS1 (red reasignada)</text>
+        </svg>
+        <figcaption>Esquema con cuatro partículas; PETS usa 20.</figcaption>
+      </figure>
+      <div class="callout realidad"><span class="tag">El precio</span>Con la configuración de la hoja anterior (5 iteraciones de 500 candidatas), cada replanificación son 500 × 5 × 20 = 50 000 trayectorias simuladas.</div>
+      <div class="callout realidad"><span class="tag">Cifras</span>Igualó el rendimiento asintótico de PPO en menos de 100 episodios en sus cuatro tareas <a class="cite" data-ref="chua2018"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PETS por dentro · 2 · dos incertidumbres</p>
+  <h2>Varianza total = media de las varianzas + varianza de las medias</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Aleatoria</strong> (ruido del sistema): la varianza \(\Sigma_b\) de cada red. No baja con más datos.</li>
+        <li><strong>Epistémica</strong> (falta de datos): el desacuerdo entre las redes. Baja con datos donde se planifica.</li>
+      </ul>
+      <p>La predicción del conjunto es una mezcla: elegir una red al azar y muestrear su gaussiana, \(y\mid b\sim\mathcal N(\mu_b,\sigma_b^2)\). Con \(\bar\mu = \tfrac1B\sum_b\mu_b\):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:7%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(\operatorname{Var}(y) = \mathbb E[y^2] - \mathbb E[y]^2\)</td><td>Definición</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathbb E[y] = \bar\mu\), \(\ \mathbb E[y^2] = \tfrac1B\sum_b(\sigma_b^2 + \mu_b^2)\)</td><td>Promediar sobre \(b\) lo de cada red: \(\mathbb E[y^2\mid b] = \sigma_b^2 + \mu_b^2\)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\operatorname{Var}(y) = \underbrace{\tfrac1B\textstyle\sum_b\sigma_b^2}_{\text{aleatoria}} + \underbrace{\tfrac1B\textstyle\sum_b(\mu_b-\bar\mu)^2}_{\text{epistémica}}\)</td><td>Restar \(\bar\mu^2\) y reagrupar: \(\tfrac1B\sum_b\mu_b^2 - \bar\mu^2\) es la varianza de las medias</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Con números (cinco redes de juguete)</span>Dentro de los datos (\(u = 0{,}5\)): aleatoria 0,035 + epistémica 0,017 = 0,051. Fuera (\(u = -3\)): aleatoria 0,035, la misma, + epistémica <strong>2,90</strong> = 2,93. Una mezcla muestreada por Monte Carlo da 0,051 y 2,94. <span class="muted">Ejemplo 13; las redes, en la hoja 42.</span></div>
       <div class="callout tesis"><span class="tag">Tu tesis</span>Distinguir las dos incertidumbres es justo lo que necesita un planificador con belief: la aleatoria se planifica (hay que tolerarla); la epistémica se explora o se evita (hay que reducirla o no fiarse). Un world model con un solo latente gaussiano las mezcla.</div>
     </div>
   </div>
 </section>
 
 <section class="slide">
-  <p class="kicker">TD-MPC2 por dentro</p>
-  <h2>Un MPPI de tres pasos en un latente, con un valor que ve el resto</h2>
+  <p class="kicker">TD-MPC2 por dentro · 1 · esquema</p>
+  <h2>Codificar, imaginar tres pasos en el latente y cerrar con el valor</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 200" style="max-height:190px" role="img" aria-label="La observación se codifica en z0; la dinámica latente avanza tres pasos con las acciones; en cada paso se predice la recompensa y al final el valor Q">
+      <defs><marker id="a3bt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <rect x="10" y="50" width="90" height="56" rx="8" class="box"/><text x="55" y="84" text-anchor="middle" font-size="17">o</text>
+      <path d="M100 78 H150" class="ln" marker-end="url(#a3bt)"/><text x="125" y="68" text-anchor="middle" font-size="14" class="t-muted">h</text>
+      <rect x="154" y="50" width="110" height="56" rx="8" class="box-accent"/><text x="209" y="84" text-anchor="middle" font-size="17" class="t-mono">z₀</text>
+      <path d="M264 78 H384" class="ln" marker-end="url(#a3bt)"/><text x="324" y="68" text-anchor="middle" font-size="14" class="t-muted">d(z₀, a₀)</text>
+      <rect x="388" y="50" width="110" height="56" rx="8" class="box-accent"/><text x="443" y="84" text-anchor="middle" font-size="17" class="t-mono">z₁</text>
+      <path d="M498 78 H618" class="ln" marker-end="url(#a3bt)"/><text x="558" y="68" text-anchor="middle" font-size="14" class="t-muted">d(z₁, a₁)</text>
+      <rect x="622" y="50" width="110" height="56" rx="8" class="box-accent"/><text x="677" y="84" text-anchor="middle" font-size="17" class="t-mono">z₂</text>
+      <path d="M732 78 H852" class="ln" marker-end="url(#a3bt)"/><text x="792" y="68" text-anchor="middle" font-size="14" class="t-muted">d(z₂, a₂)</text>
+      <rect x="856" y="50" width="110" height="56" rx="8" class="box-accent"/><text x="911" y="84" text-anchor="middle" font-size="17" class="t-mono">z₃</text>
+      <path d="M966 78 H1016" class="ln" marker-end="url(#a3bt)"/>
+      <rect x="1020" y="50" width="150" height="56" rx="8" class="box-tesis"/><text x="1095" y="84" text-anchor="middle" font-size="16" class="t-mono">γ³Q(z₃, a₃)</text>
+      <g font-size="15" class="t-mono t-time">
+        <text x="324" y="140" text-anchor="middle">R(z₀, a₀)</text>
+        <text x="558" y="140" text-anchor="middle">γ R(z₁, a₁)</text>
+        <text x="792" y="140" text-anchor="middle">γ² R(z₂, a₂)</text>
+      </g>
+      <path d="M324 84 V122" class="ln-dash"/><path d="M558 84 V122" class="ln-dash"/><path d="M792 84 V122" class="ln-dash"/>
+      <text x="680" y="186" text-anchor="middle" font-size="15">retorno de una secuencia candidata (a₀, a₁, a₂, a₃) = suma de lo que está en color</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p>Codificador \(z = h(o)\), dinámica latente \(z' = d(z,a)\), recompensa \(R(z,a)\), cinco funciones \(Q\) y una política previa \(\pi\). No hay decodificador: el latente se entrena para predecir recompensa y valor, no para reconstruir la observación <a class="cite" data-ref="hansen2024"></a>. Cada secuencia de acciones que muestrea el planificador se evalúa así, en paralelo, sin tocar el simulador.</p>
+    <div class="callout clave"><span class="tag">En la lengua de A3a</span>Horizonte corto + coste terminal aprendido = el truco de la DARE como coste terminal, con una \(Q\) en lugar de \(x^\top Px\). La política previa hace de arranque en caliente, como el desplazamiento del RTI.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">TD-MPC2 por dentro · 2 · el planificador</p>
+  <h2>Un MPPI con élites: 512 muestras, 64 élites y 6 iteraciones sobre tres pasos</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Codificador \(z = h(o)\), dinámica latente \(z' = d(z,a)\), recompensa \(R(z,a)\), cinco funciones \(Q\) y una política previa \(\pi\). No hay decodificador: el latente se entrena para predecir recompensa y valor, no para reconstruir la observación <a class="cite" data-ref="hansen2024"></a>.</p>
       \[ \max_{\mu,\sigma}\ \mathbb E\Big[\gamma^HQ(z_H,a_H) + \sum_{h=0}^{H-1}\gamma^hR(z_h,a_h)\Big],\qquad H = 3 \]
-      <p class="small">Optimizado con MPPI: 512 muestras (24 de la política previa), 64 élites y 6 iteraciones, arrancando de la solución anterior desplazada. Respecto a TD-MPC, sin momento en la actualización.</p>
+      <p>\(\mu,\sigma\): media y desviación de la gaussiana sobre las acciones de los \(H\) pasos (como en CEM); \(z_h, a_h\): latente y acción del paso \(h\); \(\gamma\): descuento.</p>
+      <p><strong>Cómo combina.</strong> En TD-MPC, de las muestras se toman las élites, las de mayor retorno estimado \(G_i\), y se pesan con \(\Omega_i = e^{\tau G_i}\), con \(\tau\) una temperatura; \(\mu\) y \(\sigma\) pasan a ser la media y la desviación ponderadas de esas élites <a class="cite" data-ref="hansen2022"></a>. Élites como CEM, pesos exponenciales como MPPI (con \(\tau = 1/\lambda\) y retorno en lugar de coste).</p>
+      <p>TD-MPC2: 512 muestras (24 de la política previa), 64 élites y 6 iteraciones, arrancando de la solución anterior desplazada; respecto a TD-MPC, sin momento en la actualización <a class="cite" data-ref="hansen2024"></a>.</p>
+      <p class="xsmall muted">En el artículo de TD-MPC el retorno se llama \(\phi_\Gamma\); aquí \(G_i\) para no chocar con el coste terminal \(\phi\).</p>
     </div>
     <div class="stack">
-      <div class="callout clave"><span class="tag">En la lengua de A3a</span>Horizonte corto + coste terminal aprendido = el truco de la DARE como coste terminal, con una \(Q\) en lugar de \(x^\top Px\). La política previa hace de arranque en caliente, como el desplazamiento del RTI.</div>
       <div class="callout realidad"><span class="tag">Escala</span>104 tareas en 4 dominios con un único conjunto de hiperparámetros, y un agente de 317 M de parámetros para 80 tareas <a class="cite" data-ref="hansen2024"></a>.</div>
       <div class="callout tesis"><span class="tag">Observabilidad parcial</span>El codificador \(h(o)\) mira una sola observación: TD-MPC2 no tiene un filtro recurrente como el RSSM de Dreamer. Con observabilidad parcial, hace falta un belief en lugar de \(h(o)\): es una de las extensiones naturales para tu tesis.</div>
     </div>
@@ -420,12 +1265,107 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">El problema del modelo aprendido</p>
-  <h2>El planificador explota los errores del modelo</h2>
+  <p class="kicker">El problema del modelo aprendido · 1</p>
+  <h2>Un optimizador encuentra el sitio donde el modelo se equivoca a su favor</h2>
+  <div class="cols w40">
+    <div class="stack">
+      <p><strong>Montaje de juguete.</strong> Coste real \(S(u) = (u-1)^2 + 1\), mínimo en \(u = 1\). Cuarenta datos con ruido, solo en \(u\in[-1;\ 2{,}5]\). Cinco «redes» (30 tanh con pesos al azar y la última capa por mínimos cuadrados), cada una con un remuestreo de los datos. Planificar es buscar el mínimo del coste predicho en \([-3;\ 4{,}5]\).</p>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Planificar con…</th><th>El plan sale de los datos</th></tr>
+          <tr><td>una sola red</td><td class="n">15 de 50 redes</td></tr>
+          <tr><td>la media de las cinco</td><td class="n">1 de 10 conjuntos</td></tr>
+          <tr><td>media + 2 desviaciones</td><td class="n">0 de 10</td></tr>
+        </table>
+      </div>
+      <p class="xsmall muted">10 semillas de datos y redes. Ejemplo 12.</p>
+    </div>
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 520 260" style="max-height:250px" role="img" aria-label="Coste real, media del conjunto con su banda, datos solo en el centro; el mínimo del modelo está en el borde izquierdo, donde el coste real es alto">
+          <rect x="170" y="20" width="210" height="220" class="box-soft" stroke="none"/>
+          <path class="fill-accent" fill-opacity="0.15" stroke="none" d="M50.0,175.4 L51.5,174.3 L53.0,173.1 L54.5,171.8 L56.0,170.6 L57.5,169.3 L59.0,168.1 L60.5,166.7 L62.0,165.4 L63.5,164.1 L65.0,162.8 L66.5,161.4 L68.0,160.1 L69.5,158.7 L71.0,157.4 L72.5,156.1 L74.0,154.7 L75.5,153.4 L77.0,152.2 L78.5,150.9 L80.0,149.7 L81.5,148.4 L83.0,147.2 L84.5,146.1 L86.0,144.9 L87.5,143.8 L89.0,142.6 L90.5,141.5 L92.0,140.5 L93.5,139.4 L95.0,138.4 L96.5,137.4 L98.0,136.4 L99.5,135.4 L101.0,134.4 L102.5,133.4 L104.0,132.5 L105.5,131.6 L107.0,130.7 L108.5,129.8 L110.0,128.9 L111.5,128.1 L113.0,127.2 L114.5,126.4 L116.0,125.7 L117.5,124.9 L119.0,124.2 L120.5,123.5 L122.0,122.8 L123.5,122.1 L125.0,121.5 L126.5,121.0 L128.0,120.4 L129.5,119.9 L131.0,119.5 L132.5,119.1 L134.0,118.7 L135.5,118.4 L137.0,118.2 L138.5,118.0 L140.0,117.9 L141.5,117.8 L143.0,117.9 L144.5,117.9 L146.0,118.1 L147.5,118.3 L149.0,118.6 L150.5,119.0 L152.0,119.5 L153.5,120.0 L155.0,120.6 L156.5,121.2 L158.0,121.9 L159.5,122.6 L161.0,123.4 L162.5,124.2 L164.0,125.1 L165.5,126.0 L167.0,126.9 L168.5,127.9 L170.0,129.0 L171.5,130.2 L173.0,131.4 L174.5,132.8 L176.0,134.0 L177.5,134.8 L179.0,135.2 L180.5,135.4 L182.0,135.6 L183.5,135.9 L185.0,136.2 L186.5,136.5 L188.0,137.0 L189.5,137.5 L191.0,138.1 L192.5,138.8 L194.0,139.6 L195.5,140.5 L197.0,141.4 L198.5,142.4 L200.0,143.5 L201.5,144.6 L203.0,145.7 L204.5,146.9 L206.0,148.1 L207.5,149.4 L209.0,150.7 L210.5,152.1 L212.0,153.6 L213.5,155.2 L215.0,156.8 L216.5,158.4 L218.0,160.2 L219.5,161.9 L221.0,163.7 L222.5,165.5 L224.0,167.3 L225.5,169.1 L227.0,170.8 L228.5,172.5 L230.0,174.1 L231.5,175.6 L233.0,177.0 L234.5,178.2 L236.0,179.0 L237.5,179.3 L239.0,179.3 L240.5,179.2 L242.0,179.2 L243.5,179.5 L245.0,179.9 L246.5,180.5 L248.0,181.4 L249.5,182.4 L251.0,183.4 L252.5,184.1 L254.0,184.2 L255.5,183.9 L257.0,183.6 L258.5,183.3 L260.0,183.1 L261.5,183.0 L263.0,182.9 L264.5,182.9 L266.0,183.0 L267.5,183.3 L269.0,183.6 L270.5,183.9 L272.0,184.4 L273.5,184.8 L275.0,185.3 L276.5,185.7 L278.0,186.1 L279.5,186.3 L281.0,186.5 L282.5,186.7 L284.0,186.7 L285.5,186.8 L287.0,186.9 L288.5,186.9 L290.0,187.0 L291.5,187.1 L293.0,187.2 L294.5,187.3 L296.0,187.4 L297.5,187.4 L299.0,187.5 L300.5,187.6 L302.0,187.7 L303.5,187.7 L305.0,187.8 L306.5,187.8 L308.0,187.8 L309.5,187.8 L311.0,187.8 L312.5,187.7 L314.0,187.6 L315.5,187.5 L317.0,187.3 L318.5,187.1 L320.0,186.9 L321.5,186.6 L323.0,186.3 L324.5,185.9 L326.0,185.5 L327.5,185.1 L329.0,184.6 L330.5,184.1 L332.0,183.6 L333.5,183.0 L335.0,182.4 L336.5,181.8 L338.0,181.2 L339.5,180.5 L341.0,179.8 L342.5,179.1 L344.0,178.4 L345.5,177.7 L347.0,176.9 L348.5,176.1 L350.0,175.3 L351.5,174.4 L353.0,173.5 L354.5,172.6 L356.0,171.6 L357.5,170.6 L359.0,169.6 L360.5,168.6 L362.0,167.5 L363.5,166.4 L365.0,165.3 L366.5,164.2 L368.0,163.1 L369.5,162.0 L371.0,160.8 L372.5,159.5 L374.0,158.3 L375.5,156.9 L377.0,155.6 L378.5,154.1 L380.0,152.6 L381.5,151.1 L383.0,149.5 L384.5,147.8 L386.0,146.1 L387.5,144.3 L389.0,142.5 L390.5,140.6 L392.0,138.7 L393.5,136.7 L395.0,134.7 L396.5,132.5 L398.0,130.4 L399.5,128.2 L401.0,125.9 L402.5,123.5 L404.0,121.1 L405.5,118.7 L407.0,116.2 L408.5,113.7 L410.0,111.1 L411.5,108.4 L413.0,105.7 L414.5,103.0 L416.0,100.2 L417.5,97.4 L419.0,94.6 L420.5,91.7 L422.0,88.8 L423.5,85.9 L425.0,82.9 L426.5,80.0 L428.0,77.0 L429.5,74.0 L431.0,71.0 L432.5,68.1 L434.0,65.1 L435.5,62.1 L437.0,59.2 L438.5,56.3 L440.0,53.3 L441.5,50.5 L443.0,47.6 L444.5,44.8 L446.0,42.0 L447.5,39.3 L449.0,36.6 L450.5,33.9 L452.0,31.3 L453.5,28.8 L455.0,26.2 L456.5,23.8 L458.0,21.4 L459.5,20.0 L461.0,20.0 L462.5,20.0 L464.0,20.0 L465.5,20.0 L467.0,20.0 L468.5,20.0 L470.0,20.0 L471.5,20.0 L473.0,20.0 L474.5,20.0 L476.0,20.0 L477.5,20.0 L479.0,20.0 L480.5,20.0 L482.0,20.0 L483.5,20.0 L485.0,20.0 L486.5,20.0 L488.0,20.0 L489.5,20.0 L491.0,20.0 L492.5,20.0 L494.0,20.0 L495.5,20.0 L497.0,20.0 L498.5,20.0 L500.0,20.0 L500.0,143.7 L498.5,144.1 L497.0,144.4 L495.5,144.7 L494.0,145.0 L492.5,145.2 L491.0,145.5 L489.5,145.8 L488.0,146.0 L486.5,146.2 L485.0,146.5 L483.5,146.7 L482.0,146.9 L480.5,147.0 L479.0,147.2 L477.5,147.3 L476.0,147.5 L474.5,147.6 L473.0,147.7 L471.5,147.7 L470.0,147.8 L468.5,147.8 L467.0,147.8 L465.5,147.8 L464.0,147.8 L462.5,147.7 L461.0,147.7 L459.5,147.6 L458.0,147.5 L456.5,147.4 L455.0,147.2 L453.5,147.1 L452.0,146.9 L450.5,146.7 L449.0,146.5 L447.5,146.3 L446.0,146.1 L444.5,145.9 L443.0,145.7 L441.5,145.4 L440.0,145.2 L438.5,145.0 L437.0,144.7 L435.5,144.5 L434.0,144.3 L432.5,144.1 L431.0,143.9 L429.5,143.7 L428.0,143.5 L426.5,143.4 L425.0,143.3 L423.5,143.2 L422.0,143.1 L420.5,143.1 L419.0,143.0 L417.5,143.1 L416.0,143.1 L414.5,143.2 L413.0,143.3 L411.5,143.5 L410.0,143.7 L408.5,143.9 L407.0,144.2 L405.5,144.5 L404.0,144.8 L402.5,145.2 L401.0,145.7 L399.5,146.2 L398.0,146.7 L396.5,147.3 L395.0,147.9 L393.5,148.5 L392.0,149.2 L390.5,149.9 L389.0,150.7 L387.5,151.5 L386.0,152.3 L384.5,153.1 L383.0,154.0 L381.5,155.0 L380.0,155.9 L378.5,156.9 L377.0,157.9 L375.5,158.9 L374.0,160.0 L372.5,161.1 L371.0,162.2 L369.5,163.3 L368.0,164.4 L366.5,165.5 L365.0,166.6 L363.5,167.7 L362.0,168.7 L360.5,169.8 L359.0,170.8 L357.5,171.8 L356.0,172.8 L354.5,173.8 L353.0,174.8 L351.5,175.7 L350.0,176.7 L348.5,177.6 L347.0,178.5 L345.5,179.4 L344.0,180.3 L342.5,181.2 L341.0,182.1 L339.5,182.9 L338.0,183.7 L336.5,184.5 L335.0,185.2 L333.5,186.0 L332.0,186.7 L330.5,187.4 L329.0,188.0 L327.5,188.7 L326.0,189.3 L324.5,190.0 L323.0,190.6 L321.5,191.2 L320.0,191.8 L318.5,192.4 L317.0,192.9 L315.5,193.5 L314.0,194.0 L312.5,194.4 L311.0,194.9 L309.5,195.2 L308.0,195.6 L306.5,195.8 L305.0,196.0 L303.5,196.2 L302.0,196.3 L300.5,196.3 L299.0,196.3 L297.5,196.2 L296.0,196.0 L294.5,195.8 L293.0,195.6 L291.5,195.3 L290.0,195.0 L288.5,194.6 L287.0,194.3 L285.5,193.9 L284.0,193.5 L282.5,193.2 L281.0,192.9 L279.5,192.7 L278.0,192.6 L276.5,192.6 L275.0,192.7 L273.5,192.9 L272.0,193.1 L270.5,193.3 L269.0,193.4 L267.5,193.4 L266.0,193.3 L264.5,193.1 L263.0,192.6 L261.5,192.0 L260.0,191.2 L258.5,190.3 L257.0,189.2 L255.5,188.0 L254.0,186.8 L252.5,185.8 L251.0,185.5 L249.5,185.5 L248.0,185.5 L246.5,185.4 L245.0,185.2 L243.5,184.9 L242.0,184.3 L240.5,183.7 L239.0,183.0 L237.5,182.3 L236.0,181.9 L234.5,181.9 L233.0,182.2 L231.5,182.5 L230.0,182.9 L228.5,183.2 L227.0,183.4 L225.5,183.5 L224.0,183.4 L222.5,183.2 L221.0,182.9 L219.5,182.4 L218.0,181.8 L216.5,181.1 L215.0,180.2 L213.5,179.3 L212.0,178.2 L210.5,177.1 L209.0,176.0 L207.5,174.7 L206.0,173.5 L204.5,172.2 L203.0,170.8 L201.5,169.4 L200.0,167.9 L198.5,166.3 L197.0,164.6 L195.5,162.8 L194.0,160.9 L192.5,158.9 L191.0,156.8 L189.5,154.5 L188.0,152.2 L186.5,149.9 L185.0,147.6 L183.5,145.2 L182.0,143.0 L180.5,140.9 L179.0,138.9 L177.5,137.3 L176.0,136.3 L174.5,136.0 L173.0,135.9 L171.5,136.0 L170.0,136.2 L168.5,136.6 L167.0,137.1 L165.5,137.7 L164.0,138.5 L162.5,139.5 L161.0,140.6 L159.5,141.8 L158.0,143.2 L156.5,144.7 L155.0,146.3 L153.5,148.0 L152.0,149.8 L150.5,151.6 L149.0,153.5 L147.5,155.5 L146.0,157.5 L144.5,159.6 L143.0,161.7 L141.5,163.8 L140.0,166.0 L138.5,168.2 L137.0,170.4 L135.5,172.6 L134.0,174.9 L132.5,177.1 L131.0,179.4 L129.5,181.7 L128.0,184.0 L126.5,186.3 L125.0,188.5 L123.5,190.8 L122.0,193.1 L120.5,195.4 L119.0,197.7 L117.5,199.9 L116.0,202.2 L114.5,204.4 L113.0,206.7 L111.5,208.9 L110.0,211.1 L108.5,213.3 L107.0,215.6 L105.5,217.8 L104.0,219.9 L102.5,222.1 L101.0,224.3 L99.5,226.4 L98.0,228.6 L96.5,230.7 L95.0,232.8 L93.5,234.9 L92.0,237.0 L90.5,239.0 L89.0,240.0 L87.5,240.0 L86.0,240.0 L84.5,240.0 L83.0,240.0 L81.5,240.0 L80.0,240.0 L78.5,240.0 L77.0,240.0 L75.5,240.0 L74.0,240.0 L72.5,240.0 L71.0,240.0 L69.5,240.0 L68.0,240.0 L66.5,240.0 L65.0,240.0 L63.5,240.0 L62.0,240.0 L60.5,240.0 L59.0,240.0 L57.5,240.0 L56.0,240.0 L54.5,240.0 L53.0,240.0 L51.5,240.0 L50.0,240.0 Z"/>
+          <path class="ln" fill="none" stroke-width="1.8" stroke-dasharray="5 4" d="M50.0,20.0 L51.5,20.0 L53.0,20.0 L54.5,20.0 L56.0,20.0 L57.5,20.0 L59.0,20.0 L60.5,20.0 L62.0,20.0 L63.5,20.0 L65.0,20.0 L66.5,20.0 L68.0,20.0 L69.5,20.0 L71.0,20.0 L72.5,20.0 L74.0,20.0 L75.5,20.0 L77.0,20.0 L78.5,20.0 L80.0,20.0 L81.5,20.0 L83.0,20.0 L84.5,20.0 L86.0,20.0 L87.5,20.0 L89.0,20.0 L90.5,20.0 L92.0,21.7 L93.5,24.3 L95.0,26.9 L96.5,29.4 L98.0,31.9 L99.5,34.4 L101.0,36.9 L102.5,39.4 L104.0,41.8 L105.5,44.3 L107.0,46.7 L108.5,49.1 L110.0,51.4 L111.5,53.8 L113.0,56.1 L114.5,58.4 L116.0,60.7 L117.5,63.0 L119.0,65.2 L120.5,67.4 L122.0,69.7 L123.5,71.8 L125.0,74.0 L126.5,76.2 L128.0,78.3 L129.5,80.4 L131.0,82.5 L132.5,84.6 L134.0,86.6 L135.5,88.7 L137.0,90.7 L138.5,92.7 L140.0,94.6 L141.5,96.6 L143.0,98.5 L144.5,100.4 L146.0,102.3 L147.5,104.2 L149.0,106.1 L150.5,107.9 L152.0,109.7 L153.5,111.5 L155.0,113.3 L156.5,115.1 L158.0,116.8 L159.5,118.5 L161.0,120.2 L162.5,121.9 L164.0,123.6 L165.5,125.2 L167.0,126.8 L168.5,128.4 L170.0,130.0 L171.5,131.6 L173.0,133.1 L174.5,134.6 L176.0,136.1 L177.5,137.6 L179.0,139.1 L180.5,140.5 L182.0,141.9 L183.5,143.3 L185.0,144.7 L186.5,146.1 L188.0,147.4 L189.5,148.8 L191.0,150.1 L192.5,151.4 L194.0,152.6 L195.5,153.9 L197.0,155.1 L198.5,156.3 L200.0,157.5 L201.5,158.7 L203.0,159.8 L204.5,160.9 L206.0,162.1 L207.5,163.1 L209.0,164.2 L210.5,165.3 L212.0,166.3 L213.5,167.3 L215.0,168.3 L216.5,169.3 L218.0,170.2 L219.5,171.2 L221.0,172.1 L222.5,173.0 L224.0,173.8 L225.5,174.7 L227.0,175.5 L228.5,176.3 L230.0,177.1 L231.5,177.9 L233.0,178.7 L234.5,179.4 L236.0,180.1 L237.5,180.8 L239.0,181.5 L240.5,182.2 L242.0,182.8 L243.5,183.4 L245.0,184.0 L246.5,184.6 L248.0,185.2 L249.5,185.7 L251.0,186.2 L252.5,186.7 L254.0,187.2 L255.5,187.7 L257.0,188.1 L258.5,188.5 L260.0,188.9 L261.5,189.3 L263.0,189.7 L264.5,190.0 L266.0,190.3 L267.5,190.6 L269.0,190.9 L270.5,191.2 L272.0,191.4 L273.5,191.7 L275.0,191.9 L276.5,192.1 L278.0,192.2 L279.5,192.4 L281.0,192.5 L282.5,192.6 L284.0,192.7 L285.5,192.8 L287.0,192.8 L288.5,192.8 L290.0,192.9 L291.5,192.8 L293.0,192.8 L294.5,192.8 L296.0,192.7 L297.5,192.6 L299.0,192.5 L300.5,192.4 L302.0,192.2 L303.5,192.1 L305.0,191.9 L306.5,191.7 L308.0,191.4 L309.5,191.2 L311.0,190.9 L312.5,190.6 L314.0,190.3 L315.5,190.0 L317.0,189.7 L318.5,189.3 L320.0,188.9 L321.5,188.5 L323.0,188.1 L324.5,187.7 L326.0,187.2 L327.5,186.7 L329.0,186.2 L330.5,185.7 L332.0,185.2 L333.5,184.6 L335.0,184.0 L336.5,183.4 L338.0,182.8 L339.5,182.2 L341.0,181.5 L342.5,180.8 L344.0,180.1 L345.5,179.4 L347.0,178.7 L348.5,177.9 L350.0,177.1 L351.5,176.3 L353.0,175.5 L354.5,174.7 L356.0,173.8 L357.5,173.0 L359.0,172.1 L360.5,171.2 L362.0,170.2 L363.5,169.3 L365.0,168.3 L366.5,167.3 L368.0,166.3 L369.5,165.3 L371.0,164.2 L372.5,163.1 L374.0,162.1 L375.5,160.9 L377.0,159.8 L378.5,158.7 L380.0,157.5 L381.5,156.3 L383.0,155.1 L384.5,153.9 L386.0,152.6 L387.5,151.4 L389.0,150.1 L390.5,148.8 L392.0,147.4 L393.5,146.1 L395.0,144.7 L396.5,143.3 L398.0,141.9 L399.5,140.5 L401.0,139.1 L402.5,137.6 L404.0,136.1 L405.5,134.6 L407.0,133.1 L408.5,131.6 L410.0,130.0 L411.5,128.4 L413.0,126.8 L414.5,125.2 L416.0,123.6 L417.5,121.9 L419.0,120.2 L420.5,118.5 L422.0,116.8 L423.5,115.1 L425.0,113.3 L426.5,111.5 L428.0,109.7 L429.5,107.9 L431.0,106.1 L432.5,104.2 L434.0,102.3 L435.5,100.4 L437.0,98.5 L438.5,96.6 L440.0,94.6 L441.5,92.7 L443.0,90.7 L444.5,88.7 L446.0,86.6 L447.5,84.6 L449.0,82.5 L450.5,80.4 L452.0,78.3 L453.5,76.2 L455.0,74.0 L456.5,71.8 L458.0,69.7 L459.5,67.4 L461.0,65.2 L462.5,63.0 L464.0,60.7 L465.5,58.4 L467.0,56.1 L468.5,53.8 L470.0,51.4 L471.5,49.1 L473.0,46.7 L474.5,44.3 L476.0,41.8 L477.5,39.4 L479.0,36.9 L480.5,34.4 L482.0,31.9 L483.5,29.4 L485.0,26.9 L486.5,24.3 L488.0,21.7 L489.5,20.0 L491.0,20.0 L492.5,20.0 L494.0,20.0 L495.5,20.0 L497.0,20.0 L498.5,20.0 L500.0,20.0"/>
+          <path class="ln-accent" fill="none" stroke-width="2.4" d="M50.0,228.9 L51.5,227.7 L53.0,226.5 L54.5,225.2 L56.0,224.0 L57.5,222.7 L59.0,221.3 L60.5,220.0 L62.0,218.6 L63.5,217.2 L65.0,215.8 L66.5,214.4 L68.0,213.0 L69.5,211.5 L71.0,210.1 L72.5,208.6 L74.0,207.1 L75.5,205.6 L77.0,204.1 L78.5,202.6 L80.0,201.1 L81.5,199.6 L83.0,198.0 L84.5,196.5 L86.0,194.9 L87.5,193.4 L89.0,191.8 L90.5,190.3 L92.0,188.7 L93.5,187.2 L95.0,185.6 L96.5,184.0 L98.0,182.5 L99.5,180.9 L101.0,179.3 L102.5,177.8 L104.0,176.2 L105.5,174.7 L107.0,173.1 L108.5,171.6 L110.0,170.0 L111.5,168.5 L113.0,167.0 L114.5,165.4 L116.0,163.9 L117.5,162.4 L119.0,160.9 L120.5,159.4 L122.0,157.9 L123.5,156.5 L125.0,155.0 L126.5,153.6 L128.0,152.2 L129.5,150.8 L131.0,149.4 L132.5,148.1 L134.0,146.8 L135.5,145.5 L137.0,144.3 L138.5,143.1 L140.0,141.9 L141.5,140.8 L143.0,139.8 L144.5,138.8 L146.0,137.8 L147.5,136.9 L149.0,136.1 L150.5,135.3 L152.0,134.6 L153.5,134.0 L155.0,133.4 L156.5,132.9 L158.0,132.5 L159.5,132.2 L161.0,132.0 L162.5,131.8 L164.0,131.8 L165.5,131.9 L167.0,132.0 L168.5,132.3 L170.0,132.6 L171.5,133.1 L173.0,133.7 L174.5,134.4 L176.0,135.2 L177.5,136.1 L179.0,137.0 L180.5,138.1 L182.0,139.3 L183.5,140.6 L185.0,141.9 L186.5,143.2 L188.0,144.6 L189.5,146.0 L191.0,147.4 L192.5,148.8 L194.0,150.3 L195.5,151.6 L197.0,153.0 L198.5,154.4 L200.0,155.7 L201.5,157.0 L203.0,158.3 L204.5,159.5 L206.0,160.8 L207.5,162.1 L209.0,163.3 L210.5,164.6 L212.0,165.9 L213.5,167.2 L215.0,168.5 L216.5,169.7 L218.0,171.0 L219.5,172.2 L221.0,173.3 L222.5,174.4 L224.0,175.4 L225.5,176.3 L227.0,177.1 L228.5,177.8 L230.0,178.5 L231.5,179.1 L233.0,179.6 L234.5,180.0 L236.0,180.4 L237.5,180.8 L239.0,181.1 L240.5,181.4 L242.0,181.8 L243.5,182.2 L245.0,182.6 L246.5,183.0 L248.0,183.5 L249.5,184.0 L251.0,184.5 L252.5,185.0 L254.0,185.5 L255.5,186.0 L257.0,186.4 L258.5,186.8 L260.0,187.2 L261.5,187.5 L263.0,187.8 L264.5,188.0 L266.0,188.2 L267.5,188.3 L269.0,188.5 L270.5,188.6 L272.0,188.8 L273.5,188.9 L275.0,189.0 L276.5,189.2 L278.0,189.3 L279.5,189.5 L281.0,189.7 L282.5,189.9 L284.0,190.1 L285.5,190.3 L287.0,190.6 L288.5,190.8 L290.0,191.0 L291.5,191.2 L293.0,191.4 L294.5,191.6 L296.0,191.7 L297.5,191.8 L299.0,191.9 L300.5,192.0 L302.0,192.0 L303.5,192.0 L305.0,191.9 L306.5,191.8 L308.0,191.7 L309.5,191.5 L311.0,191.3 L312.5,191.1 L314.0,190.8 L315.5,190.5 L317.0,190.1 L318.5,189.8 L320.0,189.3 L321.5,188.9 L323.0,188.4 L324.5,188.0 L326.0,187.4 L327.5,186.9 L329.0,186.3 L330.5,185.7 L332.0,185.1 L333.5,184.5 L335.0,183.8 L336.5,183.1 L338.0,182.4 L339.5,181.7 L341.0,181.0 L342.5,180.2 L344.0,179.4 L345.5,178.6 L347.0,177.7 L348.5,176.9 L350.0,176.0 L351.5,175.1 L353.0,174.1 L354.5,173.2 L356.0,172.2 L357.5,171.2 L359.0,170.2 L360.5,169.2 L362.0,168.1 L363.5,167.1 L365.0,166.0 L366.5,164.9 L368.0,163.8 L369.5,162.6 L371.0,161.5 L372.5,160.3 L374.0,159.1 L375.5,157.9 L377.0,156.7 L378.5,155.5 L380.0,154.3 L381.5,153.0 L383.0,151.8 L384.5,150.5 L386.0,149.2 L387.5,147.9 L389.0,146.6 L390.5,145.3 L392.0,143.9 L393.5,142.6 L395.0,141.3 L396.5,139.9 L398.0,138.5 L399.5,137.2 L401.0,135.8 L402.5,134.4 L404.0,133.0 L405.5,131.6 L407.0,130.2 L408.5,128.8 L410.0,127.4 L411.5,125.9 L413.0,124.5 L414.5,123.1 L416.0,121.7 L417.5,120.2 L419.0,118.8 L420.5,117.4 L422.0,115.9 L423.5,114.5 L425.0,113.1 L426.5,111.7 L428.0,110.3 L429.5,108.9 L431.0,107.5 L432.5,106.1 L434.0,104.7 L435.5,103.3 L437.0,102.0 L438.5,100.6 L440.0,99.3 L441.5,97.9 L443.0,96.6 L444.5,95.3 L446.0,94.1 L447.5,92.8 L449.0,91.5 L450.5,90.3 L452.0,89.1 L453.5,87.9 L455.0,86.7 L456.5,85.6 L458.0,84.4 L459.5,83.3 L461.0,82.2 L462.5,81.1 L464.0,80.1 L465.5,79.0 L467.0,78.0 L468.5,77.0 L470.0,76.0 L471.5,75.1 L473.0,74.1 L474.5,73.2 L476.0,72.3 L477.5,71.4 L479.0,70.5 L480.5,69.7 L482.0,68.8 L483.5,68.0 L485.0,67.2 L486.5,66.4 L488.0,65.6 L489.5,64.9 L491.0,64.1 L492.5,63.4 L494.0,62.7 L495.5,62.0 L497.0,61.3 L498.5,60.7 L500.0,60.0"/>
+          <circle class="fill-ink3" cx="303.8" cy="196.0" r="2.4"/>
+          <circle class="fill-ink3" cx="226.7" cy="170.6" r="2.4"/>
+          <circle class="fill-ink3" cx="178.6" cy="134.5" r="2.4"/>
+          <circle class="fill-ink3" cx="173.5" cy="131.1" r="2.4"/>
+          <circle class="fill-ink3" cx="340.8" cy="180.8" r="2.4"/>
+          <circle class="fill-ink3" cx="361.7" cy="171.4" r="2.4"/>
+          <circle class="fill-ink3" cx="297.4" cy="188.0" r="2.4"/>
+          <circle class="fill-ink3" cx="323.2" cy="181.9" r="2.4"/>
+          <circle class="fill-ink3" cx="284.2" cy="187.0" r="2.4"/>
+          <circle class="fill-ink3" cx="366.4" cy="163.3" r="2.4"/>
+          <circle class="fill-ink3" cx="341.3" cy="180.2" r="2.4"/>
+          <circle class="fill-ink3" cx="170.6" cy="134.4" r="2.4"/>
+          <circle class="fill-ink3" cx="350.1" cy="177.1" r="2.4"/>
+          <circle class="fill-ink3" cx="177.1" cy="135.1" r="2.4"/>
+          <circle class="fill-ink3" cx="323.2" cy="192.1" r="2.4"/>
+          <circle class="fill-ink3" cx="206.9" cy="161.5" r="2.4"/>
+          <circle class="fill-ink3" cx="351.3" cy="175.1" r="2.4"/>
+          <circle class="fill-ink3" cx="283.7" cy="190.5" r="2.4"/>
+          <circle class="fill-ink3" cx="232.9" cy="182.4" r="2.4"/>
+          <circle class="fill-ink3" cx="258.8" cy="190.7" r="2.4"/>
+          <circle class="fill-ink3" cx="175.9" cy="137.4" r="2.4"/>
+          <circle class="fill-ink3" cx="196.1" cy="158.0" r="2.4"/>
+          <circle class="fill-ink3" cx="310.8" cy="185.5" r="2.4"/>
+          <circle class="fill-ink3" cx="305.9" cy="193.3" r="2.4"/>
+          <circle class="fill-ink3" cx="299.2" cy="191.5" r="2.4"/>
+          <circle class="fill-ink3" cx="250.6" cy="186.9" r="2.4"/>
+          <circle class="fill-ink3" cx="379.4" cy="153.0" r="2.4"/>
+          <circle class="fill-ink3" cx="376.0" cy="156.4" r="2.4"/>
+          <circle class="fill-ink3" cx="314.0" cy="188.4" r="2.4"/>
+          <circle class="fill-ink3" cx="306.6" cy="198.6" r="2.4"/>
+          <circle class="fill-ink3" cx="314.6" cy="190.1" r="2.4"/>
+          <circle class="fill-ink3" cx="251.7" cy="184.3" r="2.4"/>
+          <circle class="fill-ink3" cx="198.4" cy="153.1" r="2.4"/>
+          <circle class="fill-ink3" cx="321.5" cy="190.5" r="2.4"/>
+          <circle class="fill-ink3" cx="280.3" cy="186.7" r="2.4"/>
+          <circle class="fill-ink3" cx="235.2" cy="183.9" r="2.4"/>
+          <circle class="fill-ink3" cx="272.0" cy="193.5" r="2.4"/>
+          <circle class="fill-ink3" cx="356.8" cy="170.4" r="2.4"/>
+          <circle class="fill-ink3" cx="366.1" cy="167.4" r="2.4"/>
+          <circle class="fill-ink3" cx="245.1" cy="177.8" r="2.4"/>
+          <line class="ln-rule" x1="50" y1="240" x2="500" y2="240"/>
+          <line class="ln-rule" x1="50" y1="20" x2="50" y2="240"/>
+          <line class="ln-rule" x1="50" y1="208.6" x2="500" y2="208.6" stroke-dasharray="2 3"/>
+          <circle class="fill-tesis" cx="52" cy="228.9" r="6"/>
+          <line class="ln-tesis" x1="52" y1="222" x2="52" y2="28" stroke-dasharray="3 3"/>
+          <circle class="fill-tesis" cx="52" cy="20" r="5"/>
+          <circle class="fill-time" cx="308" cy="191.4" r="6"/>
+          <g class="t-mono t-muted" font-size="12">
+            <text x="110" y="256" text-anchor="middle">−2</text>
+            <text x="230" y="256" text-anchor="middle">0</text>
+            <text x="350" y="256" text-anchor="middle">2</text>
+            <text x="470" y="256" text-anchor="middle">4</text>
+            <text x="44" y="212" text-anchor="end">0</text>
+            <text x="44" y="134" text-anchor="end">5</text>
+            <text x="44" y="55" text-anchor="end">10</text>
+          </g>
+          <g font-size="13">
+            <text x="275" y="36" text-anchor="middle" class="t-muted">zona con datos</text>
+            <text x="62" y="40" class="t-tesis">coste real 17</text>
+            <text x="62" y="205" class="t-tesis">predicho −1,3</text>
+            <text x="400" y="80" class="t-muted">real</text>
+            <text x="400" y="196" class="t-accent">media del conjunto</text>
+            <text x="300" y="222" class="t-time" text-anchor="middle">media + 2 desv.</text>
+          </g>
+        </svg>
+        <figcaption>Semilla 0. Banda: media ± 2 desviaciones de las cinco redes. Punto del borde izquierdo: el plan con la media (coste real 17; eje cortado en 12). Punto del centro: con la penalización (1,09).</figcaption>
+      </figure>
+      <div class="callout clave"><span class="tag">Lectura</span>Cuanto mejor optimiza el planificador (más muestras, más rango, más dimensiones), con más seguridad encuentra los agujeros del modelo. Penalizar el desacuerdo del conjunto lo devuelve a donde hay datos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El problema del modelo aprendido · 2</p>
+  <h2>Cuatro formas de limitar la explotación, y la garantía que se pierde</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Un optimizador busca las acciones de menor coste predicho. Si el modelo se equivoca a su favor en alguna región, el plan irá allí: cuanto mejor optimiza, más explota el error.</p>
-      <ul class="small">
+      <p>Un optimizador busca las acciones de menor coste predicho. Si el modelo se equivoca a su favor en alguna región, el plan irá allí: cuanto mejor optimiza, más explota el error (hoja anterior).</p>
+      <ul>
         <li><strong>Horizontes cortos</strong> (3–12 pasos) limitan cuánto se acumula el error de predicción.</li>
         <li><strong>Conjuntos de modelos</strong> (PETS): la dispersión entre redes marca dónde no fiarse.</li>
         <li><strong>Valor terminal aprendido</strong> (TD-MPC): el horizonte corto se completa con una estimación del futuro que se entrena con datos reales.</li>
@@ -440,10 +1380,42 @@
 </section>
 
 <!-- ============ PARTE 3 · MPC FRENTE A RL ============ -->
+
 <section class="slide divider" data-section="3 · MPC frente a RL">
   <p class="num">Parte 3</p>
   <h2>MPC frente a RL</h2>
   <p>Qué dicen de verdad los experimentos en drones, qué diferencia a los dos enfoques y cómo se están combinando.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Dos formas de plantear el problema</p>
+  <h2>Planificar una trayectoria y seguirla, u optimizar la tarea directamente</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 230" style="max-height:220px" role="img" aria-label="Arriba, control óptimo: puertas, trayectoria de tiempo mínimo, MPC que la sigue y CTBR. Abajo, RL: puertas y estado, política entrenada, CTBR">
+      <defs><marker id="a3bs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker></defs>
+      <text x="10" y="24" font-size="15" class="t-bold">Control óptimo</text>
+      <rect x="10" y="36" width="190" height="64" rx="8" class="box"/><text x="105" y="74" text-anchor="middle" font-size="16">Puertas</text>
+      <rect x="260" y="36" width="300" height="64" rx="8" class="box-tesis"/><text x="410" y="64" text-anchor="middle" font-size="16">Trayectoria de tiempo mínimo</text><text x="410" y="88" text-anchor="middle" font-size="13" class="t-muted">representación intermedia, fuera de línea</text>
+      <rect x="620" y="36" width="320" height="64" rx="8" class="box"/><text x="780" y="64" text-anchor="middle" font-size="16">MPC: seguir la trayectoria</text><text x="780" y="88" text-anchor="middle" font-size="13" class="t-muted">o su contorno (MPCC, A3a)</text>
+      <rect x="1000" y="36" width="170" height="64" rx="8" class="box-time"/><text x="1085" y="74" text-anchor="middle" font-size="16">CTBR</text>
+      <path d="M200 68 H256" class="ln" marker-end="url(#a3bs)"/><path d="M560 68 H616" class="ln" marker-end="url(#a3bs)"/><path d="M940 68 H996" class="ln" marker-end="url(#a3bs)"/>
+      <text x="10" y="144" font-size="15" class="t-bold">RL</text>
+      <rect x="10" y="156" width="190" height="64" rx="8" class="box"/><text x="105" y="194" text-anchor="middle" font-size="16">Puertas + estado</text>
+      <rect x="260" y="156" width="680" height="64" rx="8" class="box-accent"/><text x="600" y="184" text-anchor="middle" font-size="16">Política (red) entrenada en simulación</text><text x="600" y="208" text-anchor="middle" font-size="13" class="t-muted">recompensa: pasar las puertas lo antes posible, sin trayectoria intermedia</text>
+      <rect x="1000" y="156" width="170" height="64" rx="8" class="box-time"/><text x="1085" y="194" text-anchor="middle" font-size="16">CTBR</text>
+      <path d="M200 188 H256" class="ln" marker-end="url(#a3bs)"/><path d="M940 188 H996" class="ln" marker-end="url(#a3bs)"/>
+    </svg>
+  </figure>
+  <div class="cols">
+    <div class="stack">
+      <p>Song et al. comparan los dos en carreras de drones y separan dos hipótesis sobre por qué gana el RL <a class="cite" data-ref="song2023"></a>:</p>
+      <ul>
+        <li><strong>El método:</strong> el RL optimiza mejor.</li>
+        <li><strong>El objetivo:</strong> el RL optimiza una cosa mejor (la tarea, no el seguimiento de una trayectoria).</li>
+      </ul>
+    </div>
+    <div class="callout clave"><span class="tag">Cómo se separan</span>Dando a los dos el <em>mismo</em> objetivo. Si con el mismo objetivo gana el RL, es el método; si gana el control óptimo, es el objetivo. La hoja siguiente da la respuesta.</div>
+  </div>
 </section>
 
 <section class="slide">
@@ -460,7 +1432,7 @@
         </table>
       </div>
       <p class="xsmall muted">Song et al. (2023), figura 2C: 50 posiciones iniciales y 40 ms de retardo en simulación; política de 100 Hz que da CTBR <a class="cite" data-ref="song2023"></a>.</p>
-      <ul class="small">
+      <ul>
         <li>El control óptimo descompone el problema: primero una trayectoria, luego seguirla. Esa representación intermedia limita lo que puede hacer.</li>
         <li>El RL optimiza la tarea directamente: pasar las puertas lo antes posible, sin trayectoria intermedia.</li>
       </ul>
@@ -477,7 +1449,7 @@
   <h2>Ganar a campeones humanos: RL con CTBR y un MPC que se rompe al cambiar el dominio</h2>
   <div class="cols">
     <div class="stack">
-      <ul class="small">
+      <ul>
         <li>Política: perceptrón de 2 × 128 a <span class="hz">100 Hz</span> que da empuje colectivo y <em>body rates</em>, como los pilotos humanos; Betaflight cierra el lazo interno <a class="cite" data-ref="kaufmann2023"></a>.</li>
         <li>Latencia de <span class="hz">40 ms</span> frente a unos <span class="hz">220 ms</span> de media de los pilotos expertos.</li>
         <li>Ganó 15 de 25 carreras contra campeones humanos.</li>
@@ -492,11 +1464,36 @@
 </section>
 
 <section class="slide">
-  <p class="kicker">Combinar</p>
-  <h2>AC-MPC: un MPC diferenciable como cabeza de la política</h2>
+  <p class="kicker">Combinar · AC-MPC · esquema</p>
+  <h2>La red decide el coste; el MPC diferenciable decide el mando</h2>
+  <figure class="fig">
+    <svg viewBox="0 0 1180 230" style="max-height:220px" role="img" aria-label="La observación entra en una red que produce los pesos del coste; un MPC diferenciable corto da el mando CTBR; un crítico estima el valor; PPO entrena todo derivando a través del MPC">
+      <defs><marker id="a3ba" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-ink3"/></marker>
+      <marker id="a3baa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="fill-accent"/></marker></defs>
+      <rect x="10" y="40" width="170" height="64" rx="8" class="box"/><text x="95" y="78" text-anchor="middle" font-size="16">Observación</text>
+      <rect x="240" y="40" width="250" height="64" rx="8" class="box-tesis"/><text x="365" y="68" text-anchor="middle" font-size="16">Red</text><text x="365" y="92" text-anchor="middle" font-size="13" class="t-muted">pesos del coste cuadrático</text>
+      <rect x="550" y="40" width="330" height="64" rx="8" class="box-accent"/><text x="715" y="68" text-anchor="middle" font-size="16">MPC diferenciable corto</text><text x="715" y="92" text-anchor="middle" font-size="13" class="t-muted">iLQR, N = 2 pasos</text>
+      <rect x="940" y="40" width="230" height="64" rx="8" class="box-time"/><text x="1055" y="78" text-anchor="middle" font-size="16">CTBR</text>
+      <path d="M180 72 H236" class="ln" marker-end="url(#a3ba)"/><path d="M490 72 H546" class="ln" marker-end="url(#a3ba)"/><path d="M880 72 H936" class="ln" marker-end="url(#a3ba)"/>
+      <rect x="240" y="150" width="250" height="60" rx="8" class="box"/><text x="365" y="186" text-anchor="middle" font-size="16">Crítico: valor a largo plazo</text>
+      <path d="M95 104 V180 H236" class="ln" fill="none" marker-end="url(#a3ba)"/>
+      <path d="M715 106 V180 H494" class="ln-accent" fill="none" stroke-dasharray="6 4" marker-end="url(#a3baa)"/>
+      <text x="740" y="170" font-size="14" class="t-accent">PPO: gradiente a través del MPC hasta la red</text>
+      <text x="10" y="24" font-size="14" class="t-muted">actor = red + MPC</text>
+    </svg>
+  </figure>
+  <div class="cols">
+    <p>La última capa del actor es un MPC diferenciable corto (iLQR, como el de Amos et al.); una red produce los pesos de su coste cuadrático y un crítico aprende el valor a largo plazo. Todo se entrena con PPO derivando a través del MPC <a class="cite" data-ref="romero2024,romero2026,amos2018"></a>, con el teorema de la función implícita de la parte 2.</p>
+    <div class="callout clave"><span class="tag">Qué aporta cada pieza</span>La red elige <em>qué</em> optimizar en cada situación, aprendido con la recompensa de la tarea, como el RL. El MPC elige <em>cómo</em>, con un modelo y en línea, como el control óptimo. La hoja siguiente mide lo que cuesta y lo que gana.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Combinar · AC-MPC · cifras</p>
+  <h2>AC-MPC: la misma vuelta que una política, 27 veces más cara y mucho más robusta</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">La última capa del actor es un MPC diferenciable corto (iLQR, como el de Amos et al.); una red produce los pesos de su coste cuadrático y un crítico aprende el valor a largo plazo. Todo se entrena con PPO derivando a través del MPC <a class="cite" data-ref="romero2024,romero2026,amos2018"></a>.</p>
+      <p>Política MLP frente a AC-MPC (esquema de la hoja anterior) en vuelo real y en simulación <a class="cite" data-ref="romero2026"></a>:</p>
       <div class="table-wrap">
         <table class="t">
           <tr><th></th><th>Política MLP</th><th>AC-MPC (\(N\) = 2)</th></tr>
@@ -505,7 +1502,7 @@
           <tr><td>Entrenamiento</td><td class="n">21 min</td><td class="n">11 h 30 min</td></tr>
         </table>
       </div>
-      <p class="small">Hasta 21 m/s en vuelo real; ante una ráfaga simulada de 11,5 N (1,5 veces el peso), 83 % de éxito frente a 6,5 % de la política pura <a class="cite" data-ref="romero2026"></a>.</p>
+      <p>Hasta 21 m/s en vuelo real; ante una ráfaga simulada de 11,5 N (1,5 veces el peso), 83 % de éxito frente a 6,5 % de la política pura <a class="cite" data-ref="romero2026"></a>.</p>
     </div>
     <div class="stack">
       <div class="callout clave"><span class="tag">Clasificación de Reiter et al.</span>Tres formas de combinar: el MPC como actor experto (para imitarlo o generar datos), el MPC dentro de la política desplegada (AC-MPC) y el MPC como parte del crítico. Las debilidades de un enfoque son casi siempre las fortalezas del otro <a class="cite" data-ref="reiter2026"></a>.</div>
@@ -536,8 +1533,8 @@
   <h2>Dream to Fly: aprender la política dentro del world model</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Romero et al. usan DreamerV3: el world model aprende de las observaciones (imágenes) y la política se entrena en «imaginación», dentro del modelo; en vuelo no hay planificación, solo la política. Vuela con píxeles hasta 9 m/s en <em>hardware-in-the-loop</em> con imágenes renderizadas, donde, según los autores, PPO y SAC son ineficientes y les cuesta aprender <a class="cite" data-ref="romero2025dream"></a>.</p>
-      <ul class="small">
+      <p>Romero et al. usan DreamerV3: el world model aprende de las observaciones (imágenes) y la política se entrena en «imaginación», dentro del modelo; en vuelo no hay planificación, solo la política. Vuela con píxeles hasta 9 m/s en <em>hardware-in-the-loop</em> con imágenes renderizadas, donde, según los autores, PPO y SAC son ineficientes y les cuesta aprender <a class="cite" data-ref="romero2025dream"></a>.</p>
+      <ul>
         <li><strong>TD-MPC2:</strong> modelo latente y MPPI en línea (cómputo en vuelo).</li>
         <li><strong>Dreamer:</strong> modelo latente y política amortizada (cómputo en el entrenamiento).</li>
       </ul>
@@ -570,12 +1567,12 @@
   <p class="kicker">Errores frecuentes</p>
   <h2>Seis formas de equivocarse con MPC por muestreo y aprendizaje</h2>
   <div class="cols">
-    <ul class="small">
+    <ul>
       <li><strong>\(\lambda\) con la escala equivocada:</strong> copiar la temperatura de otro artículo sin mirar la dispersión de tus costes.</li>
       <li><strong>Comparar con una referencia débil:</strong> MPPI frente a un PID mal ajustado; la comparación honesta es con un NMPC o un controlador geométrico.</li>
       <li><strong>Olvidar la latencia del planificador</strong>: en un dron, 10 ms de cálculo son fase perdida en el lazo que cierres (A2).</li>
     </ul>
-    <ul class="small">
+    <ul>
       <li><strong>Fiarse del modelo aprendido lejos de los datos:</strong> el planificador encuentra y explota sus errores.</li>
       <li><strong>Mezclar incertidumbres:</strong> tratar igual el ruido del sistema y la ignorancia del modelo.</li>
       <li><strong>Atribuir al optimizador lo que es del objetivo:</strong> la lección de Song et al., aplicada a tus propias comparaciones.</li>
@@ -585,11 +1582,12 @@
 </section>
 
 <!-- ============ CIERRE ============ -->
+
 <section class="slide" data-section="Cierre">
   <p class="kicker">Hacia dónde va</p>
   <h2>Planificar con modelos aprendidos, a bordo y con incertidumbre</h2>
   <div class="cols">
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Lo que ya se ve en 2024–2026:</strong></p>
       <ul>
         <li>MPPI en vuelo real con GPU a bordo, a 100 Hz <a class="cite" data-ref="minarik2024"></a>, y con ganancias derivadas de los propios rollouts <a class="cite" data-ref="belvedere2026"></a>.</li>
@@ -598,7 +1596,7 @@
         <li>World models con política amortizada en lugar de planificación en línea para vuelo con visión <a class="cite" data-ref="romero2025dream"></a>.</li>
       </ul>
     </div>
-    <div class="stack small">
+    <div class="stack">
       <p><strong>Previsión nuestra para 2027 y después:</strong></p>
       <ul>
         <li>Planificadores por muestreo en el espacio de beliefs de un world model, con costes que premian reducir la incertidumbre (percepción activa).</li>
@@ -617,8 +1615,8 @@
       <div class="callout tesis"><span class="tag">Tu tesis</span>Belief latente (filtro aprendido, A7–A8) + modelo de transición latente + recompensa predicha + valor terminal + política de arranque + planificador por muestreo con horizonte corto, re-planificando a la frecuencia que permita el ordenador de a bordo, sobre un lazo de <em>rate</em> clásico. Cada pieza tiene un análogo en este tema, y cada hipótesis de A3a (estado conocido, modelo fiable) es la que tu tesis relaja.</div>
     </div>
     <div class="stack">
-      <p class="small"><strong>Preguntas abiertas para tu primer año:</strong></p>
-      <ol class="small">
+      <p><strong>Preguntas abiertas para tu primer año:</strong></p>
+      <ol>
         <li>¿Planificas en línea (TD-MPC2) o amortizas en una política (Dreamer)? ¿Qué te da cada uno con observabilidad parcial?</li>
         <li>¿Cómo metes la incertidumbre del belief en el coste del MPPI: varianza como penalización, ganancia de información como premio?</li>
         <li>¿Cuántas muestras y qué horizonte te caben a bordo a 50–100 Hz con tu modelo?</li>
@@ -632,9 +1630,10 @@
 <section class="slide">
   <p class="kicker">Resumen</p>
   <h2>Lo que te llevas de A3b</h2>
-  <ul class="body" style="font-size:19px; gap:9px;">
-    <li>CEM: muestrear, quedarse con las élites y reajustar la gaussiana; equivale a minimizar una KL hacia la distribución de buenas secuencias. Cuidado con el colapso de la varianza.</li>
-    <li>MPPI: pesos \(e^{-(S_k-\rho)/\lambda}\), derivados de la energía libre; una iteración por paso, ideal para GPU. \(\lambda\) relativa a la dispersión del coste; vigila el tamaño efectivo de muestra.</li>
+  <ul class="body" style="font-size:19px; gap:7px;">
+    <li>El bucle: muestrear, simular, puntuar, combinar, aplicar \(u_0\) y desplazar. Los métodos solo difieren en cómo combinan.</li>
+    <li>CEM: muestrear, quedarse con las élites y reajustar la gaussiana; es máxima verosimilitud de las élites y minimiza una KL hacia la distribución de buenas secuencias. Cuidado con el colapso de la varianza.</li>
+    <li>MPPI: pesos \(e^{-(S_k-\rho)/\lambda}\); la media de \(q^\star\propto e^{-S/\lambda}p\), que alcanza la cota de la energía libre, estimada por muestreo por importancia. \(\lambda\) relativa a la dispersión del coste; vigila \(1/\sum_kw_k^2\). El ruido correlado explora mejor.</li>
     <li>En el escenario con obstáculos: más muestras, más éxito; MPPI más fiable y CEM más rápido, como en el coche de Williams et al.</li>
     <li>MPPI en vuelo real: 896 muestras a 100 Hz en una Orin Nano; para seguir trayectorias suaves, el NMPC y el control geométrico siguen siendo mejores.</li>
     <li>Aprendizaje dentro del MPC: residuos del modelo (−82 % de error en vuelo), coste, valor terminal y arranque; PETS, PlaNet y TD-MPC2 son MPC por muestreo con modelos aprendidos.</li>
@@ -665,7 +1664,7 @@
         <li><button type="button">Porque garantiza el óptimo global</button></li>
         <li><button type="button">Porque así la varianza nunca colapsa</button></li>
       </ol>
-      <p class="explain">Minimizar \(\mathrm{KL}(\mathbb 1_{S\le\gamma}/Z\,\|\,q_\phi)\) es maximizar la log-verosimilitud de las élites; para una gaussiana, sus momentos muestrales. Y la varianza sí puede colapsar.</p>
+      <p class="explain">Minimizar \(\mathrm{KL}(q_\gamma\,\|\,q_{\mu,\sigma})\), con \(q_\gamma\) la gaussiana actual restringida a las secuencias buenas, es maximizar la log-verosimilitud de las élites (hoja 14); para una gaussiana, sus momentos muestrales. Y la varianza sí puede colapsar.</p>
     </div>
   </div>
 </section>
@@ -754,8 +1753,8 @@
   <h2>MPPI vectorizado en JAX sobre el modelo del x500</h2>
   <div class="cols">
     <div class="stack">
-      <p class="small">Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
-      <ol class="small">
+      <p>Unas 3,5 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol>
         <li><strong>CEM y MPPI en el escenario 2D</strong> de la presentación, en JAX con <code>vmap</code> y <code>jit</code>.</li>
         <li><strong>Temperatura</strong>: tamaño efectivo de muestra y éxito frente a \(\lambda\).</li>
         <li><strong>MPPI sobre el x500</strong> (modelo de A1, mandos CTBR sobre el lazo de <em>rate</em> de A2) esquivando obstáculos.</li>
@@ -812,114 +1811,160 @@
 <!-- ============ GLOSARIO (tecla G) ============ -->
 <aside id="glosario" hidden>
 <h3>Notación general</h3>
-<p>Misma notación que A3a para estado \(x\), mando \(u\), costes y horizonte, salvo dos letras que cambian de sentido y se avisan en su entrada: \(H\) (aquí horizonte, allí hessiana) y \(K\) (aquí número de muestras, allí ganancia). Mayúscula: secuencia o matriz.</p>
+<p>Misma notación que A3a para estado \(x\), mando \(u\), costes y horizonte, salvo letras que cambian de sentido y se avisan en su entrada: \(H\) (aquí horizonte, allí hessiana), \(K\) (aquí número de muestras, allí ganancia), \(Q\), \(R\) y \(h\) en la parte 2. Mayúscula: secuencia o matriz.</p>
 <dl>
-<dt>\(\sim\)</dt><dd data-hojas="7">«Se distribuye según», p. ej. \(v_t\sim\mathcal N(u_t,\Sigma)\).</dd>
-<dt>\(\mathcal N(\mu,\operatorname{diag}\sigma^2)\)</dt><dd data-hojas="6">Gaussiana de media \(\mu\) y covarianza diagonal con varianzas \(\sigma^2\): la distribución de las secuencias de mandos en CEM.</dd>
-<dt>\(\mathbb E\)</dt><dd data-hojas="7">Esperanza de una variable aleatoria; \(\mathbb E_p\) es la media con respecto a la distribución \(p\).</dd>
-<dt>\(\mathbb 1_{S\le\gamma}\)</dt><dd data-hojas="6">Indicador: vale 1 si el coste \(S\) de la secuencia es \(\le\gamma\) y 0 en otro caso.</dd>
-<dt>\(\mathbb R^{H\times m}\)</dt><dd data-hojas="6">Matrices reales de \(H\) filas y \(m\) columnas: una secuencia de \(H\) mandos de \(m\) componentes.</dd>
-<dt>\(\max\), \(\min\)</dt><dd data-hojas="7,19">Maximizar o minimizar; \(\rho = \min_k S_k\) es el menor coste de las muestras.</dd>
-<dt>\(\log\)</dt><dd data-hojas="6">Logaritmo, en la log-verosimilitud y en la energía libre.</dd>
-<dt>\(\mathrm{KL}\)</dt><dd data-hojas="6">Divergencia de Kullback-Leibler entre dos distribuciones, \(\mathrm{KL}(a\,\|\,b)\).</dd>
-<dt>\(^\top\)</dt><dd data-hojas="11">Traspuesta, p. ej. en \(\gamma\,u^\top\Sigma^{-1}v\).</dd>
-<dt>\(\partial\)</dt><dd data-hojas="16">Derivada parcial, en la derivada de la solución respecto a los parámetros.</dd>
-<dt>\(\star\) (superíndice)</dt><dd data-hojas="7">Valor óptimo: \(q^\star\), \(z^\star\), \(u^\star(\theta)\).</dd>
-<dt>\(\dot{\mathbf v}\)</dt><dd data-hojas="15">Derivada temporal de la velocidad: la aceleración del dron.</dd>
+<dt>\(\sim\)</dt><dd data-hojas="6">«Se distribuye según», p. ej. \(\varepsilon^k_t\sim\mathcal N(0,\Sigma)\).</dd>
+<dt>\(\mathcal N(\mu,\operatorname{diag}\sigma^2)\)</dt><dd data-hojas="12">Gaussiana de media \(\mu\) y covarianza diagonal con varianzas \(\sigma^2\): la distribución de las secuencias de mandos en CEM.</dd>
+<dt>\(\mathbb E\)</dt><dd data-hojas="17">Esperanza; \(\mathbb E_p\) es la media con respecto a la distribución \(p\).</dd>
+<dt>\(\operatorname{Var}\)</dt><dd data-hojas="23,39">Varianza de una variable aleatoria.</dd>
+<dt>\(\mathbb 1_{S\le\gamma}\)</dt><dd data-hojas="14">Indicador: vale 1 si el coste \(S\) de la secuencia es \(\le\gamma\) y 0 en otro caso.</dd>
+<dt>\(\mathbb R^4\)</dt><dd data-hojas="6">Vectores reales de 4 componentes, como el estado del punto del escenario.</dd>
+<dt>\(\min\), \(\arg\min\)</dt><dd data-hojas="11,7">Minimizar y el argumento que minimiza; \(k^\star = \arg\min_kS_k\) es el índice de la mejor muestra.</dd>
+<dt>\(\max\)</dt><dd data-hojas="41">Maximizar (en RL se maximiza la recompensa).</dd>
+<dt>\(\log\)</dt><dd data-hojas="14">Logaritmo neperiano, en la log-verosimilitud y en la energía libre.</dd>
+<dt>\(\mathrm{KL}\)</dt><dd data-hojas="14,17">Divergencia de Kullback-Leibler, \(\mathrm{KL}(a\,\|\,b) = \mathbb E_a[\log(a/b)]\ge0\); no es simétrica.</dd>
+<dt>\(^\top\)</dt><dd data-hojas="19">Traspuesta, p. ej. en \((\hat u_t-\tilde u_t)^\top\Sigma^{-1}v_t\).</dd>
+<dt>\(\partial\)</dt><dd data-hojas="36">Derivada parcial, en la derivada de la solución respecto a los parámetros.</dd>
+<dt>\(\star\) (superíndice)</dt><dd data-hojas="18,36">Valor óptimo: \(q^\star\), \(u^\star\), \(z^\star\), \(k^\star\).</dd>
+<dt>\(\propto\)</dt><dd data-hojas="19">«Proporcional a»: igual salvo una constante que no depende de la variable.</dd>
 </dl>
-<h3>MPC por muestreo: CEM y MPPI</h3>
+<h3>Parte 1 · el problema y el bucle</h3>
 <dl>
-<dt>\(U\)</dt><dd data-hojas="6">Secuencia de mandos del horizonte, matriz de \(\mathbb R^{H\times m}\); en MPPI, la secuencia nominal que se actualiza.</dd>
-<dt>\(H\) (horizonte)</dt><dd data-hojas="6">Longitud del horizonte de planificación en pasos. En A3a, \(H\) era la hessiana del QP condensado.</dd>
-<dt>\(m\)</dt><dd data-hojas="6">Número de componentes del mando (4 en el x500).</dd>
-<dt>\(\mu\), \(\sigma\)</dt><dd data-hojas="6">Media y desviación típica de la gaussiana de CEM sobre las secuencias de mandos; se reajustan a las élites.</dd>
-<dt>\(\mu_0\)</dt><dd data-hojas="6">Primer elemento de la media: el mando que se aplica tras las iteraciones.</dd>
-<dt>\(n\), \(n_e\)</dt><dd data-hojas="6">En CEM, número de secuencias muestreadas por iteración y número de élites que se conservan.</dd>
-<dt>\(S_i\), \(S_k\)</dt><dd data-hojas="6">Coste de la muestra \(i\) (o \(k\)): se simula la secuencia con el modelo y se acumula el coste.</dd>
-<dt>\(S(U)\)</dt><dd data-hojas="6">Coste de una secuencia \(U\), usado como función objetivo.</dd>
-<dt>\(\gamma\) (cuantil)</dt><dd data-hojas="6">En CEM, umbral de coste que define las buenas secuencias \(\{U: S(U)\le\gamma\}\) (cuantil de las élites). En otras hojas \(\gamma\) tiene otros sentidos.</dd>
-<dt>\(q_\phi\)</dt><dd data-hojas="6">Distribución paramétrica (gaussiana) de las secuencias, con parámetros \(\phi\) que CEM ajusta a las élites.</dd>
-<dt>\(Z\)</dt><dd data-hojas="6">Constante de normalización de la distribución uniforme sobre las buenas secuencias.</dd>
-<dt>\(K\) (muestras)</dt><dd data-hojas="8">Número de trayectorias muestreadas por paso de MPPI (256, 1024, …). En A3a, \(K\) era la ganancia de realimentación.</dd>
-<dt>\(v_t\)</dt><dd data-hojas="7">Mando ruidoso aplicado en la simulación de una muestra: \(v_t\sim\mathcal N(u_t,\Sigma)\).</dd>
-<dt>\(u_t\)</dt><dd data-hojas="7">Mando nominal en el instante \(t\) del horizonte (la media del ruido).</dd>
-<dt>\(\Sigma\)</dt><dd data-hojas="7">Covarianza del ruido de los mandos en MPPI.</dd>
-<dt>\(E^k\)</dt><dd data-hojas="7">Secuencia de ruido de la muestra \(k\); la muestra es \(U + E^k\).</dd>
-<dt>\(\rho\)</dt><dd data-hojas="7">Menor coste entre las muestras, \(\rho=\min_kS_k\): se resta antes de exponenciar para evitar desbordamiento, sin cambiar los pesos normalizados.</dd>
-<dt>\(\lambda\)</dt><dd data-hojas="7">Temperatura de MPPI, en las mismas unidades que el coste: controla cuánto se concentran los pesos en las mejores muestras (hoja 8).</dd>
-<dt>\(w_k\)</dt><dd data-hojas="7">Peso normalizado de la muestra \(k\): \(e^{-(S_k-\rho)/\lambda}\) dividido por su suma sobre todas las muestras. La actualización es \(U\leftarrow U+\sum_kw_kE^k\).</dd>
-<dt>\(\mathcal F\)</dt><dd data-hojas="7">Energía libre \(-\lambda\log\mathbb E_p[e^{-S/\lambda}]\), cuya cota inferior da la distribución óptima de MPPI.</dd>
-<dt>\(p\)</dt><dd data-hojas="7">Distribución de las trayectorias con el ruido de los mandos (distribución de partida, de la que se muestrea).</dd>
-<dt>\(q\), \(q^\star\)</dt><dd data-hojas="7">\(q\) es cualquier otra distribución de trayectorias; \(q^\star(V)=\tfrac1\eta e^{-S(V)/\lambda}p(V)\) es la que alcanza la cota.</dd>
-<dt>\(V\)</dt><dd data-hojas="7">Trayectoria de mandos ruidosos, argumento de \(q^\star\) y \(p\).</dd>
-<dt>\(\eta\)</dt><dd data-hojas="7">Constante de normalización de \(q^\star\).</dd>
-<dt>\(1/\sum_kw_k^2\)</dt><dd data-hojas="8">Tamaño efectivo de muestra: 1 si todo el peso cae en una muestra, \(K\) si todas pesan igual.</dd>
-<dt>\(\gamma\,u^\top\Sigma^{-1}v\)</dt><dd data-hojas="11">Término que MPPI añade al coste de cada muestra, derivado de la teoría, que penaliza alejarse de la media. \(\gamma\) es aquí un peso.</dd>
-<dt>\(H\times m\)</dt><dd data-hojas="10">Dimensión del espacio de búsqueda del muestreo (30×2 = 60 en el escenario 2D).</dd>
-<dt>\(\beta\)</dt><dd data-hojas="11">Exponente del espectro de ruido coloreado \(1/f^\beta\) que usa iCEM en lugar de ruido blanco.</dd>
-<dt>\(\Delta S\)</dt><dd data-hojas="32">Diferencia de coste entre una muestra y la mejor; el peso \(e^{-\Delta S/\lambda}\) es despreciable salvo para la mejor cuando las diferencias son de cientos y \(\lambda=0{,}1\).</dd>
+<dt>\(x_t\)</dt><dd data-hojas="6,7">Estado en el paso \(t\) del horizonte; en el escenario, posición y velocidad del punto, \(x = (\mathbf p,\mathbf v)\in\mathbb R^4\).</dd>
+<dt>\(u_t\)</dt><dd data-hojas="6">Mando en el paso \(t\) del horizonte; en MPPI, el mando nominal (media del ruido).</dd>
+<dt>\(m\)</dt><dd data-hojas="6">Número de componentes del mando (2 en el escenario, 4 en el x500 con CTBR).</dd>
+<dt>\(H\) (horizonte)</dt><dd data-hojas="6">Longitud del horizonte de planificación en pasos (30 en el escenario). En A3a, \(H\) era la hessiana del QP y el horizonte, \(N\).</dd>
+<dt>\(\Delta t\)</dt><dd data-hojas="6">Paso de la malla de planificación, en s (0,05 en el escenario).</dd>
+<dt>\(U\)</dt><dd data-hojas="6">Secuencia de mandos del horizonte \((u_0,\dots,u_{H-1})\), matriz \(H\times m\): lo que se optimiza.</dd>
+<dt>\(K\) (muestras)</dt><dd data-hojas="6,26">Número de secuencias muestreadas por paso (16 a 1024 en el escenario). En A3a, \(K\) era la ganancia de realimentación.</dd>
+<dt>\(k\)</dt><dd data-hojas="6">Índice de una muestra, de 1 a \(K\).</dd>
+<dt>\(E^k\)</dt><dd data-hojas="6,15">Secuencia de ruido de la muestra \(k\); la muestra es \(V^k = U + E^k\).</dd>
+<dt>\(\varepsilon^k_t\)</dt><dd data-hojas="6,19">Ruido de la muestra \(k\) en el paso \(t\), \(\varepsilon^k_t\sim\mathcal N(0,\Sigma)\).</dd>
+<dt>\(V^k\), \(v^k_t\)</dt><dd data-hojas="6">Secuencia muestreada y su paso \(t\): lo que se simula. En la parte 2, \(\mathbf v\) en negrita es la velocidad del dron.</dd>
+<dt>\(\Sigma\)</dt><dd data-hojas="6,19">Covarianza del ruido de los mandos por paso (\(2^2I\) en el escenario).</dd>
+<dt>\(S(U)\)</dt><dd data-hojas="7">Coste de una secuencia, calculado simulándola con el modelo.</dd>
+<dt>\(S_k\)</dt><dd data-hojas="6,15">Coste de la muestra \(k\), \(S_k = S(V^k)\).</dd>
+<dt>\(c\)</dt><dd data-hojas="7">Coste de etapa: distancia a la meta, mando y choque, multiplicados por \(\Delta t\) salvo el choque.</dd>
+<dt>\(\phi\)</dt><dd data-hojas="7">Coste terminal \(\phi(x_H)\): acabar cerca de la meta y despacio. En la parte 2, \(\phi\) son los pesos del residuo \(\mathbf g_\phi\).</dd>
+<dt>\(f\)</dt><dd data-hojas="7">Modelo de la dinámica, \(x_{t+1} = f(x_t,\operatorname{sat}(u_t))\). En \(1/f^\beta\), \(f\) es la frecuencia.</dd>
+<dt>\(\operatorname{sat}\)</dt><dd data-hojas="7">Saturación del mando a ±4 m/s² por eje, aplicada dentro de la simulación; en Williams et al., \(g(v_t)\).</dd>
+<dt>\(\mathbf p\), \(\mathbf v\), \(\mathbf a\)</dt><dd data-hojas="7,25">Posición, velocidad y aceleración del punto del escenario (m, m/s, m/s²).</dd>
+<dt>\(\mathbf p_{\text{meta}}\)</dt><dd data-hojas="7">Meta del escenario, (8, 0) m.</dd>
+<dt>\(\mathbb 1[\text{choque}]\)</dt><dd data-hojas="7">Indicador de choque: 1 a menos de 15 cm del borde de un obstáculo; pesa \(10^3\) por paso.</dd>
+<dt>\(k^\star\)</dt><dd data-hojas="11">Índice de la muestra de menor coste: el disparo aleatorio se queda con ella.</dd>
+<dt>\(U^\star\), \(S^\star\)</dt><dd data-hojas="10">Óptimo exacto del ejemplo a mano, \((0{,}8;\ 0{,}8)\), y su coste, 0,80.</dd>
 </dl>
-<h3>MPC con aprendizaje</h3>
+<h3>Parte 1 · CEM</h3>
 <dl>
-<dt>\(f_{\text{nom}}(\mathbf x,\mathbf u)\)</dt><dd data-hojas="15">Dinámica nominal de la física (aceleración) en el NMPC con residuo.</dd>
-<dt>\(\mathbf g_\phi(\mathbf x)\)</dt><dd data-hojas="15">Residuo aprendido (proceso gaussiano o red) con parámetros \(\phi\), sumado a la aceleración nominal.</dd>
-<dt>\(\theta\) (parámetros)</dt><dd data-hojas="16">Parámetros del problema de control óptimo (coste y dinámica) que se aprenden en el MPC diferenciable.</dd>
-<dt>\(u^\star(\theta)\)</dt><dd data-hojas="16">Mando óptimo del problema parametrizado por \(\theta\).</dd>
-<dt>\(z^\star\)</dt><dd data-hojas="16">Solución óptima (variables primales y duales) del problema de la hoja 16. No confundir con el latente \(z\) de TD-MPC2.</dd>
-<dt>\(\mathcal K(z^\star,\theta)\)</dt><dd data-hojas="16">Condiciones KKT en el óptimo: igualan a cero y definen \(z^\star\) implícitamente.</dd>
-<dt>\(\partial z^\star/\partial\theta\)</dt><dd data-hojas="16">Derivada de la solución respecto a los parámetros, por el teorema de la función implícita.</dd>
-<dt>\(N\) (pasos del MPC diferenciable)</dt><dd data-hojas="24">En AC-MPC, número de pasos del MPC diferenciable de la cabeza del actor (\(N=2\)).</dd>
-<dt>\(B\), \(b\)</dt><dd data-hojas="18">En PETS, \(B=5\) es el número de redes del conjunto y \(b\) el índice de una red.</dd>
-<dt>\(s\), \(a\)</dt><dd data-hojas="18">Estado y acción de las redes de PETS, entradas de \(\mu_b(s,a)\) y \(\Sigma_b(s,a)\).</dd>
-<dt>\(\mu_b\), \(\Sigma_b\)</dt><dd data-hojas="18">Media y covarianza de la salida gaussiana de la red \(b\); \(\Sigma_b\) es la incertidumbre aleatoria.</dd>
-<dt>\(P\)</dt><dd data-hojas="18">Número de partículas (20) con que PETS propaga la incertidumbre.</dd>
+<dt>\(\mu\), \(\sigma\)</dt><dd data-hojas="12,13">Media y desviación típica de la gaussiana de CEM, con la forma de \(U\); se reajustan a las élites. En TD-MPC2, lo mismo sobre las acciones.</dd>
+<dt>\(\mu_0\)</dt><dd data-hojas="12">Primer paso de la media: el mando que se aplica tras las iteraciones.</dd>
+<dt>\(n\), \(n_e\)</dt><dd data-hojas="6,12">Número de secuencias muestreadas por iteración y número de élites que se conservan.</dd>
+<dt>\(S_i\)</dt><dd data-hojas="12">Coste de la muestra \(i\) en una iteración de CEM.</dd>
+<dt>\(I\)</dt><dd data-hojas="12">Número de iteraciones de CEM por paso (4 en el script).</dd>
+<dt>\(\gamma\) (cuantil)</dt><dd data-hojas="14">En CEM, umbral de coste que define las buenas secuencias: el coste de la peor élite. En otras hojas \(\gamma\) tiene otros sentidos.</dd>
+<dt>\(q_{\text{ant}}\)</dt><dd data-hojas="14">Gaussiana de la iteración anterior, de la que salen las muestras.</dd>
+<dt>\(q_\gamma\)</dt><dd data-hojas="14">Distribución objetivo de CEM: \(q_{\text{ant}}\) restringida a las secuencias con \(S\le\gamma\) y renormalizada.</dd>
+<dt>\(Z\)</dt><dd data-hojas="14">Constante de normalización de \(q_\gamma\): la probabilidad de que una muestra de \(q_{\text{ant}}\) sea buena.</dd>
+<dt>\(q_{\mu,\sigma}\)</dt><dd data-hojas="14">Gaussiana de media \(\mu\) y desviación \(\sigma\) que CEM ajusta a las élites.</dd>
 </dl>
-<h3>TD-MPC2</h3>
+<h3>Parte 1 · MPPI</h3>
 <dl>
-<dt>\(o\)</dt><dd data-hojas="19">Observación que recibe el codificador.</dd>
-<dt>\(h\)</dt><dd data-hojas="19">Codificador \(z=h(o)\); no confundir con la restricción \(h\) de A3a.</dd>
-<dt>\(z\), \(z'\)</dt><dd data-hojas="19">Estado latente y su siguiente: \(z'=d(z,a)\).</dd>
-<dt>\(d(z,a)\)</dt><dd data-hojas="19">Dinámica en el espacio latente.</dd>
-<dt>\(a\)</dt><dd data-hojas="19">Acción en el latente (equivale al mando \(u\)).</dd>
-<dt>\(R(z,a)\)</dt><dd data-hojas="19">Recompensa predicha por el modelo. No es la matriz de pesos \(R\) de A3a.</dd>
-<dt>\(Q\)</dt><dd data-hojas="19">Función de valor aprendida (cinco copias); aporta el valor terminal. No es la matriz de pesos \(Q\) de A3a.</dd>
-<dt>\(\pi\)</dt><dd data-hojas="19">Política previa que propone parte de las muestras (24 de las 512).</dd>
-<dt>\(\gamma\) (descuento)</dt><dd data-hojas="19">Factor de descuento; pesa por \(\gamma^h\) la recompensa del paso \(h\) y por \(\gamma^H\) el valor terminal.</dd>
-<dt>\(z_h\), \(a_h\)</dt><dd data-hojas="19">Latente y acción en el paso \(h\) del horizonte; \(z_H\), \(a_H\) son los del último paso, donde se evalúa \(Q\).</dd>
-<dt>\(H = 3\)</dt><dd data-hojas="19">Horizonte corto de TD-MPC2, en pasos.</dd>
-<dt>\(\max_{\mu,\sigma}\)</dt><dd data-hojas="19">Maximización sobre la media y desviación de la distribución de acciones, hecha con MPPI.</dd>
+<dt>\(w_k\)</dt><dd data-hojas="15,16">Peso normalizado de la muestra \(k\): \(e^{-(S_k-\rho)/\lambda}\) dividido por su suma. La actualización es \(U\leftarrow U+\sum_kw_kE^k\).</dd>
+<dt>\(\rho\)</dt><dd data-hojas="15">Menor coste de las muestras, \(\rho=\min_kS_k\): se resta antes de exponenciar para evitar desbordamientos, sin cambiar los pesos normalizados.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="15,22">Temperatura de MPPI, en unidades de coste: cuánto se concentran los pesos en las mejores muestras. Williams et al. la llaman <em>inverse temperature</em>, pero hace de temperatura.</dd>
+<dt>\(p\)</dt><dd data-hojas="17">Distribución de partida (prior) sobre secuencias: mandos con ruido \(\Sigma\) alrededor de \(\tilde U\).</dd>
+<dt>\(q\)</dt><dd data-hojas="17">Cualquier otra distribución de secuencias, comparada con \(p\) en la cota.</dd>
+<dt>\(V\)</dt><dd data-hojas="17">Secuencia de mandos con ruido, argumento de \(p\), \(q\) y \(q^\star\).</dd>
+<dt>\(Y\)</dt><dd data-hojas="17">Variable auxiliar de la desigualdad de Jensen, \(Y = e^{-S/\lambda}p/q\).</dd>
+<dt>\(\mathcal F\)</dt><dd data-hojas="17,18">Energía libre \(-\lambda\log\mathbb E_p[e^{-S/\lambda}]\): cota inferior de \(\mathbb E_q[S]+\lambda\,\mathrm{KL}(q\|p)\). Williams et al. llaman \(F\) al logaritmo sin el factor \(-\lambda\).</dd>
+<dt>\(q^\star\)</dt><dd data-hojas="18,20">Distribución óptima \(\tfrac1\eta e^{-S/\lambda}p\): el prior reponderado por el coste. El mejor plan es su media.</dd>
+<dt>\(\eta\)</dt><dd data-hojas="18">Constante de normalización de \(q^\star\), \(\eta=\mathbb E_p[e^{-S/\lambda}]\).</dd>
+<dt>\(q_U\)</dt><dd data-hojas="18">Gaussiana de covarianza \(\Sigma\) alrededor del plan \(U\): lo que el dron puede ejecutar.</dd>
+<dt>\(q_{\hat U}\)</dt><dd data-hojas="19">La misma gaussiana alrededor del plan actual \(\hat U\): de ella se muestrea.</dd>
+<dt>\(\tilde U\), \(\tilde u_t\)</dt><dd data-hojas="17,19">Nominal del prior \(p\); a menudo cero (no mandar) o \(\alpha\hat U\).</dd>
+<dt>\(\hat U\), \(\hat u_t\)</dt><dd data-hojas="19">Plan actual, alrededor del cual se muestrea: \(v_t=\hat u_t+\varepsilon_t\).</dd>
+<dt>\(w(V)\)</dt><dd data-hojas="19">Peso de importancia de una secuencia, \(q^\star(V)/q_{\hat U}(V)\); normalizado sobre las muestras da \(w_k\).</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="19">En Williams et al., mezcla del prior: \(\tilde U=\alpha\hat U\), entre 0 (prior de no mandar) y 1 (prior igual al plan).</dd>
+<dt>\(\gamma\,u^\top\Sigma^{-1}v\)</dt><dd data-hojas="19,28">Término de mando que se suma al coste de cada muestra; sale del cociente \(p/q_{\hat U}\), con \(\gamma=\lambda(1-\alpha)\). El script usa \(\gamma = 0\).</dd>
+<dt>\(\text{SGF}\)</dt><dd data-hojas="21">Filtro de Savitzky-Golay que suaviza la actualización de MPPI.</dd>
+<dt>\(n_{\text{ef}}\)</dt><dd data-hojas="23">Tamaño efectivo de muestra, \(1/\sum_kw_k^2\): 1 si todo el peso cae en una muestra, \(K\) si todas pesan igual.</dd>
+<dt>\(1/\sum_kw_k^2\)</dt><dd data-hojas="24">Tamaño efectivo de muestra (ver \(n_{\text{ef}}\)).</dd>
+<dt>\(z_k\), \(s^2\)</dt><dd data-hojas="23">Variables independientes de varianza \(s^2\) con las que se deriva el tamaño efectivo de muestra.</dd>
+<dt>\(\beta\)</dt><dd data-hojas="25,28">Exponente del espectro \(1/f^\beta\) del ruido: 0 es blanco; con 2, pasos seguidos correlados al 0,88.</dd>
+<dt>\(H\times m\)</dt><dd data-hojas="27">Dimensión del espacio de búsqueda del muestreo (30×2 = 60 en el escenario 2D).</dd>
+<dt>\(\Delta S\)</dt><dd data-hojas="57">Diferencia de coste entre una muestra y la mejor; el peso \(e^{-\Delta S/\lambda}\) es despreciable salvo para la mejor cuando las diferencias son de cientos y \(\lambda=0{,}1\).</dd>
+</dl>
+<h3>Parte 2 · MPC con aprendizaje</h3>
+<dl>
+<dt>\(f_{\text{nom}}(\mathbf x,\mathbf u)\)</dt><dd data-hojas="34">Dinámica nominal de la física (aceleración) en el NMPC con residuo.</dd>
+<dt>\(\mathbf g_\phi(\mathbf x)\)</dt><dd data-hojas="34">Residuo aprendido (proceso gaussiano o red) con pesos \(\phi\), sumado a la aceleración nominal.</dd>
+<dt>\(\dot{\mathbf v}\)</dt><dd data-hojas="34">Derivada temporal de la velocidad: la aceleración del dron.</dd>
+<dt>\(\theta\) (parámetros)</dt><dd data-hojas="31,35">Parámetros del problema de control óptimo (coste y dinámica) que se aprenden en el MPC diferenciable.</dd>
+<dt>\(J\)</dt><dd data-hojas="36">Coste del problema de control parametrizado; en el ejemplo, \(J = x_1^2 + r\,u^2\).</dd>
+<dt>\(u^\star\)</dt><dd data-hojas="36,35">Mando óptimo del problema parametrizado por \(\theta\), \(u^\star(\theta)\); en el ejemplo, \(-x_0/(1+r)\).</dd>
+<dt>\(z^\star\)</dt><dd data-hojas="36">Solución óptima (variables primales y duales) del problema de control. No confundir con el latente \(z\) de TD-MPC2.</dd>
+<dt>\(\mathcal K\)</dt><dd data-hojas="36">Condiciones KKT en el óptimo, \(\mathcal K(z^\star,\theta)=0\): definen \(z^\star\) implícitamente.</dd>
+<dt>\(\dfrac{\partial z^\star}{\partial\theta}\)</dt><dd data-hojas="36">Derivada de la solución respecto a los parámetros, por el teorema de la función implícita.</dd>
+<dt>\(r\)</dt><dd data-hojas="36">Peso del mando en el MPC de un paso del ejemplo; es el parámetro que se aprende.</dd>
+<dt>\(L\)</dt><dd data-hojas="36">Pérdida que se deriva a través del MPC (p. ej., imitar a un experto).</dd>
+<dt>\(N\) (pasos del MPC diferenciable)</dt><dd data-hojas="48,49">En AC-MPC, número de pasos del MPC diferenciable de la cabeza del actor (\(N=2\)).</dd>
+<dt>\(B\), \(b\)</dt><dd data-hojas="38">En PETS, \(B=5\) es el número de redes del conjunto y \(b\) el índice de una red.</dd>
+<dt>\(s\), \(a\)</dt><dd data-hojas="38">Estado y acción con la notación de RL, entradas de \(\mu_b(s,a)\) y \(\Sigma_b(s,a)\).</dd>
+<dt>\(\mu_b\), \(\Sigma_b\)</dt><dd data-hojas="38">Media y covarianza de la salida gaussiana de la red \(b\); \(\Sigma_b\) es la incertidumbre aleatoria.</dd>
+<dt>\(\sigma_b^2\)</dt><dd data-hojas="39">Varianza que predice la red \(b\) para una salida escalar.</dd>
+<dt>\(\bar\mu\)</dt><dd data-hojas="39">Media de las medias de las redes del conjunto; su dispersión es la incertidumbre epistémica.</dd>
+<dt>\(y\)</dt><dd data-hojas="39">Predicción del conjunto como variable aleatoria: elegir una red al azar y muestrear su gaussiana.</dd>
+<dt>\(P\)</dt><dd data-hojas="38">Número de partículas (20) con que PETS evalúa una secuencia candidata.</dd>
+</dl>
+<h3>Parte 2 · TD-MPC2</h3>
+<dl>
+<dt>\(o\)</dt><dd data-hojas="40">Observación que recibe el codificador.</dd>
+<dt>\(h\)</dt><dd data-hojas="40">Codificador \(z=h(o)\); no confundir con la restricción \(h\) de A3a.</dd>
+<dt>\(z\), \(z'\)</dt><dd data-hojas="40">Estado latente y su siguiente: \(z'=d(z,a)\).</dd>
+<dt>\(d(z,a)\)</dt><dd data-hojas="40">Dinámica en el espacio latente.</dd>
+<dt>\(a\)</dt><dd data-hojas="40">Acción en el latente (equivale al mando \(u\)).</dd>
+<dt>\(R(z,a)\)</dt><dd data-hojas="40">Recompensa predicha por el modelo. No es la matriz de pesos \(R\) de A3a.</dd>
+<dt>\(Q\)</dt><dd data-hojas="40">Función de valor aprendida (cinco copias); aporta el valor terminal. No es la matriz de pesos \(Q\) de A3a.</dd>
+<dt>\(\pi\)</dt><dd data-hojas="40">Política previa que propone parte de las muestras (24 de las 512).</dd>
+<dt>\(\gamma\) (descuento)</dt><dd data-hojas="41">Factor de descuento; pesa por \(\gamma^h\) la recompensa del paso \(h\) y por \(\gamma^H\) el valor terminal.</dd>
+<dt>\(z_h\), \(a_h\)</dt><dd data-hojas="41">Latente y acción en el paso \(h\) del horizonte; \(z_H\), \(a_H\) son los del último paso, donde se evalúa \(Q\).</dd>
+<dt>\(H = 3\)</dt><dd data-hojas="41">Horizonte corto de TD-MPC2, en pasos.</dd>
+<dt>\(\max_{\mu,\sigma}\)</dt><dd data-hojas="41">Maximización sobre la media y desviación de la distribución de acciones, hecha con MPPI.</dd>
+<dt>\(G_i\)</dt><dd data-hojas="41">Retorno estimado de la élite \(i\) en TD-MPC (\(\phi_\Gamma\) en el artículo).</dd>
+<dt>\(\Omega_i\), \(\tau\)</dt><dd data-hojas="41">Peso \(e^{\tau G_i}\) de la élite \(i\) en TD-MPC y su temperatura; \(\tau\) hace de \(1/\lambda\).</dd>
 </dl>
 <h3>Siglas</h3>
 <dl>
 <dt>MPC</dt><dd data-hojas="1">Model predictive control: optimizar con un modelo y re-planificar en cada paso.</dd>
-<dt>RTI</dt><dd data-hojas="1">Real-time iteration: una sola iteración de SQP por muestra; el NMPC con residuo aprendido conserva su estructura, restricciones y RTI.</dd>
+<dt>RTI</dt><dd data-hojas="9,34">Real-time iteration: una sola iteración de SQP por muestra, con desplazamiento del plan entre muestras (A3a).</dd>
 <dt>NMPC</dt><dd data-hojas="3">MPC con modelo no lineal (A3a).</dd>
-<dt>MPPI</dt><dd data-hojas="1">Model predictive path integral: control por integrales de camino; promedia las muestras pesadas por la exponencial del coste.</dd>
+<dt>MPPI</dt><dd data-hojas="1,15">Model predictive path integral: promedia las muestras pesadas por la exponencial del coste.</dd>
 <dt>RTK</dt><dd data-hojas="3">Real-time kinematic: posicionamiento por satélite diferencial; con la captura de movimiento y PX4, fuente del estado completo que usan los MPPI de drones revisados.</dd>
-<dt>CEM</dt><dd data-hojas="6">Cross-entropy method: muestrear, quedarse con las élites y reajustar la distribución.</dd>
-<dt>iCEM</dt><dd data-hojas="4">Improved CEM: ruido coloreado, élites guardadas entre pasos y menos muestras para el mismo rendimiento.</dd>
+<dt>CEM</dt><dd data-hojas="12">Cross-entropy method: muestrear, quedarse con las élites y reajustar la distribución.</dd>
+<dt>iCEM</dt><dd data-hojas="4,28">Improved CEM: ruido coloreado, élites guardadas entre pasos y menos muestras para el mismo rendimiento.</dd>
 <dt>DIAL-MPC</dt><dd data-hojas="3">MPC por muestreo con recocido de la varianza al estilo de la difusión.</dd>
-<dt>PETS</dt><dd data-hojas="3">Probabilistic ensembles with trajectory sampling: conjunto de redes probabilísticas y CEM.</dd>
+<dt>PETS</dt><dd data-hojas="3,38">Probabilistic ensembles with trajectory sampling: conjunto de redes probabilísticas y CEM.</dd>
 <dt>PlaNet</dt><dd data-hojas="3">Agente que planifica con CEM en un latente aprendido de píxeles.</dd>
-<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="3">Agentes con MPPI sobre un latente y un valor terminal aprendido.</dd>
-<dt>RSSM</dt><dd data-hojas="17">Recurrent state-space model: modelo latente recurrente de PlaNet y Dreamer, un filtro latente.</dd>
-<dt>DARE</dt><dd data-hojas="19">Discrete algebraic Riccati equation: su solución es el coste terminal \(x^\top Px\); el coste terminal aprendido con horizonte corto juega el mismo papel.</dd>
-<dt>Dreamer, DreamerV3</dt><dd data-hojas="26">Agente que aprende la política dentro de un world model, en imaginación.</dd>
-<dt>AC-MPC</dt><dd data-hojas="24">Actor-critic MPC: MPC diferenciable como cabeza de un actor entrenado con RL.</dd>
-<dt>iLQR</dt><dd data-hojas="24">Iterative LQR, el método de control óptimo con que se construye el MPC diferenciable de AC-MPC.</dd>
-<dt>GP</dt><dd data-hojas="15">Gaussian process: en GP-MPC, el residuo aprendido es un proceso gaussiano.</dd>
-<dt>KKT</dt><dd data-hojas="16">Karush-Kuhn-Tucker: condiciones de optimalidad de un problema con restricciones.</dd>
-<dt>KL</dt><dd data-hojas="6">Kullback-Leibler: divergencia entre distribuciones.</dd>
-<dt>TS1, TS∞</dt><dd data-hojas="18">Variantes de propagación por partículas de PETS: reasignar la red en cada paso o mantenerla durante toda la trayectoria.</dd>
+<dt>TD-MPC, TD-MPC2</dt><dd data-hojas="3,40">Agentes con MPPI sobre un latente y un valor terminal aprendido.</dd>
+<dt>RSSM</dt><dd data-hojas="37">Recurrent state-space model: modelo latente recurrente de PlaNet y Dreamer, un filtro latente.</dd>
+<dt>DARE</dt><dd data-hojas="40">Discrete algebraic Riccati equation: su solución es el coste terminal \(x^\top Px\); el coste terminal aprendido con horizonte corto juega el mismo papel.</dd>
+<dt>Dreamer, DreamerV3</dt><dd data-hojas="51">Agente que aprende la política dentro de un world model, en imaginación.</dd>
+<dt>AC-MPC</dt><dd data-hojas="48">Actor-critic MPC: MPC diferenciable como cabeza de un actor entrenado con RL.</dd>
+<dt>iLQR</dt><dd data-hojas="48">Iterative LQR, el método de control óptimo con que se construye el MPC diferenciable de AC-MPC.</dd>
+<dt>GP</dt><dd data-hojas="34">Gaussian process: en GP-MPC, el residuo aprendido es un proceso gaussiano.</dd>
+<dt>KKT</dt><dd data-hojas="35">Karush-Kuhn-Tucker: condiciones de optimalidad de un problema con restricciones.</dd>
+<dt>KL</dt><dd data-hojas="14">Kullback-Leibler: divergencia entre distribuciones.</dd>
+<dt>TS1, TS∞</dt><dd data-hojas="38">Variantes de propagación por partículas de PETS: reasignar la red en cada paso o mantenerla durante toda la trayectoria.</dd>
 <dt>RL</dt><dd data-hojas="3">Reinforcement learning, aprendizaje por refuerzo.</dd>
-<dt>PPO, SAC</dt><dd data-hojas="18">Algoritmos de RL sin modelo con los que se compara el número de muestras.</dd>
-<dt>CTBR</dt><dd data-hojas="22">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
+<dt>PPO, SAC</dt><dd data-hojas="37,48">Algoritmos de RL sin modelo; PPO entrena también AC-MPC.</dd>
+<dt>CTBR</dt><dd data-hojas="6,46">Collective thrust and body rates: mando de empuje colectivo y velocidades angulares sobre el lazo de rate.</dd>
 <dt>GPU</dt><dd data-hojas="3">Unidad de procesamiento gráfico, donde se paralelizan miles de trayectorias.</dd>
-<dt>CUDA</dt><dd data-hojas="12">Plataforma de cómputo en GPU; MPPI-Generic es una biblioteca CUDA.</dd>
-<dt>MLP</dt><dd data-hojas="24">Multilayer perceptron: la política de red simple con que se compara AC-MPC.</dd>
-<dt>PID</dt><dd data-hojas="28">Proportional-integral-derivative: línea base débil cuando está mal ajustado; la comparación honesta es con un NMPC o un controlador geométrico.</dd>
-<dt>JAX</dt><dd data-hojas="36">Biblioteca con vmap y jit con que se escribe el laboratorio.</dd>
-<dt>PX4</dt><dd data-hojas="12">Piloto automático al que se le manda CTBR.</dd>
+<dt>CUDA</dt><dd data-hojas="29">Plataforma de cómputo en GPU; MPPI-Generic es una biblioteca CUDA.</dd>
+<dt>MLP</dt><dd data-hojas="49">Multilayer perceptron: la política de red simple con que se compara AC-MPC.</dd>
+<dt>MPCC</dt><dd data-hojas="45">Model predictive contouring control: seguir el contorno de la trayectoria (A3a, parte 4).</dd>
+<dt>PID</dt><dd data-hojas="53">Proportional-integral-derivative: línea base débil cuando está mal ajustado; la comparación honesta es con un NMPC o un controlador geométrico.</dd>
+<dt>JAX</dt><dd data-hojas="61">Biblioteca con vmap y jit con que se escribe el laboratorio.</dd>
+<dt>PX4</dt><dd data-hojas="29">Piloto automático al que se le manda CTBR.</dd>
 </dl>
 </aside>
 
