@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A6a · Deep RL para control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A6a" data-deck-title="Deep RL para control · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 17 · Curso de robótica inteligente</p>
+  <h1>Deep RL para control</h1>
+  <p class="subtitle">Gradiente de la política, GAE y PPO desde la derivación; SAC y TD3 fuera de política; lo que de verdad importa al implementarlos; y cómo se diseña la recompensa de un dron. Con un PPO en JAX que aprende a mantener un x500 en el aire en diez segundos de GPU.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> M1, A2, B6</span>
+    <span><b>Prepara</b> A6b, A7b, A8a, A9a, A15a</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A6a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Derivar el gradiente de la política con línea base y la estimación de ventajas GAE, y explicar el papel de \(\gamma\) y \(\lambda\).</li>
+    <li>Escribir PPO completo (recorte, valor, GAE, minilotes) y saber qué decisiones de implementación pesan más que el algoritmo.</li>
+    <li>Explicar SAC y TD3, y cuándo conviene un método fuera de política.</li>
+    <li>Diseñar la recompensa de un dron sin caer en «aprender a estrellarse» ni en premios que se pueden explotar.</li>
+    <li>Entrenar y evaluar con varias semillas, y leer con criterio las cifras de los artículos.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>De diez minutos en 2017 a diez segundos en 2026</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>2017:</strong> una red de dos capas de 64 neuronas pasa del estado a los empujes de los rotores; vuela un Hummingbird real y se recupera de lanzamientos boca abajo a 5 m/s. Diez minutos de entrenamiento para una política «visualmente buena», 7 µs por paso de inferencia <a class="cite" data-ref="hwangbo2017"></a>.</li>
+        <li><strong>2023:</strong> Swift gana a campeones de carreras con PPO: \(10^8\) interacciones en 50 min en una estación con una RTX 3090 <a class="cite" data-ref="kaufmann2023"></a>.</li>
+        <li><strong>2024:</strong> con TD3 y un simulador muy rápido, una política que manda RPM vuela un Crazyflie tras 18 s de entrenamiento en un portátil <a class="cite" data-ref="eschmann2024"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>El PPO en JAX de <code>figuras_a6a.py</code> entrena 78,6 millones de pasos del x500 en 10,2 s en una RTX 4060 Ti y lo mantiene en el aire desde arranques aleatorios con 2–5 cm de error según la semilla (parte 5).</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>La política con belief de tu tesis se entrenará con estas herramientas. Antes de añadir memoria (A7b) o un world model (A8a), conviene dominar el caso con estado completo: si aquí no funciona, allí tampoco.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>Regiones de confianza, ventajas y miles de entornos</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2015–2017</span>TRPO: mejorar la política sin alejarse más de una divergencia KL <a class="cite" data-ref="schulman2015"></a>. GAE: ventajas con un compromiso sesgo-varianza ajustable <a class="cite" data-ref="schulman2016"></a>. PPO: la región de confianza con un recorte <a class="cite" data-ref="schulman2017"></a>. Primer cuadricóptero controlado por una red entrenada con RL <a class="cite" data-ref="hwangbo2017"></a>.</div>
+    <div class="ev"><span class="yr">2018–2019</span>Fuera de política: SAC, con máxima entropía <a class="cite" data-ref="haarnoja2018"></a>, y TD3 <a class="cite" data-ref="fujimoto2018"></a>. Una política transferida a varios cuadricópteros distintos <a class="cite" data-ref="molchanov2019"></a>.</div>
+    <div class="ev"><span class="yr">2020–2021</span>Los detalles de implementación explican la mayor parte de la ventaja de PPO <a class="cite" data-ref="engstrom2020"></a>; un estudio con más de 250 000 agentes <a class="cite" data-ref="andrychowicz2020"></a>. Carreras con recompensa de progreso <a class="cite" data-ref="song2021"></a>.</div>
+    <div class="ev"><span class="yr">2023–2024</span>Swift <a class="cite" data-ref="kaufmann2023"></a>; volar en segundos con TD3 <a class="cite" data-ref="eschmann2024"></a>; PPO deja de aprovechar más entornos a partir de cierto número <a class="cite" data-ref="singla2024"></a>.</div>
+    <div class="ev"><span class="yr">2025–2026</span>Fuera de política con entornos masivos: PQN <a class="cite" data-ref="gallici2025"></a> y FastTD3 (preprint) <a class="cite" data-ref="seo2025"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Gradiente de la política">
+  <p class="num">Parte 1</p>
+  <h2>El gradiente de la política, de la derivación a PPO</h2>
+  <p>Cómo se estima el gradiente del retorno con muestras, por qué hace falta una línea base, qué hace GAE y por qué PPO recorta.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · teorema</p>
+  <h2>Subir la probabilidad de lo que salió mejor de lo esperado</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con una política estocástica \(\pi_\theta(a\mid s)\) y el retorno descontado \(J(\theta) = \mathbb E_{\tau\sim\pi_\theta}\big[\sum_t \gamma^t r_t\big]\),</p>
+      \[ \nabla_\theta J = \mathbb E_{\tau}\Big[\sum_t \gamma^t\,\nabla_\theta\log\pi_\theta(a_t\mid s_t)\,A^\pi(s_t,a_t)\Big], \]
+      <p class="small">con la ventaja \(A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s)\): cuánto mejor fue esa acción que la media de la política en ese estado. Es el estimador de orden cero de B6 aplicado a la política, que no necesita derivar la dinámica.</p>
+      <div class="callout clave"><span class="tag">Por qué una línea base</span>Restar \(V(s_t)\) no cambia la esperanza (no depende de la acción) y reduce mucho la varianza. Un error en \(V\) usado solo como línea base no sesga el gradiente; usado para predecir el futuro, sí (siguiente hoja).</div>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: el truco del logaritmo y la línea base</summary>
+        <p class="small">\(J = \int p_\theta(\tau)R(\tau)\,d\tau\) y \(\nabla_\theta p_\theta = p_\theta\nabla_\theta\log p_\theta\). En \(\log p_\theta(\tau) = \log p(s_0) + \sum_t[\log\pi_\theta(a_t\mid s_t) + \log p(s_{t+1}\mid s_t,a_t)]\), la dinámica no depende de \(\theta\): solo queda \(\sum_t\nabla\log\pi_\theta\). La causalidad permite sustituir \(R\) por el retorno desde \(t\), y su esperanza condicionada por \(Q^\pi\).</p>
+        <p class="small">Línea base: \(\mathbb E_{a\sim\pi}[\nabla_\theta\log\pi_\theta(a\mid s)\,b(s)] = b(s)\nabla_\theta\int\pi_\theta(a\mid s)\,da = b(s)\nabla_\theta 1 = 0\).</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente</span>Las implementaciones habituales omiten el factor \(\gamma^t\) delante de cada término. Es una aproximación con sesgo, aceptada en la práctica; conviene saber que existe cuando se compara con la teoría.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · GAE</p>
+  <h2>GAE: una media exponencial de ventajas a varios pasos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con el error de diferencia temporal \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\) <a class="cite" data-ref="schulman2016"></a>:</p>
+      \[ \hat A_t^{\mathrm{GAE}(\gamma,\lambda)} = \sum_{l=0}^{\infty}(\gamma\lambda)^l\,\delta_{t+l}. \]
+      <ul class="small">
+        <li>\(\lambda = 0\): \(\hat A_t = \delta_t\), poca varianza, sesgada si \(V\) es inexacta.</li>
+        <li>\(\lambda = 1\): \(\hat A_t = \sum_l\gamma^l r_{t+l} - V(s_t)\), sin sesgo sea cual sea \(V\), con mucha varianza.</li>
+        <li>«\(\lambda&lt;1\) introduce sesgo solo cuando la función de valor es inexacta»; \(\gamma&lt;1\), siempre. Mejor \(\lambda\) en sus tareas: entre 0,92 y 0,99 <a class="cite" data-ref="schulman2016"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\lambda\)</th><th>Sesgo del gradiente</th><th>Desviación por episodio</th><th>Error con 64 episodios</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td class="n">−17 %</td><td class="n">0,17</td><td class="n">0,025</td></tr>
+            <tr><td>0,5</td><td class="n">−17 %</td><td class="n">0,16</td><td class="n">0,024</td></tr>
+            <tr><td>0,8</td><td class="n">−13 %</td><td class="n">0,19</td><td class="n">0,026</td></tr>
+            <tr><td>0,9</td><td class="n">−8 %</td><td class="n">0,24</td><td class="n">0,031</td></tr>
+            <tr><td>0,95</td><td class="n">−3 % (± 5 %)</td><td class="n">0,31</td><td class="n">0,038</td></tr>
+            <tr><td>1</td><td class="n">+5 % (± 8 %)</td><td class="n">0,50</td><td class="n">0,062</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Gradiente de la política estimado con un crítico imperfecto en una cadena de 19 estados (la acción cambia la probabilidad de avanzar), frente al exacto (0,083). 20 000 episodios; entre paréntesis, dos errores típicos. <code>figuras_a6a.py</code>, sección 2.</p>
+      <div class="callout clave"><span class="tag">Lectura</span>El sesgo cae al subir \(\lambda\) y la varianza sube. Con pocos episodios gana un \(\lambda\) intermedio; con muchos entornos en paralelo (B6), el óptimo se desplaza hacia \(\lambda\) alto.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · PPO</p>
+  <h2>PPO: no te alejes demasiado de la política que recogió los datos</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Objetivo recortado de PPO frente al cociente de probabilidades">
+        <line x1="60" y1="140" x2="520" y2="140" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <line x1="244" y1="30" x2="244" y2="250" class="ln-dash"/>
+        <line x1="336" y1="30" x2="336" y2="250" class="ln-dash"/>
+        <text x="244" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1−ε</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="336" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1+ε</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">2</text>
+        <path d="M60.0,140.0 L62.3,139.5 L64.6,138.9 L66.9,138.4 L69.2,137.8 L71.5,137.2 L73.8,136.7 L76.1,136.2 L78.4,135.6 L80.7,135.1 L83.0,134.5 L85.3,133.9 L87.6,133.4 L89.9,132.9 L92.2,132.3 L94.5,131.8 L96.8,131.2 L99.1,130.7 L101.4,130.1 L103.7,129.6 L106.0,129.0 L108.3,128.4 L110.6,127.9 L112.9,127.3 L115.2,126.8 L117.5,126.2 L119.8,125.7 L122.1,125.2 L124.4,124.6 L126.7,124.0 L129.0,123.5 L131.3,123.0 L133.6,122.4 L135.9,121.8 L138.2,121.3 L140.5,120.8 L142.8,120.2 L145.1,119.7 L147.4,119.1 L149.7,118.5 L152.0,118.0 L154.3,117.4 L156.6,116.9 L158.9,116.3 L161.2,115.8 L163.5,115.2 L165.8,114.7 L168.1,114.1 L170.4,113.6 L172.7,113.0 L175.0,112.5 L177.3,112.0 L179.6,111.4 L181.9,110.8 L184.2,110.3 L186.5,109.8 L188.8,109.2 L191.1,108.6 L193.4,108.1 L195.7,107.6 L198.0,107.0 L200.3,106.5 L202.6,105.9 L204.9,105.3 L207.2,104.8 L209.5,104.2 L211.8,103.7 L214.1,103.2 L216.4,102.6 L218.7,102.1 L221.0,101.5 L223.3,100.9 L225.6,100.4 L227.9,99.8 L230.2,99.3 L232.5,98.8 L234.8,98.2 L237.1,97.7 L239.4,97.1 L241.7,96.6 L244.0,96.0 L246.3,95.4 L248.6,94.9 L250.9,94.3 L253.2,93.8 L255.5,93.2 L257.8,92.7 L260.1,92.2 L262.4,91.6 L264.7,91.0 L267.0,90.5 L269.3,89.9 L271.6,89.4 L273.9,88.8 L276.2,88.3 L278.5,87.8 L280.8,87.2 L283.1,86.7 L285.4,86.1 L287.7,85.5 L290.0,85.0 L292.3,84.5 L294.6,83.9 L296.9,83.3 L299.2,82.8 L301.5,82.2 L303.8,81.7 L306.1,81.1 L308.4,80.6 L310.7,80.1 L313.0,79.5 L315.3,78.9 L317.6,78.4 L319.9,77.8 L322.2,77.3 L324.5,76.7 L326.8,76.2 L329.1,75.7 L331.4,75.1 L333.7,74.6 L336.0,74.0 L338.3,73.4 L340.6,72.9 L342.9,72.3 L345.2,71.8 L347.5,71.2 L349.8,70.7 L352.1,70.2 L354.4,69.6 L356.7,69.1 L359.0,68.5 L361.3,67.9 L363.6,67.4 L365.9,66.8 L368.2,66.3 L370.5,65.8 L372.8,65.2 L375.1,64.7 L377.4,64.1 L379.7,63.5 L382.0,63.0 L384.3,62.4 L386.6,61.9 L388.9,61.4 L391.2,60.8 L393.5,60.2 L395.8,59.7 L398.1,59.2 L400.4,58.6 L402.7,58.0 L405.0,57.5 L407.3,57.0 L409.6,56.4 L411.9,55.8 L414.2,55.3 L416.5,54.8 L418.8,54.2 L421.1,53.6 L423.4,53.1 L425.7,52.6 L428.0,52.0 L430.3,51.4 L432.6,50.9 L434.9,50.3 L437.2,49.8 L439.5,49.2 L441.8,48.7 L444.1,48.2 L446.4,47.6 L448.7,47.1 L451.0,46.5 L453.3,45.9 L455.6,45.4 L457.9,44.8 L460.2,44.3 L462.5,43.8 L464.8,43.2 L467.1,42.7 L469.4,42.1 L471.7,41.6 L474.0,41.0 L476.3,40.4 L478.6,39.9 L480.9,39.3 L483.2,38.8 L485.5,38.2 L487.8,37.7 L490.1,37.2 L492.4,36.6 L494.7,36.0 L497.0,35.5 L499.3,34.9 L501.6,34.4 L503.9,33.9 L506.2,33.3 L508.5,32.8 L510.8,32.2 L513.1,31.7 L515.4,31.1 L517.7,30.5 L520.0,30.0" fill="none" class="ln ln-dash"/>
+        <path d="M60.0,140.0 L62.3,140.6 L64.6,141.1 L66.9,141.7 L69.2,142.2 L71.5,142.8 L73.8,143.3 L76.1,143.9 L78.4,144.4 L80.7,144.9 L83.0,145.5 L85.3,146.1 L87.6,146.6 L89.9,147.1 L92.2,147.7 L94.5,148.2 L96.8,148.8 L99.1,149.3 L101.4,149.9 L103.7,150.4 L106.0,151.0 L108.3,151.6 L110.6,152.1 L112.9,152.7 L115.2,153.2 L117.5,153.8 L119.8,154.3 L122.1,154.8 L124.4,155.4 L126.7,155.9 L129.0,156.5 L131.3,157.1 L133.6,157.6 L135.9,158.2 L138.2,158.7 L140.5,159.2 L142.8,159.8 L145.1,160.4 L147.4,160.9 L149.7,161.4 L152.0,162.0 L154.3,162.6 L156.6,163.1 L158.9,163.6 L161.2,164.2 L163.5,164.8 L165.8,165.3 L168.1,165.8 L170.4,166.4 L172.7,166.9 L175.0,167.5 L177.3,168.1 L179.6,168.6 L181.9,169.2 L184.2,169.7 L186.5,170.2 L188.8,170.8 L191.1,171.4 L193.4,171.9 L195.7,172.4 L198.0,173.0 L200.3,173.6 L202.6,174.1 L204.9,174.6 L207.2,175.2 L209.5,175.8 L211.8,176.3 L214.1,176.8 L216.4,177.4 L218.7,177.9 L221.0,178.5 L223.3,179.1 L225.6,179.6 L227.9,180.2 L230.2,180.7 L232.5,181.2 L234.8,181.8 L237.1,182.3 L239.4,182.9 L241.7,183.4 L244.0,184.0 L246.3,184.6 L248.6,185.1 L250.9,185.7 L253.2,186.2 L255.5,186.8 L257.8,187.3 L260.1,187.9 L262.4,188.4 L264.7,189.0 L267.0,189.5 L269.3,190.1 L271.6,190.6 L273.9,191.2 L276.2,191.7 L278.5,192.2 L280.8,192.8 L283.1,193.3 L285.4,193.9 L287.7,194.4 L290.0,195.0 L292.3,195.6 L294.6,196.1 L296.9,196.7 L299.2,197.2 L301.5,197.8 L303.8,198.3 L306.1,198.8 L308.4,199.4 L310.7,199.9 L313.0,200.5 L315.3,201.1 L317.6,201.6 L319.9,202.2 L322.2,202.7 L324.5,203.2 L326.8,203.8 L329.1,204.3 L331.4,204.9 L333.7,205.4 L336.0,206.0 L338.3,206.6 L340.6,207.1 L342.9,207.7 L345.2,208.2 L347.5,208.8 L349.8,209.3 L352.1,209.8 L354.4,210.4 L356.7,210.9 L359.0,211.5 L361.3,212.1 L363.6,212.6 L365.9,213.2 L368.2,213.7 L370.5,214.2 L372.8,214.8 L375.1,215.4 L377.4,215.9 L379.7,216.5 L382.0,217.0 L384.3,217.6 L386.6,218.1 L388.9,218.7 L391.2,219.2 L393.5,219.8 L395.8,220.3 L398.1,220.8 L400.4,221.4 L402.7,221.9 L405.0,222.5 L407.3,223.1 L409.6,223.6 L411.9,224.2 L414.2,224.7 L416.5,225.2 L418.8,225.8 L421.1,226.3 L423.4,226.9 L425.7,227.4 L428.0,228.0 L430.3,228.6 L432.6,229.1 L434.9,229.7 L437.2,230.2 L439.5,230.8 L441.8,231.3 L444.1,231.8 L446.4,232.4 L448.7,232.9 L451.0,233.5 L453.3,234.1 L455.6,234.6 L457.9,235.2 L460.2,235.7 L462.5,236.2 L464.8,236.8 L467.1,237.3 L469.4,237.9 L471.7,238.4 L474.0,239.0 L476.3,239.6 L478.6,240.1 L480.9,240.7 L483.2,241.2 L485.5,241.8 L487.8,242.3 L490.1,242.8 L492.4,243.4 L494.7,244.0 L497.0,244.5 L499.3,245.1 L501.6,245.6 L503.9,246.2 L506.2,246.7 L508.5,247.2 L510.8,247.8 L513.1,248.3 L515.4,248.9 L517.7,249.4 L520.0,250.0" fill="none" class="ln ln-dash"/>
+        <path d="M60.0,140.0 L62.3,139.5 L64.6,138.9 L66.9,138.4 L69.2,137.8 L71.5,137.2 L73.8,136.7 L76.1,136.2 L78.4,135.6 L80.7,135.1 L83.0,134.5 L85.3,133.9 L87.6,133.4 L89.9,132.9 L92.2,132.3 L94.5,131.8 L96.8,131.2 L99.1,130.7 L101.4,130.1 L103.7,129.6 L106.0,129.0 L108.3,128.4 L110.6,127.9 L112.9,127.3 L115.2,126.8 L117.5,126.2 L119.8,125.7 L122.1,125.2 L124.4,124.6 L126.7,124.0 L129.0,123.5 L131.3,123.0 L133.6,122.4 L135.9,121.8 L138.2,121.3 L140.5,120.8 L142.8,120.2 L145.1,119.7 L147.4,119.1 L149.7,118.5 L152.0,118.0 L154.3,117.4 L156.6,116.9 L158.9,116.3 L161.2,115.8 L163.5,115.2 L165.8,114.7 L168.1,114.1 L170.4,113.6 L172.7,113.0 L175.0,112.5 L177.3,112.0 L179.6,111.4 L181.9,110.8 L184.2,110.3 L186.5,109.8 L188.8,109.2 L191.1,108.6 L193.4,108.1 L195.7,107.6 L198.0,107.0 L200.3,106.5 L202.6,105.9 L204.9,105.3 L207.2,104.8 L209.5,104.2 L211.8,103.7 L214.1,103.2 L216.4,102.6 L218.7,102.1 L221.0,101.5 L223.3,100.9 L225.6,100.4 L227.9,99.8 L230.2,99.3 L232.5,98.8 L234.8,98.2 L237.1,97.7 L239.4,97.1 L241.7,96.6 L244.0,96.0 L246.3,95.4 L248.6,94.9 L250.9,94.3 L253.2,93.8 L255.5,93.2 L257.8,92.7 L260.1,92.2 L262.4,91.6 L264.7,91.0 L267.0,90.5 L269.3,89.9 L271.6,89.4 L273.9,88.8 L276.2,88.3 L278.5,87.8 L280.8,87.2 L283.1,86.7 L285.4,86.1 L287.7,85.5 L290.0,85.0 L292.3,84.5 L294.6,83.9 L296.9,83.3 L299.2,82.8 L301.5,82.2 L303.8,81.7 L306.1,81.1 L308.4,80.6 L310.7,80.1 L313.0,79.5 L315.3,78.9 L317.6,78.4 L319.9,77.8 L322.2,77.3 L324.5,76.7 L326.8,76.2 L329.1,75.7 L331.4,75.1 L333.7,74.6 L336.0,74.0 L338.3,74.0 L340.6,74.0 L342.9,74.0 L345.2,74.0 L347.5,74.0 L349.8,74.0 L352.1,74.0 L354.4,74.0 L356.7,74.0 L359.0,74.0 L361.3,74.0 L363.6,74.0 L365.9,74.0 L368.2,74.0 L370.5,74.0 L372.8,74.0 L375.1,74.0 L377.4,74.0 L379.7,74.0 L382.0,74.0 L384.3,74.0 L386.6,74.0 L388.9,74.0 L391.2,74.0 L393.5,74.0 L395.8,74.0 L398.1,74.0 L400.4,74.0 L402.7,74.0 L405.0,74.0 L407.3,74.0 L409.6,74.0 L411.9,74.0 L414.2,74.0 L416.5,74.0 L418.8,74.0 L421.1,74.0 L423.4,74.0 L425.7,74.0 L428.0,74.0 L430.3,74.0 L432.6,74.0 L434.9,74.0 L437.2,74.0 L439.5,74.0 L441.8,74.0 L444.1,74.0 L446.4,74.0 L448.7,74.0 L451.0,74.0 L453.3,74.0 L455.6,74.0 L457.9,74.0 L460.2,74.0 L462.5,74.0 L464.8,74.0 L467.1,74.0 L469.4,74.0 L471.7,74.0 L474.0,74.0 L476.3,74.0 L478.6,74.0 L480.9,74.0 L483.2,74.0 L485.5,74.0 L487.8,74.0 L490.1,74.0 L492.4,74.0 L494.7,74.0 L497.0,74.0 L499.3,74.0 L501.6,74.0 L503.9,74.0 L506.2,74.0 L508.5,74.0 L510.8,74.0 L513.1,74.0 L515.4,74.0 L517.7,74.0 L520.0,74.0" fill="none" class="ln-accent" stroke-width="3"/>
+        <path d="M60.0,184.0 L62.3,184.0 L64.6,184.0 L66.9,184.0 L69.2,184.0 L71.5,184.0 L73.8,184.0 L76.1,184.0 L78.4,184.0 L80.7,184.0 L83.0,184.0 L85.3,184.0 L87.6,184.0 L89.9,184.0 L92.2,184.0 L94.5,184.0 L96.8,184.0 L99.1,184.0 L101.4,184.0 L103.7,184.0 L106.0,184.0 L108.3,184.0 L110.6,184.0 L112.9,184.0 L115.2,184.0 L117.5,184.0 L119.8,184.0 L122.1,184.0 L124.4,184.0 L126.7,184.0 L129.0,184.0 L131.3,184.0 L133.6,184.0 L135.9,184.0 L138.2,184.0 L140.5,184.0 L142.8,184.0 L145.1,184.0 L147.4,184.0 L149.7,184.0 L152.0,184.0 L154.3,184.0 L156.6,184.0 L158.9,184.0 L161.2,184.0 L163.5,184.0 L165.8,184.0 L168.1,184.0 L170.4,184.0 L172.7,184.0 L175.0,184.0 L177.3,184.0 L179.6,184.0 L181.9,184.0 L184.2,184.0 L186.5,184.0 L188.8,184.0 L191.1,184.0 L193.4,184.0 L195.7,184.0 L198.0,184.0 L200.3,184.0 L202.6,184.0 L204.9,184.0 L207.2,184.0 L209.5,184.0 L211.8,184.0 L214.1,184.0 L216.4,184.0 L218.7,184.0 L221.0,184.0 L223.3,184.0 L225.6,184.0 L227.9,184.0 L230.2,184.0 L232.5,184.0 L234.8,184.0 L237.1,184.0 L239.4,184.0 L241.7,184.0 L244.0,184.0 L246.3,184.6 L248.6,185.1 L250.9,185.7 L253.2,186.2 L255.5,186.8 L257.8,187.3 L260.1,187.9 L262.4,188.4 L264.7,189.0 L267.0,189.5 L269.3,190.1 L271.6,190.6 L273.9,191.2 L276.2,191.7 L278.5,192.2 L280.8,192.8 L283.1,193.3 L285.4,193.9 L287.7,194.4 L290.0,195.0 L292.3,195.6 L294.6,196.1 L296.9,196.7 L299.2,197.2 L301.5,197.8 L303.8,198.3 L306.1,198.8 L308.4,199.4 L310.7,199.9 L313.0,200.5 L315.3,201.1 L317.6,201.6 L319.9,202.2 L322.2,202.7 L324.5,203.2 L326.8,203.8 L329.1,204.3 L331.4,204.9 L333.7,205.4 L336.0,206.0 L338.3,206.6 L340.6,207.1 L342.9,207.7 L345.2,208.2 L347.5,208.8 L349.8,209.3 L352.1,209.8 L354.4,210.4 L356.7,210.9 L359.0,211.5 L361.3,212.1 L363.6,212.6 L365.9,213.2 L368.2,213.7 L370.5,214.2 L372.8,214.8 L375.1,215.4 L377.4,215.9 L379.7,216.5 L382.0,217.0 L384.3,217.6 L386.6,218.1 L388.9,218.7 L391.2,219.2 L393.5,219.8 L395.8,220.3 L398.1,220.8 L400.4,221.4 L402.7,221.9 L405.0,222.5 L407.3,223.1 L409.6,223.6 L411.9,224.2 L414.2,224.7 L416.5,225.2 L418.8,225.8 L421.1,226.3 L423.4,226.9 L425.7,227.4 L428.0,228.0 L430.3,228.6 L432.6,229.1 L434.9,229.7 L437.2,230.2 L439.5,230.8 L441.8,231.3 L444.1,231.8 L446.4,232.4 L448.7,232.9 L451.0,233.5 L453.3,234.1 L455.6,234.6 L457.9,235.2 L460.2,235.7 L462.5,236.2 L464.8,236.8 L467.1,237.3 L469.4,237.9 L471.7,238.4 L474.0,239.0 L476.3,239.6 L478.6,240.1 L480.9,240.7 L483.2,241.2 L485.5,241.8 L487.8,242.3 L490.1,242.8 L492.4,243.4 L494.7,244.0 L497.0,244.5 L499.3,245.1 L501.6,245.6 L503.9,246.2 L506.2,246.7 L508.5,247.2 L510.8,247.8 L513.1,248.3 L515.4,248.9 L517.7,249.4 L520.0,250.0" fill="none" class="ln-time" stroke-width="3"/>
+        <text x="440" y="60" class="t-muted" font-size="12">r·A sin recortar</text>
+        <text x="350" y="96" class="t-accent" font-size="13">A &gt; 0: plano desde 1+ε</text>
+        <text x="380" y="216" class="t-time" font-size="13">A &lt; 0: plano hasta 1−ε</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">cociente r = π_θ / π_viejo</text>
+      </svg>
+      <figcaption>\(L^{\text{CLIP}}\) para una muestra con ventaja positiva y negativa, \(\varepsilon = 0{,}2\). <code>figuras_a6a.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <p class="small">TRPO maximiza el objetivo sustituto con la divergencia KL media acotada por \(\delta = 0{,}01\) <a class="cite" data-ref="schulman2015"></a>. PPO cambia la restricción por un recorte <a class="cite" data-ref="schulman2017"></a>:</p>
+      \[ L^{\text{CLIP}} = \hat{\mathbb E}_t\big[\min\big(r_t\hat A_t,\ \bar r_t\hat A_t\big)\big], \]
+      \[ \bar r_t = \mathrm{clip}(r_t,\ 1-\varepsilon,\ 1+\varepsilon). \]
+      <ul class="small">
+        <li>El mínimo hace que el objetivo sea una cota pesimista: no premia alejarse más allá de \(1\pm\varepsilon\), pero sí castiga empeorar.</li>
+        <li>En su comparación, sin recorte ni penalización la puntuación media fue −0,39; con \(\varepsilon = 0{,}2\), 0,82, la mejor <a class="cite" data-ref="schulman2017"></a>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradiente · algoritmo</p>
+  <h2>PPO completo, en cinco líneas y tres tablas de hiperparámetros</h2>
+  <div class="cols">
+    <div class="stack">
+      <ol class="small">
+        <li>Desplegar \(N\) entornos durante \(T\) pasos con \(\pi_{\theta_\text{viejo}}\); guardar \(\log\pi\), \(V\), \(r\) y finales.</li>
+        <li>Calcular \(\hat A_t\) con GAE y los objetivos del valor \(\hat A_t + V(s_t)\); arrancar el valor en los cortes por tiempo (B6).</li>
+        <li>Durante \(K\) épocas, en minilotes: maximizar \(L^{\text{CLIP}} - c_1 L^{\text{VF}} + c_2 S[\pi_\theta]\) <a class="cite" data-ref="schulman2017"></a>.</li>
+        <li>Normalizar las ventajas en cada minilote; recortar la norma del gradiente.</li>
+        <li>Repetir. Vigilar la KL entre política nueva y vieja, la fracción de muestras recortadas y la desviación de la acción.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>PPO, MuJoCo</th><th>Rudin et al.</th><th>Este tema</th></tr></thead>
+          <tbody>
+            <tr><td>Entornos × pasos</td><td class="n">1 × 2048</td><td class="n">4096 × 24</td><td class="n">4096 × 32</td></tr>
+            <tr><td>Épocas / minilote</td><td class="n">10 / 64</td><td class="n">5 / 24 576</td><td class="n">5 / 32 768</td></tr>
+            <tr><td>\(\gamma\) / \(\lambda\)</td><td class="n">0,99 / 0,95</td><td class="n">0,99 / 0,95</td><td class="n">0,99 / 0,95</td></tr>
+            <tr><td>Tasa de Adam</td><td class="n">3·10⁻⁴</td><td class="n">adaptativa (KL)</td><td class="n">3·10⁻⁴</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Tabla 3 de PPO <a class="cite" data-ref="schulman2017"></a>; apéndice de Rudin et al. <a class="cite" data-ref="rudin2022"></a>; <code>figuras_a6a.py</code>.</p>
+      <div class="callout clave"><span class="tag">Qué vigilar</span>En el entrenamiento del x500, la KL media por actualización se mantiene entre 0,002 y 0,005 y la fracción recortada por debajo del 6 %: si la KL se dispara o la fracción pasa del 20–30 %, la tasa de aprendizaje es demasiado alta.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Lo que importa">
+  <p class="num">Parte 2</p>
+  <h2>Lo que de verdad importa al implementarlo</h2>
+  <p>El algoritmo del artículo es la mitad. La otra mitad son decisiones que no aparecen en sus ecuaciones.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Implementación · detalles</p>
+  <h2>Las optimizaciones de código explican la mayor parte de la ventaja de PPO</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Engstrom et al. aíslan las optimizaciones «de nivel de código» de las implementaciones de PPO: son responsables de la mayor parte de su ventaja sobre TRPO y «cambian fundamentalmente cómo funcionan» los métodos <a class="cite" data-ref="engstrom2020"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Detalle</th><th>Valor típico</th></tr></thead>
+          <tbody>
+            <tr><td>Recorte de la función de valor</td><td>como el de la política</td></tr>
+            <tr><td>Escalado de la recompensa</td><td>dividir por la desviación de un retorno descontado móvil</td></tr>
+            <tr><td>Inicialización ortogonal y escalado de capas</td><td>—</td></tr>
+            <tr><td>Normalizar y recortar observaciones</td><td>media 0, varianza 1; [−10, 10]</td></tr>
+            <tr><td>Recorte de la norma global del gradiente</td><td>0,5</td></tr>
+            <tr><td>Desviación de la acción</td><td>log σ independiente del estado</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Engstrom et al., §3 <a class="cite" data-ref="engstrom2020"></a>; Huang et al., los 37 detalles de PPO <a class="cite" data-ref="huang2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Error frecuente</span>Comparar «tu PPO» con el de un artículo sin los mismos detalles. Dos implementaciones con el mismo nombre pueden ser algoritmos distintos a efectos prácticos.</div>
+      <div class="callout clave"><span class="tag">Recomendación</span>Parte de una implementación de referencia legible (los 37 detalles documentan la de OpenAI Baselines) y cambia una cosa cada vez, con varias semillas.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Implementación · estudio a escala</p>
+  <h2>250 000 agentes después: lo que recomiendan</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Andrychowicz et al. implementan más de 50 «elecciones» en un mismo marco y entrenan más de 250 000 agentes en cinco entornos de MuJoCo <a class="cite" data-ref="andrychowicz2020"></a>. Sus recomendaciones, resumidas:</p>
+      <ul class="small">
+        <li><strong>Pérdida:</strong> la de PPO, con recorte de 0,25 para empezar.</li>
+        <li><strong>Red:</strong> última capa de la política con pesos 100 veces más pequeños; valor y política separados.</li>
+        <li><strong>Normalización:</strong> siempre las observaciones; el recorte del gradiente, secundario.</li>
+        <li><strong>Ventajas:</strong> GAE con \(\lambda = 0{,}9\), sin pérdida de Huber ni recorte del valor.</li>
+        <li><strong>Entrenamiento:</strong> varias pasadas por los datos; muchos entornos y lotes grandes para el tiempo de reloj, aunque pueden empeorar la eficiencia en muestras.</li>
+        <li><strong>\(\gamma\):</strong> de los hiperparámetros más importantes, a ajustar por entorno (empezar con 0,99). Adam con 3·10⁻⁴.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Una sorpresa</span>«La distribución inicial de las acciones tiene un papel importante» en el rendimiento <a class="cite" data-ref="andrychowicz2020"></a>. En el x500: ganancia de 0,01 en la última capa de la política y σ inicial de 0,6, para empezar cerca del empuje de estacionario con exploración moderada.</div>
+      <div class="callout error"><span class="tag">Matiz</span>Las cifras son de cinco entornos de locomoción. Un dron con dinámica rápida e inestable puede pedir otros valores: úsalas como punto de partida, no como verdad.</div>
+      <p class="xsmall muted">Citas de la versión de arXiv (v1).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Implementación · semillas</p>
+  <h2>Una semilla no es un resultado</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>x500, recompensa acotada</th><th>Choques</th><th>Error (últimos 5 s)</th></tr></thead>
+          <tbody>
+            <tr><td>Semilla 0</td><td class="n">0 %</td><td class="n">5,0 cm</td></tr>
+            <tr><td>Semilla 1</td><td class="n">0 %</td><td class="n">4,2 cm</td></tr>
+            <tr><td>Semilla 2</td><td class="n">0 %</td><td class="n">3,1 cm</td></tr>
+            <tr><td>Semilla 3</td><td class="n">0 %</td><td class="n">3,7 cm</td></tr>
+            <tr><td>Semilla 4</td><td class="n">0 %</td><td class="n">2,3 cm</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">PPO con 78,6 M pasos por semilla; evaluación desde 200 arranques aleatorios durante 10 s. <code>figuras_a6a.py</code>, sección 4.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Entre semillas:</strong> el error final va de 2,3 a 5,0 cm. Con la recompensa ingenua de la parte 4, las semillas no solo difieren: unas aprenden a estrellarse y otras no.</li>
+        <li><strong>Entre ejecuciones:</strong> con la misma semilla, dentro de un proceso el resultado es idéntico; entre ejecuciones del script en la GPU, no: la semilla 0 dio 2,8, 5,3, 3,0 y 5,0 cm en cuatro ejecuciones (las cifras de esta presentación son de la última). Es el no determinismo de B6.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Regla</span>Al menos 5 semillas, media y dispersión (o intervalos), y el criterio de evaluación fijado antes de mirar. Lo mismo al leer artículos: desconfía de una curva sin bandas.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Fuera de política">
+  <p class="num">Parte 3</p>
+  <h2>Fuera de política: SAC y TD3</h2>
+  <p>Reutilizar cada transición muchas veces con un búfer de repetición: más eficiencia en muestras, a cambio de estabilidad y de más cálculo por paso.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · SAC</p>
+  <h2>SAC: maximizar la recompensa y la entropía a la vez</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Objetivo de máxima entropía, con temperatura \(\alpha\) <a class="cite" data-ref="haarnoja2018"></a>:</p>
+      \[ J(\pi) = \sum_{t}\mathbb E_{(s_t,a_t)\sim\rho_\pi}\big[r(s_t,a_t) + \alpha\,\mathcal H(\pi(\cdot\mid s_t))\big]. \]
+      <ul class="small">
+        <li>Un crítico \(Q\) aprendido con el búfer y un actor que minimiza \(\mathbb E[\alpha\log\pi(a\mid s) - Q(s,a)]\) con la reparametrización: gradiente de primer orden a través del crítico, no del simulador.</li>
+        <li>Temperatura automática: entropía mínima \(\bar{\mathcal H}\) como restricción y \(\alpha\) ajustada por su propio gradiente; objetivo \(-\dim(A)\) <a class="cite" data-ref="haarnoja2019"></a>.</li>
+        <li>Valores de referencia: 2 × 256 neuronas, búfer de \(10^6\), Adam 3·10⁻⁴, \(\tau = 0{,}005\) <a class="cite" data-ref="haarnoja2018"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: la corrección de la tangente hiperbólica</summary>
+        <p class="small">Para acotar la acción se muestrea \(u\sim\mu(u\mid s)\) gaussiana y se aplica \(a = \tanh(u)\). Como el jacobiano \(\partial a/\partial u = \mathrm{diag}(1-\tanh^2 u)\) es diagonal, el cambio de variable da <a class="cite" data-ref="haarnoja2018"></a></p>
+        \[ \log\pi(a\mid s) = \log\mu(u\mid s) - \sum_{i}\log\big(1-\tanh^2 u_i\big). \]
+        <p class="small">Olvidarla sobrestima la entropía de las acciones cerca de los límites, justo donde un dron satura sus motores.</p>
+      </details>
+      <div class="callout error"><span class="tag">Error frecuente</span>La escala de la recompensa: en SAC actúa como la inversa de la temperatura y sus autores la ajustaban por tarea (de 5 a 20) <a class="cite" data-ref="haarnoja2018"></a>. Con temperatura automática pesa menos, pero cambiar la escala de la recompensa sigue cambiando el problema.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fuera de política · TD3 y cuándo</p>
+  <h2>TD3, y cuándo compensa salirse de la política</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">TD3: actor determinista con tres remedios contra la sobrestimación del valor <a class="cite" data-ref="fujimoto2018"></a>:</p>
+      <ol class="small">
+        <li><strong>Doble Q recortado:</strong> \(y = r + \gamma\min_{i=1,2}Q_{\theta'_i}(s', \pi_{\phi'}(s'))\).</li>
+        <li><strong>Actualizaciones retrasadas:</strong> actor y redes objetivo cada \(d = 2\) pasos del crítico.</li>
+        <li><strong>Suavizado de la política objetivo:</strong> ruido \(\mathcal N(0, 0{,}2)\) recortado a \(\pm0{,}5\) en la acción del objetivo.</li>
+      </ol>
+      <div class="callout realidad"><span class="tag">En un dron</span>Eschmann et al. eligen TD3 frente a PPO por su eficiencia en muestras: unos 300 000 pasos, 18 s en un MacBook Pro de 2020, para una política que manda RPM y transfiere a un Crazyflie <a class="cite" data-ref="eschmann2024"></a>.</div>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Si…</th><th>Suele convenir</th></tr></thead>
+          <tbody>
+            <tr><td>el simulador es barato y masivo (B6)</td><td>PPO: estable, fácil de escalar a miles de entornos</td></tr>
+            <tr><td>cada paso cuesta (render, datos reales)</td><td>SAC o TD3: reutilizan cada transición</td></tr>
+            <tr><td>quieres afinar con datos reales</td><td>fuera de política, o PPO con pocos datos y cuidado</td></tr>
+            <tr><td>hay memoria (A7b)</td><td>PPO recurrente es lo más probado; los búferes con secuencias complican SAC</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout realidad"><span class="tag">2024–2025</span>La frontera se difumina: PPO «se satura» con muchos entornos y SAPG lo reparte en varias políticas <a class="cite" data-ref="singla2024"></a>; PQN entrena Q-learning sin búfer ni red objetivo con entornos vectorizados <a class="cite" data-ref="gallici2025"></a>; FastTD3 resuelve tareas de humanoide en menos de 3 h en una A100 (preprint) <a class="cite" data-ref="seo2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Recompensas">
+  <p class="num">Parte 4</p>
+  <h2>La recompensa de un dron</h2>
+  <p>La recompensa es la especificación de la tarea. Lo que no dice, el agente no lo respeta; lo que dice mal, lo explota.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · anatomía</p>
+  <h2>Cinco recompensas de drones que transfirieron</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Recompensa (o coste)</th><th>Qué enseña</th></tr></thead>
+      <tbody>
+        <tr><td>Hwangbo et al. 2017 <a class="cite" data-ref="hwangbo2017"></a></td><td>coste \(4\cdot10^{-3}\|p\| + 2\cdot10^{-4}\|a\| + 3\cdot10^{-4}\|\omega\| + 5\cdot10^{-4}\|v\|\)</td><td>solo la posición pesa de verdad; el resto regulariza</td></tr>
+        <tr><td>Molchanov et al. 2019 <a class="cite" data-ref="molchanov2019"></a></td><td>\(\big(\|e_p\|^2 + \alpha_v\|e_v\|^2 + \alpha_\omega\|e_\omega\|^2 + \alpha_a\|a\|^2 + \alpha_R\,\angle R\big)\,dt\)</td><td>cuadrática en errores; el ángulo de la rotación, no los ángulos de Euler</td></tr>
+        <tr><td>Song et al. 2021 <a class="cite" data-ref="song2021"></a></td><td>progreso a lo largo del tramo entre puertas \(+\) seguridad \(-\ b\|\omega\|^2\) \(+\) penalización por choque con la puerta</td><td>premiar el avance, no la distancia: no hay óptimo en «quedarse cerca»</td></tr>
+        <tr><td>Swift 2023 <a class="cite" data-ref="kaufmann2023"></a></td><td>progreso hacia la puerta \(+\) percepción (cámara apuntando a la siguiente) \(+\) suavidad del mando \(-\) 5 si choca</td><td>la recompensa también pide lo que necesita la percepción</td></tr>
+        <tr><td>Eschmann et al. 2024 <a class="cite" data-ref="eschmann2024"></a></td><td>\(-\)costes cuadráticos \(+\ C_{rs}\) constante de supervivencia; pesos que se endurecen con un currículo</td><td>la constante evita «aprender a terminar»</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">El patrón</span>Un término principal (error, progreso), regularizadores pequeños (velocidad angular, suavidad de la acción), un castigo por estrellarse y algo que haga que seguir volando valga más que terminar.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · terminación</p>
+  <h2>Si cada paso cuesta, estrellarse sale a cuenta</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Semilla</th><th colspan="2">Ingenua: \(1 - c - 10\cdot\text{choque}\)</th><th colspan="2">Acotada: \(1 - \tanh c - 10\cdot\text{choque}\)</th></tr>
+          <tr><th></th><th>Choques</th><th>Error</th><th>Choques</th><th>Error</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td class="n">100 %</td><td class="n">142 cm</td><td class="n">0 %</td><td class="n">5,0 cm</td></tr>
+            <tr><td>1</td><td class="n">100 %</td><td class="n">131 cm</td><td class="n">0 %</td><td class="n">4,2 cm</td></tr>
+            <tr><td>2</td><td class="n">14,5 %</td><td class="n">15 cm</td><td class="n">0 %</td><td class="n">3,1 cm</td></tr>
+            <tr><td>3</td><td class="n">2,5 %</td><td class="n">17 cm</td><td class="n">0 %</td><td class="n">3,7 cm</td></tr>
+            <tr><td>4</td><td class="n">44 %</td><td class="n">55 cm</td><td class="n">0 %</td><td class="n">2,3 cm</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Mismo PPO, mismas 78,6 M muestras; solo cambia la recompensa. \(c = \|e_p\| + 0{,}1\|v\| + 0{,}05\|\omega\| + 0{,}1\|\Delta a\|^2\). Evaluación: 200 arranques aleatorios, 10 s. <code>figuras_a6a.py</code>, sección 4.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: cuándo compensa terminar</summary>
+        <p class="small">Si al seguir volando la recompensa media por paso es \(\bar r\) y estrellarse cuesta \(P\) una vez, terminar ya es mejor cuando</p>
+        \[ \frac{\bar r}{1-\gamma} &lt; -P \iff \bar r &lt; -P\,(1-\gamma). \]
+        <p class="small">Con \(\gamma = 0{,}99\) y \(P = 10\): basta \(\bar r &lt; -0{,}1\). Al principio, con el dron a 1–2 m de la consigna, \(1 - c\) ronda −1: estrellarse es lo racional. Con \(1-\tanh c \in (0,1]\), cada paso en el aire suma, y estrellarse siempre pierde.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Regla</span>Si el episodio puede terminar por un fallo, la recompensa de seguir debe ser positiva (o el castigo mayor que \(|\bar r|/(1-\gamma)\)). Eschmann et al. lo resuelven con una constante de supervivencia <a class="cite" data-ref="eschmann2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Recompensa · moldeado</p>
+  <h2>Premiar «estar cerca» crea un óptimo que no llega nunca</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Rejilla de 9 × 9, meta en una esquina, \(\gamma = 0{,}95\), política óptima por iteración de valor (<code>figuras_a6a.py</code>, sección 3):</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Recompensa</th><th>¿Llega?</th><th>Pasos</th></tr></thead>
+          <tbody>
+            <tr><td>10 al llegar (escasa)</td><td>sí</td><td class="n">16</td></tr>
+            <tr><td>escasa + potencial \(\gamma\Phi(s') - \Phi(s)\), \(\Phi = -\)distancia</td><td>sí</td><td class="n">16</td></tr>
+            <tr><td>escasa + 1 por estar a una casilla de la meta</td><td><strong>no</strong></td><td class="n">∞ (da vueltas al lado)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Quedarse junto a la meta cobrando +1 por paso vale \(1/(1-\gamma) = 20\), más que los 10 de llegar.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: por qué el potencial no cambia la política óptima</summary>
+        <p class="small">Con \(\tilde r = r + \gamma\Phi(s') - \Phi(s)\), la suma descontada telescópica da \(\tilde Q(s,a) = Q(s,a) - \Phi(s)\) y \(\tilde V(s) = V(s) - \Phi(s)\): la ventaja no cambia, \(\tilde A = A\), y el argmax tampoco <a class="cite" data-ref="schulman2016"></a>. Es el resultado de Ng, Harada y Russell (1999), que GAE reformula (nombrado aquí sin cita propia: no pudimos leer su texto).</p>
+      </details>
+      <div class="callout clave"><span class="tag">Para drones</span>Una distancia a la consigna como potencial acelera el aprendizaje sin cambiar el óptimo; un premio por «estar en la zona» puede crear un dron que orbita la meta. Song et al. y Swift premian el <em>progreso</em> (diferencia de distancias), que es un potencial con \(\gamma\approx1\) <a class="cite" data-ref="song2021,kaufmann2023"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Arreglar un comportamiento raro añadiendo otro término. Cada término es una especificación nueva que el agente puede explotar; primero pregúntate qué incentivo creó el problema.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 5 ============ -->
+<section class="slide divider" data-section="PPO en JAX">
+  <p class="num">Parte 5</p>
+  <h2>Tu PPO en JAX con el x500</h2>
+  <p>El ejemplo completo del tema, medido en una GPU de consumo: lo que se diseñó, lo que salió y lo que no hace todavía.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO en JAX · diseño</p>
+  <h2>Qué ve, qué manda y qué cobra el dron</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Acción (4):</strong> empuje colectivo (de 0,2 a 1,8 veces el peso) y velocidades angulares deseadas (hasta 4, 4 y 2 rad/s), a 100 Hz. Un lazo P interno de velocidad angular (A2) y un retardo de 30 ms en empuje y par; física a 500 Hz.</li>
+        <li><strong>Observación (22):</strong> error de posición, velocidad, matriz de rotación (9), velocidad angular y la acción anterior.</li>
+        <li><strong>Recompensa:</strong> \(1 - \tanh c - 10\cdot\)choque, con \(c\) de la hoja anterior; choque si se aleja 4 m o se inclina más de 80°.</li>
+        <li><strong>Episodios:</strong> 5 s desde un estado aleatorio (±1,5 m, ±1 m/s, hasta 30° de inclinación); arranque del valor en los cortes por tiempo y episodios escalonados (B6).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Redes:</strong> política y valor separadas, 2 × 64 tanh, inicialización ortogonal; ganancia 0,01 en la última capa de la política; log σ independiente del estado, desde σ = 0,6 <a class="cite" data-ref="andrychowicz2020,huang2022"></a>.</li>
+        <li><strong>PPO:</strong> 4096 × 32 pasos, 5 épocas, 4 minilotes, \(\varepsilon = 0{,}2\), \(\gamma = 0{,}99\), \(\lambda = 0{,}95\), Adam 3·10⁻⁴, norma del gradiente ≤ 0,5, sin bonificación de entropía.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué la matriz de rotación</span>Un cuaternión tiene doble cobertura (\(q\) y \(-q\) son la misma actitud) y los ángulos de Euler tienen singularidades: la red tendría que aprender discontinuidades que no están en la física.</div>
+      <div class="callout error"><span class="tag">Lo que no hace</span>Sin aleatorizar masa, motor, retardos ni ruido de sensores (B2–B4): es la base de A6b y B7, no una política para volar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">PPO en JAX · resultados</p>
+  <h2>Diez segundos de GPU para mantenerse en el aire</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Curvas de aprendizaje de PPO con distintos repartos de entornos y pasos">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">1</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="177" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">20</text>
+        <text x="294" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">40</text>
+        <text x="411" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">60</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">78,6 M</text>
+        <path d="M60.8,253.2 L68.4,251.7 L76.1,249.3 L83.8,236.9 L91.4,222.8 L99.1,208.3 L106.8,194.4 L114.4,183.9 L122.1,181.1 L129.8,175.4 L137.4,168.1 L145.1,160.8 L152.8,151.1 L160.4,142.4 L168.1,137.3 L175.8,134.2 L183.4,129.7 L191.1,123.3 L198.8,116.6 L206.4,109.9 L214.1,101.9 L221.8,95.5 L229.4,90.8 L237.1,87.3 L244.8,84.7 L252.4,82.9 L260.1,81.5 L267.8,80.4 L275.4,79.5 L283.1,78.6 L290.8,77.7 L298.4,77.0 L306.1,76.6 L313.8,76.0 L321.4,75.5 L329.1,74.9 L336.8,74.3 L344.4,73.8 L352.1,73.6 L359.8,73.3 L367.4,73.3 L375.1,73.3 L382.8,73.2 L390.4,73.0 L398.1,72.9 L405.8,72.8 L413.4,72.7 L421.1,72.7 L428.8,72.5 L436.4,72.3 L444.1,72.1 L451.8,72.0 L459.4,71.8 L467.1,71.8 L474.8,71.7 L482.4,71.4 L490.1,71.1 L497.8,71.0 L505.4,70.6 L513.1,70.5 L520.0,70.5" fill="none" class="ln-tesis" stroke-width="1.6"/>
+        <path d="M60.8,253.5 L68.4,254.3 L76.1,253.2 L83.8,250.8 L91.4,248.5 L99.1,235.0 L106.8,219.5 L114.4,204.6 L122.1,191.3 L129.8,181.1 L137.4,176.2 L145.1,171.6 L152.8,169.1 L160.4,164.9 L168.1,153.8 L175.8,145.6 L183.4,137.7 L191.1,128.3 L198.8,118.5 L206.4,112.5 L214.1,107.4 L221.8,102.1 L229.4,97.1 L237.1,92.7 L244.8,88.9 L252.4,84.8 L260.1,83.2 L267.8,80.3 L275.4,79.8 L283.1,78.0 L290.8,77.1 L298.4,75.9 L306.1,74.7 L313.8,74.5 L321.4,73.1 L329.1,73.5 L336.8,72.4 L344.4,72.7 L352.1,71.7 L359.8,71.3 L367.4,71.1 L375.1,70.1 L382.8,70.8 L390.4,69.8 L398.1,70.7 L405.8,69.8 L413.4,70.2 L421.1,69.6 L428.8,69.2 L436.4,69.3 L444.1,68.4 L451.8,69.4 L459.4,68.3 L467.1,69.1 L474.8,68.3 L482.4,68.4 L490.1,68.1 L497.8,67.7 L505.4,67.5 L513.1,67.2 L520.0,67.7" fill="none" class="ln" stroke-width="1.6"/>
+        <path d="M60.8,246.2 L68.4,247.5 L76.1,250.6 L83.8,257.7 L91.4,258.3 L99.1,260.2 L106.8,261.5 L114.4,259.4 L122.1,256.2 L129.8,254.0 L137.4,252.3 L145.1,251.5 L152.8,253.0 L160.4,252.2 L168.1,251.8 L175.8,250.6 L183.4,248.5 L191.1,244.1 L198.8,239.8 L206.4,231.2 L214.1,220.9 L221.8,208.2 L229.4,195.0 L237.1,184.5 L244.8,174.6 L252.4,163.1 L260.1,155.7 L267.8,157.2 L275.4,162.2 L283.1,171.5 L290.8,182.7 L298.4,187.9 L306.1,181.0 L313.8,169.2 L321.4,158.7 L329.1,151.3 L336.8,146.3 L344.4,143.9 L352.1,139.3 L359.8,131.9 L367.4,125.7 L375.1,123.5 L382.8,123.4 L390.4,124.4 L398.1,123.2 L405.8,119.5 L413.4,116.5 L421.1,115.5 L428.8,116.3 L436.4,117.8 L444.1,116.2 L451.8,110.8 L459.4,106.4 L467.1,104.0 L474.8,104.3 L482.4,106.1 L490.1,106.0 L497.8,100.3 L505.4,94.2 L513.1,89.0 L520.0,84.1" fill="none" class="ln-time" stroke-width="1.6"/>
+        <path d="M60.8,248.9 L68.4,251.0 L76.1,251.2 L83.8,254.7 L91.4,253.8 L99.1,250.9 L106.8,241.8 L114.4,236.4 L122.1,226.7 L129.8,209.0 L137.4,189.6 L145.1,184.2 L152.8,174.6 L160.4,162.6 L168.1,163.8 L175.8,161.8 L183.4,153.0 L191.1,143.3 L198.8,132.8 L206.4,124.4 L214.1,118.4 L221.8,105.9 L229.4,102.2 L237.1,101.2 L244.8,90.7 L252.4,90.8 L260.1,89.8 L267.8,81.3 L275.4,84.2 L283.1,82.9 L290.8,75.8 L298.4,79.4 L306.1,78.0 L313.8,73.9 L321.4,76.7 L329.1,73.8 L336.8,74.2 L344.4,76.4 L352.1,71.8 L359.8,75.6 L367.4,76.7 L375.1,70.6 L382.8,74.9 L390.4,75.0 L398.1,69.8 L405.8,73.4 L413.4,72.1 L421.1,70.4 L428.8,73.1 L436.4,70.0 L444.1,72.4 L451.8,74.4 L459.4,69.5 L467.1,74.4 L474.8,75.7 L482.4,70.7 L490.1,75.4 L497.8,75.7 L505.4,74.2 L513.1,77.1 L520.0,80.0" fill="none" class="ln-accent" stroke-width="2.6"/>
+        <text x="300" y="285" text-anchor="middle" class="t-muted" font-size="13">pasos de entorno</text>
+      </svg>
+      <figcaption>Recompensa media por paso en el entrenamiento. Azul: 4096 × 32 (10 s). Morado: 256 × 512 (35 s). Gris: 1024 × 128 (15 s). Naranja: 16 384 × 8 (9 s). RTX 4060 Ti. <code>figuras_a6a.py</code>, sección 4.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Coste:</strong> 78,6 M pasos en 10,2 s: 7,7 M pasos/s con el aprendizaje incluido.</li>
+        <li><strong>Estacionario:</strong> desde 200 arranques aleatorios, ningún choque; error medio de 21 cm a 1 s y de 5 cm en régimen.</li>
+        <li><strong>Reparto:</strong> con el mismo número de muestras, 16 384 × 8 aprende peor (0,69 de recompensa media al final frente a 0,78–0,83): 8 pasos son 80 ms de horizonte, el problema que describen Rudin et al. (B6). 256 × 512 aprende igual pero tarda 3,4 veces más.</li>
+        <li><strong>Generaliza poco:</strong> seguir un círculo de 1 m de radio a 1 m/s, que no vio al entrenar, da 65 cm de error: la política aprendió a ir a un punto, no a seguir una trayectoria (laboratorio, paso 4).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Más rápido, más fuera de política y con menos ajuste a mano</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Entrenar en minutos</h3><p>Con simulación masiva, PPO entrena políticas de dron en segundos o minutos en una GPU de consumo (este tema, Swift en 50 min <a class="cite" data-ref="kaufmann2023"></a>). El cuello de botella pasa a ser el diseño: observación, recompensa y aleatorización.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Fuera de política a escala</h3><p>Métodos que combinan entornos masivos con Q-learning o TD3 <a class="cite" data-ref="gallici2025,seo2025"></a>, y variantes de PPO que siguen escalando <a class="cite" data-ref="singla2024"></a>: la eficiencia en muestras vuelve a importar cuando cada paso es caro (render, datos reales).</p></div>
+    <div class="card"><span class="meta">PREVISIÓN</span><h3>Recompensas que se especifican de otra forma</h3><p>Más demostraciones (A10), preferencias y objetivos en lenguaje (fase 4) para lo que es difícil de escribir como suma de términos. Es una previsión: en control de bajo nivel de drones, la recompensa escrita a mano sigue dominando.</p></div>
+  </div>
+  <div class="callout error"><span class="tag">Lo que sigue abierto</span>Las cifras de un artículo dependen de detalles de implementación, semillas y hardware. Sin varias semillas y el código, un «×10» no se puede comparar con otro.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>El RL de estado completo es el punto de partida, no el destino</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Observabilidad parcial:</strong> aquí la política ve el estado verdadero. Con observaciones ruidosas, retrasadas o incompletas, \(\pi(a\mid s)\) deja de bastar: hace falta memoria o un belief (A7b), y el crítico puede seguir viendo el estado (A6b).</li>
+        <li><strong>Latencia:</strong> la acción anterior en la observación ya es una historia mínima; con los retardos de B4, la historia necesaria crece.</li>
+        <li><strong>World models:</strong> el actor de Dreamer usa GAE y un crítico igual que aquí, pero sobre trayectorias imaginadas (A8a).</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Cuánto se degrada esta política de estacionario al pasar de estado verdadero a la salida de un estimador (A4a) con los retardos de B4, y cuánto recupera una política recurrente entrenada con ellos? Es el experimento de A7b.</div>
+      <div class="callout clave"><span class="tag">Para el hito H3</span>Tu PPO en JAX es la herramienta de toda la fase 3: lo reutilizarás con memoria, con crítico asimétrico, con world models y con varios drones.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A6a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Gradiente de la política: \(\mathbb E[\nabla\log\pi\cdot A]\); la línea base reduce varianza sin sesgo.</li>
+    <li>GAE: \(\sum(\gamma\lambda)^l\delta_{t+l}\); \(\lambda\) cambia sesgo por varianza y solo sesga si el crítico es inexacto.</li>
+    <li>PPO: recorte del cociente en \(1\pm\varepsilon\), varias épocas en minilotes; vigila KL y fracción recortada.</li>
+    <li>Los detalles de implementación pesan tanto como el algoritmo; usa varias semillas y una referencia legible.</li>
+    <li>SAC y TD3 reutilizan datos: convienen cuando cada paso es caro.</li>
+    <li>Si estrellarse termina el episodio, seguir volando debe valer más: \(\bar r &gt; -P(1-\gamma)\).</li>
+    <li>Moldea con potenciales o con progreso, no con premios por «estar cerca».</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Gradiente y GAE</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="1">
+      <p class="q">1. Tu crítico tiene un error constante de +5 en todos los estados. ¿Qué le pasa al gradiente de la política con \(\lambda = 1\)?</p>
+      <ol class="opts">
+        <li><button type="button">Queda sesgado en +5</button></li>
+        <li><button type="button">Nada en esperanza: con \(\lambda = 1\) el crítico solo actúa como línea base</button></li>
+        <li><button type="button">Se anula</button></li>
+        <li><button type="button">Cambia de signo</button></li>
+      </ol>
+      <p class="explain">GAE(γ, 1) es el retorno menos \(V(s_t)\): un error en \(V\) solo cambia la línea base, que no sesga el gradiente. Con \(\lambda &lt; 1\), \(V\) predice el futuro y sí sesga.</p>
+    </div>
+    <div class="quiz" data-answer="2">
+      <p class="q">2. Una muestra tiene ventaja negativa y su cociente \(r = 0{,}7\) con \(\varepsilon = 0{,}2\). ¿Qué gradiente da \(L^{\text{CLIP}}\) para esa muestra?</p>
+      <ol class="opts">
+        <li><button type="button">El mismo que sin recorte</button></li>
+        <li><button type="button">Uno que empuja a bajar aún más su probabilidad</button></li>
+        <li><button type="button">Cero: ya se bajó más allá de \(1-\varepsilon\) y el objetivo está recortado</button></li>
+        <li><button type="button">Uno que sube su probabilidad</button></li>
+      </ol>
+      <p class="explain">Con \(A&lt;0\), \(\min(rA, \mathrm{clip}(r)A)\) vale \(0{,}8A\) para \(r &lt; 0{,}8\): constante en \(\theta\), sin gradiente.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Implementación</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Tu PPO aprende en una semilla y no en otra. ¿Qué haces primero?</p>
+      <ol class="opts">
+        <li><button type="button">Publicar la semilla buena</button></li>
+        <li><button type="button">Subir la tasa de aprendizaje</button></li>
+        <li><button type="button">Cambiar a SAC</button></li>
+        <li><button type="button">Correr al menos 5 semillas, mirar media y dispersión, y revisar recompensa y detalles de implementación</button></li>
+      </ol>
+      <p class="explain">La variabilidad entre semillas es normal; si es extrema (como con la recompensa ingenua), suele señalar un problema de diseño.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. Con un lote fijo de 131 072 muestras, ¿por qué 16 384 entornos × 8 pasos aprende peor que 4096 × 32?</p>
+      <ol class="opts">
+        <li><button type="button">Porque cada entorno aporta un tramo de 80 ms: las ventajas dependen casi solo del crítico</button></li>
+        <li><button type="button">Porque la GPU va más lenta</button></li>
+        <li><button type="button">Porque hay menos muestras</button></li>
+        <li><button type="button">Porque PPO no admite más de 4096 entornos</button></li>
+      </ol>
+      <p class="explain">Con trayectorias cortas, GAE se trunca enseguida y arranca del valor: más sesgo del crítico. Es el horizonte mínimo de Rudin et al.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Recompensas</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. \(\gamma = 0{,}98\), castigo por estrellarse de 20. ¿Por debajo de qué recompensa media por paso compensa estrellarse?</p>
+      <ol class="opts">
+        <li><button type="button">−20</button></li>
+        <li><button type="button">−1</button></li>
+        <li><button type="button">−0,4</button></li>
+        <li><button type="button">0</button></li>
+      </ol>
+      <p class="explain">\(\bar r &lt; -P(1-\gamma) = -20\cdot 0{,}02 = -0{,}4\).</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña la recompensa de un dron que debe inspeccionar una fachada a 3 m, sin chocar y gastando poca batería.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Término principal de progreso: área nueva de fachada vista en este paso (un potencial sobre la cobertura, no un premio por «estar cerca»). Distancia a la fachada como coste suave alrededor de 3 m (o potencial). Castigo grande por choque o por salir del volumen, con la recompensa de seguir volando positiva para que terminar no compense. Regularizadores pequeños: velocidad angular, cambios bruscos de acción y potencia (empuje al cuadrado como aproximación a la energía). Validar con varias semillas que no aparecen atajos: orbitar un trozo ya visto, pegarse a la fachada o volar demasiado lejos.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN · ARXIV</span>
+      <h3>PPO <a class="cite" data-ref="schulman2017"></a></h3>
+      <p><strong>Lee:</strong> §3 (recorte), §5 (algoritmo) y la tabla 1.</p>
+      <p><strong>Busca:</strong> qué variante usan y qué no (entropía, parámetros compartidos).</p>
+      <p><strong>Responde:</strong> ¿por qué el mínimo y no solo el recorte?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · ICLR</span>
+      <h3>GAE <a class="cite" data-ref="schulman2016"></a></h3>
+      <p><strong>Lee:</strong> §2–3 (ventajas y su sesgo) y §4 (moldeado).</p>
+      <p><strong>Busca:</strong> los valores de \(\gamma\) y \(\lambda\) que les funcionan y por qué difieren.</p>
+      <p><strong>Responde:</strong> ¿qué \(\lambda\) usarías con 16 384 entornos?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ARXIV</span>
+      <h3>Qué importa en RL en política <a class="cite" data-ref="andrychowicz2020"></a></h3>
+      <p><strong>Lee:</strong> los recuadros de recomendaciones de §3.</p>
+      <p><strong>Busca:</strong> la importancia de la distribución inicial de acciones.</p>
+      <p><strong>Responde:</strong> ¿cuáles has aplicado en tu PPO y cuáles no?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> SAC <a class="cite" data-ref="haarnoja2018,haarnoja2019"></a>; TD3 <a class="cite" data-ref="fujimoto2018"></a>; los 37 detalles de PPO <a class="cite" data-ref="huang2022"></a>; Swift, métodos <a class="cite" data-ref="kaufmann2023"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>PPO en JAX: estacionario y seguimiento</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>PPO desde cero</strong> sobre tu simulador vectorizado de B6, con tests de GAE.</li>
+        <li><strong>Estacionario:</strong> reproducir los resultados con 5 semillas.</li>
+        <li><strong>Recompensas:</strong> ingenua, acotada y con potencial.</li>
+        <li><strong>Seguimiento</strong> de trayectorias con referencias que se mueven.</li>
+        <li><strong>Ablaciones:</strong> \(\lambda\), entornos × pasos, inicialización de la última capa, normalización de observaciones.</li>
+        <li><strong>Con las capas de B2–B4:</strong> motor, ruido y retardos.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Unos 10 s de entrenamiento en GPU; 0 choques y unos 2–5 cm en estacionario; la recompensa ingenua que aprende a estrellarse; el peor reparto con 8 pasos por entorno.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo o en la nube; en CPU, el mismo código, con menos entornos y más paciencia.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_a6a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-hwangbo2017">Hwangbo, J., Sa, I., Siegwart, R., Hutter, M. (2017). Control of a quadrotor with reinforcement learning. <span class="venue">IEEE Robotics and Automation Letters</span>, 2(4), 2096–2103. <a href="https://doi.org/10.1109/LRA.2017.2720851">doi:10.1109/LRA.2017.2720851</a>. <a href="https://arxiv.org/abs/1707.05110">arXiv:1707.05110</a></li>
+    <li id="ref-kaufmann2023">Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., Scaramuzza, D. (2023). Champion-level drone racing using deep reinforcement learning. <span class="venue">Nature</span>, 620(7976), 982–987. <a href="https://doi.org/10.1038/s41586-023-06419-4">doi:10.1038/s41586-023-06419-4</a></li>
+    <li id="ref-eschmann2024">Eschmann, J., Albani, D., Loianno, G. (2024). Learning to fly in seconds. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(7), 6336–6343. <a href="https://doi.org/10.1109/LRA.2024.3396025">doi:10.1109/LRA.2024.3396025</a>. <a href="https://arxiv.org/abs/2311.13081">arXiv:2311.13081</a></li>
+    <li id="ref-schulman2015">Schulman, J., Levine, S., Moritz, P., Jordan, M. I., Abbeel, P. (2015). Trust region policy optimization. <span class="venue">ICML 2015</span>, PMLR 37, 1889–1897. <a href="https://arxiv.org/abs/1502.05477">arXiv:1502.05477</a></li>
+    <li id="ref-schulman2016">Schulman, J., Moritz, P., Levine, S., Jordan, M., Abbeel, P. (2016). High-dimensional continuous control using generalized advantage estimation. <span class="venue">ICLR 2016</span>. <a href="https://arxiv.org/abs/1506.02438">arXiv:1506.02438</a></li>
+    <li id="ref-schulman2017">Schulman, J., Wolski, F., Dhariwal, P., Radford, A., Klimov, O. (2017). Proximal policy optimization algorithms. <a href="https://arxiv.org/abs/1707.06347">arXiv:1707.06347</a> (preprint)</li>
+    <li id="ref-haarnoja2018">Haarnoja, T., Zhou, A., Abbeel, P., Levine, S. (2018). Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. <span class="venue">ICML 2018</span>, PMLR 80, 1861–1870. <a href="https://arxiv.org/abs/1801.01290">arXiv:1801.01290</a></li>
+    <li id="ref-fujimoto2018">Fujimoto, S., van Hoof, H., Meger, D. (2018). Addressing function approximation error in actor-critic methods. <span class="venue">ICML 2018</span>, PMLR 80, 1587–1596. <a href="https://arxiv.org/abs/1802.09477">arXiv:1802.09477</a></li>
+    <li id="ref-molchanov2019">Molchanov, A., Chen, T., Hönig, W., Preiss, J. A., Ayanian, N., Sukhatme, G. S. (2019). Sim-to-(multi)-real: Transfer of low-level robust control policies to multiple quadrotors. <span class="venue">IROS 2019</span>, 59–66. <a href="https://doi.org/10.1109/IROS40897.2019.8967695">doi:10.1109/IROS40897.2019.8967695</a>. <a href="https://arxiv.org/abs/1903.04628">arXiv:1903.04628</a></li>
+    <li id="ref-engstrom2020">Engstrom, L., Ilyas, A., Santurkar, S., Tsipras, D., Janoos, F., Rudolph, L., Madry, A. (2020). Implementation matters in deep policy gradients: A case study on PPO and TRPO. <a href="https://arxiv.org/abs/2005.12729">arXiv:2005.12729</a> (ICLR 2020 según los autores)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="11">
+    <li id="ref-andrychowicz2020">Andrychowicz, M., Raichuk, A., Stańczyk, P., Orsini, M., Girgin, S., Marinier, R., Hussenot, L., Geist, M., Pietquin, O., Michalski, M., Gelly, S., Bachem, O. (2020). What matters in on-policy reinforcement learning? A large-scale empirical study. <a href="https://arxiv.org/abs/2006.05990">arXiv:2006.05990</a> (citas de la v1)</li>
+    <li id="ref-song2021">Song, Y., Steinweg, M., Kaufmann, E., Scaramuzza, D. (2021). Autonomous drone racing with deep reinforcement learning. <span class="venue">IROS 2021</span>, 1205–1212. <a href="https://doi.org/10.1109/IROS51168.2021.9636053">doi:10.1109/IROS51168.2021.9636053</a>. <a href="https://arxiv.org/abs/2103.08624">arXiv:2103.08624</a></li>
+    <li id="ref-singla2024">Singla, J., Agarwal, A., Pathak, D. (2024). SAPG: Split and aggregate policy gradients. <span class="venue">ICML 2024</span>, PMLR 235, 45759–45772. <a href="https://arxiv.org/abs/2407.20230">arXiv:2407.20230</a></li>
+    <li id="ref-gallici2025">Gallici, M., Fellows, M., Ellis, B., Pou, B., Masmitja, I., Foerster, J. N., Martin, M. (2025). Simplifying deep temporal difference learning. <span class="venue">ICLR 2025</span>. <a href="https://arxiv.org/abs/2407.04811">arXiv:2407.04811</a></li>
+    <li id="ref-seo2025">Seo, Y., Sferrazza, C., Geng, H., Nauman, M., Yin, Z.-H., Abbeel, P. (2025). FastTD3: Simple, fast, and capable reinforcement learning for humanoid control. <a href="https://arxiv.org/abs/2505.22642">arXiv:2505.22642</a> (preprint)</li>
+    <li id="ref-rudin2022">Rudin, N., Hoeller, D., Reist, P., Hutter, M. (2022). Learning to walk in minutes using massively parallel deep reinforcement learning. <span class="venue">Conference on Robot Learning (CoRL 2021)</span>, PMLR 164, 91–100. <a href="https://arxiv.org/abs/2109.11978">arXiv:2109.11978</a></li>
+    <li id="ref-huang2022">Huang, S., Dossa, R. F. J., Raffin, A., Kanervisto, A., Wang, W. (2022). The 37 implementation details of proximal policy optimization. <span class="venue">ICLR 2022 Blog Track</span>. <a href="https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/">iclr-blog-track.github.io</a></li>
+    <li id="ref-haarnoja2019">Haarnoja, T., Zhou, A., Hartikainen, K., Tucker, G., Ha, S., Tan, J., Kumar, V., Zhu, H., Gupta, A., Abbeel, P., Levine, S. (2018). Soft actor-critic algorithms and applications. <a href="https://arxiv.org/abs/1812.05905">arXiv:1812.05905</a> (preprint)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>

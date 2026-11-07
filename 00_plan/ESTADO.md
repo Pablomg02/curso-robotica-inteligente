@@ -39,7 +39,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| A6a | Deep RL para control | ⬜ | | |
+| A6a | Deep RL para control | ✅ | 2026-11-07 | 33 hojas + lab. `figuras/figuras_a6a.py` (salida guardada en `figuras/salida_gpu.txt`): objetivo recortado; sesgo y varianza del gradiente de la política frente a λ con un crítico imperfecto (cadena de 19 estados, gradiente exacto por sistema lineal); moldeado por potencial frente a un premio explotable (rejilla); **PPO en JAX entrenado de verdad** con el x500 en CTBR: 78,6 M pasos en 10 s en una RTX 4060 Ti, 5 de 5 semillas en estacionario sin choques (2–5 cm), la recompensa ingenua aprende a estrellarse (0 de 5) con la derivación de cuándo compensa terminar, reparto entornos × pasos. Resultados no deterministas entre procesos en GPU: medidos y explicados en la presentación (la semilla 0 dio 2,8–5,3 cm en cuatro ejecuciones). Un primer experimento de GAE con la métrica equivocada (error de la ventaja) se sustituyó por el sesgo del gradiente antes de publicar. Un agente de investigación acotado (44 llamadas). No verificado y por eso sin cita propia: el teorema de Ng, Harada y Russell (1999), citado a través de GAE; la venue ICLR 2021 de Andrychowicz et al. (citado por arXiv v1). Preprints marcados (PPO, SAC v2, FastTD3). Sin revisión independiente, revisado con capturas. |
 | A6b | RL en robots reales | ⬜ | | |
 | A7a | Teoría de POMDPs | ⬜ | | |
 | A7b | Deep RL bajo observabilidad parcial | ⬜ | | |
