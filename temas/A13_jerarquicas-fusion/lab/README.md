@@ -5,7 +5,7 @@
 
 ## Objetivo
 
-Medir qué pasa cuando un planificador lento controla un dron directamente y cuando mueve la referencia de un seguidor rápido, en función de su latencia. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a13.py`, salida en `figuras/salida.txt`; las cuentas de las derivaciones, en `figuras/derivaciones_a13.py`):
+Medir qué pasa cuando un planificador lento controla un dron directamente y cuando mueve la referencia de un seguidor rápido, en función de su latencia. Comprueba con tus números lo que calcula la presentación (`figuras/figuras_a13.py`, salida en `figuras/salida.txt`; las cuentas de las derivaciones, en `figuras/derivaciones_a13.py` y `figuras/ejemplos_a13.py`, con su salida en `figuras/salida_ejemplos.txt`):
 
 | Resultado de la presentación (100 escenas de 20 s) | Valor | Paso |
 |---|---|---|
