@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B6 · Simulación masiva y diferenciable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="B6" data-deck-title="Simulación masiva y diferenciable · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 2 · Jornada 16 · Curso de robótica inteligente</p>
+  <h1>Simulación masiva y diferenciable</h1>
+  <p class="subtitle">Miles de drones simulados a la vez en una GPU de consumo, y el gradiente del coste a través del simulador: cuándo acelera el aprendizaje y cuándo engaña.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> M1 (diferenciación automática), B1, B4</span>
+    <span><b>Prepara</b> A6a, A6b, A8a, A9a, B7</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de B6</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Vectorizar un simulador de dron en JAX y saber por qué y cuándo una GPU lo acelera, con cifras medidas en tu hardware.</li>
+    <li>Elegir número de entornos y pasos por entorno para PPO, y evitar los errores típicos de la simulación a escala.</li>
+    <li>Derivar los estimadores de gradiente de orden cero y de primer orden, y el gradiente a través de un despliegue.</li>
+    <li>Reconocer cuándo el gradiente de primer orden está sesgado o tiene varianza enorme: discontinuidades, rigidez, caos y horizontes largos.</li>
+    <li>Decidir, para una tarea de dron, entre RL masivo, gradientes a través del simulador o una combinación.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Aprender cuesta muchas muestras; las muestras baratas cambian lo que es posible</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Rudin et al. entrenan a andar en terreno irregular con 1500 actualizaciones de PPO de 98 304 muestras: unos \(1{,}5\cdot10^8\) pasos, en menos de 20 minutos con 4096 robots simulados en una GPU <a class="cite" data-ref="rudin2022"></a>.</li>
+        <li>Si además el simulador es diferenciable, el gradiente del coste respecto a la política sale por diferenciación automática: en un cuadricóptero, Heeg et al. dicen converger en 23 s frente a 2 min 15 s con PPO, con menos del 20 % de las muestras <a class="cite" data-ref="heeg2025"></a>.</li>
+        <li>Pero ese gradiente puede ser ciego (no ve un choque) o explotar con el horizonte. Saber cuándo pasa es lo que separa un atajo de una trampa.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Medido en una GPU de consumo</span>El x500 vectorizado de este tema da unos 72 millones de pasos de entorno por segundo con 65 536 entornos en una RTX 4060 Ti; un solo entorno en Python, unos 3600. Un factor de 20 000 (parte 1).</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Dreamer, en su primera versión, aprende el actor propagando gradientes analíticos a través de la dinámica latente aprendida <a class="cite" data-ref="hafner2020"></a>: un simulador diferenciable aprendido (A8a). Lo que veas aquí de horizontes, discontinuidades y varianza le afecta igual.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De la física diferenciable a los entrenamientos de minutos</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2018–2020</span>Física diferenciable para aprendizaje y control con contactos <a class="cite" data-ref="belbuteperes2018"></a>; un motor diferenciable para robótica en CPU y GPU <a class="cite" data-ref="degrave2019"></a>; DiffTaichi, diferenciación de simulaciones físicas como programas <a class="cite" data-ref="hu2020"></a>.</div>
+    <div class="ev"><span class="yr">2021</span>Isaac Gym: física y red en la misma GPU, sin pasar por la CPU <a class="cite" data-ref="makoviychuk2021"></a>. Brax, física diferenciable en JAX en aceleradores <a class="cite" data-ref="freeman2021"></a>. Andar en minutos con miles de robots <a class="cite" data-ref="rudin2022"></a>. «Los gradientes no lo son todo»: caos y explosión <a class="cite" data-ref="metz2021"></a>.</div>
+    <div class="ev"><span class="yr">2022</span>¿Dan mejores gradientes los simuladores diferenciables? Sesgo y varianza del primer orden <a class="cite" data-ref="suh2022"></a>. SHAC: ventanas cortas y un crítico <a class="cite" data-ref="xu2022"></a>.</div>
+    <div class="ev"><span class="yr">2024–2025</span>Locomoción y vuelo con física diferenciable: cuadrúpedos <a class="cite" data-ref="song2024,schwarke2025"></a>, cuadricópteros con rasgos visuales <a class="cite" data-ref="heeg2025"></a> y vuelo ágil con visión <a class="cite" data-ref="zhang2025"></a>. Aerial Gym para drones en GPU <a class="cite" data-ref="kulkarni2025"></a>.</div>
+    <div class="ev"><span class="yr">2025–2026</span>MuJoCo en GPU con JAX (MJX) y con Warp, Newton como proyecto de la Linux Foundation <a class="cite" data-ref="mjxdoc,mjwarp,newton"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Simular a escala">
+  <p class="num">Parte 1</p>
+  <h2>Simular a escala</h2>
+  <p>Miles de copias del mismo dron, cada una con su estado, su aleatoriedad y sus parámetros, avanzando a la vez en un acelerador y sin salir de él.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · cuántas muestras</p>
+  <h2>Lo que cambió con la física en la GPU</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Sin copias a la CPU:</strong> en Isaac Gym, la física y la red viven en la GPU y se pasan los datos sin pasar por la CPU; sus autores hablan de mejoras de dos a tres órdenes de magnitud frente a un simulador en CPU con la red en GPU <a class="cite" data-ref="makoviychuk2021"></a>.</li>
+        <li><strong>Cifras de NVIDIA:</strong> Ant hasta 700 000 pasos/s; Ant en 20 s y Humanoid en 4 min de entrenamiento en una A100 <a class="cite" data-ref="makoviychuk2021"></a>. Brax, cifras de Google: millones de pasos/s en un acelerador, y RL de 100 a 1000 veces más barato <a class="cite" data-ref="freeman2021"></a>.</li>
+        <li><strong>Locomoción real:</strong> 4096 robots, lotes de 98 304 muestras, 1500 actualizaciones en menos de 20 min en una RTX A6000, con transferencia a ANYmal <a class="cite" data-ref="rudin2022"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">El límite que no es la GPU</span>Con más entornos para un mismo lote, cada uno aporta menos pasos seguidos. Isaac Gym no ganaba nada pasando Ant de 8192 a 16 384 entornos «por la menor longitud del horizonte»; Humanoid entrenaba peor por encima de 4096 <a class="cite" data-ref="makoviychuk2021"></a>.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Comparar «pasos por segundo» entre artículos: cambian la física, el número de subpasos, los contactos, el render y el hardware (B1). Mide el tuyo, en tu tarea.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · cómo</p>
+  <h2>Cómo se vectoriza un simulador: un dron, escrito para miles</h2>
+  <div class="cols">
+    <div class="stack">
+<pre style="margin:0; padding:14px 16px; border:1px solid var(--rule); border-radius:6px; background:color-mix(in srgb, var(--ink) 4%, var(--sheet)); font-family:var(--f-mono); font-size:13.5px; line-height:1.45; white-space:pre-wrap; overflow-wrap:anywhere;"><code>def paso_entorno(params, s):        # UN dron
+    u = politica(params, s)
+    s = lax.fori_loop(0, 10, lambda i, x: fisica(x, u), s)
+    malo = (jnp.abs(s[2]) &gt; 20) | ~jnp.all(jnp.isfinite(s))
+    return jnp.where(malo, s0, s)  # reinicio sin ramas
+
+@jax.jit
+def despliegue(params, S):         # S: (n_entornos, 17)
+    def cuerpo(S, _):
+        return jax.vmap(paso_entorno, (None, 0))(params, S), None
+    S, _ = lax.scan(cuerpo, S, None, length=100)
+    return S</code></pre>
+      <p class="xsmall muted">Núcleo de <code>figuras_b6.py</code>, sección 1: x500 con 13 estados y 4 motores, política MLP 17-64-64-4, 10 subpasos de 1 ms por paso de control.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Forma fija:</strong> mismo tamaño de estado en todos los entornos y en todos los pasos; nada de listas que crecen.</li>
+        <li><strong>Sin ramas por entorno:</strong> <code>jnp.where</code> en lugar de <code>if</code>; bajo <code>vmap</code>, un <code>lax.cond</code> con predicado por lote ejecuta las dos ramas (B4).</li>
+        <li><strong>Reinicio automático</strong> dentro de <code>jit</code>, entorno a entorno.</li>
+        <li><strong>Todo en el acelerador:</strong> estado, aleatoriedad (una clave por entorno), red y búfer de PPO. Copiar a la CPU en cada paso anula la ganancia.</li>
+        <li><strong>Aleatorización por entorno:</strong> los parámetros físicos (masa, arrastre, motor, retardos de B4) son un eje más del lote.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · medido</p>
+  <h2>La GPU solo gana con miles de entornos, y no sin límite</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Pasos de entorno por segundo frente al número de entornos en CPU y GPU">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">10²</text>
+        <text x="52" y="199" text-anchor="end" class="t-mono t-faint" font-size="12">10⁴</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">10⁶</text>
+        <text x="52" y="89" text-anchor="end" class="t-mono t-faint" font-size="12">10⁸</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="133" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10</text>
+        <text x="206" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10²</text>
+        <text x="279" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10³</text>
+        <text x="352" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁴</text>
+        <text x="425" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁵</text>
+        <text x="498" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">10⁶</text>
+        <line x1="60" y1="140" x2="520" y2="140" class="ln-rule"/>
+        <line x1="60" y1="85" x2="520" y2="85" class="ln-rule"/>
+        <line x1="60" y1="206" x2="520" y2="206" class="ln-dash"/>
+        <text x="515" y="220" text-anchor="end" class="t-muted" font-size="12">1 entorno en Python con numpy: ≈ 3600–3900</text>
+        <path d="M60.0,138.2 L147.9,129.9 L235.8,119.7 L323.8,124.9 L367.7,128.4 L411.7,119.7" fill="none" class="ln-time" stroke-width="2.5"/>
+        <path d="M60.0,191.6 L147.9,159.5 L235.8,127.2 L323.8,99.1 L367.7,93.4 L411.7,89.0 L455.6,92.8 L499.6,99.0" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <text x="420" y="78" class="t-accent" font-size="13">GPU (RTX 4060 Ti)</text>
+        <text x="430" y="134" class="t-time" font-size="13">CPU (28 hilos)</text>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">entornos en paralelo</text>
+      </svg>
+      <figcaption>Pasos de entorno por segundo (escala logarítmica) del x500 vectorizado en un i7-14700K y una RTX 4060 Ti, JAX 0.12. Tus cifras serán otras. <code>figuras_b6.py</code>, sección 1.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Compilar ya gana:</strong> un solo entorno con <code>jit</code> en CPU da 1,2 millones de pasos/s frente a unos 3900 en Python: el intérprete era el cuello de botella.</li>
+        <li><strong>CPU:</strong> satura enseguida, hacia 5,5 millones, y fluctúa con la caché y los hilos.</li>
+        <li><strong>GPU:</strong> con un entorno, 13 000 pasos/s (cada paso lanza núcleos casi vacíos); con 4096, 31 millones; pico de 72 millones con 65 536; con un millón, 31 millones: la memoria manda.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Regla de bolsillo</span>En GPU, entre miles y decenas de miles de entornos por proceso. En Rudin et al., el escalado era casi lineal hasta unos 4000 robots <a class="cite" data-ref="rudin2022"></a>; en Aerial Gym, 4,4 millones de pasos de física/s con \(2^{16}\) drones en una RTX 3090, medidos por sus autores <a class="cite" data-ref="kulkarni2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · PPO</p>
+  <h2>Más entornos o más pasos por entorno: el lote es su producto</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">El lote de PPO es \(B = n_\text{entornos}\cdot n_\text{pasos}\). A \(B\) fijo, más entornos significa trayectorias más cortas por actualización.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Hallazgo de Rudin et al.</th><th>Cifra</th></tr></thead>
+          <tbody>
+            <tr><td>Por debajo de este número de pasos seguidos, PPO no aprende (GAE necesita coherencia temporal)</td><td class="n">25 pasos (0,5 s)</td></tr>
+            <tr><td>Mejor compromiso en su tarea</td><td class="n">2048–4096 robots, \(B\approx\) 100–200k</td></tr>
+            <tr><td>Configuración desplegada</td><td class="n">4096 × 24 = 98 304</td></tr>
+            <tr><td>Minilotes</td><td class="n">4096 × 6 = 24 576</td></tr>
+            <tr><td>Tasa de aprendizaje</td><td class="n">adaptativa, objetivo de KL 0,01</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Sección 2.2 y apéndice A.4 <a class="cite" data-ref="rudin2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Fin por tiempo no es fin del episodio</span>Si un episodio se corta por tiempo y la política no ve el reloj, el crítico debe usar su propia predicción del valor siguiente en lugar de cero. Rudin et al. lo hacen y señalan que la interfaz de Gym no lo distinguía y que implementaciones populares lo ignoraban <a class="cite" data-ref="rudin2022"></a>.</div>
+      <div class="callout realidad"><span class="tag">Minilotes grandes</span>Minilotes de decenas de miles de muestras, mucho mayores que la práctica habitual, estabilizan el aprendizaje sin alargar el entrenamiento <a class="cite" data-ref="rudin2022"></a>.</div>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Una política con memoria (A7b) necesita trayectorias aún más largas por actualización: el horizonte mínimo lo pone lo que tiene que recordar, no la GPU.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · errores</p>
+  <h2>Lo que se rompe cuando hay miles de copias</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">1 · DETERMINISMO</span><h3>Mismo código, otro número</h3><p>Isaac Lab solo garantiza resultados idénticos con el mismo hardware y la misma versión; entre máquinas cambian por redondeo, y las operaciones atómicas pueden variar entre ejecuciones <a class="cite" data-ref="isaaclabrepro"></a>. En nuestro experimento del muro, el gradiente verdadero sale −59,78 en CPU y −59,77 en GPU.</p></div>
+    <div class="card"><span class="meta">2 · SINCRONÍA</span><h3>Todos empiezan a la vez</h3><p>Si todos los entornos arrancan juntos, cada lote tiene solo arranques o solo finales. rsl_rl ofrece sortear la longitud inicial del episodio (su comentario dice que es por exploración) <a class="cite" data-ref="rslrl"></a>. Desincronizar también descorrela el lote.</p></div>
+    <div class="card"><span class="meta">3 · CONTAMINACIÓN</span><h3>Un NaN, todo el lote</h3><p>Un entorno que diverge mete NaN en la media de la ventaja o en la norma del gradiente. Reinicia en cuanto un estado no es finito y vigila el máximo, no solo la media.</p></div>
+    <div class="card"><span class="meta">4 · COSTE VARIABLE</span><h3>El rendimiento no es constante</h3><p>En PhysX, los contactos entre robots se detectan aunque se ignoren: Rudin et al. ven un factor 2 en el tiempo de simulación según dónde estén los robots <a class="cite" data-ref="rudin2022"></a>.</p></div>
+    <div class="card"><span class="meta">5 · COMPILAR</span><h3>Minutos antes del primer paso</h3><p>En Brax, la compilación JIT podía «acercarse o superar» el tiempo de entrenamiento en entornos complicados <a class="cite" data-ref="freeman2021"></a>. Cambiar campos estructurales de un modelo de MJX fuerza a recompilar <a class="cite" data-ref="mjxdoc"></a>.</p></div>
+    <div class="card"><span class="meta">6 · PRECISIÓN</span><h3>float32 en despliegues largos</h3><p>Normaliza el cuaternión, vigila la energía. Metz et al. hicieron en doble precisión sus experimentos de caos con Brax <a class="cite" data-ref="metz2021"></a>: si sospechas del gradiente, compara con float64.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Escala · herramientas</p>
+  <h2>Qué hay en 2026 y qué no promete</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Herramienta</th><th>Qué es</th><th>Lo que conviene saber</th></tr></thead>
+      <tbody>
+        <tr><td>MJX-JAX <a class="cite" data-ref="mjxdoc"></a></td><td>MuJoCo reescrito en JAX: GPU NVIDIA y AMD, Apple, TPU</td><td>Diferenciable. Con una sola escena, hasta 10 veces más lento que MuJoCo; pierde más rápido con muchos contactos; mallas pequeñas (≈ 200 vértices frente a primitivas)</td></tr>
+        <tr><td>MJX-Warp y MuJoCo Warp <a class="cite" data-ref="mjxdoc,mjwarp"></a></td><td>MuJoCo en Warp, para GPU NVIDIA; mantenido por Google DeepMind y NVIDIA dentro de Newton</td><td>Resuelve los cuellos de botella de contactos de MJX-JAX, pero <strong>no es diferenciable</strong> y no hay planes inmediatos de que lo sea</td></tr>
+        <tr><td>Newton <a class="cite" data-ref="newton"></a></td><td>Motor en GPU sobre Warp; proyecto de la Linux Foundation (Apache-2.0) iniciado por Disney Research, Google DeepMind y NVIDIA</td><td>MuJoCo Warp como motor principal; diferenciabilidad entre sus objetivos. Versión estable 1.7 (octubre de 2026)</td></tr>
+        <tr><td>Isaac Lab <a class="cite" data-ref="isaaclab3,isaaclabrepro"></a></td><td>Entornos de aprendizaje sobre Isaac Sim, con PhysX o Newton</td><td>Determinismo solo con el mismo hardware y versión</td></tr>
+        <tr><td>Aerial Gym <a class="cite" data-ref="kulkarni2025"></a></td><td>Multirrotores en Isaac Gym, con controladores y trazado de rayos en GPU</td><td>Cifras de rendimiento medidas por sus autores; políticas transferidas sin ajuste</td></tr>
+        <tr><td>Tu simulador en JAX</td><td>El x500 de B1–B4, con <code>vmap</code> y <code>scan</code></td><td>Diferenciable, sin contactos complejos, y lo entiendes entero: el banco de pruebas de la tesis</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="Gradientes">
+  <p class="num">Parte 2</p>
+  <h2>Gradientes a través del simulador</h2>
+  <p>Si el simulador es un programa diferenciable, el gradiente del coste respecto a la política sale por diferenciación automática. Cuándo es mejor que estimarlo probando, y cuándo miente.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · dos estimadores</p>
+  <h2>Probar y mirar el resultado, o derivar a través de la física</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Queremos \(\nabla_\theta\,\mathbb E_\xi[J(\theta,\xi)]\), con \(\xi\) la aleatoriedad (ráfagas, estado inicial, ruido de la política).</p>
+      <p class="small"><strong>Orden cero</strong> (función de puntuación, estrategias evolutivas): solo necesita evaluar \(J\). Con suavizado gaussiano,</p>
+      \[ \nabla_\theta\,\mathbb E_\varepsilon\big[J(\theta+\sigma\varepsilon)\big] = \tfrac{1}{\sigma}\,\mathbb E_\varepsilon\big[J(\theta+\sigma\varepsilon)\,\varepsilon\big]. \]
+      <p class="small"><strong>Primer orden</strong> (de la trayectoria, reparametrización): deriva cada muestra,</p>
+      \[ \nabla_\theta\,\mathbb E_\xi\big[J(\theta,\xi)\big] = \mathbb E_\xi\big[\nabla_\theta J(\theta,\xi)\big], \]
+      <p class="small">válido si \(J(\cdot,\xi)\) es continua y lipschitziana con constante integrable. Suh et al. los llaman ZoBG y FoBG <a class="cite" data-ref="suh2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: de dónde salen y dónde falla el primer orden</summary>
+        <p class="small">Orden cero: \(\mathbb E[J(\theta+\sigma\varepsilon)] = \int J(u)\,\mathcal N(u;\theta,\sigma^2 I)\,du\). Derivando la densidad, \(\nabla_\theta \mathcal N = \mathcal N\,(u-\theta)/\sigma^2\), y con \(u = \theta+\sigma\varepsilon\) sale la fórmula. No pide nada a \(J\): ni continuidad.</p>
+        <p class="small">Primer orden: intercambiar derivada y esperanza exige que \(J\) no salte. Con \(J = \mathbf 1[z(\theta,\xi) &lt; h]\), \(\nabla_\theta J = 0\) en casi todo punto, pero \(\nabla_\theta P(z&lt;h)\neq 0\): la derivada de la esperanza tiene un término de frontera (regla de Leibniz) que el gradiente de cada muestra no ve.</p>
+      </details>
+      <div class="callout clave"><span class="tag">El reparto clásico</span>Orden cero: varianza que crece con la dimensión de \(\theta\), sin sesgo aunque haya saltos. Primer orden: poca varianza en problemas suaves, a cambio de exigir suavidad y de retropropagar por todo el despliegue.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · a través del tiempo</p>
+  <h2>Retropropagar un despliegue: un producto de jacobianos</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Con \(x_{t+1} = f(x_t, u_t, w_t)\), \(u_t = \pi_\theta(x_t)\) y \(J = \sum_t c(x_t,u_t)\), la sensibilidad \(S_t = \partial x_t/\partial\theta\) cumple</p>
+      \[ S_{t+1} = \underbrace{(f_x + f_u\,\pi_x)}_{A_t}\,S_t + f_u\,\pi_\theta, \]
+      \[ S_t = \sum_{k&lt;t} A_{t-1}\cdots A_{k+1}\, f_u\,\pi_\theta\big|_k . \]
+      <p class="small">El gradiente suma productos de hasta \(H\) jacobianos del lazo cerrado. Si su radio espectral pasa de 1, o si la dinámica es caótica, esos productos crecen exponencialmente aunque la trayectoria esté acotada <a class="cite" data-ref="metz2021"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: el modo inverso y su memoria</summary>
+        <p class="small">En modo inverso (lo que hace <code>jax.grad</code> a través de <code>lax.scan</code>), se propaga el adjunto hacia atrás, \(\lambda_t = c_x + A_t^\top\lambda_{t+1}\), y \(\nabla_\theta J = \sum_t (c_u + \lambda_{t+1}^\top f_u)\,\pi_\theta\). Coste en tiempo: unas pocas veces el directo. Coste en memoria: hay que guardar los \(H\) estados (o recalcularlos por tramos). Por eso con 10 000 entornos Heeg et al. se quedaban sin memoria en la retropropagación con el modelo completo, y usan un modelo simplificado para el camino de vuelta <a class="cite" data-ref="heeg2025"></a>.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">Medido en Brax</span>En Ant, para pocos pasos la pérdida parece suave; con más pasos se vuelve «muy sensible a los parámetros», y la varianza del gradiente crece con la longitud del despliegue; lo trazan a autovalores de los jacobianos mayores que 1 (preprint) <a class="cite" data-ref="metz2021"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Dreamer retropropaga por el modelo latente durante 15 pasos imaginados, no 1000, y cierra el horizonte con un crítico <a class="cite" data-ref="hafner2020"></a>: el horizonte corto es parte del diseño (A8a).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · problema suave</p>
+  <h2>Un dron en estacionario: el primer orden gana en varianza; el coste depende del hardware</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Horizonte</th><th colspan="2">Bien amortiguado (\(\rho\) = 0,988)</th><th colspan="2">Poco amortiguado (\(\rho\) = 0,9998)</th></tr>
+          <tr><th></th><th>1.er orden, 1 sim.</th><th>Orden 0, 32 sim.</th><th>1.er orden, 1 sim.</th><th>Orden 0, 32 sim.</th></tr></thead>
+          <tbody>
+            <tr><td>10 pasos</td><td class="n">1,69</td><td class="n">3,34</td><td class="n">1,69</td><td class="n">10,1</td></tr>
+            <tr><td>100</td><td class="n">1,68</td><td class="n">1,98</td><td class="n">1,67</td><td class="n">3,29</td></tr>
+            <tr><td>1000</td><td class="n">1,02</td><td class="n">1,27</td><td class="n">1,13</td><td class="n">1,42</td></tr>
+            <tr><td>3000</td><td class="n">0,54</td><td class="n">0,78</td><td class="n">1,07</td><td class="n">1,43</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Desviación típica de cada estimación relativa a la norma del gradiente medio. Dron plano a 100 Hz con ráfagas, política lineal de 6 ganancias, 512 estimaciones. <code>figuras_b6.py</code>, sección 2.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Varianza:</strong> una sola retropropagación es menos ruidosa que un estimador de orden cero con 32 simulaciones, en todos los horizontes.</li>
+        <li><strong>Horizonte:</strong> con el lazo poco amortiguado (constante de tiempo de 48 s), la norma del gradiente medio crece 250 veces de 10 a 3000 pasos, y la peor muestra es 8 veces la media.</li>
+        <li><strong>Coste, H = 1000:</strong> en CPU, el primer orden cuesta 4,3 veces simular y el orden cero, 48; en GPU, 3,4 y 2,5: las 32 simulaciones van en paralelo y la retropropagación no.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Lección</span>En un problema suave y estable, el gradiente a través del simulador es la mejor información por simulación. Pero «por simulación» no es «por segundo»: en una GPU, el orden cero puede salir más barato.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · discontinuidad</p>
+  <h2>Un muro que el gradiente de primer orden no ve</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Coste esperado frente a la altura de consigna con un muro">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="254" text-anchor="end" class="t-mono t-faint" font-size="12">0</text>
+        <text x="52" y="204" text-anchor="end" class="t-mono t-faint" font-size="12">25</text>
+        <text x="52" y="154" text-anchor="end" class="t-mono t-faint" font-size="12">50</text>
+        <text x="52" y="104" text-anchor="end" class="t-mono t-faint" font-size="12">75</text>
+        <text x="52" y="54" text-anchor="end" class="t-mono t-faint" font-size="12">100</text>
+        <text x="137" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">3</text>
+        <text x="328" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">4</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">5 m</text>
+        <line x1="137" y1="30" x2="137" y2="250" class="ln-dash"/>
+        <text x="143" y="44" class="t-muted" font-size="12">altura del muro</text>
+        <path d="M60.0,72.1 L69.6,78.4 L79.2,85.3 L88.7,92.8 L98.3,100.9 L107.9,109.8 L117.5,119.0 L127.1,128.5 L136.7,138.0 L146.2,147.5 L155.8,156.9 L165.4,166.1 L175.0,174.8 L184.6,183.1 L194.2,190.8 L203.8,197.8 L213.3,204.1 L222.9,209.3 L232.5,214.1 L242.1,218.2 L251.7,221.6 L261.2,224.3 L270.8,226.7 L280.4,228.4 L290.0,229.9 L299.6,230.9 L309.2,231.6 L318.8,232.2 L328.3,232.5 L337.9,232.8 L347.5,232.9 L357.1,232.9 L366.7,232.9 L376.2,232.8 L385.8,232.7 L395.4,232.5 L405.0,232.3 L414.6,232.2 L424.2,232.0 L433.7,231.8 L443.3,231.6 L452.9,231.4 L462.5,231.2 L472.1,231.0 L481.7,230.8 L491.2,230.6 L500.8,230.4 L510.4,230.2 L520.0,230.0" fill="none" class="ln-accent" stroke-width="2.5"/>
+        <circle cx="357.1" cy="232.9" r="4" class="fill-tesis"/>
+        <text x="357" y="220" text-anchor="middle" class="t-tesis" font-size="12">mínimo: 4,15 m</text>
+        <line x1="213.3" y1="204" x2="171" y2="204" class="ln-time" stroke-width="2.5"/>
+        <path d="M171,204 l8,-5 l0,10 z" class="fill-time"/>
+        <text x="200" y="190" text-anchor="middle" class="t-time" font-size="12">1.er orden: bajar</text>
+        <line x1="213.3" y1="204" x2="256" y2="204" class="ln-tesis" stroke-width="2.5"/>
+        <path d="M256,204 l-8,-5 l0,10 z" class="fill-tesis"/>
+        <text x="262" y="200" class="t-tesis" font-size="12">verdadero: subir</text>
+        <circle cx="213.3" cy="204" r="3.5" class="fill-accent"/>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">altura de consigna θ</text>
+      </svg>
+      <figcaption>Coste esperado \(\mathbb E[J] = 2\theta + 100\,P(\text{choque})\) de un dron que cruza un muro de 3 m a 5 m/s con ráfagas verticales, estimado con 100 000 trayectorias. <code>figuras_b6.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>θ</th><th>P(choque)</th><th>Verdadero</th><th>1.er orden</th><th>Orden 0 (64)</th></tr></thead>
+          <tbody>
+            <tr><td>3,4 m</td><td class="n">0,165</td><td class="n">−59,8</td><td class="n">2,00</td><td class="n">−60,5 ± 28</td></tr>
+            <tr><td>3,8 m</td><td class="n">0,025</td><td class="n">−11,8</td><td class="n">2,00</td><td class="n">−14,2 ± 13</td></tr>
+            <tr><td>4,2 m</td><td class="n">0,002</td><td class="n">0,61</td><td class="n">2,00</td><td class="n">0,74 ± 3,7</td></tr>
+            <tr><td>4,6 m</td><td class="n">0,000</td><td class="n">1,97</td><td class="n">2,00</td><td class="n">1,99 ± 0,35</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="small">
+        <li>El primer orden ve solo la energía de subir: vale 2 en todas partes y empuja a bajar hasta chocar.</li>
+        <li>El orden cero, ruidoso, apunta bien: es el sesgo frente a la varianza de Suh et al. <a class="cite" data-ref="suh2022"></a>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · rigidez</p>
+  <h2>Suavizar el salto no basta: sesgo empírico y varianza enorme</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Sustituimos el muro por una sigmoide de 1 cm de anchura: ahora el coste es continuo y el primer orden es insesgado en teoría.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>θ</th><th>Verdadero</th><th>1.er orden (4096 muestras)</th><th>Desviación por muestra</th></tr></thead>
+          <tbody>
+            <tr><td>3,4 m</td><td class="n">−59,4</td><td class="n">−65,9 ± 5,3</td><td class="n">337</td></tr>
+            <tr><td>3,8 m</td><td class="n">−12,0</td><td class="n">−12,7 ± 2,4</td><td class="n">152</td></tr>
+            <tr><td>4,2 m</td><td class="n">0,65</td><td class="n">−0,17 ± 0,98</td><td class="n">62</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted"><code>figuras_b6.py</code>, sección 3. El orden cero con 64 perturbaciones tiene una desviación de 27 a 3,4 m.</p>
+      <ul class="small">
+        <li>Casi todas las muestras dan 2 y unas pocas, las que rozan el muro, dan miles: con pocas muestras, el estimador «parece» sesgado. Es lo que Suh et al. llaman <strong>sesgo empírico</strong> <a class="cite" data-ref="suh2022"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Suh et al. (2022)</span>Con discontinuidades, el primer orden está sesgado y el orden cero no; con aproximaciones rígidas, aparece el sesgo empírico; con rigidez persistente o caos, el primer orden tiene más varianza. Proponen el estimador de orden α, una mezcla de los dos que se va al orden cero cerca de los saltos <a class="cite" data-ref="suh2022"></a>.</div>
+      <div class="callout realidad"><span class="tag">En contacto real</span>Schwarke et al.: el contacto blando da gradientes, pero sus políticas no transfieren al contacto rígido; y subir la rigidez para ganar realismo «desestabiliza el gradiente» <a class="cite" data-ref="schwarke2025"></a>.</div>
+      <div class="callout clave"><span class="tag">Para un dron</span>Vuelo libre: suave, el primer orden brilla. Aterrizar, chocar, saturar o cambiar de modo: saltos, y vuelve el orden cero o un crítico que suavice.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · SHAC</p>
+  <h2>Ventanas cortas y un crítico que las cierra</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">SHAC retropropaga solo por ventanas cortas de \(h\) pasos y cierra cada una con un crítico aprendido <a class="cite" data-ref="xu2022"></a>:</p>
+      \[ \mathcal L_\theta = -\frac{1}{Nh}\sum_{i=1}^{N}\Big[\sum_{t=t_0}^{t_0+h-1}\gamma^{t-t_0} r(s_t^i,a_t^i) + \gamma^h V_\phi(s^i_{t_0+h})\Big]. \]
+      <ul class="small">
+        <li>El gradiente se corta entre ventanas: nada de productos de 1000 jacobianos. El crítico «absorbe» el paisaje ruidoso de horizontes largos y las discontinuidades de las terminaciones.</li>
+        <li>Mejor resultado con \(h\) = 16 o 32 en Ant; la retropropagación tarda unas 2 veces el paso directo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Resultado</th><th>Cifra</th></tr></thead>
+          <tbody>
+            <tr><td>SHAC, Humanoid MTU: tiempo y pasos para la recompensa de PPO</td><td class="n">35 min, 1,7 M pasos</td></tr>
+            <tr><td>Frente a PPO: tiempo de reloj / muestras</td><td class="n">×17 / ×382</td></tr>
+            <tr><td>Schwarke et al., ANYmal: eficiencia en muestras de SHAC frente a PPO</td><td class="n">más de ×10</td></tr>
+            <tr><td>Ídem, tiempo por iteración: PPO / SHAC</td><td class="n">0,18 s / 0,33 s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">SHAC <a class="cite" data-ref="xu2022"></a>; Schwarke et al., CoRL 2025 según los autores <a class="cite" data-ref="schwarke2025"></a>.</p>
+      <div class="callout error"><span class="tag">Error frecuente</span>Leer «×382 en muestras» como «×382 más rápido». El reloj es lo que pagas: SHAC era más lento que PPO al principio del entrenamiento, y PPO itera más deprisa <a class="cite" data-ref="xu2022,schwarke2025"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Gradientes · otros usos</p>
+  <h2>Diferenciable no es solo para políticas</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">IDENTIFICAR</span><h3>Parámetros físicos</h3><p>Minimizar el error entre la trayectoria simulada y la medida respecto a masa, arrastre o constante del motor, con el gradiente a través de la simulación: la versión no lineal de los mínimos cuadrados de B2. Horizontes cortos o disparos múltiples para que no diverja (laboratorio, paso 6).</p></div>
+    <div class="card"><span class="meta">PLANIFICAR</span><h3>Trayectorias y MPC</h3><p>Optimizar la secuencia de mandos por descenso de gradiente a través del modelo: lo que hace un MPC de tiro simple (A3a). Con el mismo cuidado: horizontes cortos y costes suaves.</p></div>
+    <div class="card"><span class="meta">MODELO SUSTITUTO</span><h3>Directo fiel, inverso simple</h3><p>Song et al. simulan hacia delante con un simulador preciso no diferenciable y retropropagan por un modelo simplificado alineado con él <a class="cite" data-ref="song2024"></a>; Heeg et al. usan un modelo simple en el camino de vuelta para ahorrar memoria <a class="cite" data-ref="heeg2025"></a>.</p></div>
+  </div>
+  <div class="callout realidad"><span class="tag">Cuidado con el simulador rápido</span>En MuJoCo, el camino rápido en GPU para muchos contactos (MJX-Warp) no es diferenciable; el diferenciable (MJX-JAX) es más lento con contactos <a class="cite" data-ref="mjxdoc"></a>. Elegir gradientes condiciona el simulador.</div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Drones">
+  <p class="num">Parte 3</p>
+  <h2>Para drones</h2>
+  <p>Qué se ha conseguido con simulación masiva y con física diferenciable en multirrotores, y cómo elegir para la tesis.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · resultados</p>
+  <h2>Masivo, diferenciable y los dos: cifras de sus autores</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <thead><tr><th>Trabajo</th><th>Cómo aprende</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>Learning to Fly in Seconds, RA-L 2024 <a class="cite" data-ref="eschmann2024"></a></td><td>RL actor-crítico con un simulador propio muy rápido</td><td>Transferencia con mando directo de RPM tras 18 s de entrenamiento en un portátil</td></tr>
+        <tr><td>Aerial Gym, RA-L 2025 <a class="cite" data-ref="kulkarni2025"></a></td><td>RL masivo en Isaac Gym con trazado de rayos en GPU</td><td>4,4 M pasos de física/s con \(2^{16}\) drones (RTX 3090); navegación con profundidad en 142 min; políticas desplegadas sin ajuste</td></tr>
+        <tr><td>Heeg et al., ICRA 2025 <a class="cite" data-ref="heeg2025"></a></td><td>BPTT a través del simulador, frente a PPO</td><td>Control con estado: 23 s frente a 2 min 15 s, con menos del 20 % de las muestras. Con rasgos visuales, solo BPTT con 100 o 1000 entornos se acerca al caso con estado</td></tr>
+        <tr><td>Zhang et al., Nat. Mach. Intell. 2025 <a class="cite" data-ref="zhang2025"></a></td><td>Física diferenciable de masa puntual y render de profundidad</td><td>90 % de éxito frente al 60 % del mejor método anterior; hasta 20 m/s en un ordenador de 21 dólares</td></tr>
+        <tr><td>GRaD-Nav, IROS 2025 (B3b) <a class="cite" data-ref="chen2025gradnav"></a></td><td>Dinámica diferenciable y escena de gaussianas</td><td>Más del 300 % de eficiencia en muestras y el 20 % del tiempo frente a BPTT sin sus mejoras</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">El patrón</span>Los éxitos con gradientes usan modelos simples y suaves (masa puntual, cuerpo rígido sin contacto) y tareas de vuelo libre. Los masivos con RL aguantan mejor lo discontinuo, a cambio de muchas más muestras.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Drones · elegir</p>
+  <h2>PPO masivo, gradientes a través del simulador o los dos</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Si tu tarea…</th><th>Empieza por</th></tr></thead>
+          <tbody>
+            <tr><td>es vuelo libre con coste suave y estado observable</td><td>gradientes a través del simulador (BPTT corto o SHAC)</td></tr>
+            <tr><td>tiene contactos, choques, terminaciones o modos</td><td>PPO masivo, o SHAC con crítico</td></tr>
+            <tr><td>usa render caro (B3b)</td><td>pocos entornos con gradiente, o un experto privilegiado y destilación (A6b)</td></tr>
+            <tr><td>tiene observación parcial y memoria</td><td>RL masivo con trayectorias largas; gradientes solo en ventanas cortas</td></tr>
+            <tr><td>necesita identificar parámetros</td><td>gradiente a través del simulador en horizontes cortos</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Para el hito H2</span>Tu simulador queda vectorizado y diferenciable: miles de x500 con las capas de B2–B4 en tu GPU, y <code>jax.grad</code> a través de ventanas cortas. A6a entrena PPO sobre él; A8a, un world model.</div>
+      <div class="callout error"><span class="tag">Error frecuente</span>Elegir el método por la cifra de muestras de un artículo. Mide en tu tarea, en tu hardware y en tiempo de reloj, con la misma aleatorización y los mismos retardos.</div>
+      <div class="callout realidad"><span class="tag">Sim-to-real</span>Ninguno de los dos caminos arregla un simulador infiel: el gradiente optimiza exactamente el modelo, errores incluidos. Por eso B2–B4 van antes que B6, y B7 después.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CIERRE ============ -->
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Más rápido, más diferenciable y más mezclado</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Física en GPU como estándar</h3><p>MJX, MuJoCo Warp, Newton e Isaac Lab hacen de miles de entornos en una GPU lo normal <a class="cite" data-ref="mjxdoc,mjwarp,newton,isaaclab3"></a>. Con una GPU de consumo ya se pasa de \(10^7\) pasos por segundo en un dron sencillo (parte 1).</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Gradientes con red de seguridad</h3><p>Estimadores que mezclan primer orden y orden cero <a class="cite" data-ref="suh2022"></a>, ventanas cortas con crítico <a class="cite" data-ref="xu2022"></a>, contactos diseñados para dar gradientes útiles <a class="cite" data-ref="schwarke2025"></a> y modelos sustitutos para el camino de vuelta <a class="cite" data-ref="song2024,heeg2025"></a>.</p></div>
+    <div class="card"><span class="meta">PREVISIÓN</span><h3>Simuladores y modelos aprendidos, juntos</h3><p>Un simulador físico diferenciable para lo que se sabe modelar y un modelo aprendido para el resto (B2), entrenados y usados con los mismos gradientes. Es una previsión: hoy se combinan sobre todo a mano.</p></div>
+  </div>
+  <div class="callout realidad"><span class="tag">Lo que sigue abierto</span>El fondo del problema no es la velocidad: en contacto rígido y en horizontes caóticos, el gradiente exacto del simulador sigue sin ser un buen gradiente del objetivo <a class="cite" data-ref="suh2022,metz2021"></a>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Muestras baratas para aprender beliefs; gradientes con horizonte corto</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Belief recurrente:</strong> aprender a recordar exige trayectorias largas por actualización y mucha diversidad: el régimen de la simulación masiva, con aleatorización por entorno.</li>
+        <li><strong>World model:</strong> retropropagar el actor por el modelo aprendido es primer orden a través de un simulador aprendido; lo protege lo mismo que a SHAC: horizonte imaginado corto y un crítico.</li>
+        <li><strong>Observabilidad parcial:</strong> el gradiente de primer orden presupone que sabes cómo cambia el estado con la acción; con estado oculto, ese gradiente pasa por el belief, y sus errores también.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Ayuda el gradiente a través del simulador a entrenar un belief, o solo a la política de un estado conocido? Un experimento posible: el mismo dron con observación parcial, entrenado con PPO masivo y con SHAC, comparado en tiempo de reloj y en robustez a lo que no se modeló.</div>
+      <div class="callout clave"><span class="tag">Cómputo limitado</span>El cómputo caro es el del entrenamiento, no el de a bordo: la política resultante es la misma red. Pero la elección del método fija qué modelo de dron puedes permitirte (simple y diferenciable, o rico y no diferenciable).</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de B6</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Vectorizar es escribir un dron con forma fija y sin ramas, y dejar que <code>vmap</code>, <code>scan</code> y <code>jit</code> hagan miles; nada sale del acelerador.</li>
+    <li>En una RTX 4060 Ti: unos 72 millones de pasos/s con 65 536 x500; la GPU solo gana con miles de entornos, y la memoria pone el techo.</li>
+    <li>El lote de PPO es entornos × pasos; por debajo de un horizonte mínimo no aprende. Arranca el valor en los cortes por tiempo.</li>
+    <li>Orden cero: sin sesgo y con varianza; primer orden: poca varianza si todo es suave, sesgo o varianza enorme con saltos, rigidez o caos.</li>
+    <li>El gradiente de un despliegue es un producto de jacobianos: horizonte corto, sistema estable o un crítico que cierre la ventana (SHAC).</li>
+    <li>Un muro: el primer orden dice «baja» donde el verdadero dice «sube».</li>
+    <li>Elige por tu tarea y en tiempo de reloj; ningún método arregla un simulador infiel.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Escala</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Quieres un lote de PPO de 98 304 muestras y tu tarea necesita al menos 24 pasos seguidos. ¿Cuántos entornos?</p>
+      <ol class="opts">
+        <li><button type="button">98 304 con 1 paso cada uno</button></li>
+        <li><button type="button">16 384 con 6 pasos</button></li>
+        <li><button type="button">4096 con 24 pasos</button></li>
+        <li><button type="button">Da igual: solo cuenta el lote</button></li>
+      </ol>
+      <p class="explain">El lote es el producto; el horizonte por entorno no puede bajar del mínimo que necesita GAE. Es la configuración de Rudin et al.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">2. Tu simulador en GPU da 13 000 pasos/s con un entorno y 30 millones con 4096. ¿Por qué tan poco con uno?</p>
+      <ol class="opts">
+        <li><button type="button">Cada paso lanza trabajo casi vacío a la GPU: domina el coste fijo de lanzar núcleos, no el cálculo</button></li>
+        <li><button type="button">La GPU es más lenta que la CPU por diseño</button></li>
+        <li><button type="button">La física de un dron no se puede paralelizar</button></li>
+        <li><button type="button">Por la compilación JIT</button></li>
+      </ol>
+      <p class="explain">Con un entorno, la GPU está ociosa casi todo el tiempo. La compilación se excluye al medir (se compila antes).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Gradientes</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. El coste tiene un término \(100\cdot\mathbf 1[\text{choque}]\). ¿Qué hace el gradiente de primer orden con él?</p>
+      <ol class="opts">
+        <li><button type="button">Lo estima con mucha varianza</button></li>
+        <li><button type="button">Lo estima sin sesgo, como el orden cero</button></li>
+        <li><button type="button">Da NaN</button></li>
+        <li><button type="button">Lo ignora: su derivada es cero en casi todo punto, aunque la probabilidad de choque dependa de θ</button></li>
+      </ol>
+      <p class="explain">La derivada de la esperanza tiene un término de frontera que la derivada de cada muestra no ve. En el muro: 2,00 frente a −59,8.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. Retropropagas 3000 pasos por un lazo cerrado con radio espectral 0,9998. ¿Qué esperas?</p>
+      <ol class="opts">
+        <li><button type="button">Gradientes que se anulan</button></li>
+        <li><button type="button">Gradientes que crecen con el horizonte y con colas pesadas entre muestras</button></li>
+        <li><button type="button">Exactamente lo mismo que con 100 pasos</button></li>
+        <li><button type="button">Un error de memoria seguro</button></li>
+      </ol>
+      <p class="explain">Los productos de jacobianos casi unitarios acumulan sensibilidad: en el experimento, ×250 en la norma y la peor muestra 8 veces la media.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Elegir</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="0">
+      <p class="q">5. En tu GPU, un gradiente de primer orden cuesta 3,4 simulaciones y uno de orden cero con 32 perturbaciones, 2,5. El problema es suave. ¿Qué haces?</p>
+      <ol class="opts">
+        <li><button type="button">Comparar los dos en tiempo de reloj hasta la misma calidad: menos varianza por simulación no implica menos tiempo</button></li>
+        <li><button type="button">Primer orden siempre: tiene menos varianza</button></li>
+        <li><button type="button">Orden cero siempre: es más barato</button></li>
+        <li><button type="button">Ninguno: usa PPO</button></li>
+      </ol>
+      <p class="explain">La varianza por estimación y el coste por estimación cambian con el hardware. Lo que importa es la curva de calidad frente a tiempo.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu dron debe aterrizar en una plataforma móvil con una cámara y observación parcial. ¿Cómo combinarías simulación masiva y gradientes?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">El contacto del aterrizaje y la observación parcial piden RL masivo: miles de entornos con la plataforma, el viento, los retardos (B4) y el ruido de cámara (B3a) aleatorizados por entorno, trayectorias largas para la memoria y un crítico con estado privilegiado (A6b). Los gradientes, donde el problema es suave: identificar los parámetros del dron (B2) por gradiente en ventanas cortas, preentrenar la fase de aproximación (vuelo libre) con BPTT corto o SHAC, o un experto con estado que luego se destila. El contacto, con coste suavizado y orden cero, o dejándolo al crítico. Comparación final en tiempo de reloj y en robustez frente a lo no modelado.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 45 MIN · CoRL</span>
+      <h3>Andar en minutos <a class="cite" data-ref="rudin2022"></a></h3>
+      <p><strong>Lee:</strong> §2.2 (lote, horizonte, minilotes y cortes por tiempo) y la figura del compromiso entre robots y pasos.</p>
+      <p><strong>Busca:</strong> por qué el rendimiento cae con demasiados robots.</p>
+      <p><strong>Responde:</strong> ¿qué horizonte mínimo necesitaría tu política con memoria?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · ICML</span>
+      <h3>¿Mejores gradientes? <a class="cite" data-ref="suh2022"></a></h3>
+      <p><strong>Lee:</strong> §3 (sesgo, sesgo empírico, rigidez y caos) y el ejemplo de la pelota y el muro.</p>
+      <p><strong>Busca:</strong> cómo eligen α en su estimador mixto.</p>
+      <p><strong>Responde:</strong> ¿qué partes de tu tarea de tesis son discontinuas?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · ICLR</span>
+      <h3>SHAC <a class="cite" data-ref="xu2022"></a></h3>
+      <p><strong>Lee:</strong> §3 (ventanas cortas, crítico y corte del gradiente) y la ablación de \(h\).</p>
+      <p><strong>Busca:</strong> la diferencia entre la curva por muestras y por tiempo.</p>
+      <p><strong>Responde:</strong> ¿en qué se parece al entrenamiento del actor de Dreamer?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> Isaac Gym <a class="cite" data-ref="makoviychuk2021"></a>; caos y gradientes <a class="cite" data-ref="metz2021"></a>; vuelo con rasgos visuales <a class="cite" data-ref="heeg2025"></a>; documentación de MJX <a class="cite" data-ref="mjxdoc"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Miles de entornos en paralelo y gradientes a través del simulador</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Tu simulador, vectorizado:</strong> rendimiento frente a entornos en CPU y GPU.</li>
+        <li><strong>Lo que se rompe a escala:</strong> claves aleatorias, NaN, reinicios sincronizados, aleatorización y precisión.</li>
+        <li><strong>Primer orden frente a orden cero:</strong> varianza, coste y optimización.</li>
+        <li><strong>El muro:</strong> sesgo y suavizado.</li>
+        <li><strong>Horizonte y explosión</strong> de gradientes, y ventanas truncadas.</li>
+        <li><strong>Identificación por gradiente</strong> de arrastre y motor.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Tu curva de rendimiento frente a la de la presentación; 2,00 frente a −59,8 en el muro; la varianza del primer orden suavizado; el coste de cada estimador en tu hardware.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Una GPU NVIDIA de consumo o una en la nube; todo funciona en CPU, más despacio a partir de unos cientos de entornos.</div>
+      <p class="xsmall muted">El script que genera las figuras de esta presentación está en <code>figuras/figuras_b6.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-rudin2022">Rudin, N., Hoeller, D., Reist, P., Hutter, M. (2022). Learning to walk in minutes using massively parallel deep reinforcement learning. <span class="venue">Conference on Robot Learning (CoRL 2021)</span>, PMLR 164, 91–100. <a href="https://arxiv.org/abs/2109.11978">arXiv:2109.11978</a></li>
+    <li id="ref-heeg2025">Heeg, J., Song, Y., Scaramuzza, D. (2025). Learning quadrotor control from visual features using differentiable simulation. <span class="venue">ICRA 2025</span>. <a href="https://arxiv.org/abs/2410.15979">arXiv:2410.15979</a></li>
+    <li id="ref-hafner2020">Hafner, D., Lillicrap, T., Ba, J., Norouzi, M. (2020). Dream to control: Learning behaviors by latent imagination. <span class="venue">ICLR 2020</span>. <a href="https://arxiv.org/abs/1912.01603">arXiv:1912.01603</a></li>
+    <li id="ref-belbuteperes2018">de Avila Belbute-Peres, F., Smith, K., Allen, K., Tenenbaum, J., Kolter, J. Z. (2018). End-to-end differentiable physics for learning and control. <span class="venue">Advances in Neural Information Processing Systems 31 (NeurIPS 2018)</span>. <a href="https://papers.nips.cc/paper_files/paper/2018/hash/842424a1d0595b76ec4fa03c46e8d755-Abstract.html">papers.nips.cc</a></li>
+    <li id="ref-degrave2019">Degrave, J., Hermans, M., Dambre, J., wyffels, F. (2019). A differentiable physics engine for deep learning in robotics. <span class="venue">Frontiers in Neurorobotics</span>, 13, 6. <a href="https://doi.org/10.3389/fnbot.2019.00006">doi:10.3389/fnbot.2019.00006</a>. <a href="https://arxiv.org/abs/1611.01652">arXiv:1611.01652</a></li>
+    <li id="ref-hu2020">Hu, Y., Anderson, L., Li, T.-M., Sun, Q., Carr, N., Ragan-Kelley, J., Durand, F. (2020). DiffTaichi: Differentiable programming for physical simulation. <a href="https://arxiv.org/abs/1910.00935">arXiv:1910.00935</a> (ICLR 2020 según los autores)</li>
+    <li id="ref-makoviychuk2021">Makoviychuk, V., Wawrzyniak, L., Guo, Y., Lu, M., Storey, K., Macklin, M., Hoeller, D., Rudin, N., Allshire, A., Handa, A., State, G. (2021). Isaac Gym: High performance GPU-based physics simulation for robot learning. <span class="venue">NeurIPS 2021, Datasets and Benchmarks Track</span>. <a href="https://arxiv.org/abs/2108.10470">arXiv:2108.10470</a></li>
+    <li id="ref-freeman2021">Freeman, C. D., Frey, E., Raichuk, A., Girgin, S., Mordatch, I., Bachem, O. (2021). Brax — A differentiable physics engine for large scale rigid body simulation. <span class="venue">NeurIPS 2021, Datasets and Benchmarks Track</span>. <a href="https://arxiv.org/abs/2106.13281">arXiv:2106.13281</a></li>
+    <li id="ref-metz2021">Metz, L., Freeman, C. D., Schoenholz, S. S., Kachman, T. (2021). Gradients are not all you need. <a href="https://arxiv.org/abs/2111.05803">arXiv:2111.05803</a> (preprint)</li>
+    <li id="ref-suh2022">Suh, H. J. T., Simchowitz, M., Zhang, K., Tedrake, R. (2022). Do differentiable simulators give better policy gradients? <span class="venue">ICML 2022</span>, PMLR 162, 20668–20696. <a href="https://arxiv.org/abs/2202.00817">arXiv:2202.00817</a></li>
+    <li id="ref-xu2022">Xu, J., Makoviychuk, V., Narang, Y., Ramos, F., Matusik, W., Garg, A., Macklin, M. (2022). Accelerated policy learning with parallel differentiable simulation. <span class="venue">ICLR 2022</span>. <a href="https://arxiv.org/abs/2204.07137">arXiv:2204.07137</a></li>
+    <li id="ref-song2024">Song, Y., Kim, S., Scaramuzza, D. (2024). Learning quadruped locomotion using differentiable simulation. <a href="https://arxiv.org/abs/2403.14864">arXiv:2403.14864</a> (CoRL 2024 según los autores)</li>
+    <li id="ref-schwarke2025">Schwarke, C., Klemm, V., Bagajo, J., Sleiman, J.-P., Georgiev, I., Tordesillas, J., Hutter, M. (2025). Learning deployable locomotion control via differentiable simulation. <a href="https://arxiv.org/abs/2404.02887">arXiv:2404.02887</a> (v2; CoRL 2025 según los autores)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="14">
+    <li id="ref-zhang2025">Zhang, Y., Hu, Y., Song, Y., Zou, D., Lin, W. (2025). Learning vision-based agile flight via differentiable physics. <span class="venue">Nature Machine Intelligence</span>, 7(6), 954–966. <a href="https://doi.org/10.1038/s42256-025-01048-0">doi:10.1038/s42256-025-01048-0</a></li>
+    <li id="ref-kulkarni2025">Kulkarni, M., Rehberg, W., Alexis, K. (2025). Aerial Gym Simulator: A framework for highly parallelized simulation of aerial robots. <span class="venue">IEEE Robotics and Automation Letters</span>, 10(4), 4093–4100. <a href="https://doi.org/10.1109/LRA.2025.3548507">doi:10.1109/LRA.2025.3548507</a>. Cifras de <a href="https://arxiv.org/abs/2503.01471">arXiv:2503.01471</a> (v1)</li>
+    <li id="ref-mjxdoc">Google DeepMind. MuJoCo XLA (MJX), <code>doc/mjx.rst</code> (MJX-JAX y MJX-Warp, «The Sharp Bits»), consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco">github.com/google-deepmind/mujoco</a></li>
+    <li id="ref-mjwarp">Google DeepMind y NVIDIA. MuJoCo Warp (MJWarp), README, consultado el 7 de noviembre de 2026. <a href="https://github.com/google-deepmind/mujoco_warp">github.com/google-deepmind/mujoco_warp</a></li>
+    <li id="ref-newton">Newton (proyecto de la Linux Foundation). README, consultado el 7 de noviembre de 2026. <a href="https://github.com/newton-physics/newton">github.com/newton-physics/newton</a></li>
+    <li id="ref-isaaclabrepro">NVIDIA. Isaac Lab, <code>docs/source/how-to/reproducibility.rst</code>, consultado el 7 de noviembre de 2026. <a href="https://github.com/isaac-sim/IsaacLab">github.com/isaac-sim/IsaacLab</a></li>
+    <li id="ref-rslrl">Robotic Systems Lab (ETH Zürich). rsl_rl, <code>runners/on_policy_runner.py</code> (<code>init_at_random_ep_len</code>), consultado el 7 de noviembre de 2026. <a href="https://github.com/leggedrobotics/rsl_rl">github.com/leggedrobotics/rsl_rl</a></li>
+    <li id="ref-isaaclab3">NVIDIA. Isaac Lab 3.0.0, notas de la versión (20 de octubre de 2026). <a href="https://github.com/isaac-sim/IsaacLab">github.com/isaac-sim/IsaacLab</a></li>
+    <li id="ref-eschmann2024">Eschmann, J., Albani, D., Loianno, G. (2024). Learning to fly in seconds. <span class="venue">IEEE Robotics and Automation Letters</span>, 9(7), 6336–6343. <a href="https://doi.org/10.1109/LRA.2024.3396025">doi:10.1109/LRA.2024.3396025</a>. <a href="https://arxiv.org/abs/2311.13081">arXiv:2311.13081</a></li>
+    <li id="ref-chen2025gradnav">Chen, Q., Sun, J., Gao, N., Low, J., Chen, T., Schwager, M. (2025). GRaD-Nav: Efficiently learning visual drone navigation with Gaussian radiance fields and differentiable dynamics. <span class="venue">IROS 2025</span>, 7941–7948. <a href="https://doi.org/10.1109/IROS60139.2025.11247514">doi:10.1109/IROS60139.2025.11247514</a>. <a href="https://arxiv.org/abs/2503.03984">arXiv:2503.03984</a> (cifras de la versión HTML de arXiv)</li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>

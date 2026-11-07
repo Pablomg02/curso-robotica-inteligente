@@ -1,0 +1,55 @@
+dispositivo: cuda:0 | jax 0.12.0.1 | desconocido
+======================================================================
+1. PASOS DE ENTORNO POR SEGUNDO: x500 (13 estados + 4 motores), política MLP 17-64-64-4,
+   10 subpasos de física de 1 ms por paso de control a 100 Hz, 100 pasos de control por medida
+         1 entornos:          13344 pasos de entorno/s (1.33e+05 subpasos de física/s);      7.5 ms por 100 pasos
+        16 entornos:         194829 pasos de entorno/s (1.95e+06 subpasos de física/s);      8.2 ms por 100 pasos
+       256 entornos:        2922038 pasos de entorno/s (2.92e+07 subpasos de física/s);      8.8 ms por 100 pasos
+      4096 entornos:       30730660 pasos de entorno/s (3.07e+08 subpasos de física/s);     13.3 ms por 100 pasos
+     16384 entornos:       49360692 pasos de entorno/s (4.94e+08 subpasos de física/s);     33.2 ms por 100 pasos
+     65536 entornos:       71709604 pasos de entorno/s (7.17e+08 subpasos de física/s);     91.4 ms por 100 pasos
+    262144 entornos:       52188659 pasos de entorno/s (5.22e+08 subpasos de física/s);    502.3 ms por 100 pasos
+   1048576 entornos:       30978592 pasos de entorno/s (3.1e+08 subpasos de física/s);   3384.8 ms por 100 pasos
+  referencia: 1 entorno en Python con numpy, sin vectorizar: 3612 pasos de entorno/s
+path rend: M60.0,191.6 L147.9,159.5 L235.8,127.2 L323.8,99.1 L367.7,93.4 L411.7,89.0 L455.6,92.8 L499.6,99.0
+  puntos: 60.0,191.6 147.9,159.5 235.8,127.2 323.8,99.1 367.7,93.4 411.7,89.0 455.6,92.8 499.6,99.0
+  referencia numpy y = 207.2
+  ticks x (entornos): 1->60 10->133 100->206 1000.0->279 10000.0->352 100000.0->425 1000000.0->498
+  ticks y (pasos/s): 1e2->250 1e3->222 1e4->195 1e5->168 1e6->140 1e7->112 1e8->85 1e9->58 1e10->30
+======================================================================
+2. GRADIENTE DE PRIMER ORDEN (RETROPROPAGACIÓN A TRAVÉS DEL SIMULADOR) FRENTE A ORDEN CERO
+   dron plano, estacionario con ráfagas, política lineal con 6 ganancias, coste cuadrático, 100 Hz
+  H (pasos) | ganancias | ‖media‖ 1.er orden | std relativa 1.er orden | std relativa orden 0 (16 pert., 32 sim.) | ‖g‖ máx. de una muestra
+     10 | bien amortiguadas |     0.0081 |    1.685 |    3.343 |     0.0849 | coseno medias 0.969
+     50 | bien amortiguadas |    0.00293 |    1.635 |    2.174 |     0.0259 | coseno medias 0.996
+    100 | bien amortiguadas |     0.0131 |    1.676 |    1.982 |      0.138 | coseno medias 0.994
+    300 | bien amortiguadas |     0.0274 |    1.604 |    1.516 |      0.273 | coseno medias 0.996
+   1000 | bien amortiguadas |     0.0159 |    1.020 |    1.273 |      0.083 | coseno medias 1.000
+   3000 | bien amortiguadas |      0.013 |    0.540 |    0.783 |     0.0384 | coseno medias 1.000
+     10 | poco amortiguadas |     0.0081 |    1.685 |   10.098 |     0.0849 | coseno medias 0.826
+     50 | poco amortiguadas |    0.00301 |    1.639 |    4.892 |     0.0266 | coseno medias 0.955
+    100 | poco amortiguadas |      0.017 |    1.672 |    3.292 |      0.186 | coseno medias 0.997
+    300 | poco amortiguadas |     0.0992 |    1.440 |    2.188 |       1.05 | coseno medias 1.000
+   1000 | poco amortiguadas |      0.528 |    1.126 |    1.424 |       3.89 | coseno medias 1.000
+   3000 | poco amortiguadas |       2.01 |    1.066 |    1.426 |         17 | coseno medias 0.999
+  tiempo para 512 estimaciones con H = 1000: solo simular 6.2 ms; primer orden 21.3 ms (3.4x); orden cero con 32 simulaciones 15.6 ms (2.5x)
+  bien amortiguadas: radio espectral del paso linealizado 0.98798; constante de tiempo más lenta 0.83 s
+  poco amortiguadas: radio espectral del paso linealizado 0.99979; constante de tiempo más lenta 48.27 s
+======================================================================
+3. UN MURO QUE EL GRADIENTE DE PRIMER ORDEN NO VE
+   el dron vuela a 5 m/s hacia un muro de 3 m a 10 m; θ es la altura de consigna; ráfagas verticales;
+   coste = 2·θ (energía de subir) + 100 si al cruzar el muro está por debajo de 3 m
+  --- muro duro (indicador)
+  θ = 3.4 m: P(choque) = 0.165; dE[J]/dθ verdadero  -59.77; primer orden (media de 4096)    2.00 ± 0.00 (std por muestra 0.0); orden cero (64 pert.)  -60.54, std por estimación 27.94
+  θ = 3.8 m: P(choque) = 0.025; dE[J]/dθ verdadero  -11.77; primer orden (media de 4096)    2.00 ± 0.00 (std por muestra 0.0); orden cero (64 pert.)  -14.16, std por estimación 13.23
+  θ = 4.2 m: P(choque) = 0.002; dE[J]/dθ verdadero    0.61; primer orden (media de 4096)    2.00 ± 0.00 (std por muestra 0.0); orden cero (64 pert.)    0.74, std por estimación 3.66
+  θ = 4.6 m: P(choque) = 0.000; dE[J]/dθ verdadero    1.97; primer orden (media de 4096)    2.00 ± 0.00 (std por muestra 0.0); orden cero (64 pert.)    1.99, std por estimación 0.35
+  --- muro suavizado (sigmoide de 0.01 m)
+  θ = 3.4 m: P(choque) = 0.165; dE[J]/dθ verdadero  -59.35; primer orden (media de 4096)  -65.85 ± 5.27 (std por muestra 337.4); orden cero (64 pert.)  -60.03, std por estimación 27.09
+  θ = 3.8 m: P(choque) = 0.025; dE[J]/dθ verdadero  -11.96; primer orden (media de 4096)  -12.69 ± 2.38 (std por muestra 152.4); orden cero (64 pert.)  -14.01, std por estimación 12.48
+  θ = 4.2 m: P(choque) = 0.002; dE[J]/dθ verdadero    0.65; primer orden (media de 4096)   -0.17 ± 0.98 (std por muestra 62.4); orden cero (64 pert.)    0.72, std por estimación 3.45
+  θ = 4.6 m: P(choque) = 0.000; dE[J]/dθ verdadero    1.97; primer orden (media de 4096)    1.96 ± 0.04 (std por muestra 2.2); orden cero (64 pert.)    1.99, std por estimación 0.35
+  mínimo de E[J] en θ ≈ 4.15 m (E[J] = 8.55); el gradiente de primer orden vale 2 en todas partes: empuja a bajar hasta chocar
+path EJ: M60.0,72.1 L69.6,78.4 L79.2,85.3 L88.7,92.8 L98.3,100.9 L107.9,109.8 L117.5,119.0 L127.1,128.5 L136.7,138.0 L146.2,147.5 L155.8,156.9 L165.4,166.1 L175.0,174.8 L184.6,183.1 L194.2,190.7 L203.8,197.8 L213.3,204.1 L222.9,209.3 L232.5,214.1 L242.1,218.2 L251.7,221.6 L261.2,224.4 L270.8,226.7 L280.4,228.4 L290.0,229.9 L299.6,230.9 L309.2,231.6 L318.8,232.2 L328.3,232.5 L337.9,232.8 L347.5,232.9 L357.1,232.9 L366.7,232.9 L376.2,232.8 L385.8,232.7 L395.4,232.5 L405.0,232.3 L414.6,232.2 L424.2,232.0 L433.7,231.8 L443.3,231.6 L452.9,231.4 L462.5,231.2 L472.1,231.0 L481.7,230.8 L491.2,230.6 L500.8,230.4 L510.4,230.2 L520.0,230.0
+  x(θ mín) = 357.1, y = 232.9; x(3) = 136.7; x(4) = 328.3; x(5) = 520.0
+  ticks y: 0->250.0 25->200.0 50->150.0 75->100.0 100->50.0
