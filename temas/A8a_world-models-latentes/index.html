@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A8a · World models latentes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=8">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="A8a" data-deck-title="Model-based RL y world models latentes · Curso de robótica inteligente">
+<main class="deck">
+
+<!-- ============ APERTURA ============ -->
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 3 · Jornada 21 · Curso de robótica inteligente</p>
+  <h1>Model-based RL y world models latentes</h1>
+  <p class="subtitle">De PILCO a Dreamer y TD-MPC2: aprender un modelo para necesitar menos interacción, por qué su error se acumula, cómo un RSSM filtra e imagina en un espacio latente, y cómo se actúa con él. Con un RSSM mínimo en JAX que aprende el x500 sin ver su velocidad.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 4 h + laboratorio</span>
+    <span><b>Prerrequisitos</b> A3b, A7a, A7b</span>
+    <span><b>Prepara</b> A8b, A9a, H3</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de A8a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Explicar cuándo compensa aprender un modelo y cómo se usa: datos imaginados (Dyna, MBPO), planificación (PETS, PlaNet, TD-MPC) o aprendizaje en imaginación (Dreamer).</li>
+    <li>Acotar cómo crece el error de un modelo con el horizonte y reconocer la explotación del modelo.</li>
+    <li>Escribir un RSSM y su pérdida (cota de evidencia con KL), con los trucos de DreamerV3.</li>
+    <li>Comprobar que el estado latente de un world model es un belief, y medir su predicción en bucle abierto.</li>
+    <li>Distinguir modelos que reconstruyen la observación de los que solo predicen lo que sirve para decidir (TD-MPC, MuZero).</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Menos interacción, y un belief que además sabe imaginar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>PILCO aprendió a levantar y equilibrar un péndulo invertido real con 17,5 s de interacción en total <a class="cite" data-ref="deisenroth2011"></a>.</li>
+        <li>DayDreamer: un cuadrúpedo A1 aprende a darse la vuelta, levantarse y caminar desde cero, sin simulador ni reinicios, en una hora de experiencia real <a class="cite" data-ref="wu2022"></a>.</li>
+        <li>DreamerV3, con una sola configuración, supera a métodos especializados en más de 150 tareas y es, según sus autores, el primero en conseguir diamantes en Minecraft sin datos humanos <a class="cite" data-ref="hafner2025"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Tu tesis</span>«World models» está en el título. Un world model latente es, a la vez, un filtro (su posterior es un belief aprendido) y un simulador (su prior imagina el futuro). Este tema es su base técnica; A8b, los modelos fundacionales.</div>
+      <div class="callout realidad"><span class="tag">Este tema, medido</span>Un RSSM aprende el x500 con observación parcial y masa aleatoria; predice 1 s solo con las acciones mejor que su versión determinista y que un modelo sin memoria, y su estado codifica la velocidad que nunca ve. <code>figuras_a8a.py</code>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>Del modelo explícito al latente, y del latente a la escala</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">1991–2011</span>Dyna: aprender, planificar y reaccionar con un modelo <a class="cite" data-ref="sutton1991"></a>. PILCO: procesos gaussianos y gradientes analíticos <a class="cite" data-ref="deisenroth2011"></a>.</div>
+    <div class="ev"><span class="yr">2018–2019</span>World Models: VAE, red recurrente y un controlador pequeño <a class="cite" data-ref="ha2018"></a>. PETS: conjuntos de redes probabilísticas <a class="cite" data-ref="chua2018"></a>. PlaNet y el RSSM <a class="cite" data-ref="hafner2019"></a>. MBPO: despliegues cortos <a class="cite" data-ref="janner2019"></a>.</div>
+    <div class="ev"><span class="yr">2020–2022</span>Dreamer: actor y crítico en imaginación <a class="cite" data-ref="hafner2020"></a>. MuZero <a class="cite" data-ref="schrittwieser2020"></a> y la equivalencia en valor <a class="cite" data-ref="grimm2020"></a>. DreamerV2, latentes discretos en Atari <a class="cite" data-ref="hafner2021"></a>. TD-MPC <a class="cite" data-ref="hansen2022"></a>. DayDreamer en robots reales <a class="cite" data-ref="wu2022"></a>.</div>
+    <div class="ev"><span class="yr">2024–2025</span>TD-MPC2 con 317 M de parámetros y 80 tareas <a class="cite" data-ref="hansen2024"></a>. DreamerV3 en Nature <a class="cite" data-ref="hafner2025"></a>. Dreamer volando desde píxeles (preprint) <a class="cite" data-ref="romero2025"></a>.</div>
+  </div>
+</section>
+
+<!-- ============ PARTE 1 ============ -->
+<section class="slide divider" data-section="Por qué un modelo">
+  <p class="num">Parte 1</p>
+  <h2>Por qué aprender un modelo</h2>
+  <p>Generar datos, planificar o aprender en imaginación; y el precio: un error que se acumula y que la política puede explotar.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · usos</p>
+  <h2>Tres formas de usar un modelo aprendido</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">DATOS IMAGINADOS</span><h3>Dyna y MBPO</h3><p>El modelo genera transiciones con las que se entrena un agente sin modelo. MBPO arranca despliegues de \(k\) pasos desde estados reales, con un conjunto de redes probabilísticas y SAC; fijar \(k = 1\) «conserva buena parte del beneficio», y despliegues de 500 pasos son demasiado imprecisos <a class="cite" data-ref="janner2019"></a>. Dyna es el caso de despliegues de un paso.</p></div>
+    <div class="card"><span class="meta">PLANIFICAR</span><h3>PETS, PlaNet</h3><p>MPC con el modelo (A3b): optimizar acciones en línea. PETS planifica con CEM sobre un conjunto de 5 redes probabilísticas y 20 partículas; en half-cheetah iguala a SAC y PPO con 8 y 125 veces menos muestras <a class="cite" data-ref="chua2018"></a>. PlaNet planifica en el latente con CEM (horizonte 12, 1000 candidatos) <a class="cite" data-ref="hafner2019"></a>.</p></div>
+    <div class="card"><span class="meta">APRENDER EN IMAGINACIÓN</span><h3>World Models, Dreamer</h3><p>La política se entrena en trayectorias imaginadas por el modelo. World Models evoluciona un controlador lineal dentro del «sueño» <a class="cite" data-ref="ha2018"></a>; Dreamer entrena actor y crítico con gradientes a través de la imaginación <a class="cite" data-ref="hafner2020"></a> (parte 3).</p></div>
+  </div>
+  <div class="callout clave"><span class="tag">Incertidumbre</span>PETS separa la aleatoria («estocasticidad inherente del sistema», con salidas probabilísticas) de la epistémica («incertidumbre subjetiva por datos limitados», con el desacuerdo entre los modelos del conjunto) <a class="cite" data-ref="chua2018"></a>. PILCO sin su incertidumbre no aprendía: el modelo era demasiado confiado <a class="cite" data-ref="deisenroth2011"></a>.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Modelos · error compuesto</p>
+  <h2>Un error pequeño por paso se acumula con el horizonte</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Si el modelo \(\hat T\) se equivoca en cada paso como mucho \(\varepsilon\) en variación total, \(\max_{s,a}\mathrm{TV}\big(\hat T(\cdot\mid s,a), T(\cdot\mid s,a)\big)\le\varepsilon\), las distribuciones de estados de un despliegue de \(k\) pasos se separan como mucho \(k\varepsilon\), y el retorno estimado puede equivocarse en</p>
+      \[ |\hat J_k - J_k| \le R_{\max}\sum_{t=1}^{k}\gamma^t\, t\,\varepsilon. \]
+      <ul class="small">
+        <li>Despliegues largos en el modelo: el error crece con \(k\) (casi cuadrático en \(k\) para \(\gamma\approx1\)).</li>
+        <li>Por eso MBPO genera despliegues <em>cortos</em> desde estados reales, y Dreamer imagina pocos pasos y cierra con un crítico.</li>
+        <li>El modelo además se usa donde la política lo lleva: lejos de los datos, \(\varepsilon\) crece. Es la explotación del modelo.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: de un paso a \(k\) pasos</summary>
+        <p class="small">Sean \(d_t\) y \(\hat d_t\) las distribuciones de estados reales y del modelo en el paso \(t\) con la misma política y el mismo inicio. Con un acoplamiento:</p>
+        \[ \mathrm{TV}(\hat d_{t+1}, d_{t+1}) \le \mathrm{TV}(\hat d_t, d_t) + \varepsilon \ \Rightarrow\ \mathrm{TV}(\hat d_t, d_t)\le t\,\varepsilon. \]
+        <p class="small">Para una recompensa acotada por \(R_{\max}\) en valor absoluto, \(|\mathbb E_{\hat d_t}[r] - \mathbb E_{d_t}[r]|\le 2R_{\max}\,\mathrm{TV}\); sumando con descuento sale la cota (con \(2R_{\max}\) si la recompensa toma signos opuestos; \(R_{\max}\) si está en \([0, R_{\max}]\)). Es la idea de los lemas de simulación; las constantes exactas cambian según el artículo.</p>
+      </details>
+      <div class="callout realidad"><span class="tag">En nuestro x500</span>El error del RSSM pasa de 8 cm a 0,1 s a 28 cm a 0,5 s y 63 cm a 1 s (parte 2): más deprisa que linealmente, como predice el error compuesto con un modelo imperfecto. MBPO lo resume en una cota cuadrática en el horizonte efectivo \(1/(1-\gamma)\) <a class="cite" data-ref="janner2019"></a>.</div>
+    </div>
+  </div>
+</section>
+
+
+<section class="slide">
+  <p class="kicker">Modelos · explotación</p>
+  <h2>La política encuentra los errores del modelo, si la dejas</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">World Models en VizDoom: el controlador se entrena dentro del sueño del modelo con una «temperatura» \(\tau\) que controla su incertidumbre <a class="cite" data-ref="ha2018"></a>.</p>
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>\(\tau\)</th><th>Puntuación en el sueño</th><th>En el entorno real</th></tr></thead>
+          <tbody>
+            <tr><td>0,10</td><td class="n">2086 ± 140</td><td class="n">193 ± 58</td></tr>
+            <tr><td>1,15</td><td class="n">918 ± 546</td><td class="n">1092 ± 556</td></tr>
+            <tr><td>Política aleatoria</td><td class="n">—</td><td class="n">210 ± 108</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Con un modelo demasiado seguro, la política aprende trucos que solo existen en el modelo y en el mundo real lo hace peor que el azar. Con más incertidumbre, lo aprendido se transfiere.</p>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Desajuste de objetivos</span>El modelo se entrena para predecir bien un paso; la tarea es controlar bien. «La verosimilitud de las predicciones a un paso no siempre se correlaciona con el rendimiento en control», y un modelo útil para una tarea no necesita ser preciso en todas partes <a class="cite" data-ref="lambert2020"></a>.</div>
+      <div class="callout clave"><span class="tag">Defensas</span>Incertidumbre en el modelo (conjuntos, estocasticidad), despliegues cortos desde datos reales, reentrenar con los datos de la política y, en el extremo, entrenar el modelo solo para lo que importa a la decisión (TD-MPC, MuZero; parte 3).</div>
+      <div class="callout tesis"><span class="tag">Sim-to-real</span>Es el mismo problema que el de un simulador que la política explota (B7a), pero con un simulador aprendido: más rápido de mejorar con datos, y más fácil de engañar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 2 ============ -->
+<section class="slide divider" data-section="World models latentes">
+  <p class="num">Parte 2</p>
+  <h2>World models latentes</h2>
+  <p>Filtrar y predecir en un espacio aprendido, más pequeño que la observación: el RSSM y sus mejoras.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · RSSM</p>
+  <h2>El RSSM: un filtro aprendido con una parte determinista y otra estocástica</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tbody>
+            <tr><td>Camino determinista</td><td>\(h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})\) (una GRU)</td></tr>
+            <tr><td>Prior (imaginar)</td><td>\(\hat z_t\sim p_\theta(z_t\mid h_t)\)</td></tr>
+            <tr><td>Posterior (filtrar)</td><td>\(z_t\sim q_\phi(z_t\mid h_t, o_t)\)</td></tr>
+            <tr><td>Decodificador</td><td>\(\hat o_t\sim p_\theta(o_t\mid h_t, z_t)\); en Dreamer, también \(\hat r_t\)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small">Filtrar es usar el posterior con cada observación; imaginar es usar el prior solo con acciones. El camino determinista guarda memoria a largo plazo; el estocástico representa lo que no se puede predecir <a class="cite" data-ref="hafner2019"></a>.</p>
+    </div>
+    <div class="stack">
+      <details class="deriv"><summary>Derivación: la cota de evidencia por pasos</summary>
+        <p class="small">Con \(q(z_{1:T}\mid o_{1:T}, a) = \prod_t q(z_t\mid h_t, o_t)\) y el modelo \(\prod_t p(z_t\mid h_t)\,p(o_t\mid h_t, z_t)\), la desigualdad de Jensen da</p>
+        \[ \log p(o_{1:T}\mid a) \ge \sum_{t=1}^T \Big(\mathbb E_{q}\big[\log p(o_t\mid h_t, z_t)\big] \]
+        \[ \qquad -\ \mathbb E_q\big[\mathrm{KL}\big(q(z_t\mid h_t, o_t)\,\|\,p(z_t\mid h_t)\big)\big]\Big). \]
+        <p class="small">Reconstruir cada observación y que el prior prediga lo que el posterior infiere con la observación. El KL es la parte que obliga al modelo a predecir.</p>
+      </details>
+      <div class="callout clave"><span class="tag">Los trucos de DreamerV3</span>KL partido en dos con gradiente detenido en un lado (\(\beta_{\text{dyn}}\) entrena al prior hacia el posterior, \(\beta_{\text{rep}}\) al posterior hacia el prior) y bits libres para no forzar el KL por debajo de 1 nat; pesos \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) <a class="cite" data-ref="hafner2025"></a>. La primera versión de arXiv daba \(\beta_{\text{dyn}} = 0{,}5\); probamos las dos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · Dreamer V2 y V3</p>
+  <h2>Latentes discretos, KL equilibrado y una sola configuración</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0;">DreamerV2 (2021)</h3>
+      <ul class="small">
+        <li>El estado estocástico son 32 variables categóricas de 32 clases: un vector binario de 1024 con 32 bits activos, con gradientes «straight-through» <a class="cite" data-ref="hafner2021"></a>.</li>
+        <li>KL equilibrado: el prior se mueve hacia el posterior más deprisa que al revés (\(\alpha = 0{,}8\)).</li>
+        <li>Primer agente que alcanza nivel humano en los 55 juegos de Atari aprendiendo dentro de un world model entrenado aparte; mediana de 2,15 veces la puntuación de un jugador humano, con una sola GPU V100 en menos de 10 días <a class="cite" data-ref="hafner2021"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">DreamerV3 (Nature, 2025)</h3>
+      <ul class="small">
+        <li>Pérdida con \(\beta_{\text{pred}} = 1\), \(\beta_{\text{dyn}} = 1\), \(\beta_{\text{rep}} = 0{,}1\) y bits libres de 1 nat; transformación symlog \(\operatorname{sign}(x)\ln(|x|+1)\) para entradas y objetivos de escalas muy distintas; retornos normalizados por el rango entre los percentiles 5 y 95 <a class="cite" data-ref="hafner2025"></a>.</li>
+        <li>Lo que más pesa en sus ablaciones: el KL equilibrado y los bits libres, después la normalización del retorno.</li>
+        <li>Más de 150 tareas en 8 dominios con los mismos hiperparámetros; en Minecraft, 1 GPU durante 9 días frente a las 720 GPU de VPT, según sus autores.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué symlog</span>Una recompensa puede valer 0,01 en una tarea y 1000 en otra. Comprimir con symlog permite una sola configuración sin normalizar a mano: es lo que hace a V3 «robusto por defecto».</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · experimento</p>
+  <h2>Un RSSM del x500: predecir 1 s sin mirar</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Error de posición frente al horizonte de predicción en bucle abierto para cuatro modelos">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="199" text-anchor="end" class="t-mono t-faint" font-size="12">25</text>
+        <text x="52" y="144" text-anchor="end" class="t-mono t-faint" font-size="12">50</text>
+        <text x="52" y="89" text-anchor="end" class="t-mono t-faint" font-size="12">75</text>
+        <text x="52" y="34" text-anchor="end" class="t-mono t-faint" font-size="12">100 cm</text>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="290" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1 s</text>
+        <path d="M69.2,241.9 L78.4,239.3 L87.6,235.8 L96.8,231.9 L106.0,227.8 L115.2,223.5 L124.4,219.1 L133.6,214.6 L142.8,210.1 L152.0,205.5 L161.2,201.0 L170.4,196.4 L179.6,191.8 L188.8,187.2 L198.0,182.6 L207.2,178.0 L216.4,173.5 L225.6,169.0 L234.8,164.5 L244.0,160.0 L253.2,155.6 L262.4,151.2 L271.6,146.9 L280.8,142.6 L290.0,138.4 L299.2,134.2 L308.4,130.1 L317.6,126.0 L326.8,122.0 L336.0,118.0 L345.2,114.1 L354.4,110.3 L363.6,106.5 L372.8,102.8 L382.0,99.2 L391.2,95.6 L400.4,92.1 L409.6,88.6 L418.8,85.3 L428.0,81.9 L437.2,78.7 L446.4,75.5 L455.6,72.3 L464.8,69.2 L474.0,66.2 L483.2,63.2 L492.4,60.3 L501.6,57.5 L510.8,54.7 L520.0,52.0" fill="none" class="ln-dash"/>
+        <path d="M69.2,242.2 L78.4,240.2 L87.6,237.6 L96.8,234.5 L106.0,231.3 L115.2,227.8 L124.4,224.3 L133.6,220.6 L142.8,216.8 L152.0,213.0 L161.2,209.0 L170.4,205.0 L179.6,201.0 L188.8,196.9 L198.0,192.8 L207.2,188.6 L216.4,184.4 L225.6,180.2 L234.8,176.0 L244.0,171.8 L253.2,167.5 L262.4,163.3 L271.6,159.0 L280.8,154.7 L290.0,150.4 L299.2,146.2 L308.4,141.9 L317.6,137.6 L326.8,133.4 L336.0,129.1 L345.2,124.9 L354.4,120.6 L363.6,116.4 L372.8,112.2 L382.0,107.9 L391.2,103.8 L400.4,99.6 L409.6,95.5 L418.8,91.4 L428.0,87.3 L437.2,83.4 L446.4,79.4 L455.6,75.5 L464.8,71.6 L474.0,67.8 L483.2,64.0 L492.4,60.2 L501.6,56.4 L510.8,52.7 L520.0,48.9" fill="none" class="ln-tesis" stroke-width="1.8"/>
+        <path d="M69.2,242.4 L78.4,240.5 L87.6,238.1 L96.8,235.4 L106.0,232.6 L115.2,229.6 L124.4,226.6 L133.6,223.4 L142.8,220.2 L152.0,217.0 L161.2,213.6 L170.4,210.2 L179.6,206.7 L188.8,203.2 L198.0,199.5 L207.2,195.9 L216.4,192.1 L225.6,188.4 L234.8,184.6 L244.0,180.9 L253.2,177.2 L262.4,173.4 L271.6,169.6 L280.8,165.8 L290.0,162.0 L299.2,158.2 L308.4,154.4 L317.6,150.6 L326.8,146.7 L336.0,142.9 L345.2,139.1 L354.4,135.3 L363.6,131.5 L372.8,127.7 L382.0,123.9 L391.2,120.2 L400.4,116.4 L409.6,112.8 L418.8,109.1 L428.0,105.5 L437.2,101.9 L446.4,98.2 L455.6,94.7 L464.8,91.1 L474.0,87.5 L483.2,84.0 L492.4,80.6 L501.6,77.1 L510.8,73.7 L520.0,70.4" fill="none" class="ln-time" stroke-width="1.8"/>
+        <path d="M69.2,235.8 L78.4,234.9 L87.6,233.8 L96.8,232.5 L106.0,231.3 L115.2,229.7 L124.4,228.2 L133.6,226.4 L142.8,224.4 L152.0,222.5 L161.2,220.5 L170.4,218.4 L179.6,216.4 L188.8,214.4 L198.0,212.2 L207.2,210.0 L216.4,207.8 L225.6,205.4 L234.8,203.0 L244.0,200.5 L253.2,198.1 L262.4,195.6 L271.6,193.0 L280.8,190.5 L290.0,188.0 L299.2,185.4 L308.4,182.7 L317.6,180.1 L326.8,177.4 L336.0,174.6 L345.2,171.8 L354.4,168.9 L363.6,165.9 L372.8,162.9 L382.0,159.9 L391.2,156.9 L400.4,153.9 L409.6,150.7 L418.8,147.6 L428.0,144.5 L437.2,141.3 L446.4,138.1 L455.6,134.8 L464.8,131.5 L474.0,128.1 L483.2,124.6 L492.4,121.2 L501.6,117.7 L510.8,114.3 L520.0,110.9" fill="none" class="ln-accent" stroke-width="2.6"/>
+        <text x="290" y="286" text-anchor="middle" class="t-muted" font-size="13">horizonte de predicción solo con acciones</text>
+        <text x="70" y="48" class="t-muted" font-size="12">azul: RSSM · naranja: determinista</text>
+        <text x="70" y="64" class="t-muted" font-size="12">morado: MLP de un paso · gris: quieto</text>
+      </svg>
+      <figcaption>Error medio de posición en 1000 episodios de prueba tras filtrar 0,5 s con observaciones. <code>figuras_a8a.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Modelo</th><th>0,1 s</th><th>0,5 s</th><th>1 s</th></tr></thead>
+          <tbody>
+            <tr><td>RSSM, \(\beta_{\text{dyn}} = 1\) (media de 20 muestras)</td><td class="n">8,5</td><td class="n">28,2</td><td class="n">63,2</td></tr>
+            <tr><td>RSSM, \(\beta_{\text{dyn}} = 0{,}5\) (arXiv v1)</td><td class="n">6,9</td><td class="n">25,7</td><td class="n">65,2</td></tr>
+            <tr><td>RSSM determinista</td><td class="n">7,9</td><td class="n">40,0</td><td class="n">81,6</td></tr>
+            <tr><td>MLP de un paso (sin memoria)</td><td class="n">8,5</td><td class="n">45,3</td><td class="n">91,4</td></tr>
+            <tr><td>Quieto en la última posición</td><td class="n">10,1</td><td class="n">50,7</td><td class="n">90,0</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Error de posición en cm. Observación: posición (2 cm de ruido), actitud y giróscopo, sin velocidad; masa ±15 % por episodio; 3000 episodios de 3 s; 6000 pasos de Adam (de 3 a 44 s en una RTX 4060 Ti). En otras dos ejecuciones, el RSSM con \(\beta_{\text{dyn}} = 1\) dio 75 y 59 cm a 1 s: la diferencia entre los dos \(\beta_{\text{dyn}}\) está dentro de la variación entre ejecuciones.</p>
+      <ul class="small">
+        <li>El error crece con el horizonte en todos: es el error compuesto. A 1 s, el RSSM se equivoca 63,2 cm con un dron que se mueve a 0,95 m/s de media.</li>
+        <li>Sin memoria no se sabe la velocidad: la MLP no mejora a «quedarse quieto» más allá de 0,5 s.</li>
+        <li>La dispersión de las muestras del RSSM (22 cm a 0,5 s) apenas se correlaciona con el error de cada episodio (0,14): su incertidumbre no está calibrada.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · el belief latente</p>
+  <h2>El estado del RSSM sabe la velocidad que nunca vio</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>Sondeo lineal desde…</th><th>Velocidad (x, y, z) a 0,5 s</th><th>A 3 s</th><th>Masa a 3 s</th></tr></thead>
+          <tbody>
+            <tr><td>estado del RSSM \((h, \mu_q)\), \(\beta_{\text{dyn}} = 1\)</td><td class="n">0,94 · 0,94 · 0,92</td><td class="n">0,64 · 0,70 · 0,58</td><td class="n">0,32</td></tr>
+            <tr><td>ídem, \(\beta_{\text{dyn}} = 0{,}5\)</td><td class="n">0,96 · 0,96 · 0,94</td><td class="n">0,90 · 0,88 · 0,82</td><td class="n">0,32</td></tr>
+            <tr><td>estado del RSSM determinista</td><td class="n">0,81 · 0,77 · 0,16</td><td class="n">0,27 · 0,26 · −0,02</td><td class="n">0,30</td></tr>
+            <tr><td>la última observación</td><td class="n">0,66 · 0,60 · 0,06</td><td class="n">0,14 · 0,11 · −0,06</td><td class="n">0,24</td></tr>
+            <tr><td>dos observaciones (diferencia finita)</td><td class="n">0,78 · 0,76 · 0,13</td><td class="n">—</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">R² en 400 episodios de prueba; sondeo ajustado con otros 600 (regresión de cresta). <code>figuras_a8a.py</code>, sección 4.</p>
+    </div>
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Velocidad:</strong> el RSSM la codifica casi entera a 0,5 s, también la vertical, que la diferencia finita de dos posiciones con 2 cm de ruido no recupera. Es un belief aprendido sin que nadie le enseñara la velocidad; con el tiempo se degrada algo.</li>
+        <li><strong>Masa:</strong> solo en parte (R² 0,32): 3 s cerca del estacionario dan poca información, y el modelo solo necesita lo que mejora sus predicciones.</li>
+        <li><strong>Determinista:</strong> reconstruye mejor (pérdida 0,003 frente a 0,13) y predice peor. Nuestra lectura: sin el cuello de botella del KL, el posterior copia la observación y el camino recurrente no tiene por qué aprender la dinámica.</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Aquí el belief aparece como subproducto de predecir. Es la versión práctica del estado de información aproximado de A7a: lo que hay que conservar es lo que sirve para predecir. Y es la herramienta para tu búsqueda: un modelo que además del dron aprenda dónde puede estar el objetivo.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">World models · imaginar</p>
+  <h2>Imaginar un futuro: muestras del RSSM frente a la realidad</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 560 290" role="img" aria-label="Posición x verdadera, observada y predicha por el RSSM, su versión determinista y la MLP en un episodio">
+        <line x1="60" y1="250" x2="520" y2="250" class="ln-rule"/>
+        <line x1="60" y1="30" x2="60" y2="250" class="ln-rule"/>
+        <text x="52" y="200.3" text-anchor="end" class="t-mono t-faint" font-size="12">−1,5</text>
+        <text x="52" y="139.8" text-anchor="end" class="t-mono t-faint" font-size="12">−1,0</text>
+        <text x="52" y="79.3" text-anchor="end" class="t-mono t-faint" font-size="12">−0,5</text>
+        <line x1="212.3" y1="30" x2="212.3" y2="250" class="ln-dash"/>
+        <text x="206" y="44" text-anchor="end" class="t-muted" font-size="12">filtra</text>
+        <text x="220" y="44" class="t-muted" font-size="12">imagina</text>
+        <path d="M60.0,45.1 L66.2,40.7 L72.4,39.5 L78.6,41.5 L84.9,38.0 L91.1,45.0 L97.3,39.7 L103.5,46.3 L109.7,45.5 L115.9,45.7 L122.2,46.6 L128.4,45.0 L134.6,46.3 L140.8,49.1 L147.0,49.9 L153.2,54.5 L159.5,58.2 L165.7,61.7 L171.9,64.8 L178.1,68.4 L184.3,71.8 L190.5,71.1 L196.8,71.6 L203.0,78.8 L209.2,83.5" fill="none" class="ln" stroke-width="1"/>
+        <path d="M215.4,85.4 L221.6,85.5 L227.8,92.4 L234.1,98.0 L240.3,92.7 L246.5,92.5 L252.7,98.6 L258.9,100.3 L265.1,103.8 L271.4,98.8 L277.6,99.4 L283.8,110.1 L290.0,102.2 L296.2,106.3 L302.4,112.8 L308.6,114.5 L314.9,109.8 L321.1,111.1 L327.3,114.0 L333.5,105.9 L339.7,115.5 L345.9,123.4 L352.2,133.5 L358.4,126.6 L364.6,128.4 L370.8,132.6 L377.0,133.9 L383.2,129.5 L389.5,132.0 L395.7,136.6 L401.9,133.5 L408.1,133.4 L414.3,137.7 L420.5,140.5 L426.8,142.3 L433.0,146.2 L439.2,147.4 L445.4,145.9 L451.6,140.4 L457.8,142.0 L464.1,145.5 L470.3,139.8 L476.5,146.2 L482.7,146.6 L488.9,138.1 L495.1,135.0 L501.4,142.3 L507.6,139.3 L513.8,146.7 L520.0,147.5" fill="none" class="ln-accent" stroke-width="1" stroke-opacity="0.7"/>
+        <path d="M215.4,88.9 L221.6,94.2 L227.8,95.8 L234.1,99.7 L240.3,103.2 L246.5,108.0 L252.7,113.9 L258.9,123.6 L265.1,123.4 L271.4,122.2 L277.6,123.8 L283.8,128.6 L290.0,136.3 L296.2,133.0 L302.4,131.1 L308.6,142.4 L314.9,139.2 L321.1,135.2 L327.3,134.4 L333.5,132.7 L339.7,136.3 L345.9,138.5 L352.2,141.9 L358.4,138.5 L364.6,140.2 L370.8,134.8 L377.0,136.0 L383.2,129.9 L389.5,133.1 L395.7,133.7 L401.9,130.5 L408.1,132.2 L414.3,139.5 L420.5,135.3 L426.8,140.1 L433.0,129.6 L439.2,133.8 L445.4,136.6 L451.6,116.5 L457.8,120.5 L464.1,118.2 L470.3,120.3 L476.5,116.6 L482.7,116.9 L488.9,110.4 L495.1,109.0 L501.4,105.1 L507.6,105.1 L513.8,98.7 L520.0,96.7" fill="none" class="ln-accent" stroke-width="1" stroke-opacity="0.7"/>
+        <path d="M215.4,88.6 L221.6,87.3 L227.8,87.3 L234.1,96.6 L240.3,91.3 L246.5,108.9 L252.7,109.9 L258.9,113.2 L265.1,117.8 L271.4,125.9 L277.6,134.7 L283.8,138.2 L290.0,149.1 L296.2,142.7 L302.4,147.9 L308.6,156.3 L314.9,152.2 L321.1,155.7 L327.3,162.6 L333.5,163.7 L339.7,164.2 L345.9,163.2 L352.2,168.7 L358.4,176.0 L364.6,172.7 L370.8,184.2 L377.0,183.8 L383.2,185.8 L389.5,181.0 L395.7,186.1 L401.9,190.7 L408.1,193.1 L414.3,199.7 L420.5,206.0 L426.8,209.3 L433.0,211.7 L439.2,207.2 L445.4,217.3 L451.6,221.3 L457.8,214.4 L464.1,218.0 L470.3,220.6 L476.5,218.1 L482.7,220.9 L488.9,216.4 L495.1,228.3 L501.4,233.9 L507.6,237.6 L513.8,237.9 L520.0,226.4" fill="none" class="ln-accent" stroke-width="1" stroke-opacity="0.7"/>
+        <path d="M215.4,93.0 L221.6,98.4 L227.8,99.4 L234.1,93.9 L240.3,94.1 L246.5,93.8 L252.7,106.4 L258.9,107.7 L265.1,107.6 L271.4,108.8 L277.6,113.4 L283.8,125.2 L290.0,126.6 L296.2,124.1 L302.4,124.4 L308.6,129.2 L314.9,126.8 L321.1,130.4 L327.3,134.9 L333.5,130.8 L339.7,133.4 L345.9,130.6 L352.2,130.0 L358.4,128.0 L364.6,130.0 L370.8,139.8 L377.0,143.3 L383.2,139.1 L389.5,139.2 L395.7,141.6 L401.9,149.5 L408.1,140.5 L414.3,144.0 L420.5,145.4 L426.8,144.9 L433.0,141.3 L439.2,145.9 L445.4,129.8 L451.6,132.1 L457.8,130.9 L464.1,122.3 L470.3,122.9 L476.5,127.1 L482.7,126.1 L488.9,116.5 L495.1,125.3 L501.4,119.0 L507.6,129.3 L513.8,122.2 L520.0,128.4" fill="none" class="ln-accent" stroke-width="1" stroke-opacity="0.7"/>
+        <path d="M215.4,85.4 L221.6,88.2 L227.8,92.2 L234.1,95.7 L240.3,104.2 L246.5,106.6 L252.7,100.8 L258.9,102.9 L265.1,107.6 L271.4,113.4 L277.6,118.9 L283.8,118.7 L290.0,120.6 L296.2,125.9 L302.4,127.0 L308.6,124.0 L314.9,126.4 L321.1,128.4 L327.3,128.5 L333.5,131.5 L339.7,128.9 L345.9,130.4 L352.2,140.1 L358.4,142.2 L364.6,154.4 L370.8,153.8 L377.0,147.0 L383.2,144.9 L389.5,140.8 L395.7,151.8 L401.9,140.1 L408.1,145.9 L414.3,151.5 L420.5,151.1 L426.8,158.3 L433.0,163.2 L439.2,156.5 L445.4,156.2 L451.6,150.4 L457.8,157.3 L464.1,160.3 L470.3,149.8 L476.5,151.3 L482.7,158.6 L488.9,146.5 L495.1,153.8 L501.4,150.5 L507.6,147.8 L513.8,150.5 L520.0,154.9" fill="none" class="ln-accent" stroke-width="1" stroke-opacity="0.7"/>
+        <path d="M215.4,82.2 L221.6,84.1 L227.8,85.6 L234.1,87.3 L240.3,88.8 L246.5,90.0 L252.7,90.9 L258.9,91.8 L265.1,92.6 L271.4,92.5 L277.6,92.5 L283.8,93.5 L290.0,94.6 L296.2,97.1 L302.4,99.6 L308.6,102.3 L314.9,105.4 L321.1,108.8 L327.3,112.2 L333.5,115.4 L339.7,118.6 L345.9,121.7 L352.2,124.1 L358.4,125.8 L364.6,127.0 L370.8,128.2 L377.0,129.4 L383.2,130.4 L389.5,131.2 L395.7,131.8 L401.9,131.3 L408.1,130.2 L414.3,127.7 L420.5,125.1 L426.8,122.3 L433.0,120.3 L439.2,118.4 L445.4,116.4 L451.6,113.7 L457.8,111.1 L464.1,109.1 L470.3,107.5 L476.5,106.1 L482.7,105.2 L488.9,104.1 L495.1,102.6 L501.4,101.0 L507.6,98.9 L513.8,96.8 L520.0,94.9" fill="none" class="ln-time" stroke-width="1.8"/>
+        <path d="M215.4,85.7 L221.6,88.0 L227.8,90.4 L234.1,92.6 L240.3,94.9 L246.5,97.5 L252.7,100.2 L258.9,103.0 L265.1,105.9 L271.4,108.6 L277.6,111.3 L283.8,113.9 L290.0,116.4 L296.2,119.1 L302.4,121.9 L308.6,124.5 L314.9,126.9 L321.1,128.9 L327.3,130.4 L333.5,131.3 L339.7,132.1 L345.9,133.2 L352.2,134.3 L358.4,135.7 L364.6,137.2 L370.8,138.3 L377.0,139.2 L383.2,139.3 L389.5,138.8 L395.7,137.8 L401.9,136.8 L408.1,136.1 L414.3,135.8 L420.5,135.5 L426.8,135.4 L433.0,135.7 L439.2,136.5 L445.4,137.6 L451.6,139.1 L457.8,140.4 L464.1,141.6 L470.3,143.1 L476.5,144.7 L482.7,145.6 L488.9,146.3 L495.1,147.1 L501.4,148.1 L507.6,149.7 L513.8,151.2 L520.0,152.6" fill="none" class="ln-tesis" stroke-width="1.8"/>
+        <path d="M60.0,42.1 L66.2,42.1 L72.4,42.1 L78.6,42.1 L84.9,42.1 L91.1,42.2 L97.3,42.4 L103.5,42.7 L109.7,43.1 L115.9,43.9 L122.2,44.9 L128.4,46.1 L134.6,47.6 L140.8,49.4 L147.0,51.4 L153.2,53.6 L159.5,56.1 L165.7,58.7 L171.9,61.6 L178.1,64.6 L184.3,67.7 L190.5,71.1 L196.8,74.6 L203.0,78.3 L209.2,82.2 L215.4,86.2 L221.6,90.3 L227.8,94.5 L234.1,98.9 L240.3,103.3 L246.5,107.8 L252.7,112.3 L258.9,117.0 L265.1,121.6 L271.4,126.3 L277.6,131.0 L283.8,135.6 L290.0,140.2 L296.2,144.7 L302.4,149.2 L308.6,153.5 L314.9,157.8 L321.1,161.8 L327.3,165.8 L333.5,169.5 L339.7,173.1 L345.9,176.4 L352.2,179.6 L358.4,182.5 L364.6,185.2 L370.8,187.6 L377.0,189.7 L383.2,191.5 L389.5,193.1 L395.7,194.4 L401.9,195.6 L408.1,196.5 L414.3,197.3 L420.5,198.0 L426.8,198.5 L433.0,199.0 L439.2,199.3 L445.4,199.6 L451.6,199.7 L457.8,199.8 L464.1,199.6 L470.3,199.4 L476.5,198.9 L482.7,198.3 L488.9,197.5 L495.1,196.5 L501.4,195.4 L507.6,194.2 L513.8,192.7 L520.0,191.2" fill="none" class="ln" stroke-width="2.6"/>
+        <text x="60" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0</text>
+        <text x="215.4" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">0,5</text>
+        <text x="370.8" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1</text>
+        <text x="520" y="268" text-anchor="middle" class="t-mono t-faint" font-size="12">1,5 s</text>
+      </svg>
+      <figcaption>Posición \(x\) en el episodio de prueba que más rápido se mueve al final del filtrado: verdadera (gris grueso), observada (gris fino), cinco muestras del RSSM (azul), versión determinista (naranja) y MLP (morado). <code>figuras_a8a.py</code>, sección 3.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul class="small">
+        <li>Las muestras del RSSM se abren con el horizonte: el modelo no sabe la masa exacta ni el futuro de su propio ruido.</li>
+        <li>Una política entrenada en imaginación (Dreamer, parte 3) aprende con miles de estos futuros, sin tocar el simulador.</li>
+      </ul>
+      <div class="callout error"><span class="tag">El riesgo</span>Si la política aprende en el modelo, puede encontrar zonas donde el modelo se equivoca a su favor. Por eso los horizontes de imaginación son cortos (15 pasos en Dreamer) y el modelo se reentrena con los datos que genera la política.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 3 ============ -->
+<section class="slide divider" data-section="Actuar con el modelo">
+  <p class="num">Parte 3</p>
+  <h2>Actuar con el modelo</h2>
+  <p>Entrenar en imaginación, planificar en el latente, o aprender solo lo que sirve para decidir.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · Dreamer</p>
+  <h2>Dreamer: actor y crítico en trayectorias imaginadas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li>Desde estados filtrados con datos reales, el prior imagina trayectorias de \(H = 15\) pasos con la política actual <a class="cite" data-ref="hafner2020"></a>.</li>
+        <li>El crítico \(v_\psi\) aprende retornos λ de esas trayectorias; el actor maximiza los mismos retornos con gradientes analíticos a través del modelo (reparametrización).</li>
+        <li>Valores del artículo: \(\gamma = 0{,}99\), \(\lambda = 0{,}95\).</li>
+        <li>En 20 tareas visuales de DeepMind Control, tras \(5\cdot10^6\) pasos: 823 de media, frente a 332 de PlaNet y 786 de D4PG con \(10^8\) pasos <a class="cite" data-ref="hafner2020"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Gradientes a través del modelo</span>Es el estimador de primer orden de B6 aplicado a un simulador aprendido: el modelo es diferenciable por construcción, aunque el mundo no lo sea.</div>
+    </div>
+    <div class="stack">
+      <details class="deriv" open><summary>Derivación: el retorno λ en imaginación</summary>
+        <p class="small">El retorno de \(k\) pasos cierra con el crítico en el último estado imaginado:</p>
+        \[ V^k_N(s_\tau) = \mathbb E\Big[\sum_{n=\tau}^{h-1}\gamma^{n-\tau}r_n + \gamma^{h-\tau}v_\psi(s_h)\Big], \]
+        <p class="small">con \(h = \min(\tau + k,\ t + H)\).</p>
+        <p class="small">El retorno λ mezcla todos los horizontes, como GAE en A6a:</p>
+        \[ V_\lambda(s_\tau) = (1-\lambda)\sum_{n=1}^{H-1}\lambda^{n-1}V^n_N(s_\tau) + \lambda^{H-1}V^H_N(s_\tau). \]
+        <p class="small">Horizontes cortos limitan el error compuesto; el crítico resume lo que queda más allá, y según sus autores hace a Dreamer más robusto a la longitud del horizonte <a class="cite" data-ref="hafner2020"></a>.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · TD-MPC</p>
+  <h2>TD-MPC: planificar en el latente sin reconstruir la observación</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">«Aprender a predecir las observaciones futuras es un problema extremadamente difícil: obliga a modelarlo todo, incluidos detalles irrelevantes como el sombreado» <a class="cite" data-ref="hansen2022"></a>. TD-MPC aprende un latente con tres pérdidas:</p>
+      \[ c_1\|\hat r_i - r_i\|^2 + c_3\|d(z_i, a_i) - h^-(s_{i+1})\|^2 \]
+      \[ +\ c_2\|Q(z_i,a_i) - (r_i + \gamma Q^-(z_{i+1}, \pi(z_{i+1})))\|^2, \]
+      <p class="small">recompensa, consistencia del latente predicho con el codificado y valor por diferencias temporales. Planifica con MPPI (A3b) a \(H = 5\) pasos, 512 trayectorias, y cierra con \(\gamma^H Q(z_H, a_H)\).</p>
+      <p class="small">Resuelve Dog y Humanoid, con acciones de hasta 38 dimensiones, en 1 M de pasos <a class="cite" data-ref="hansen2022"></a>.</p>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th>TD-MPC2: parámetros</th><th>Días de GPU (RTX 3090)</th><th>Puntuación normalizada</th></tr></thead>
+          <tbody>
+            <tr><td>1 M</td><td class="n">3,7</td><td class="n">16,0</td></tr>
+            <tr><td>5 M</td><td class="n">4,2</td><td class="n">49,5</td></tr>
+            <tr><td>48 M</td><td class="n">12</td><td class="n">68,0</td></tr>
+            <tr><td>317 M</td><td class="n">33</td><td class="n">70,6</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="xsmall muted">Un solo agente en 80 tareas (Meta-World y DMControl) con 545 M de transiciones; tabla 1 de Hansen et al. <a class="cite" data-ref="hansen2024"></a>.</p>
+      <div class="callout realidad"><span class="tag">TD-MPC2</span>104 tareas en 4 dominios con los mismos hiperparámetros. SimNorm (proyectar el latente en símplices con softmax) es, según sus autores, «esencial» para la estabilidad <a class="cite" data-ref="hansen2024"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Actuar · equivalencia en valor</p>
+  <h2>¿Hace falta un modelo del mundo, o basta uno de lo que importa?</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>MuZero</strong> aprende un modelo que predice «las cantidades más directamente relevantes para planificar: la recompensa, la política y el valor»; no se le pide que su estado reconstruya la observación ni que coincida con el estado verdadero <a class="cite" data-ref="schrittwieser2020"></a>.</li>
+        <li><strong>Equivalencia en valor:</strong> dos modelos son equivalentes respecto a un conjunto de políticas y funciones si dan los mismos operadores de Bellman sobre ellas. Al ampliar esos conjuntos, la clase de modelos equivalentes se reduce hasta un solo punto: el modelo perfecto del entorno <a class="cite" data-ref="grimm2020"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <thead><tr><th></th><th>Reconstruye \(o\)</th><th>Planifica</th></tr></thead>
+          <tbody>
+            <tr><td>PlaNet, Dreamer</td><td>sí</td><td>CEM / actor-crítico en imaginación</td></tr>
+            <tr><td>TD-MPC, TD-MPC2</td><td>no (consistencia latente)</td><td>MPPI con valor terminal</td></tr>
+            <tr><td>MuZero</td><td>no (recompensa, valor, política)</td><td>búsqueda en árbol</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Reconstruir obliga al latente a guardar todo (útil para sondear, para la percepción activa y para cambiar de tarea); no reconstruir lo centra en la tarea (más barato, menos explicable). Para un belief que quieras inspeccionar, la reconstrucción es una ventaja; para un controlador a bordo, quizá no.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PARTE 4 ============ -->
+<section class="slide divider" data-section="Robots y drones">
+  <p class="num">Parte 4</p>
+  <h2>En robots y drones reales</h2>
+  <p>Lo que se ha demostrado aprendiendo con un world model sobre hardware, y lo que todavía no.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Real · DayDreamer y drones</p>
+  <h2>Aprender en el mundo real en una hora, y volar desde píxeles</h2>
+  <div class="cols">
+    <div class="stack">
+      <h3 style="margin:0;">DayDreamer (2022)</h3>
+      <ul class="small">
+        <li>Dreamer en cuatro robots, con actor y aprendiz asíncronos <a class="cite" data-ref="wu2022"></a>.</li>
+        <li>Cuadrúpedo A1 desde cero y sin reinicios: se da la vuelta en unos 5 minutos, se pone de pie unos 20 minutos después y camina hacia la hora. Ante empujones, se adapta en 10 minutos más. SAC, con el mismo presupuesto, no llega a levantarse.</li>
+        <li>Brazo UR5 con imágenes y recompensa dispersa: 2,5 objetos por minuto tras 8 horas.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <h3 style="margin:0;">Drones</h3>
+      <ul class="small">
+        <li><strong>Modelos de dinámica aprendidos:</strong> NeuroBEM combina teoría de elementos de pala con una red para la dinámica residual; con 1 h 15 min de vuelo hasta 65 km/h, más de un 50 % menos de error de posición que el estado del arte previo <a class="cite" data-ref="bauersfeld2021"></a>. Es un modelo, no un agente de RL.</li>
+        <li><strong>World model para volar:</strong> DreamerV3 desde píxeles en carreras, con percepción activa emergente; hasta 9 m/s en drones reales con imágenes renderizadas en hardware-in-the-loop (preprint) <a class="cite" data-ref="romero2025"></a>.</li>
+      </ul>
+      <div class="callout error"><span class="tag">Lo que falta</span>No encontramos un agente basado en world model entrenado en vuelo real (sin simulador) en un cuadricóptero. El riesgo de un dron que explora es mucho mayor que el de un cuadrúpedo que se cae.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Modelos más grandes, generales y fundacionales</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card"><span class="meta">HECHO</span><h3>Una configuración para todo</h3><p>DreamerV3 y TD-MPC2 muestran que un mismo algoritmo, sin ajustar hiperparámetros, aprende cientos de tareas distintas <a class="cite" data-ref="hafner2025,hansen2024"></a>.</p></div>
+    <div class="card"><span class="meta">TENDENCIA</span><h3>Escalar el modelo</h3><p>En TD-MPC2, pasar de 1 M a 317 M de parámetros mejora la puntuación normalizada de 16 a 70,6 en 80 tareas <a class="cite" data-ref="hansen2024"></a>. El camino lleva a los world models fundacionales de A8b.</p></div>
+    <div class="card"><span class="meta">ABIERTO</span><h3>Incertidumbre útil</h3><p>Que la incertidumbre del modelo sirva para explorar con seguridad y para saber cuándo no fiarse: en nuestro RSSM, la dispersión de las muestras apenas predecía el error. En un dron, es la diferencia entre aprender y estrellarse.</p></div>
+  </div>
+  <div class="callout error"><span class="tag">Lo que sigue abierto</span>El error compuesto no desaparece con la escala: un modelo grande también se equivoca fuera de sus datos, y una política que aprende en él puede encontrar esos errores.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · ICML</span>
+      <h3>PlaNet <a class="cite" data-ref="hafner2019"></a></h3>
+      <p><strong>Lee:</strong> §3 (RSSM) y la figura 2.</p>
+      <p><strong>Responde:</strong> ¿por qué separar camino determinista y estocástico?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 60 MIN · NATURE</span>
+      <h3>DreamerV3 <a class="cite" data-ref="hafner2025"></a></h3>
+      <p><strong>Lee:</strong> el world model, la pérdida y las ablaciones.</p>
+      <p><strong>Responde:</strong> ¿qué técnica quitarías la última?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 45 MIN · NEURIPS</span>
+      <h3>MBPO <a class="cite" data-ref="janner2019"></a></h3>
+      <p><strong>Lee:</strong> §4 (cotas y despliegues ramificados).</p>
+      <p><strong>Responde:</strong> ¿qué longitud de despliegue usarías con tu RSSM?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> PILCO <a class="cite" data-ref="deisenroth2011"></a>; PETS <a class="cite" data-ref="chua2018"></a>; Dreamer <a class="cite" data-ref="hafner2020"></a>; TD-MPC y TD-MPC2 <a class="cite" data-ref="hansen2022,hansen2024"></a>; DayDreamer <a class="cite" data-ref="wu2022"></a>; desajuste de objetivos <a class="cite" data-ref="lambert2020"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con tu tesis</p>
+  <h2>Un world model es un belief que además sabe imaginar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul class="small">
+        <li><strong>Belief:</strong> el posterior del RSSM es un filtro aprendido; en el x500 guarda la velocidad que no observa. Es el estado de información aproximado de A7a hecho red.</li>
+        <li><strong>Planificación:</strong> el prior permite imaginar sin el simulador: entrenar una política en imaginación (Dreamer) o planificar en línea en el espacio latente (TD-MPC, A8b).</li>
+        <li><strong>Incertidumbre:</strong> la del modelo (epistémica) es la que dice dónde explorar; la nuestra no estaba calibrada. En una búsqueda, la incertidumbre sobre el objetivo es la que importa.</li>
+        <li><strong>Latencia y cómputo:</strong> filtrar con una GRU es barato a bordo; imaginar cientos de futuros por paso, no. Por eso TD-MPC planifica en un latente pequeño y con pocas muestras.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout tesis"><span class="tag">Pregunta de investigación</span>¿Puede un RSSM entrenado en la búsqueda de A7a aprender, además de la dinámica del dron, un belief sobre la posición del objetivo comparable al exacto? ¿Y planificar con él mejor que la heurística de ganancia?</div>
+      <div class="callout clave"><span class="tag">Para el hito H3</span>Tu RSSM del x500 (laboratorio) es el componente de world model del hito. En A8b lo usarás para planificar en el espacio latente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de A8a</h2>
+  <ul class="body" style="font-size:19px; gap:9px;">
+    <li>Un modelo permite aprender con menos interacción: Dyna, PILCO, PETS, MBPO.</li>
+    <li>El error de un paso se compone con el horizonte: despliegues cortos, modelos con incertidumbre y reentrenamiento con los datos de la política.</li>
+    <li>RSSM: camino determinista para la memoria, estocástico para lo impredecible; filtrar con el posterior, imaginar con el prior.</li>
+    <li>La pérdida es una cota de evidencia: reconstruir y que el prior prediga lo que infiere el posterior.</li>
+    <li>Dreamer aprende actor y crítico en imaginación; TD-MPC planifica en el latente sin reconstruir; MuZero predice solo lo que sirve para decidir.</li>
+    <li>El estado latente de un buen world model es un belief: compruébalo con sondeos y con lo que predice.</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Modelos y error compuesto</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Tu modelo se equivoca un 1 % por paso (en variación total). ¿Cuánto puede separarse la distribución de estados tras 50 pasos?</p>
+      <ol class="opts">
+        <li><button type="button">Un 1 %</button></li>
+        <li><button type="button">Un 7 %, como la raíz de 50</button></li>
+        <li><button type="button">Hasta un 50 %</button></li>
+        <li><button type="button">No se puede acotar</button></li>
+      </ol>
+      <p class="explain">\(\mathrm{TV}(\hat d_t, d_t)\le t\varepsilon = 50\cdot0{,}01\). Por eso los despliegues en el modelo son cortos.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">2. ¿Qué distingue a la incertidumbre epistémica de la aleatoria en un modelo?</p>
+      <ol class="opts">
+        <li><button type="button">La epistémica baja con más datos; la aleatoria es ruido del sistema que no baja</button></li>
+        <li><button type="button">Son lo mismo con distinto nombre</button></li>
+        <li><button type="button">La aleatoria baja con más datos</button></li>
+        <li><button type="button">La epistémica solo existe en redes bayesianas</button></li>
+      </ol>
+      <p class="explain">Un conjunto de modelos que discrepan donde no hay datos estima la epistémica; cada modelo con salida probabilística, la aleatoria.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>RSSM</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. ¿Qué hace el término KL entre posterior y prior en la pérdida del RSSM?</p>
+      <ol class="opts">
+        <li><button type="button">Mejora la reconstrucción</button></li>
+        <li><button type="button">Hace la red más pequeña</button></li>
+        <li><button type="button">Sustituye al decodificador</button></li>
+        <li><button type="button">Obliga a que lo que se infiere con la observación se pueda predecir sin ella: es lo que entrena la dinámica</button></li>
+      </ol>
+      <p class="explain">Sin él (o con un sustituto débil), el posterior puede copiar la observación y el prior no aprende a predecir: es lo que vimos en la versión determinista.</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">4. En el x500, la diferencia finita de dos posiciones da R² 0,13 para la velocidad vertical y el RSSM 0,93. ¿Por qué?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el RSSM ve la velocidad</button></li>
+        <li><button type="button">Porque filtra muchas observaciones y usa las acciones y la dinámica aprendida, en lugar de dividir un ruido de 2 cm entre 20 ms</button></li>
+        <li><button type="button">Por azar</button></li>
+        <li><button type="button">Porque el sondeo del RSSM es no lineal</button></li>
+      </ol>
+      <p class="explain">El ruido de la diferencia finita es \(\sqrt2\cdot2\) cm / 0,02 s ≈ 1,4 m/s, mayor que la velocidad típica. El RSSM hace de filtro.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Aprender a actuar con un modelo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. ¿Por qué Dreamer cierra sus trayectorias imaginadas con un crítico en lugar de imaginar hasta el final del episodio?</p>
+      <ol class="opts">
+        <li><button type="button">Porque el crítico es más rápido de entrenar</button></li>
+        <li><button type="button">Porque el episodio no tiene final</button></li>
+        <li><button type="button">Porque el error del modelo crece con el horizonte; el crítico resume el futuro lejano</button></li>
+        <li><button type="button">Porque así no hace falta recompensa</button></li>
+      </ol>
+      <p class="explain">Horizontes cortos de imaginación y retornos λ con el valor del crítico al final: menos error compuesto.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: tu política entrenada en imaginación vuela perfecto en el modelo y se estrella en el simulador. ¿Qué compruebas y qué cambias?</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Que la política no esté explotando errores del modelo: comparar las trayectorias imaginadas con las reales desde los mismos estados y acciones, y ver dónde divergen (estados lejos de los datos de entrenamiento). Cambios: reentrenar el modelo con datos de la propia política (el bucle de Dyna), acortar el horizonte de imaginación, usar un conjunto de modelos y penalizar o evitar donde discrepan, añadir aleatorización (masa, retardos) a los datos, y revisar que la recompensa predicha por el modelo sea fiable en esos estados.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Un RSSM mínimo en JAX con el x500</h2>
+  <div class="cols">
+    <div class="stack">
+      <p class="small">Unas 4 h. Enunciado completo en <code>lab/README.md</code>.</p>
+      <ol class="small">
+        <li><strong>Datos</strong> del x500 con observación parcial y masa aleatoria.</li>
+        <li><strong>RSSM</strong> con KL partido y bits libres, con tests.</li>
+        <li><strong>Bucle abierto</strong> frente a tres referencias; calibración de las muestras.</li>
+        <li><strong>Sondeos</strong> de velocidad y masa en el estado latente.</li>
+        <li><strong>Imaginar para actuar</strong> (opcional): actor y crítico en el modelo.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Que el RSSM predice mejor que su versión determinista y que un modelo sin memoria; que su estado guarda la velocidad que no ve; y cuánto crece el error con el horizonte.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>GPU NVIDIA de consumo: menos de 2 min para todo el script. En CPU, con menos datos.</div>
+      <p class="xsmall muted">El script que genera las cifras de esta presentación está en <code>figuras/figuras_a8a.py</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 1 de 2</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-deisenroth2011">Deisenroth, M. P., Rasmussen, C. E. (2011). PILCO: A model-based and data-efficient approach to policy search. <span class="venue">ICML 2011</span></li>
+    <li id="ref-wu2022">Wu, P., Escontrela, A., Hafner, D., Abbeel, P., Goldberg, K. (2022). DayDreamer: World models for physical robot learning. <span class="venue">CoRL 2022</span>, PMLR 205, 2226–2240. <a href="https://arxiv.org/abs/2206.14176">arXiv:2206.14176</a></li>
+    <li id="ref-hafner2025">Hafner, D., Pasukonis, J., Ba, J., Lillicrap, T. (2025). Mastering diverse control tasks through world models. <span class="venue">Nature</span>, 640(8059), 647–653. <a href="https://doi.org/10.1038/s41586-025-08744-2">doi:10.1038/s41586-025-08744-2</a>. Preprint: Mastering diverse domains through world models, <a href="https://arxiv.org/abs/2301.04104">arXiv:2301.04104</a></li>
+    <li id="ref-sutton1991">Sutton, R. S. (1991). Dyna, an integrated architecture for learning, planning, and reacting. <span class="venue">ACM SIGART Bulletin</span>, 2(4), 160–163. <a href="https://doi.org/10.1145/122344.122377">doi:10.1145/122344.122377</a></li>
+    <li id="ref-ha2018">Ha, D., Schmidhuber, J. (2018). Recurrent world models facilitate policy evolution. <span class="venue">NeurIPS 2018</span>. Versión extendida: World models, <a href="https://arxiv.org/abs/1803.10122">arXiv:1803.10122</a> (cifras de esta versión)</li>
+    <li id="ref-chua2018">Chua, K., Calandra, R., McAllister, R., Levine, S. (2018). Deep reinforcement learning in a handful of trials using probabilistic dynamics models. <span class="venue">NeurIPS 2018</span>. <a href="https://arxiv.org/abs/1805.12114">arXiv:1805.12114</a></li>
+    <li id="ref-hafner2019">Hafner, D., Lillicrap, T., Fischer, I., Villegas, R., Ha, D., Lee, H., Davidson, J. (2019). Learning latent dynamics for planning from pixels. <span class="venue">ICML 2019</span>, PMLR 97, 2555–2565. <a href="https://arxiv.org/abs/1811.04551">arXiv:1811.04551</a></li>
+    <li id="ref-janner2019">Janner, M., Fu, J., Zhang, M., Levine, S. (2019). When to trust your model: Model-based policy optimization. <span class="venue">NeurIPS 2019</span>. <a href="https://arxiv.org/abs/1906.08253">arXiv:1906.08253</a></li>
+    <li id="ref-hafner2020">Hafner, D., Lillicrap, T., Ba, J., Norouzi, M. (2020). Dream to control: Learning behaviors by latent imagination. <span class="venue">ICLR 2020</span>. <a href="https://arxiv.org/abs/1912.01603">arXiv:1912.01603</a></li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 2</p>
+  <h2>Referencias (continuación)</h2>
+  <ol class="refs" start="10">
+    <li id="ref-schrittwieser2020">Schrittwieser, J., Antonoglou, I., Hubert, T., Simonyan, K., Sifre, L., Schmitt, S., Guez, A., Lockhart, E., Hassabis, D., Graepel, T., Lillicrap, T., Silver, D. (2020). Mastering Atari, Go, chess and shogi by planning with a learned model. <span class="venue">Nature</span>, 588(7839), 604–609. <a href="https://doi.org/10.1038/s41586-020-03051-4">doi:10.1038/s41586-020-03051-4</a>. <a href="https://arxiv.org/abs/1911.08265">arXiv:1911.08265</a></li>
+    <li id="ref-grimm2020">Grimm, C., Barreto, A., Singh, S., Silver, D. (2020). The value equivalence principle for model-based reinforcement learning. <span class="venue">NeurIPS 2020</span>. <a href="https://arxiv.org/abs/2011.03506">arXiv:2011.03506</a></li>
+    <li id="ref-hafner2021">Hafner, D., Lillicrap, T., Norouzi, M., Ba, J. (2021). Mastering Atari with discrete world models. <span class="venue">ICLR 2021</span>. <a href="https://arxiv.org/abs/2010.02193">arXiv:2010.02193</a></li>
+    <li id="ref-hansen2022">Hansen, N., Wang, X., Su, H. (2022). Temporal difference learning for model predictive control. <span class="venue">ICML 2022</span>, PMLR 162, 8387–8406. <a href="https://arxiv.org/abs/2203.04955">arXiv:2203.04955</a></li>
+    <li id="ref-hansen2024">Hansen, N., Su, H., Wang, X. (2024). TD-MPC2: Scalable, robust world models for continuous control. <span class="venue">ICLR 2024</span>. <a href="https://arxiv.org/abs/2310.16828">arXiv:2310.16828</a></li>
+    <li id="ref-romero2025">Romero, A., Shenai, A., Geles, I., Aljalbout, E., Scaramuzza, D. (2025). Dream to fly: Model-based reinforcement learning for vision-based drone flight. <a href="https://arxiv.org/abs/2501.14377">arXiv:2501.14377</a> (preprint; aceptado en ICRA 2026 según arXiv)</li>
+    <li id="ref-lambert2020">Lambert, N., Amos, B., Yadan, O., Calandra, R. (2020). Objective mismatch in model-based reinforcement learning. <span class="venue">L4DC 2020</span>, PMLR 120, 761–770. <a href="https://arxiv.org/abs/2002.04523">arXiv:2002.04523</a></li>
+    <li id="ref-bauersfeld2021">Bauersfeld, L., Kaufmann, E., Foehn, P., Sun, S., Scaramuzza, D. (2021). NeuroBEM: Hybrid aerodynamic quadrotor model. <span class="venue">Robotics: Science and Systems XVII</span>. <a href="https://doi.org/10.15607/RSS.2021.XVII.042">doi:10.15607/RSS.2021.XVII.042</a>. <a href="https://arxiv.org/abs/2106.08015">arXiv:2106.08015</a></li>
+  </ol>
+</section>
+
+</main>
+<script src="../../assets/curso.js?v=3"></script>
+</body>
+</html>
