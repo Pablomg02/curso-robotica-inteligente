@@ -1,0 +1,112 @@
+
+==============================================================================
+1. Ejes: de FLU (Gazebo) a FRD (PX4) con el cuaternión (0, 1, 0, 0)
+==============================================================================
+R(q) =
+ [[ 1.  0.  0.]
+ [ 0. -1.  0.]
+ [ 0.  0. -1.]] 
+det = 1.0 (giro de 180° alrededor de x: una rotación propia)
+acelerómetro quieto: FLU [0.   0.   9.81] -> FRD [ 0.    0.   -9.81] (PX4 espera -g en z hacia abajo)
+giróscopo: FLU [0.1 0.2 0.3] -> FRD [ 0.1 -0.2 -0.3]
+
+==============================================================================
+2. Ejes del mundo: de ENU a NED
+==============================================================================
+M =
+ [[ 0.  1.  0.]
+ [ 1.  0.  0.]
+ [ 0.  0. -1.]] 
+det = 1.0 -> det = +1: rotación propia de 180° alrededor de (1, 1, 0)/√2
+2·u·uᵀ − I =
+ [[-0.  1.  0.]
+ [ 1. -0.  0.]
+ [ 0.  0. -1.]] (fórmula del giro de 180° alrededor de u: coincide con M)
+posición ENU [1. 2. 3.] -> NED [ 2.  1. -3.]
+aplicar M dos veces devuelve el vector: True
+
+==============================================================================
+3. El magnetómetro: (x, y, z) -> (-y, -x, z) en GZBridge::magnetometerCallback
+==============================================================================
+Mmag =
+ [[ 0. -1.  0.]
+ [-1.  0.  0.]
+ [ 0.  0.  1.]] 
+det = -1.0 -> det = -1: compensa un convenio zurdo del plugin (comentario FIXME del código, gz-sim PR 2460)
+campo del plugin [ 0.21  0.02 -0.43] -> lo que publica PX4 [-0.02 -0.21 -0.43]
+
+==============================================================================
+4. Fase que se come el retardo de muestreo: 250 Hz (SITL) frente a 800 Hz (Pixhawk)
+==============================================================================
+f_s =   250 Hz  T =  4.000 ms  tau =  6.000 ms  fase perdida en f_c: 13.61°
+f_s =   800 Hz  T =  1.250 ms  tau =  1.875 ms  fase perdida en f_c:  4.25°
+diferencia de margen de fase entre SITL y la placa: 9.36° (de un margen de 71° en A2)
+
+==============================================================================
+5. ¿Cabe el flujo de MAVLink de SITL en una radio de telemetría?
+==============================================================================
+puerto 14550: 376.5 mensajes/s, 15585 B/s
+puerto 14540: 442.9 mensajes/s, 25835 B/s
+radio SiK a 57600 baudios: 5760 B/s útiles; el flujo de la GCS en SITL es 2.71 veces eso
+
+==============================================================================
+6. Seguir un círculo con un lazo P de posición, con y sin velocidad de prealimentación
+==============================================================================
+v = R·omega = 5.0·0.3142 = 1.5708 m/s
+retraso en una recta sin prealimentación: e = v/K = 1.653 m
+|G(j omega)| = 0.9494 -> radio seguido 4.747 m (se encoge 25.3 cm)
+fase = 18.30° de retraso -> arco 1.597 m por detrás
+error de posición |1 - G|·R = 1.570 m (constante a lo largo del círculo)
+con prealimentación v_ff = d(p_ref)/dt: G_ff = (j omega + K)/(j omega + K) = 1 -> error nulo en el modelo
+
+==============================================================================
+6b. El EKF2 va por delante: retardo de GNSS supuesto que Gazebo no tiene
+==============================================================================
+EKF2_GPS_DELAY = 110 ms; ajuste e = v·tau sobre el vuelo: tau = 110.9 ms, residuo 6.5 cm
+en el círculo (v = 1.571 m/s): la estimación va 17.3 cm por delante de la verdad
+  v media 0.04 m/s: medido 2.8 cm, v·0,110 = 0.4 cm
+  v media 0.53 m/s: medido 7.2 cm, v·0,110 = 5.8 cm
+  v media 1.64 m/s: medido 17.8 cm, v·0,110 = 18.0 cm
+  v media 2.88 m/s: medido 32.4 cm, v·0,110 = 31.7 cm
+  v media 4.60 m/s: medido 54.2 cm, v·0,110 = 50.6 cm
+
+==============================================================================
+7. Cuánto debería durar la misión cuadrada (20 m por lado a 5 m/s)
+==============================================================================
+perfil trapezoidal (parar en cada esquina): 5.667 s por lado, 22.67 s en total
+con jerk limitado: subir a 5 m/s tarda 2.417 s y recorre 6.042 m; crucero 1.583 s
+  -> 6.417 s por lado, 25.67 s en total
+medido: 28.22 s; el modelo con jerk explica 91 %
+
+==============================================================================
+8. Sincronización de relojes al estilo NTP (RFC 5905, §8)
+==============================================================================
+t1=10000 t2=10800 t3=10850 t4=10550 (µs)
+theta = ((t2-t1)+(t3-t4))/2 = 550 µs (real 500); delta = (t4-t1)-(t3-t2) = 500 µs
+error del offset = (ida - vuelta)/2 = 50 µs: la asimetría del canal no se puede ver
+
+==============================================================================
+9. Lo que tarda el ACK de un comando que pasa por commander
+==============================================================================
+espera hasta el siguiente lazo de commander: U(0, 10.0) ms, media 5.0 ms
+espera hasta que el cliente XRCE sondea vehicle_command_ack: U(0, 10.0) ms, media 5.0 ms
+suma: media 10.0 ms, máximo 20.0 ms, más el transporte
+medido desde ROS 2: {'n': 20, 'mediana': 11.984, 'max': 24.016}
+
+==============================================================================
+10. Factor de tiempo real y presupuesto de cada paso
+==============================================================================
+1 dron, pedido x100: alcanzado x34.76 -> 115 µs de reloj de pared por paso de 4 ms
+1 drones a todo lo que da: x34.76; 34.8 dron-segundos por segundo
+2 drones a todo lo que da: x21.46; 42.9 dron-segundos por segundo
+4 drones a todo lo que da: x11.26; 45.0 dron-segundos por segundo
+8 drones a todo lo que da: x5.66; 45.3 dron-segundos por segundo
+
+==============================================================================
+11. Tamaño del registro
+==============================================================================
+37.2 MB en 127.2 s -> 292 kB/s, 17.5 MB/min
+  esc_status                     8.54 MB   23.0 %
+  vehicle_local_position         3.05 MB    8.2 %
+  estimator_states               2.71 MB    7.3 %
+  estimator_innovation_test_ratios   1.78 MB    4.8 %

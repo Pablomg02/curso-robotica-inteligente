@@ -1,0 +1,31 @@
+# Laboratorio T1a · contenedor con la pila de vuelo simulada (noviembre de 2026)
+#   PX4 v1.17.0 (SITL) + Gazebo Harmonic + ROS 2 Jazzy + Micro XRCE-DDS Agent v2.4.3 + px4_msgs (rama release/1.17) + MAVSDK 4
+#
+# Construir (8 min en un i7-14700K con buena conexión; más en máquinas modestas; imagen de ~7,5 GB; docker o podman):
+#   podman build -t taller-px4 -f Containerfile .
+# Arrancar (red del anfitrión para que QGroundControl, fuera, vea el puerto 14550):
+#   podman run -it --name px4 --network host -v $HOME/taller:/trabajo taller-px4 bash
+# Para cámaras, añade --device solo de la GPU con controlador dentro del contenedor (Mesa: la integrada); ver lab/README.md.
+FROM docker.io/library/ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y sudo git lsb-release wget curl ca-certificates tzdata software-properties-common
+# PX4 v1.17.0 con sus submódulos (los modelos y mundos de Gazebo son uno: sin --recursive no existe el objetivo gz_x500)
+# y su script de dependencias (instala gz-harmonic en 24.04); sin la cadena de NuttX, solo simulación
+RUN git config --global --add safe.directory '*' && \
+    git clone --depth 1 --recursive --shallow-submodules --branch v1.17.0 https://github.com/PX4/PX4-Autopilot.git /px4 && \
+    cd /px4 && bash Tools/setup/ubuntu.sh --no-nuttx && make px4_sitl
+# ROS 2 Jazzy (paquete ros2-apt-source, el método actual de docs.ros.org), puente con Gazebo y MCAP para rosbag2
+RUN add-apt-repository -y universe && \
+    V=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F\" '{print $4}') && \
+    curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${V}/ros2-apt-source_${V}.noble_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && apt-get update && \
+    apt-get install -y ros-jazzy-ros-base ros-dev-tools ros-jazzy-ros-gz ros-jazzy-rosbag2-storage-mcap
+# Agente XRCE-DDS: la v2.4.3, porque el cliente de PX4 es de la serie 2.x y no habla con el agente 3.x
+RUN mkdir -p /ros_ws/src && cd /ros_ws/src && \
+    git clone -b v2.4.3 --depth 1 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git && \
+    git clone -b release/1.17 --depth 1 https://github.com/PX4/px4_msgs.git && \
+    cd /ros_ws && bash -c "source /opt/ros/jazzy/setup.bash && colcon build"
+# MAVSDK 4 (binding nativo, sin mavsdk_server) y herramientas de registros
+RUN pip install --break-system-packages mavsdk==4.0.5 pyulog
+RUN echo "source /opt/ros/jazzy/setup.bash && source /ros_ws/install/setup.bash" >> /root/.bashrc
+WORKDIR /px4
