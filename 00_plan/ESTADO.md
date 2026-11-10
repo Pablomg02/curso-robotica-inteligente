@@ -10,7 +10,7 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 - **Hecho:** fases 0 a 4 completas (M0 a A14 y los hitos H1 y H3), cada tema con laboratorio, glosario y comprobación en el navegador.
 - **Falta, en este orden** (temario en `TEMARIO.md`):
-  - **Fase 5 · Desplegar:** C1 cómputo embarcado, C2 arquitectura del sistema, C3 comunicaciones, C8 ROS 2 a fondo, C4 tiempo real, C5 inferencia en el borde, C6 sensores, actuadores y calibración, y C7 operación y experimentación real con el hito 4 (🛑 al terminar).
+  - **Fase 5 · Desplegar** (ampliada el 2026-11-10, ver el registro de revisiones; contenido mínimo de cada tema en `TEMARIO.md`, «Contenido obligatorio del bloque C»): C1a de la MCU a la GPU, C1b NPUs, aceleradores y plataformas, C2a el autopiloto por dentro (Pixhawk, PX4, ArduPilot), C2b arquitectura del sistema completo, C3a buses y protocolos a bordo, C3b MAVLink, DDS, radio y sincronización, C8 ROS 2 a fondo, C4 tiempo real, C5 inferencia en el borde, C6 sensores, actuadores, potencia y calibración, y C7 operación y experimentación real con el hito 4 (🛑 al terminar).
   - **Fase 6 · Cerrar el círculo:** B5 SIL, HIL y realidad mixta, B7a y B7b sim-to-real, B8 diseñar tu propio simulador, D1 datasets, benchmarks y evaluación, D2 investigar en robótica hoy y el examen final (🛑).
 - **Cómo seguir:** con el prompt de `00_plan/PROMPT_CONTINUAR.md`, leyendo `CONTINUAR.md` y este fichero; cada tema con el formato de la segunda petición (tabla del 2026-11-07 en el registro de revisiones): cada símbolo definido en su hoja, esquema antes de cada fórmula, derivaciones fundamentales en tablas «paso / por qué» con ejemplos numéricos de un script, nada plegado salvo las respuestas, apartes en `div.aparte` y sin letra pequeña para contenido. Glosario con `00_plan/verificar_glosario.py`. Experimentos con `ulimit -v` (16 GB para clientes de ollama, 40 GB para torch en GPU, 8 GB para numpy).
 - **Lo que Pablo pida en la revisión** de las fases 3 y 4 se anota en el registro de abajo y se aplica a la fase 5 en adelante.
@@ -77,13 +77,16 @@ Leyenda: ✅ hecho · ⏳ en curso · ⬜ pendiente · 🛑 punto de parada para
 
 | ID | Tema | Estado | Fecha | Notas |
 |---|---|---|---|---|
-| C1 | Cómputo embarcado | ⬜ | | |
-| C2 | Arquitectura del sistema | ⬜ | | |
-| C3 | Comunicaciones | ⬜ | | |
+| C1a | Cómputo I: de la MCU a la GPU | ⬜ | | |
+| C1b | Cómputo II: NPUs, aceleradores y plataformas | ⬜ | | |
+| C2a | El autopiloto por dentro: Pixhawk, PX4 y ArduPilot | ⬜ | | |
+| C2b | Arquitectura del sistema completo | ⬜ | | |
+| C3a | Buses y protocolos a bordo | ⬜ | | |
+| C3b | MAVLink, DDS, radio y sincronización | ⬜ | | |
 | C8 | ROS 2 a fondo | ⬜ | | |
 | C4 | Tiempo real en robots | ⬜ | | |
 | C5 | Inferencia en el borde | ⬜ | | |
-| C6 | Sensores, actuadores y calibración | ⬜ | | |
+| C6 | Sensores, actuadores, potencia y calibración | ⬜ | | |
 | C7 | Operación y experimentación real + hito 4 | ⬜ 🛑 | | Fin de fase 5 |
 
 ## Fase 6 · Cerrar el círculo
@@ -111,6 +114,7 @@ Anota aquí cada revisión: fecha, qué temas revisó y qué pidió cambiar. Lo 
 | 2026-11-07 | Fase 1 (A1–A5, H1) | «Se ve bien». Seguir hasta el final sin parar, revisando la calidad a medida que se avanza: completo, riguroso y de la máxima calidad. | Sí: las paradas 🛑 pasan a ser revisiones propias de fase (relectura de las hojas, comprobación de cifras y referencias cruzadas, anotadas en este fichero) sin esperar respuesta; se mantiene la política de agentes del 2026-11-06 |
 | 2026-11-07 | Todos | Una tecla que abra un glosario del tema con todas las letras y símbolos, para saber qué es cada uno. | Sí: tecla `G` y botón «Glosario» en `curso.js?v=4` (panel con buscador que también busca por el código TeX y enlaces a la hoja donde se define cada símbolo). Glosarios escritos en los 28 temas terminados (3 081 entradas: símbolos agrupados por parte y siglas al final), con un repaso de cobertura de siglas y hojas. Formato en `CONTINUAR.md` §4, punto 12; comprobación con `00_plan/verificar_glosario.py`. A11, A12a y A12b (en curso por otra sesión) deben añadir el suyo. |
 | 2026-11-07 | A2, A4a, A7a (como ejemplos; vale para todos) | Fórmulas sin decir qué es cada letra (A2 h. 7), material plegado y comprimido que apenas se lee (A2 h. 9), hojas sin dibujo con todo apretado (A2 h. 25), formulaciones sin explicar antes qué se hace (A4a h. 6), lo fundamental poco explicado (A7a h. 7). Usar más hojas: esquema antes de la fórmula, cada símbolo definido, fórmulas fundamentales derivadas en la hoja; lo secundario en un recuadro punteado siempre abierto y en gris, sin comprimir. Hacerlo hasta el final de la fase 3 (H3); la fase 4 la revisa Pablo cuando termine la otra sesión. | Sí: 27 temas de las fases 0–3 desplegados (M1 ya lo estaba), de 1 029 a 1 707 hojas en total, contando M1, un agente por tema. Cada tema lleva hoja de notación por parte, esquemas antes de cada formulación, las fórmulas fundamentales derivadas en tablas «paso / por qué» y ejemplos numéricos en `figuras/ejemplos_<id>.py`; plegables solo en las respuestas (`div.aparte` para lo secundario, `curso.css?v=10`); glosarios renumerados. Al derivar salieron y se corrigieron errores en A2, A3a, A3b, A5, A7a, A8b, A10, B2, B6 y H1 (anotados en cada fila). Comprobación conjunta: `checkOverflow()` vacío en claro y oscuro, sin desborde a 375 px, sin errores de MathJax ni citas sin referencia en los 27. De paso, `curso.css?v=11`: las clases `t-*` de un `<g>` no llegaban a sus `<text>` (18 temas). A11–A13 (otra sesión) siguen en `v=8`–`10` y sin este repaso. Sin verificar en su PDF: la descripción de CBBA de A15b (marcada). |
+| 2026-11-10 | Temario de la fase 5 | Preguntó si algún tema se centraba en la arquitectura de los drones (Pixhawk, PX4, MAVLink). No había ninguno: estaba repartido entre A2, A4a, A6b, B1 y B4, y en la fase 5 entre C1–C4 sin que ninguno se hiciera cargo. Pidió tratarlo dentro del bloque C, sin que el bloque se limite a eso pero explicándolo a fondo, y entender también GPUs, NPUs, protocolos «etc.»: que se trate todo lo necesario. | Planificado: C1, C2 y C3 se parten en dos (C1a MCU, CPU y GPU por dentro y *roofline*; C1b NPUs, aceleradores, SWaP y plataformas; C2a Pixhawk, PX4 por dentro con NuttX, uORB, *commander*, modos y *failsafes*, y ArduPilot; C2b el sistema completo; C3a buses y mando de motores; C3b MAVLink byte a byte, DDS, radio y sincronización). C6 añade potencia (ESC, baterías). Fase 5 de 8 a 11 jornadas; el curso pasa a 48 presentaciones y 51 jornadas. Lista de contenido mínimo por tema en `TEMARIO.md`. Se aplica al llegar a la fase 5; las referencias «C1», «C2» y «C3» de los temas hechos aluden a la pareja. |
 
 ## Revisión propia de la fase 2 (2026-11-07)
 

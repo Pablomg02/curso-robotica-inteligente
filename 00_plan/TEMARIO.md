@@ -4,8 +4,8 @@
 
 ## Cifras
 
-- **45 presentaciones** en 7 fases (algunos temas "A fondo" se parten en dos: a y b).
-- **48 jornadas de 8 h** (unas 10 semanas a tiempo completo): una por presentación, más 3 dedicadas a hitos y al examen final.
+- **48 presentaciones** en 7 fases (algunos temas "A fondo" se parten en dos: a y b).
+- **51 jornadas de 8 h** (unas 10–11 semanas a tiempo completo): una por presentación, más 3 dedicadas a hitos y al examen final.
 - Cada jornada tipo: unas 3–4 h de presentación con derivaciones, 2–3 h de laboratorio, 1 h de lectura guiada y un test de autoevaluación al final.
 - Labs en **Python + JAX**, independientes del hardware concreto (ver "Política de hardware de los laboratorios").
 
@@ -91,36 +91,94 @@ Es el miniproyecto integrador y crece con los laboratorios. Al final del curso e
 | 32 | A13 | Arquitecturas jerárquicas y fusión de modelos | A fondo | System 2 lento + System 1 rápido con inferencia asíncrona |
 | 33 | A14 | Seguridad y garantías | Importante | Filtro de seguridad CBF sobre la política aprendida |
 
-## Fase 5 · Desplegar: hardware y sistema (8 jornadas)
+## Fase 5 · Desplegar: hardware y sistema (11 jornadas)
+
+> Ampliada el 2026-11-10 a petición de Pablo: la arquitectura de un dron real (Pixhawk, PX4, MAVLink) tiene que quedar explicada a fondo, y también el cómputo (CPU, GPU, NPU), los protocolos y todo lo demás que hace falta para desplegar. Por eso C1, C2 y C3 se parten en dos. El contenido mínimo de cada tema está en «Contenido obligatorio del bloque C», más abajo. Los temas no se quedan en esa lista: es lo mínimo que tienen que cubrir.
 
 | J | ID | Presentación | Profundidad | Lab |
 |---|---|---|---|---|
-| 34 | C1 | Cómputo embarcado | A fondo | Perfilado de latencia y memoria de un modelo; comparación con cifras publicadas de plataformas embarcadas |
-| 35 | C2 | Arquitectura del sistema | A fondo | Arquitectura del dron de la tesis con presupuesto de latencias |
-| 36 | C3 | Comunicaciones: buses, MAVLink, DDS, radio, sincronización | Importante | MAVLink contra PX4 SITL; medir latencias |
-| 37 | C8 | ROS 2 a fondo | A fondo | Nodos, QoS, tf2, rosbag2/MCAP y puente con PX4 por uXRCE-DDS |
-| 38 | C4 | Tiempo real en robots | A fondo | Latencia y jitter con kernel normal frente a PREEMPT_RT; executors |
-| 39 | C5 | Inferencia en el borde | Importante | Exportar a ONNX, cuantizar y medir latencia (TensorRT si hay GPU NVIDIA) |
-| 40 | C6 | Sensores, actuadores y calibración | A fondo | Calibración cámara-IMU con un dataset público; modelo de motor-hélice a partir de datos de banco publicados |
-| 41 | C7 + H4 | Operación y experimentación real, e hito 4 | Repaso | Análisis de un ulog e integración del hito H4 |
+| 34 | C1a | Cómputo I: de la MCU a la GPU | A fondo | Roofline de tu GPU y de tu CPU con un microbenchmark; una MLP y una CNN pequeñas situadas en él |
+| 35 | C1b | Cómputo II: NPUs, aceleradores y plataformas embarcadas | A fondo | Perfilado de latencia, memoria y energía estimada de un modelo; comparación con cifras publicadas de Jetson, NPUs y MCUs |
+| 36 | C2a | El autopiloto por dentro: Pixhawk, PX4 y ArduPilot | A fondo | Recorrer PX4 SITL: módulos, temas de uORB, frecuencias reales, modos y *failsafes* provocados a propósito |
+| 37 | C2b | Arquitectura del sistema completo | A fondo | Arquitectura del dron de la tesis con presupuesto de latencias, cómputo, energía y peso |
+| 38 | C3a | Buses y protocolos a bordo | Importante | Decodificar tramas (DShot, CRSF, CAN) a partir de capturas públicas o generadas; ancho de banda y latencia calculados |
+| 39 | C3b | MAVLink, DDS, radio y sincronización | A fondo | MAVLink contra PX4 SITL con pymavlink y MAVSDK; medir latencias, pérdidas y desfase de relojes |
+| 40 | C8 | ROS 2 a fondo | A fondo | Nodos, QoS, tf2, rosbag2/MCAP y puente con PX4 por uXRCE-DDS |
+| 41 | C4 | Tiempo real en robots | A fondo | Latencia y jitter con kernel normal frente a PREEMPT_RT; executors |
+| 42 | C5 | Inferencia en el borde | A fondo | Exportar a ONNX, cuantizar y medir latencia (TensorRT si hay GPU NVIDIA) |
+| 43 | C6 | Sensores, actuadores, potencia y calibración | A fondo | Calibración cámara-IMU con un dataset público; modelo de motor-hélice a partir de datos de banco publicados |
+| 44 | C7 + H4 | Operación y experimentación real, e hito 4 | Repaso | Análisis de un ulog e integración del hito H4 |
+
+### Contenido obligatorio del bloque C
+
+Cada punto se explica desde cero (Pablo es débil en la pila del robot real, `diagnostico.md`), con dibujos de la arquitectura, cifras verificadas en documentación oficial, hojas de datos o código, y su efecto sobre latencia, observabilidad, sim-to-real y cómputo limitado.
+
+- **C1a · De la MCU a la GPU.**
+  - Qué es un procesador por dentro: ciclo de instrucción, *pipeline*, caché y jerarquía de memoria, por qué la memoria manda más que los FLOPS.
+  - Microcontroladores de controladora de vuelo: familia ARM Cortex-M (los STM32 de las Pixhawk), FPU, DSP, SRAM y *flash*, periféricos (temporizadores, DMA), sin MMU ni sistema operativo de propósito general.
+  - CPUs de aplicación: ARM Cortex-A frente a x86, multinúcleo, SIMD (NEON, AVX), consumo.
+  - La GPU por dentro: SIMT, *warps*, SMs, ocupación, jerarquía de memoria (registros, compartida, L2, DRAM), *tensor cores*, precisión (FP32, FP16, BF16, INT8, FP8) y el modelo de programación CUDA (kernels, bloques, hilos, *streams*).
+  - El modelo *roofline*: intensidad aritmética, techo de memoria y de cómputo, con números de una GPU de consumo, de un Jetson y de un móvil.
+  - Memoria unificada (Jetson, Apple, móviles) frente a GPU discreta con PCIe; qué cuesta copiar.
+  - Por qué una red de control de un dron (*batch* 1, pocos parámetros) no se parece a entrenar: latencia frente a rendimiento.
+- **C1b · NPUs, aceleradores y plataformas.**
+  - Qué es una NPU: matrices sistólicas, *dataflow*, memoria en el chip, cuantización obligada; TPU como caso histórico.
+  - Aceleradores concretos: DLA y PVA de Jetson, Qualcomm Hexagon, Hailo, Google Coral Edge TPU, NPUs de SoC (Rockchip RK3588 y otros), Intel y AMD; qué operadores soportan y qué pasa con los que no.
+  - FPGA (cuándo merecen la pena) y neuromórfico (Loihi y similares, con cámaras de eventos), con su estado real.
+  - TinyML: redes en la propia MCU (como la política de 2084 parámetros de M0).
+  - TOPS anunciados frente a rendimiento medido; TOPS/W; por qué las cifras de fabricante no se comparan entre sí.
+  - SWaP (tamaño, peso y potencia): cuánto pesa y consume cada opción y cuánto vuelo cuesta en un dron pequeño.
+  - Plataformas reales: Jetson Orin, Qualcomm (ModalAI VOXL), Raspberry Pi con acelerador, Skydio y los ordenadores de los drones de competición e investigación (Swift, Agilicious).
+- **C2a · El autopiloto por dentro.**
+  - Qué hace un autopiloto y qué no: estimación, control, modos, seguridad; la frontera con el ordenador de a bordo.
+  - Hardware Pixhawk: los estándares abiertos (FMU, *baseboard*, conectores), procesador principal y procesador de E/S, sensores redundantes, aislamiento de vibraciones y calefacción de la IMU, alimentación y *power module*, salidas de motor; una placa real desmontada en un dibujo.
+  - PX4 por dentro: NuttX, módulos y *work queues*, uORB (publicación y suscripción, `timestamp_sample`), cómo fluye un dato desde el driver de la IMU hasta el motor, y a qué frecuencia va cada etapa.
+  - *Commander*: estados de armado, *preflight checks*, modos de vuelo y la máquina de estados, *failsafes* (RC, datos, batería, geocerca).
+  - *Navigator*, misiones, control de posición, actitud y *rate* (enlazando con A2), asignación de control y salida a los ESC.
+  - Parámetros, *airframes*, `rcS` y el arranque; *logger* y ulog.
+  - ArduPilot comparado: HAL, *scheduler*, ChibiOS, EKF3, modos; cuándo se usa cada uno.
+  - Otros firmwares y plataformas: Betaflight (carreras), Crazyflie, controladoras propias de laboratorio.
+- **C2b · Arquitectura del sistema completo.**
+  - Las piezas: autopiloto, ordenador de a bordo (*companion*), sensores de percepción, radio, estación de tierra (QGroundControl), nube.
+  - Quién hace qué y a qué frecuencia; las interfaces entre capas (offboard: posición, velocidad, CTBR, motores directos) y lo que cuesta cada una.
+  - Presupuesto de latencias de extremo a extremo, de cómputo, de energía y de peso.
+  - Redundancia, modos de fallo y degradación; qué pasa si se cae el *companion*.
+  - Arquitecturas publicadas de sistemas reales (Agilicious, Swift, Skydio, MIT, ETH, drones de enjambre) y cómo encaja la red aprendida.
+  - Arquitectura del dron de la tesis.
+- **C3a · Buses y protocolos a bordo.**
+  - Capa física y trama de cada bus, con su ancho de banda, latencia y robustez calculados: UART, SPI, I2C, CAN y CAN FD (DroneCAN y Cyphal), USB, Ethernet (en las Pixhawk recientes) y MIPI CSI para cámaras.
+  - Mando a los motores: PWM, OneShot, Multishot, DShot y DShot bidireccional (telemetría de RPM), y ESCs por CAN.
+  - Radiocontrol: SBUS, CRSF y ExpressLRS.
+  - GNSS (UBX, NMEA, RTCM para RTK) e interrupciones y DMA en la MCU.
+- **C3b · MAVLink, DDS, radio y sincronización.**
+  - MAVLink v2: la trama byte a byte, CRC, firma, dialectos y microservicios (*heartbeat*, comandos, parámetros, misiones, offboard, ficheros); pymavlink, MAVSDK y MAVROS.
+  - DDS y RTPS, uXRCE-DDS (agente y cliente), Zenoh; QoS y lo que pasa en una red con pérdidas.
+  - Radio: telemetría (SiK, enlaces digitales), Wi-Fi, malla, 4G/5G; alcance, latencia, pérdidas y presupuesto de enlace.
+  - Sincronización temporal: NTP, PTP, el *timesync* de MAVLink y de uXRCE-DDS, marcas de tiempo por hardware (enlaza con B4).
+  - Seguridad de las comunicaciones (cifrado, firma, suplantación), en breve.
+- **C8 · ROS 2 a fondo.** Nodos, temas, servicios y acciones; executors; QoS; tf2; *launch*; rosbag2 y MCAP; `px4_msgs` y el puente con PX4; ros2_control; rendimiento y copia cero.
+- **C4 · Tiempo real.** RTOS (NuttX, FreeRTOS, Zephyr, ChibiOS), planificación por prioridades, inversión de prioridad, WCET, PREEMPT_RT, aislamiento de núcleos, executors de ROS 2 en tiempo real.
+- **C5 · Inferencia en el borde.** Cuantización (PTQ, QAT, INT8, INT4), poda y destilación, ONNX y ONNX Runtime, TensorRT, compiladores (TVM y similares), runtimes de móvil y MCU (LiteRT, ExecuTorch), kernels fusionados, presupuestos de latencia y cuándo mandar a la nube.
+- **C6 · Sensores, actuadores, potencia y calibración.** IMU, cámaras (global y rodante, exposición, sincronización por disparo), eventos, LiDAR, flujo óptico, GNSS y RTK, barómetro, magnetómetro; motores BLDC, ESC (conmutación trapezoidal frente a FOC), hélices, baterías LiPo y Li-ion, distribución de potencia; calibración intrínseca, extrínseca y temporal (Kalibr), de IMU y de magnetómetro.
+- **C7 · Operación y experimentación real.** Pipeline de pruebas, logging (ulog, MCAP), análisis (Flight Review, PlotJuggler), seguridad en vuelo y normativa europea (EASA, breve).
 
 ## Fase 6 · Cerrar el círculo (7 jornadas)
 
 | J | ID | Presentación | Profundidad | Lab |
 |---|---|---|---|---|
-| 42 | B5 | SIL, HIL y realidad mixta | A fondo | PX4 SITL y HITL con la controladora real |
-| 43 | B7a | Sim-to-real: taxonomía de gaps y técnicas | A fondo | Ablación: qué capa de realismo importa más |
-| 44 | B7b | Sim-to-real en la práctica: casos y protocolo | A fondo | Política en una Pixhawk en HIL y evaluación contra datos de vuelo públicos |
-| 45 | B8 | Diseñar tu propio simulador | A fondo | Documento de diseño del simulador de la tesis |
-| 46 | D1 | Datasets, benchmarks y evaluación | A fondo | Protocolo de evaluación de la tesis |
-| 47 | D2 | Investigar en robótica hoy | A fondo | Mapa de lecturas y plan del primer año |
-| 48 | Final | Examen final | — | Los 7 criterios de `ANALISIS.md` §3 |
+| 45 | B5 | SIL, HIL y realidad mixta | A fondo | PX4 SITL y HITL con la controladora real |
+| 46 | B7a | Sim-to-real: taxonomía de gaps y técnicas | A fondo | Ablación: qué capa de realismo importa más |
+| 47 | B7b | Sim-to-real en la práctica: casos y protocolo | A fondo | Política en una Pixhawk en HIL y evaluación contra datos de vuelo públicos |
+| 48 | B8 | Diseñar tu propio simulador | A fondo | Documento de diseño del simulador de la tesis |
+| 49 | D1 | Datasets, benchmarks y evaluación | A fondo | Protocolo de evaluación de la tesis |
+| 50 | D2 | Investigar en robótica hoy | A fondo | Mapa de lecturas y plan del primer año |
+| 51 | Final | Examen final | — | Los 7 criterios de `ANALISIS.md` §3 |
 
 ---
 
 ## Ruta crítica
 
-Si en algún momento hay que priorizar, estas 16 presentaciones son las que más pesan para la tesis: M0, M1, A2, A4a, A6b, A7a, A7b, A8a, A9a, A13, B4, B6, B7a, B8, C2 y C8.
+Si en algún momento hay que priorizar, estas 17 presentaciones son las que más pesan para la tesis: M0, M1, A2, A4a, A6b, A7a, A7b, A8a, A9a, A13, B4, B6, B7a, B8, C2a, C2b y C8.
 
 ## Pista paralela recomendada: C++
 
