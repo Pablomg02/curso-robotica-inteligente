@@ -177,5 +177,6 @@ Fase 4 completa: A11, A12a, A12b, A13 y A14, todos con el formato de la segunda 
 
 | Fecha | Qué | Dónde |
 |---|---|---|
+| 2026-11-11 | Pablo pidió un botón en todas las presentaciones que lleve al índice general del curso. La barra superior lleva a la izquierda «⌂ Curso», un enlace al `index.html` raíz resuelto desde la ruta de `curso.js` (sirve en cualquier carpeta). Por debajo de 600 px queda solo «⌂» y se oculta el código del tema en la barra (sigue en el cartucho de cada hoja) para que no desborde. Comprobado en los 35 temas: `checkOverflow()` vacío a 1440×900 y barra sin desborde a 375 px. | `assets/curso.js` y `assets/curso.css` (`js?v=5`, `css?v=12` en todas las páginas) |
 | 2026-11-07 | La barra superior desbordaba en horizontal a ancho de móvil (463 px en 375). En pantallas estrechas se compacta y por debajo de 600 px se ocultan ←, → y el contador (el modo lectura ya va por scroll). | `assets/curso.css` (`?v=9` en todas las páginas) |
 | 2026-11-07 | Las líneas discontinuas con solo la clase `ln-dash` no tenían color de trazo y no se veían (52 en 11 temas). `curso.css` les da un gris por defecto con especificidad cero, así que no pisa `ln-accent` y compañía. Revisado con capturas en A2, B2 y B3b. | `assets/curso.css` (`?v=8` en todas las páginas) |

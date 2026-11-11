@@ -1,5 +1,6 @@
 /* Curso de robótica inteligente: motor de presentaciones.
    Modos: presentación (una hoja escalada) y lectura (hojas apiladas).
+   Barra: ⌂ enlace al índice del curso.
    Teclas: ← → espacio RePág AvPág Inicio Fin · I índice · G glosario · L modo · T tema */
 (function () {
   "use strict";
@@ -41,6 +42,7 @@
   const bar = document.createElement("header");
   bar.className = "bar";
   bar.innerHTML =
+    '<a class="home" title="Índice del curso">⌂ <span>Curso</span></a>' +
     '<span class="deck-id"></span><span class="deck-title"></span>' +
     '<button type="button" id="btn-prev" aria-label="Diapositiva anterior">←</button>' +
     '<span class="counter" id="counter"></span>' +
@@ -48,6 +50,8 @@
     '<button type="button" id="btn-index">Índice</button>' +
     '<button type="button" id="btn-mode"></button>' +
     '<button type="button" id="btn-theme">Tema</button>';
+  const jsTag = document.querySelector('script[src*="curso.js"]');
+  bar.querySelector(".home").href = jsTag ? new URL("../index.html", jsTag.src).href : "../../index.html";
   bar.querySelector(".deck-id").textContent = deckId;
   bar.querySelector(".deck-title").textContent = deckTitle;
   body.prepend(bar);
