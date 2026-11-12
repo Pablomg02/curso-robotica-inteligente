@@ -1,0 +1,1900 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>R1a · Así lo hacen en la realidad I: los labs de robot learning en 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../assets/curso.css?v=13">
+<style>
+  /* Nombres de modelos, repositorios y cifras largas: que puedan partirse en pantallas estrechas */
+  @media (max-width: 700px) { .slide code, .slide td { overflow-wrap: anywhere; word-break: break-word; } }
+  /* Dúo con columnas proporcionales al formato de cada foto (--duo), para que ninguna quede con bandas */
+  figure.foto.duo.prop { grid-template-columns: var(--duo); }
+  @media (max-width: 520px) { figure.foto.duo.prop { grid-template-columns: minmax(0, 1fr); } }
+  /* Fechas como 03-09-2026 o 10-2026: que no se partan por el guion */
+  .nw { white-space: nowrap; }
+</style>
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+    svg: { fontCache: "global" }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" defer></script>
+</head>
+<body data-deck-id="R1a" data-deck-title="Así lo hacen en la realidad I: los labs de robot learning en 2026 · Curso de robótica inteligente">
+<main class="deck">
+
+<section class="slide title-slide" data-section="Apertura">
+  <p class="kicker">Fase 5 · Jornada 36 · Así lo hacen en la realidad · Curso de robótica inteligente</p>
+  <h1>Así lo hacen en la realidad I: los labs de robot learning en 2026</h1>
+  <p class="subtitle">Cómo convierte un lab un método de las fases 3 y 4 en un robot que funciona fuera de la demo: de dónde salen los datos y cuánto cuestan, qué cómputo publican, cómo se evalúa con un número de ensayos que signifique algo, cómo se lee un vídeo, y qué enseña la conducción autónoma, el único despliegue masivo de autonomía aprendida.</p>
+  <div class="meta-row">
+    <span><b>Duración</b> ≈ 3,5 h + laboratorio de 3 h</span>
+    <span><b>Prerrequisitos</b> M0, A8b, A10, A12a, A12b, T1b</span>
+    <span><b>Prepara</b> R1b, C1b, C2b, C5, C7, B7b, D1, D2</span>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Objetivos de R1a</p>
+  <h2>Al terminar esta jornada deberías poder…</h2>
+  <ol class="body" style="font-size:20px; gap:10px;">
+    <li>Situar a los labs y empresas de robot learning de 2026 por lo que publican (pesos, código, datos, número de ensayos) y no por sus vídeos.</li>
+    <li>Explicar la pirámide de datos con cifras publicadas y calcular cuánto cuesta y cuánto tarda recoger \(N\) demostraciones.</li>
+    <li>Leer una tabla de latencias medidas y decidir si un modelo cabe en un robot y a qué frecuencia.</li>
+    <li>Derivar cuántos ensayos hacen falta para distinguir dos tasas de éxito, qué garantiza «20 de 20» y el intervalo de Poisson de una tasa de accidentes, y aplicarlos a resultados publicados.</li>
+    <li>Aplicar una lista de lectura a un vídeo o un anuncio y separar demo, piloto y producto.</li>
+    <li>Explicar qué puede copiar un dron de la conducción autónoma y qué no, y por qué los drones casi no aparecen en estos labs.</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Por qué importa</p>
+  <h2>Las fases 3 y 4 te dieron los métodos; esta jornada mira qué hace falta alrededor</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>A10, A12a, A12b y A8b explicaron π0, GR00T, Gemini Robotics, Helix, V-JEPA 2 o Cosmos como <strong>métodos</strong>. Aquí no se repiten: se cuenta lo que no sale en sus arquitecturas.</li>
+        <li>Pregunta de la jornada: <strong>¿cómo convierte un lab un método en un robot que funciona fuera de la demo, y cómo se sabe si lo ha conseguido?</strong></li>
+        <li>Cuatro partes la responden: los datos, el cómputo y el despliegue, la evaluación y la diferencia entre demo y producto. Luego, la conducción autónoma y los drones.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Regla de esta jornada</span>Cada cifra lleva su fuente y su fecha. Las que solo publica la empresa van como afirmaciones suyas; los hechos que solo cuenta la prensa, como prensa contrastada (dos medios fiables). Lo que no se pudo comprobar no está.</div>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 520 330" role="img" aria-label="Del método al robot que funciona: datos, cómputo, evaluación y despliegue">
+        <rect x="20" y="16" width="480" height="300" rx="12" class="box-soft"/>
+        <rect x="160" y="30" width="200" height="44" rx="10" class="box-accent"/>
+        <text x="260" y="50" text-anchor="middle" class="t-bold">Un método</text>
+        <text x="260" y="66" text-anchor="middle" font-size="12" class="t-muted">fases 3 y 4: VLA, world model, RL</text>
+        <line x1="260" y1="74" x2="260" y2="96" class="ln"/>
+        <rect x="36" y="100" width="108" height="92" rx="10" class="box-time"/>
+        <text x="90" y="124" text-anchor="middle" font-size="15" class="t-bold">Datos</text>
+        <text x="90" y="146" text-anchor="middle" font-size="12">horas, robots,</text>
+        <text x="90" y="162" text-anchor="middle" font-size="12">operadores, coste</text>
+        <text x="90" y="182" text-anchor="middle" font-size="11" class="t-muted">parte 2</text>
+        <rect x="152" y="100" width="108" height="92" rx="10" class="box-time"/>
+        <text x="206" y="124" text-anchor="middle" font-size="15" class="t-bold">Cómputo</text>
+        <text x="206" y="146" text-anchor="middle" font-size="12">GPU·h, latencia,</text>
+        <text x="206" y="162" text-anchor="middle" font-size="12">dónde corre</text>
+        <text x="206" y="182" text-anchor="middle" font-size="11" class="t-muted">parte 3</text>
+        <rect x="268" y="100" width="108" height="92" rx="10" class="box-time"/>
+        <text x="322" y="124" text-anchor="middle" font-size="15" class="t-bold">Evaluación</text>
+        <text x="322" y="146" text-anchor="middle" font-size="12">ensayos, ciego,</text>
+        <text x="322" y="162" text-anchor="middle" font-size="12">intervalos</text>
+        <text x="322" y="182" text-anchor="middle" font-size="11" class="t-muted">parte 4</text>
+        <rect x="384" y="100" width="108" height="92" rx="10" class="box-time"/>
+        <text x="438" y="124" text-anchor="middle" font-size="15" class="t-bold">Despliegue</text>
+        <text x="438" y="146" text-anchor="middle" font-size="12">horas, piezas,</text>
+        <text x="438" y="162" text-anchor="middle" font-size="12">intervenciones</text>
+        <text x="438" y="182" text-anchor="middle" font-size="11" class="t-muted">parte 5</text>
+        <line x1="260" y1="192" x2="260" y2="216" class="ln"/>
+        <rect x="70" y="220" width="380" height="44" rx="10" class="box-tesis"/>
+        <text x="260" y="240" text-anchor="middle" font-size="16" class="t-bold">Un robot que funciona fuera de la demo</text>
+        <text x="260" y="256" text-anchor="middle" font-size="12" class="t-muted">y una forma de saber si es verdad</text>
+        <text x="260" y="296" text-anchor="middle" font-size="12" class="t-muted">Parte 6: el caso más maduro (conducción). Parte 7: ¿y los drones?</text>
+      </svg>
+      <figcaption>Lo que separa un artículo de un producto está en las cuatro cajas del medio, y casi nada de eso sale en el diagrama de la arquitectura.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Historia</p>
+  <h2>De una granja de brazos en 2016 a robotaxis sin conductor en quince ciudades</h2>
+  <div class="tl">
+    <div class="ev"><span class="yr">2016–2018</span>Google pone entre 6 y 14 brazos a agarrar objetos durante dos meses: más de 800 000 intentos <a class="cite" data-ref="levine2016"></a>. QT-Opt: más de 580 000 agarres reales y un 96 % con objetos nuevos <a class="cite" data-ref="kalashnikov2018"></a>.</div>
+    <div class="ev"><span class="yr">2022–2023</span>RT-1: 130 000 episodios con 13 robots en 17 meses <a class="cite" data-ref="brohan2023"></a>. ALOHA, dos brazos teleoperados por menos de 20 000 $ <a class="cite" data-ref="zhao2023"></a>. Open X-Embodiment junta 22 robots de 21 instituciones <a class="cite" data-ref="oxe2024"></a>.</div>
+    <div class="ev"><span class="yr">2024</span>DROID, 76 000 trayectorias en 12 meses <a class="cite" data-ref="khazatsky2024"></a>; UMI, recoger datos sin robot <a class="cite" data-ref="chi2024"></a>; π0, más de 10 000 h de robot <a class="cite" data-ref="black2024"></a>. En el evento «We, Robot» de Tesla, parte de los Optimus iban teleoperados (prensa) <a class="cite" data-ref="bbgwr,tcwr"></a>.</div>
+    <div class="ev"><span class="yr">2025</span>GR00T N1 publica su pirámide de datos y su cómputo <a class="cite" data-ref="bjorck2025"></a>. Amazon llega al robot un millón <a class="cite" data-ref="amazon1m"></a>. TRI evalúa con 1800 ensayos reales a ciegas <a class="cite" data-ref="tri2025"></a>. Figure 02 trabaja once meses en BMW <a class="cite" data-ref="figbmw25"></a>.</div>
+    <div class="ev"><span class="yr">2026</span>Waymo: 16 000 M$ y un world model sobre Genie 3 <a class="cite" data-ref="waymo16b,waymowwm"></a>; Atlas de producción <a class="cite" data-ref="bdces26"></a>; π0.7 <a class="cite" data-ref="pi2026"></a>; GR00T N1.7 abierto <a class="cite" data-ref="gr00trepo"></a>; Gemini Robotics 2 y 2.5 <a class="cite" data-ref="gdmgr2,gdmgr25"></a>; Wayve con Uber en Londres <a class="cite" data-ref="wayveldn"></a>.</div>
+  </div>
+</section>
+
+<section class="slide divider" data-section="El mapa">
+  <p class="num">Parte 1</p>
+  <h2>El mapa, con fechas y tamaños</h2>
+  <p>Quién hace qué en noviembre de 2026, qué publica cada uno y dónde están los humanoides que se venden de verdad.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">El mapa · quién hace qué</p>
+  <h2>Cuatro tipos de actores, con lo último que ha publicado cada uno</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card">
+      <span class="meta">GRANDES EMPRESAS</span>
+      <h3>Modelos y plataformas</h3>
+      <p><strong>Google DeepMind:</strong> Gemini Robotics 2 (<span class="nw">07-2026</span>) y 2.5 (<span class="nw">10-11-2026</span>), solo para socios <a class="cite" data-ref="gdmgr2,gdmgr25"></a>.</p>
+      <p><strong>NVIDIA:</strong> GR00T N1.7 abierto; GR00T 2 presentado en la CoRL (<span class="nw">09-11-2026</span>), con el código anunciado para diciembre; Cosmos 3; Isaac Lab 3.0 <a class="cite" data-ref="gr00trepo,nvcorl26,gr00t2"></a>.</p>
+      <p><strong>Meta FAIR:</strong> V-JEPA 2 (A8b). <strong>Amazon:</strong> un millón de robots <a class="cite" data-ref="amazon1m"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">STARTUPS DE MODELOS</span>
+      <h3>El «cerebro» para muchos robots</h3>
+      <p><strong>Physical Intelligence:</strong> de π0 a π0.7 (<span class="nw">04-2026</span>) <a class="cite" data-ref="black2024,pi2026"></a>.</p>
+      <p><strong>Generalist:</strong> GEN-1, más de 500 000 h de datos humanos <a class="cite" data-ref="gen1"></a>.</p>
+      <p><strong>Skild AI:</strong> 1400 M$ y más de 14 000 M$ de valoración, según la empresa <a class="cite" data-ref="skild26"></a>. Field AI usa Cosmos, según NVIDIA <a class="cite" data-ref="nvgtc26"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">HUMANOIDES Y PRODUCTO</span>
+      <h3>Los que venden robots</h3>
+      <p><strong>Figure</strong> (Helix, BMW), <strong>Agility</strong> (Digit en GXO), <strong>Boston Dynamics</strong> (Atlas), <strong>Apptronik</strong> (Apollo), <strong>1X</strong> (NEO).</p>
+      <p><strong>Unitree</strong> y <strong>AgiBot</strong>, en China, venden miles al año.</p>
+      <p><strong>Tesla</strong> (Optimus): sin fuentes primarias accesibles en 2026; sale en la parte 5.</p>
+    </div>
+    <div class="card">
+      <span class="meta">ACADEMIA</span>
+      <h3>Lo barato, lo abierto y lo independiente</h3>
+      <p>Stanford, Berkeley, CMU, MIT, TRI y otros ponen los sistemas de recogida baratos (ALOHA, UMI), los datasets abiertos (OXE, DROID) y la evaluación independiente (RoboArena).</p>
+      <p>ETH y UZH, con los drones y las patas: en R1b, A6a y A6b.</p>
+    </div>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>El dinero y los datos están en las empresas; los métodos de evaluación y los datos abiertos, en la academia. Las personas cruzan de un lado a otro: el modelo que leerás en un artículo puede ser el producto de otra empresa dentro de un año.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El mapa · qué publica cada uno</p>
+  <h2>Pesos, código, datos y número de ensayos, a 12 de noviembre de 2026</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Quién</th><th style="width:28%">Pesos</th><th style="width:16%">Código</th><th style="width:18%">Datos</th><th>¿Da \(n\) en 2026?</th></tr>
+      <tr><td>Physical Intelligence</td><td>π0, π0-FAST y π0.5 sí; π*0.6 y π0.7 no <a class="cite" data-ref="openpi"></a></td><td>openpi, Apache-2.0</td><td>no</td><td>preprints con método parcial; sin \(n\) de la política en π0.7 <a class="cite" data-ref="pi2026"></a></td></tr>
+      <tr><td>NVIDIA</td><td>GR00T N1.5–N1.7, licencia de modelo abierta con uso comercial <a class="cite" data-ref="gr00trepo"></a></td><td>Apache-2.0</td><td>parte, en Hugging Face</td><td>latencias medidas con método; mejoras sin \(n\) <a class="cite" data-ref="gr00tn17"></a></td></tr>
+      <tr><td>Google DeepMind</td><td>no: GR2 y GR2.5 para socios; ER 2 por API <a class="cite" data-ref="gdmgr2"></a></td><td>no</td><td>un benchmark de seguridad</td><td>no: tasas por categoría sin \(n\) <a class="cite" data-ref="gdmgr25"></a></td></tr>
+      <tr><td>Meta FAIR</td><td>V-JEPA 2 sí <a class="cite" data-ref="metavjepa"></a></td><td>sí</td><td>usa DROID (abierto)</td><td>blog sin \(n\); paper en A8b</td></tr>
+      <tr><td>AgiBot</td><td>GO-1 sí (<span class="nw">09-2025</span>) <a class="cite" data-ref="bu2025"></a></td><td>sí</td><td>AgiBot World, licencia no comercial</td><td>—</td></tr>
+      <tr><td>Figure, 1X, Boston Dynamics, Agility, Skild, Generalist, Tesla</td><td>no</td><td>no</td><td>no</td><td>no (Figure: evaluación ciega sin \(n\)) <a class="cite" data-ref="figh25"></a></td></tr>
+      <tr><td>Academia</td><td>Octo, OpenVLA (A12a)</td><td>sí</td><td>OXE, DROID</td><td>sí: TRI, 50 por celda; RoboArena, 4284 episodios <a class="cite" data-ref="tri2025,atreya2025"></a></td></tr>
+    </table>
+  </div>
+  <p class="small">Para tu tesis, lo que se puede reproducir pesa más que lo que se anuncia: con pesos y código se mide; con un vídeo, no.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">El mapa · humanoides</p>
+  <h2>Atlas: de robot de concurso en 2013 a producto con cliente en 2026</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <ul>
+        <li><strong><span class="nw">08-2025</span>, con TRI:</strong> una política de 450 M de parámetros controla todo Atlas; las imágenes llegan a 30 Hz y cada trozo de 48 acciones cubre 1,6 s, del que se ejecutan 24. Los datos se recogen <strong>teleoperando con gafas de RV</strong> sobre el MPC del robot <a class="cite" data-ref="bdlbm"></a>.</li>
+        <li><strong><span class="nw">01-2026</span>, en el CES:</strong> versión de producción con 56 grados de libertad, 50 kg de carga y cambio autónomo de batería; funciona en modo autónomo, teleoperado o con tableta. Toda la producción de 2026 va al centro de Hyundai y a Google DeepMind, que pone Gemini Robotics <a class="cite" data-ref="bdces26,bdgdm26"></a>.</li>
+        <li><strong><span class="nw">09-2026</span>:</strong> abre el centro de aplicación de Hyundai en Savannah con un plan de 25 000 unidades «en los próximos años». El pie de foto oficial: «A trainer teleoperates Boston Dynamics Atlas robot» <a class="cite" data-ref="bdrmac26"></a>.</li>
+        <li><strong>Apptronik</strong> hace lo mismo al revés: Apollo 2 es el humanoide de las pruebas de Gemini Robotics 2 y 2.5 <a class="cite" data-ref="gdmgr2,apptronik26"></a>.</li>
+      </ul>
+    </div>
+    <figure class="foto duo" style="--foto-h:300px">
+      <img src="img/atlas-2013.webp" width="900" height="1239" alt="Atlas hidráulico de 2013, de frente, sin cubierta">
+      <img src="img/atlas-2026.webp" width="900" height="1200" alt="Atlas eléctrico expuesto en un salón de Hyundai en 2026">
+      <figcaption>Atlas hidráulico del DARPA Robotics Challenge (2013) y Atlas eléctrico en Hyundai Motorstudio Goyang (<span class="nw">21-07-2026</span>). El salto no es solo mecánico: el segundo se programa con datos de teleoperación.
+        <span class="xsmall">Fotos: DARPA, dominio público (<a href="https://commons.wikimedia.org/wiki/File:Atlas_frontview_2013.jpg">Commons</a>); Damian B Oh, <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Boston_Dynamics_Atlas_(1).jpg">Commons</a>). Redimensionadas.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">El mapa · escala</p>
+  <h2>Los humanoides que más se venden son chinos; los robots que más trabajan, de almacén</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <ul>
+        <li><strong>Unitree</strong>, según el folleto de su salida a bolsa: más de 5500 humanoides enviados en 2025 (sin contar los de ruedas) y 5632 vendidos entre 2023 y 2025, además de 33 294 cuadrúpedos. No se contradicen: una cifra es de envíos en un año y la otra de ventas en tres <a class="cite" data-ref="unitreesse"></a>.</li>
+        <li><strong>AgiBot</strong> publica AgiBot World: 1 003 672 trayectorias de 100 robots, y su modelo GO-1 en abierto <a class="cite" data-ref="bu2025"></a>.</li>
+        <li>NVIDIA elige un Unitree H2 como humanoide de referencia para universidades, con un Jetson AGX Thor de 40–130 W <a class="cite" data-ref="nvrefhum"></a>.</li>
+        <li><strong>Amazon</strong> desplegó su robot un millón en 2025, en más de 300 centros: robots móviles de almacén, no humanoides <a class="cite" data-ref="amazon1m"></a>. Es la flota más grande, y su modelo fundacional (DeepFleet) coordina tráfico, no manipula.</li>
+      </ul>
+    </div>
+    <figure class="foto duo" style="--foto-h:290px">
+      <img src="img/unitree-g1.webp" width="800" height="1348" alt="Humanoide Unitree G1 en una feria">
+      <img src="img/agibot-x2.webp" width="704" height="1184" alt="Humanoide AgiBot X2 en el MWC 2026">
+      <figcaption>Unitree G1 en la UAV Expo de 2024 y AgiBot X2 en el MWC de 2026: los humanoides chinos son los que se venden por miles.
+        <span class="xsmall">Fotos: Sayanesy, <a href="http://creativecommons.org/publicdomain/zero/1.0/deed.en">CC0</a> (<a href="https://commons.wikimedia.org/wiki/File:Unitree_G1.jpg">Commons</a>); JJxFile, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:AGIBOT-X2-_by_JxFile_MWC26.jpg">Commons</a>), recortada. Redimensionadas.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide divider" data-section="Los datos">
+  <p class="num">Parte 2</p>
+  <h2>Los datos: la parte cara</h2>
+  <p>Teleoperación, flotas, vídeo humano y simulación; la pirámide con cifras publicadas, y cuánto cuesta y cuánto tarda recoger \(N\) demostraciones.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · notación</p>
+  <h2>Qué es cada símbolo en la cuenta del coste de los datos</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:14%">Símbolo</th><th>Qué es</th><th style="width:34%">Ejemplo</th></tr>
+      <tr><td>\(N\)</td><td>Demostraciones útiles que quieres tener (episodios que acaban bien y se guardan)</td><td>10 000</td></tr>
+      <tr><td>\(r\)</td><td>Ritmo: demostraciones útiles por hora y operador, contando reinicios, colocar objetos y fallos</td><td>35/h con teleoperación; 111/h con UMI (medidos)</td></tr>
+      <tr><td>\(R\)</td><td>Puestos de recogida que trabajan a la vez, cada uno con un operador</td><td>10</td></tr>
+      <tr><td>\(h\)</td><td>Horas de recogida por día y puesto</td><td>8 (supuesto)</td></tr>
+      <tr><td>\(H_{\mathrm{op}}\), \(D\)</td><td>Horas de operador que se pagan; días de calendario hasta tener las \(N\)</td><td>salen de la cuenta</td></tr>
+      <tr><td>\(c_o\)</td><td>Coste de una hora de operador</td><td>30 US$/h (supuesto, no publicado)</td></tr>
+      <tr><td>\(C_R\), \(A\)</td><td>Coste del equipo de un puesto y días en que se amortiza</td><td>ALOHA &lt; 20 000 US$; 500 días (supuesto)</td></tr>
+      <tr><td>\(C\)</td><td>Coste total: operadores más la parte del equipo que se gasta en esos días</td><td>sale de la cuenta</td></tr>
+    </table>
+  </div>
+  <p class="small">«Supuesto» quiere decir que el curso pone el número porque ningún lab lo publica. El script (<code>figuras/ejemplos_r1a.py</code>) los marca igual.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · recogerlos</p>
+  <h2>Tres formas de recoger demostraciones, medidas en la misma tarea</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 520 300" role="img" aria-label="Teleoperación, pinza en la mano y mano humana como formas de recoger datos">
+        <rect x="10" y="10" width="500" height="84" rx="10" class="box-accent"/>
+        <text x="24" y="34" class="t-bold">Teleoperación</text>
+        <text x="24" y="54" font-size="13">operador → mando, brazo maestro o gafas de RV → robot</text>
+        <text x="24" y="72" font-size="13">los datos salen ya en el cuerpo del robot</text>
+        <text x="24" y="88" font-size="12" class="t-muted">ALOHA, DROID, Atlas, Helix, π0</text>
+        <text x="496" y="34" text-anchor="end" font-size="13" class="t-mono">35/h</text>
+        <rect x="10" y="104" width="500" height="84" rx="10" class="box-time"/>
+        <text x="24" y="128" class="t-bold">Pinza en la mano (UMI)</text>
+        <text x="24" y="148" font-size="13">la persona mueve una pinza con cámara; el SLAM saca la pose</text>
+        <text x="24" y="166" font-size="13">sin robot delante; hay que filtrar lo que el robot no puede hacer</text>
+        <text x="24" y="182" font-size="12" class="t-muted">UMI y sus variantes</text>
+        <text x="496" y="128" text-anchor="end" font-size="13" class="t-mono">111/h</text>
+        <rect x="10" y="198" width="500" height="90" rx="10" class="box-tesis"/>
+        <text x="24" y="222" class="t-bold">Mano humana con sensores</text>
+        <text x="24" y="242" font-size="13">gafas o guantes graban la mano; no hay acciones de robot</text>
+        <text x="24" y="260" font-size="13">hace falta traducirlas a un cuerpo (acción relativa, latentes)</text>
+        <text x="24" y="278" font-size="12" class="t-muted">EgoDex, GR00T N1.7, GEN-1, Figure Index</text>
+        <text x="496" y="222" text-anchor="end" font-size="13" class="t-mono">231/h</text>
+      </svg>
+      <figcaption>Demostraciones útiles por hora en la tarea de colocar tazas de UMI, en 15 minutos y contando reinicios y fallos del robot <a class="cite" data-ref="chi2024"></a>.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Lo que cuesta el equipo:</strong> ALOHA, menos de 20 000 $ <a class="cite" data-ref="zhao2023"></a>; Mobile ALOHA, 32 000 $ con alimentación y cómputo <a class="cite" data-ref="fu2024"></a>; la pinza de UMI, 73 $ de materiales más 298 $ de cámara <a class="cite" data-ref="chi2024"></a>.</li>
+        <li><strong>Lo que rinde:</strong> UMI va más de 3 veces más rápido que la teleoperación y a un 48 % de la mano; lanzando objetos, la teleoperación no logró ni una demostración válida en 15 minutos <a class="cite" data-ref="chi2024"></a>.</li>
+        <li><strong>Lo que vale cada dato:</strong> cuanto más rápido, más lejos del robot. Por eso la pirámide (dos hojas más allá) junta las tres.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Idea clave</span>El cuello de botella no es la GPU sino la hora de persona. Lo que cambia entre métodos es cuántas demostraciones útiles salen de cada una.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · flotas y datasets abiertos</p>
+  <h2>DROID, Open X-Embodiment y AgiBot World: lo que se puede descargar</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Open X-Embodiment</strong> (2023–2024): 22 robots, 21 instituciones, 527 habilidades en 160 266 tareas <a class="cite" data-ref="oxe2024"></a>.</li>
+        <li><strong>DROID</strong> (2024): 76 000 trayectorias o 350 h, 564 escenas, 84 tareas, 50 recolectores en Norteamérica, Asia y Europa durante 12 meses, con la misma estación en 13 instituciones <a class="cite" data-ref="khazatsky2024"></a>.</li>
+        <li><strong>AgiBot World</strong> (2025): 1 003 672 trayectorias de 100 robots, en 217 tareas y cinco escenarios; licencia no comercial <a class="cite" data-ref="bu2025"></a>.</li>
+        <li>RT-1 (2022) ya necesitó 13 robots y 17 meses para 130 000 episodios <a class="cite" data-ref="brohan2023"></a>.</li>
+      </ul>
+      <div class="callout realidad"><span class="tag">Ojo al contar</span>La copia de DROID en Hugging Face (<code>lerobot/droid_1.0.1</code>) tiene 95 658 episodios porque incluye los fallidos (lleva el campo <code>is_episode_successful</code>). El laboratorio cuenta con los metadatos de cada copia.</div>
+    </div>
+    <figure class="foto duo prop" style="--foto-h:166px; --duo: minmax(0, 1.32fr) minmax(0, 1.92fr)">
+      <img src="img/droid-estacion.webp" width="1352" height="1026" alt="Estación de recogida de DROID: brazo Franka, cámaras estéreo y mando de RV">
+      <img src="img/oxe-composicion.webp" width="1600" height="834" alt="Composición de Open X-Embodiment por robot, escenas, trayectorias, habilidades y objetos">
+      <figcaption>Izquierda: la estación de DROID (brazo Franka, dos cámaras Zed 2, cámara de muñeca y gafas Quest 2 para teleoperar). Derecha: Open X-Embodiment por robot; Franka y los datos de Google dominan.
+        <span class="xsmall">Figuras: Khazatsky et al. (2024), Fig. 0, y Open X-Embodiment Collaboration (2024), Fig. 1, ambas <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, vía arXiv. Extraídas de la versión HTML y redimensionadas.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · vídeo humano</p>
+  <h2>La base de la pirámide crece mil veces más deprisa que la cima</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:24%">Conjunto</th><th style="width:14%">Horas</th><th>Cómo se graba</th><th style="width:20%">Estado</th></tr>
+      <tr><td>EgoDex (Apple, 2025)</td><td class="n">829</td><td>Apple Vision Pro con la mano y los dedos en 3D; 194 tareas de mesa <a class="cite" data-ref="hoque2025"></a></td><td>confirmado</td></tr>
+      <tr><td>Ego4D (2021–2022)</td><td class="n">3670</td><td>931 personas con cámara en la cabeza en 74 lugares de 9 países <a class="cite" data-ref="grauman2022"></a></td><td>confirmado</td></tr>
+      <tr><td>GR00T N1.7 (<span class="nw">04-2026</span>)</td><td class="n">20 854</td><td>vídeo egocéntrico en más de 20 categorías; «de 1000 a 20 000 h más que duplica el éxito medio», sin \(n\) <a class="cite" data-ref="gr00tn17"></a></td><td>según NVIDIA</td></tr>
+      <tr><td>GEN-0 (<span class="nw">11-2025</span>)</td><td class="n">&gt; 270 000</td><td>«miles» de dispositivos y robots; crece unas 10 000 h por semana <a class="cite" data-ref="gen0"></a></td><td>según Generalist</td></tr>
+      <tr><td>GEN-1 (<span class="nw">04-2026</span>)</td><td class="n">&gt; 500 000</td><td>personas con <em>wearables</em> baratos; el preentrenamiento «contains no robot data» <a class="cite" data-ref="gen1"></a></td><td>según Generalist</td></tr>
+      <tr><td>Figure Index (<span class="nw">08-2026</span>)</td><td>—</td><td>una app paga a quien graba tareas: 30 min de vídeo subidos cada segundo, más de 44 000 usuarios semanales, 15 M$ pagados <a class="cite" data-ref="figindex26"></a></td><td>según Figure</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">El truco</span>Un vídeo de una mano no trae acciones de robot. GR00T N1.7 usa una acción relativa del efector final, la misma para personas y robots, para que lo aprendido de las manos pase al robot <a class="cite" data-ref="gr00trepo"></a>. Los métodos están en A10 y A12b.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · sintéticos</p>
+  <h2>Simulación y vídeo generado: el piso de en medio</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>GR00T N1</strong> generó 780 000 trayectorias de simulación, «equivalent to 6,500 hours» de demostración humana, en 11 h <a class="cite" data-ref="bjorck2025"></a> (según NVIDIA).</li>
+        <li>Multiplicó sus 88 h de teleoperación por unas 10 con vídeo generado: unas 827 h, que costaron unas 105 000 horas de GPU L40 en 3600 GPU <a class="cite" data-ref="bjorck2025"></a>. DreamGen y Cosmos están en A8b y T1b <a class="cite" data-ref="jang2025"></a>.</li>
+        <li><strong>Skild AI</strong> dice entrenar con «trillions of synthetic experiences» y un modelo probado en simulación con 100 000 cuerpos distintos <a class="cite" data-ref="skild26"></a>; no publica ensayos reales con \(n\).</li>
+      </ul>
+      <div class="callout tesis"><span class="tag">Sim-to-real</span>Lo sintético es barato en horas pero caro en fidelidad: T1b midió que el ruido real de un X500 es de 8 a 120 veces el de Gazebo. Para tu dron, el piso de en medio será tu simulador en JAX.</div>
+    </div>
+    <figure class="foto" style="--foto-h:300px">
+      <img src="img/gr00t-piramide.webp" width="1600" height="989" alt="Pirámide de datos de GR00T N1: vídeo web y humano en la base, datos sintéticos en medio y datos reales del robot arriba">
+      <figcaption>La pirámide tal como la dibuja NVIDIA: abajo mucho dato de web y vídeo humano, en medio lo sintético y arriba poco dato real del robot, cada vez más ligado a un cuerpo.
+        <span class="xsmall">Figura: Bjorck et al. (NVIDIA, 2025), GR00T N1, Fig. 1, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, vía arXiv. Extraída de la versión HTML y redimensionada.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · la pirámide con cifras</p>
+  <h2>De 88 horas de robot propio a un millón de horas de vídeo</h2>
+  <figure class="fig">
+<!--SVG:piramide-->
+<svg viewBox="0 0 900 454" style="max-height:400px" role="img" aria-label="Horas de datos publicadas por capa de la pirámide, en escala logarítmica">
+<line x1="330.0" y1="380.0" x2="800.0" y2="380.0" class="ln"/>
+<line x1="330.0" y1="16.0" x2="330.0" y2="380.0" class="ln"/>
+<line x1="330.0" y1="16.0" x2="330.0" y2="380.0" class="ln-rule"/>
+<text x="330.0" y="398.0" text-anchor="middle" font-size="13" class="t-muted">10</text>
+<line x1="418.7" y1="16.0" x2="418.7" y2="380.0" class="ln-rule"/>
+<text x="418.7" y="398.0" text-anchor="middle" font-size="13" class="t-muted">100</text>
+<line x1="507.3" y1="16.0" x2="507.3" y2="380.0" class="ln-rule"/>
+<text x="507.3" y="398.0" text-anchor="middle" font-size="13" class="t-muted">1 000</text>
+<line x1="596.0" y1="16.0" x2="596.0" y2="380.0" class="ln-rule"/>
+<text x="596.0" y="398.0" text-anchor="middle" font-size="13" class="t-muted">10 000</text>
+<line x1="684.6" y1="16.0" x2="684.6" y2="380.0" class="ln-rule"/>
+<text x="684.6" y="398.0" text-anchor="middle" font-size="13" class="t-muted">10⁵</text>
+<line x1="773.3" y1="16.0" x2="773.3" y2="380.0" class="ln-rule"/>
+<text x="773.3" y="398.0" text-anchor="middle" font-size="13" class="t-muted">10⁶</text>
+<text x="565.0" y="418.0" text-anchor="middle" font-size="14" class="t-muted">horas (escala logarítmica)</text>
+<rect x="330.0" y="21.0" width="83.7" height="16" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="322.0" y="34.0" text-anchor="end" font-size="13">GR00T N1: teleoperación propia</text>
+<text x="419.7" y="34.0" font-size="12" class="t-mono">88</text>
+<rect x="330.0" y="47.0" width="136.9" height="16" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="322.0" y="60.0" text-anchor="end" font-size="13">DROID</text>
+<text x="472.9" y="60.0" font-size="12" class="t-mono">350</text>
+<rect x="330.0" y="73.0" width="154.0" height="16" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="322.0" y="86.0" text-anchor="end" font-size="13">TRI-Ramen (LBM)</text>
+<text x="490.0" y="86.0" font-size="12" class="t-mono">545</text>
+<rect x="330.0" y="99.0" width="170.1" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="112.0" text-anchor="end" font-size="13">EgoDex (Vision Pro)</text>
+<text x="506.1" y="112.0" font-size="12" class="t-mono">829</text>
+<rect x="330.0" y="125.0" width="227.4" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="138.0" text-anchor="end" font-size="13">Ego4D</text>
+<text x="563.4" y="138.0" font-size="12" class="t-mono">3 670</text>
+<rect x="330.0" y="151.0" width="249.4" height="16" rx="3" class="fill-time" opacity="0.85"/>
+<text x="322.0" y="164.0" text-anchor="end" font-size="13">GR00T N1: simulación (equivalente)</text>
+<text x="585.4" y="164.0" font-size="12" class="t-mono">6 500 (E)</text>
+<rect x="330.0" y="177.0" width="266.0" height="16" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="322.0" y="190.0" text-anchor="end" font-size="13">π0: preentrenamiento</text>
+<text x="602.0" y="190.0" font-size="12" class="t-mono">&gt; 10 000</text>
+<rect x="330.0" y="203.0" width="266.7" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="216.0" text-anchor="end" font-size="13">GR00T 2: pinza UMI</text>
+<text x="602.7" y="216.0" font-size="12" class="t-mono">10 184 (E)</text>
+<rect x="330.0" y="229.0" width="294.3" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="242.0" text-anchor="end" font-size="13">GR00T N1.7: vídeo egocéntrico</text>
+<text x="630.3" y="242.0" font-size="12" class="t-mono">20 854 (E)</text>
+<rect x="330.0" y="255.0" width="298.9" height="16" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="322.0" y="268.0" text-anchor="end" font-size="13">GR00T 2: teleoperación</text>
+<text x="634.9" y="268.0" font-size="12" class="t-mono">23 500 (E)</text>
+<rect x="330.0" y="281.0" width="392.9" height="16" rx="3" class="fill-ink3" opacity="0.85"/>
+<text x="322.0" y="294.0" text-anchor="end" font-size="13">GEN-0 (dispositivos y robots)</text>
+<text x="728.9" y="294.0" font-size="12" class="t-mono">&gt; 270 000 (E)</text>
+<rect x="330.0" y="307.0" width="408.3" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="320.0" text-anchor="end" font-size="13">GR00T 2: vídeo egocéntrico</text>
+<text x="744.3" y="320.0" font-size="12" class="t-mono">402 730 (E)</text>
+<rect x="330.0" y="333.0" width="416.6" height="16" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="322.0" y="346.0" text-anchor="end" font-size="13">GEN-1 (humanos con wearables)</text>
+<text x="752.6" y="346.0" font-size="12" class="t-mono">&gt; 500 000 (E)</text>
+<rect x="330.0" y="359.0" width="443.3" height="16" rx="3" class="fill-ink3" opacity="0.85"/>
+<text x="322.0" y="372.0" text-anchor="end" font-size="13">V-JEPA 2: vídeo</text>
+<text x="779.3" y="372.0" font-size="12" class="t-mono">&gt; 1 000 000 (E)</text>
+<rect x="40" y="431" width="14" height="14" rx="2" class="fill-accent" opacity="0.85"/>
+<text x="60" y="442" font-size="13">robot real</text>
+<rect x="160" y="431" width="14" height="14" rx="2" class="fill-time" opacity="0.85"/>
+<text x="180" y="442" font-size="13">simulación</text>
+<rect x="280" y="431" width="14" height="14" rx="2" class="fill-tesis" opacity="0.85"/>
+<text x="300" y="442" font-size="13">humanos con sensores</text>
+<rect x="480" y="431" width="14" height="14" rx="2" class="fill-ink3" opacity="0.85"/>
+<text x="500" y="442" font-size="13">humanos y robots, sin desglose / vídeo</text>
+</svg>
+<!--/SVG:piramide-->
+    <figcaption>Horas publicadas de cada conjunto, en escala logarítmica (script <code>figuras_r1a.py</code>). «(E)»: cifra que solo da la empresa. OXE y AgiBot World no dan horas, solo trayectorias.</figcaption>
+  </figure>
+  <p class="small">Entre la cima (88 h de un robot propio) y la base (un millón de horas de vídeo) hay cuatro órdenes de magnitud. En 20 meses, la cima de NVIDIA pasó de 88 h (GR00T N1, <span class="nw">03-2025</span>) a 23 500 h de teleoperación (GR00T 2, <span class="nw">11-2026</span>), según la empresa <a class="cite" data-ref="gr00t2"></a>. Para un dron, la cima casi no existe: no hay flotas de teleoperación aérea (parte 7).</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · la cuenta del coste · derivación</p>
+  <h2>Cuánto tarda y cuánto cuesta recoger \(N\) demostraciones</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 300" role="img" aria-label="Esquema de la cuenta del coste de recoger datos">
+        <rect x="10" y="10" width="150" height="150" rx="10" class="box-soft"/>
+        <text x="85" y="34" text-anchor="middle" class="t-bold">Entra</text>
+        <text x="85" y="60" text-anchor="middle" font-size="14"><tspan font-style="italic">N</tspan>: cuántas</text>
+        <text x="85" y="84" text-anchor="middle" font-size="14"><tspan font-style="italic">r</tspan>: ritmo medido</text>
+        <text x="85" y="108" text-anchor="middle" font-size="14"><tspan font-style="italic">R</tspan>, <tspan font-style="italic">h</tspan>: puestos, horas</text>
+        <text x="85" y="132" text-anchor="middle" font-size="14"><tspan font-style="italic">c</tspan>ₒ, <tspan font-style="italic">C</tspan><tspan font-size="10" dy="3">R</tspan><tspan dy="-3">, </tspan><tspan font-style="italic">A</tspan>: precios</text>
+        <line x1="160" y1="85" x2="200" y2="85" class="ln"/>
+        <rect x="200" y="10" width="150" height="150" rx="10" class="box-accent"/>
+        <text x="275" y="34" text-anchor="middle" class="t-bold">Sale</text>
+        <text x="275" y="64" text-anchor="middle" font-size="14"><tspan font-style="italic">D</tspan>: días</text>
+        <text x="275" y="92" text-anchor="middle" font-size="14"><tspan font-style="italic">H</tspan><tspan font-size="10" dy="3">op</tspan><tspan dy="-3">: horas pagadas</tspan></text>
+        <text x="275" y="120" text-anchor="middle" font-size="14"><tspan font-style="italic">C</tspan>: coste total</text>
+        <text x="180" y="200" text-anchor="middle" font-size="13" class="t-muted">Paralelizar (más <tspan font-style="italic">R</tspan>) acorta <tspan font-style="italic">D</tspan>;</text>
+        <text x="180" y="220" text-anchor="middle" font-size="13" class="t-muted">solo un ritmo <tspan font-style="italic">r</tspan> mayor abarata las horas pagadas.</text>
+      </svg>
+    </figure>
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>un puesto da \(r\) demostraciones por hora</td><td>\(r\) ya incluye reinicios y fallos (así se midió en UMI)</td></tr>
+        <tr><td><strong>2</strong></td><td>\(R\) puestos durante \(h\) horas dan \(rRh\) al día</td><td>los puestos trabajan en paralelo e independientes</td></tr>
+        <tr><td><strong>3</strong></td><td>\(D = \dfrac{N}{rRh}\)</td><td>días hasta acumular \(N\)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(H_{\mathrm{op}} = R\,h\,D = \dfrac{N}{r}\)</td><td>cada puesto lleva un operador; \(R\) se cancela</td></tr>
+        <tr><td><strong>5</strong></td><td>equipo: \(R\,C_R\,\dfrac{D}{A}\)</td><td>se gasta la fracción \(D/A\) de su vida útil</td></tr>
+        <tr><td><strong>6</strong></td><td>\(C = c_o\dfrac{N}{r} + R\,C_R\dfrac{D}{A}\)</td><td>suma de las dos partes</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Los datos · la cuenta del coste · ejemplo</p>
+  <h2>10 000 demostraciones: unas 290 h de operador teleoperando y 90 h con UMI</h2>
+  <div class="cols">
+    <div class="stack">
+      <figure class="fig">
+<!--SVG:coste-->
+<svg viewBox="0 0 600 196" style="max-height:200px" role="img" aria-label="Horas de operador para recoger 10 000 demostraciones con tres métodos">
+<line x1="210.0" y1="134.0" x2="540.0" y2="134.0" class="ln"/>
+<line x1="210.0" y1="14.0" x2="210.0" y2="134.0" class="ln"/>
+<line x1="210.0" y1="14.0" x2="210.0" y2="134.0" class="ln-rule"/>
+<text x="210.0" y="152.0" text-anchor="middle" font-size="13" class="t-muted">0</text>
+<line x1="320.0" y1="14.0" x2="320.0" y2="134.0" class="ln-rule"/>
+<text x="320.0" y="152.0" text-anchor="middle" font-size="13" class="t-muted">100</text>
+<line x1="430.0" y1="14.0" x2="430.0" y2="134.0" class="ln-rule"/>
+<text x="430.0" y="152.0" text-anchor="middle" font-size="13" class="t-muted">200</text>
+<line x1="540.0" y1="14.0" x2="540.0" y2="134.0" class="ln-rule"/>
+<text x="540.0" y="152.0" text-anchor="middle" font-size="13" class="t-muted">300</text>
+<text x="375.0" y="172.0" text-anchor="middle" font-size="14" class="t-muted">horas de operador para 10 000 demostraciones</text>
+<rect x="210.0" y="26.0" width="314.3" height="20" rx="3" class="fill-accent" opacity="0.85"/>
+<text x="202.0" y="41.0" text-anchor="end" font-size="13">teleoperación (space mouse)</text>
+<text x="530.3" y="41.0" font-size="12" class="t-mono">286 h (35/h)</text>
+<rect x="210.0" y="62.0" width="99.1" height="20" rx="3" class="fill-time" opacity="0.85"/>
+<text x="202.0" y="77.0" text-anchor="end" font-size="13">pinza UMI en la mano</text>
+<text x="315.1" y="77.0" font-size="12" class="t-mono">90 h (111/h)</text>
+<rect x="210.0" y="98.0" width="47.6" height="20" rx="3" class="fill-tesis" opacity="0.85"/>
+<text x="202.0" y="113.0" text-anchor="end" font-size="13">mano humana</text>
+<text x="263.6" y="113.0" font-size="12" class="t-mono">43 h (231/h)</text>
+</svg>
+<!--/SVG:coste-->
+      </figure>
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Método</th><th>\(r\)</th><th>\(H_{\mathrm{op}}\)</th><th style="white-space:nowrap">\(D\) (\(R = 10\))</th><th>\(C\)</th></tr>
+          <tr><td>teleoperación (equipo tipo ALOHA)</td><td class="n">35/h</td><td class="n">285,7 h</td><td class="n">3,57 días</td><td class="n">≈ 10 000 US$</td></tr>
+          <tr><td>pinza UMI (371 US$)</td><td class="n">111/h</td><td class="n">90,1 h</td><td class="n">1,13 días</td><td class="n">≈ 2700 US$</td></tr>
+          <tr><td>mano humana</td><td class="n">231/h</td><td class="n">43,3 h</td><td class="n">0,54 días</td><td class="n">≈ 1300 US$</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="stack">
+      <p>Teleoperación, paso a paso: \(H_{\mathrm{op}} = 10\,000/35 = 285{,}7\) h; \(D = 10\,000/(35 \cdot 10 \cdot 8) = 3{,}57\) días; operadores \(30 \cdot 285{,}7 = 8571\) US$; equipo \(10 \cdot 20\,000 \cdot 3{,}57/500 = 1429\) US$; total \(\approx 10\,000\) US$, 1 US$ por demostración.</p>
+      <div class="callout realidad"><span class="tag">Comprobación con DROID</span>350 h en 76 000 trayectorias son 16,6 s por trayectoria, y 76 000 entre 50 recolectores y 12 meses son unas 127 al mes por persona <a class="cite" data-ref="khazatsky2024"></a>: el cuello de botella no es el robot.</div>
+      <div class="callout clave"><span class="tag">A escala</span>GEN-0 suma 10 000 h por semana <a class="cite" data-ref="gen0"></a>. Si cada hora de datos fuera una hora de una persona (supuesto), serían 250 personas a tiempo completo. Por eso las empresas pagan a miles de grabadores (Figure: 15 M$) <a class="cite" data-ref="figindex26"></a>.</div>
+      <p class="xsmall muted">\(c_o\), \(h\) y \(A\) son supuestos del curso; \(r\) y los precios del equipo, publicados. Script: <code>ejemplos_r1a.py</code>, apartado 1.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide divider" data-section="Entrenar y desplegar">
+  <p class="num">Parte 3</p>
+  <h2>Entrenar y desplegar</h2>
+  <p>El cómputo que se publica (casi ninguno), el ciclo en que el despliegue alimenta el entrenamiento, y la latencia medida de un modelo de 3000 millones de parámetros en la GPU de un robot.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entrenar · cómputo publicado</p>
+  <h2>Solo un lab de los grandes dice cuánto cómputo gastó: NVIDIA, con GR00T N1</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Qué</th><th>Publicado</th><th>Cuenta</th></tr>
+          <tr><td>Preentrenar GR00T-N1-2B</td><td>≈ 50 000 horas de H100; hasta 1024 GPU por modelo</td><td>\(50\,000/1024 = 48{,}8\) h de reloj, unos 2 días</td></tr>
+          <tr><td>Generar ≈ 827 h de vídeo</td><td>≈ 105 000 horas de L40 en 3600 GPU</td><td>29,2 h de reloj; 127 horas de GPU por hora de vídeo</td></tr>
+          <tr><td>Simulación</td><td>6500 h equivalentes en 11 h</td><td>591 veces el tiempo real</td></tr>
+        </table>
+      </div>
+      <p class="small">Fuente: Bjorck et al. (2025), §2.3 y §3.2 <a class="cite" data-ref="bjorck2025"></a>. A 2 US$ la hora de H100 (supuesto, precio de alquiler orientativo), el preentrenamiento serían unos 100 000 US$: barato frente a los datos.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Lo que no se publica</span>Ni π0.7 ni π*0.6 <a class="cite" data-ref="pi2026,amin2025"></a>, ni el LBM de TRI <a class="cite" data-ref="tri2025"></a>, ni GEN-1 <a class="cite" data-ref="gen1"></a>, ni Gemini Robotics 2 y 2.5 <a class="cite" data-ref="gdmgr2,gdmgr25"></a> dan horas de GPU. Comprobado en sus cinco fuentes.</div>
+      <div class="callout clave"><span class="tag">Lo que se anuncia</span>Figure firma con Nscale «hasta 100 000 GPU» y dice que gastará más de 1000 M$ en datos y cómputo en doce meses <a class="cite" data-ref="figindex26"></a>. Son compromisos de gasto, no cómputo medido.</div>
+      <div class="callout tesis"><span class="tag">Cómputo limitado</span>Para tu tesis, lo caro de verdad es la evaluación en el dron, no el entrenamiento en la GPU. Las partes 4 y 7 lo cuentan.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Desplegar · el ciclo de datos</p>
+  <h2>El despliegue alimenta el entrenamiento: el «volante» de los datos</h2>
+  <div class="cols">
+    <figure class="fig">
+      <svg viewBox="0 0 530 330" role="img" aria-label="Ciclo de datos: desplegar, recoger, etiquetar, reentrenar, evaluar">
+        <rect x="190" y="14" width="140" height="48" rx="10" class="box-accent"/>
+        <text x="260" y="36" text-anchor="middle" class="t-bold">Desplegar</text>
+        <text x="260" y="53" text-anchor="middle" font-size="12">la política trabaja</text>
+        <rect x="356" y="104" width="166" height="56" rx="10" class="box-time"/>
+        <text x="439" y="126" text-anchor="middle" class="t-bold">Recoger</text>
+        <text x="439" y="143" text-anchor="middle" font-size="12">autónomo + correcciones</text>
+        <rect x="330" y="230" width="150" height="56" rx="10" class="box-time"/>
+        <text x="405" y="252" text-anchor="middle" class="t-bold">Etiquetar</text>
+        <text x="405" y="269" text-anchor="middle" font-size="12">éxito, valor, fallos</text>
+        <rect x="40" y="230" width="150" height="56" rx="10" class="box-time"/>
+        <text x="115" y="252" text-anchor="middle" class="t-bold">Reentrenar</text>
+        <text x="115" y="269" text-anchor="middle" font-size="12">con todo lo acumulado</text>
+        <rect x="10" y="104" width="140" height="56" rx="10" class="box-tesis"/>
+        <text x="80" y="126" text-anchor="middle" class="t-bold">Evaluar</text>
+        <text x="80" y="143" text-anchor="middle" font-size="12">antes de volver</text>
+        <path d="M330 44 Q 420 60 435 100" class="ln" marker-end="url(#fl)"/>
+        <path d="M440 160 Q 440 200 420 226" class="ln" marker-end="url(#fl)"/>
+        <path d="M330 262 L 196 262" class="ln" marker-end="url(#fl)"/>
+        <path d="M100 230 Q 80 200 80 164" class="ln" marker-end="url(#fl)"/>
+        <path d="M90 104 Q 110 50 186 40" class="ln" marker-end="url(#fl)"/>
+        <defs><marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="fill-ink3"/></marker></defs>
+        <text x="260" y="185" text-anchor="middle" font-size="13" class="t-muted">cada vuelta: más datos de</text>
+        <text x="260" y="203" text-anchor="middle" font-size="13" class="t-muted">los casos donde falla</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>Physical Intelligence (π*0.6):</strong> por iteración, 300 trayectorias en cuatro robots doblando ropa; 600 autónomas y 360 con intervenciones montando cajas; las correcciones del teleoperador cuentan como ejemplos buenos. Resultado: 13 h seguidas haciendo café, según la empresa <a class="cite" data-ref="amin2025"></a>. El método (RECAP) está en A12b.</li>
+        <li><strong>1X:</strong> el «Expert Mode» de NEO deja que un operador de la empresa supervise a distancia lo que el robot no sabe hacer <a class="cite" data-ref="onexorder"></a>; Redwood aprende de éxitos y fallos <a class="cite" data-ref="onexredwood"></a>.</li>
+        <li><strong>Waymo:</strong> el mismo modelo base alimenta el conductor, el simulador y un «crítico» que busca casos difíciles <a class="cite" data-ref="waymowfm"></a>.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Por qué importa</span>El volante solo gira si el robot ya trabaja en algún sitio: de ahí la prisa por desplegar aunque sea con un humano al lado.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Desplegar · latencia · notación</p>
+  <h2>Cuánto tarda el modelo, cada cuánto actúa el robot y cuántas acciones hay que guardar</h2>
+  <div class="cols">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:18%">Símbolo</th><th>Qué es</th><th style="width:28%">Ejemplo</th></tr>
+          <tr><td>\(\delta\)</td><td>Latencia de una llamada completa al modelo (de la imagen a las acciones)</td><td>149 ms en Jetson Orin</td></tr>
+          <tr><td>\(f_{\mathrm{inf}} = 1/\delta\)</td><td>Frecuencia máxima de inferencia si se llama en cuanto acaba</td><td>6,7 Hz</td></tr>
+          <tr><td>\(f_a\)</td><td>Frecuencia a la que el robot ejecuta acciones</td><td>50 Hz (π0), 30 Hz (Atlas)</td></tr>
+          <tr><td>\(H\), \(N_{\mathrm{ejec}}\)</td><td>Acciones de un trozo y cuántas se ejecutan antes de pedir otro</td><td>48 y 24 (Atlas)</td></tr>
+        </table>
+      </div>
+      <p>La condición de A12b: mientras el modelo piensa, el robot sigue con el trozo viejo, que no se puede acabar antes: \(\delta \le N_{\mathrm{ejec}}/f_a\), es decir, \(N_{\mathrm{ejec}} \ge \delta f_a\).</p>
+      <p>Ejemplo: con <span class="hz">149 ms</span> y <span class="hz">50 Hz</span>, \(N_{\mathrm{ejec}} \ge 0{,}149 \cdot 50 = 7{,}45\): al menos 8 acciones. Con <span class="hz">76,8 ms</span> (Thor), al menos 4.</p>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Dónde corre</span>
+        <p style="margin:4px 0">Gemini Robotics: un modelo grande en la nube y un decodificador en el robot, <span class="hz">≈ 250 ms</span> de extremo a extremo (A12b) <a class="cite" data-ref="gemini2025"></a>.</p>
+        <p style="margin:4px 0">π0 en una RTX 4090: <span class="hz">73 ms</span> a bordo y <span class="hz">86 ms</span> fuera, de los que <span class="hz">13 ms</span> son la wifi; ejecuta 25 acciones (<span class="hz">0,5 s</span>) entre llamadas <a class="cite" data-ref="black2024"></a>.</p>
+        <p style="margin:4px 0">Waymo: «the autonomous system operates entirely onboard», con un chip propio de más de 1000 TOPS <a class="cite" data-ref="waymocompute"></a> (según Waymo).</p>
+        <p style="margin:4px 0">1X: Redwood, 160 M de parámetros a <span class="hz">≈ 5 Hz</span> en la GPU de NEO <a class="cite" data-ref="onexredwood"></a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Desplegar · el dato central</p>
+  <h2>GR00T N1.7 medido en seis GPU: de 23 ms en una H100 a 149 ms en un Jetson Orin</h2>
+  <div class="cols w60">
+    <div class="stack">
+    <figure class="fig">
+<!--SVG:latencia-->
+<svg viewBox="0 0 740 312" style="max-height:290px" role="img" aria-label="Latencia de GR00T N1.7 por dispositivo frente a los periodos de 50, 30 y 10 hercios">
+<line x1="150.0" y1="244.0" x2="690.0" y2="244.0" class="ln"/>
+<line x1="150.0" y1="34.0" x2="150.0" y2="244.0" class="ln"/>
+<line x1="150.0" y1="34.0" x2="150.0" y2="244.0" class="ln-rule"/>
+<text x="150.0" y="262.0" text-anchor="middle" font-size="13" class="t-muted">0</text>
+<line x1="221.1" y1="34.0" x2="221.1" y2="244.0" class="ln-rule"/>
+<text x="221.1" y="262.0" text-anchor="middle" font-size="13" class="t-muted">50</text>
+<line x1="292.1" y1="34.0" x2="292.1" y2="244.0" class="ln-rule"/>
+<text x="292.1" y="262.0" text-anchor="middle" font-size="13" class="t-muted">100</text>
+<line x1="363.2" y1="34.0" x2="363.2" y2="244.0" class="ln-rule"/>
+<text x="363.2" y="262.0" text-anchor="middle" font-size="13" class="t-muted">150</text>
+<line x1="434.2" y1="34.0" x2="434.2" y2="244.0" class="ln-rule"/>
+<text x="434.2" y="262.0" text-anchor="middle" font-size="13" class="t-muted">200</text>
+<line x1="505.3" y1="34.0" x2="505.3" y2="244.0" class="ln-rule"/>
+<text x="505.3" y="262.0" text-anchor="middle" font-size="13" class="t-muted">250</text>
+<line x1="576.3" y1="34.0" x2="576.3" y2="244.0" class="ln-rule"/>
+<text x="576.3" y="262.0" text-anchor="middle" font-size="13" class="t-muted">300</text>
+<line x1="647.4" y1="34.0" x2="647.4" y2="244.0" class="ln-rule"/>
+<text x="647.4" y="262.0" text-anchor="middle" font-size="13" class="t-muted">350</text>
+<text x="420.0" y="282.0" text-anchor="middle" font-size="14" class="t-muted">latencia mediana de una llamada completa (ms)</text>
+<text x="734.0" y="22.0" text-anchor="end" font-size="12" class="t-muted">TensorRT</text>
+<line x1="178.4" y1="28.0" x2="178.4" y2="244.0" class="ln-time" stroke-dasharray="5 4"/>
+<text x="175.4" y="22.0" text-anchor="end" font-size="12" class="t-time">50 Hz</text>
+<line x1="197.4" y1="28.0" x2="197.4" y2="244.0" class="ln-time" stroke-dasharray="5 4"/>
+<text x="200.4" y="22.0" text-anchor="start" font-size="12" class="t-time">30 Hz</text>
+<line x1="292.1" y1="28.0" x2="292.1" y2="244.0" class="ln-time" stroke-dasharray="5 4"/>
+<text x="292.1" y="22.0" text-anchor="middle" font-size="12" class="t-time">10 Hz</text>
+<rect x="150.0" y="39.0" width="144.2" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="49.0" width="32.5" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="56.0" text-anchor="end" font-size="13">H100</text>
+<text x="734.0" y="59.0" text-anchor="end" font-size="13" class="t-mono">22,9</text>
+<rect x="150.0" y="69.0" width="107.6" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="79.0" width="35.1" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="86.0" text-anchor="end" font-size="13">RTX Pro 6000</text>
+<text x="734.0" y="89.0" text-anchor="end" font-size="13" class="t-mono">24,7</text>
+<rect x="150.0" y="99.0" width="175.8" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="109.0" width="49.7" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="116.0" text-anchor="end" font-size="13">L40</text>
+<text x="734.0" y="119.0" text-anchor="end" font-size="13" class="t-mono">35,0</text>
+<rect x="150.0" y="129.0" width="151.8" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="139.0" width="109.1" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="146.0" text-anchor="end" font-size="13">AGX Thor</text>
+<text x="734.0" y="149.0" text-anchor="end" font-size="13" class="t-mono">76,8</text>
+<rect x="150.0" y="169.0" width="50.6" height="11" rx="2" class="fill-tesis"/>
+<text x="142.0" y="176.0" text-anchor="end" font-size="13">AGX Thor + NVFP4</text>
+<text x="734.0" y="179.0" text-anchor="end" font-size="13" class="t-mono">35,6</text>
+<rect x="150.0" y="189.0" width="285.3" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="199.0" width="165.7" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="206.0" text-anchor="end" font-size="13">DGX Spark</text>
+<text x="734.0" y="209.0" text-anchor="end" font-size="13" class="t-mono">116,6</text>
+<rect x="150.0" y="219.0" width="508.6" height="8" rx="2" class="fill-ink3" opacity="0.45"/>
+<rect x="150.0" y="229.0" width="211.7" height="11" rx="2" class="fill-accent"/>
+<text x="142.0" y="236.0" text-anchor="end" font-size="13">Jetson Orin</text>
+<text x="734.0" y="239.0" text-anchor="end" font-size="13" class="t-mono">149,0</text>
+<rect x="150" y="292" width="16" height="9" rx="2" class="fill-ink3" opacity="0.45"/><text x="172" y="302" font-size="13">PyTorch sin compilar</text>
+<rect x="330" y="291" width="16" height="11" rx="2" class="fill-accent"/><text x="352" y="302" font-size="13">TensorRT</text>
+<rect x="450" y="291" width="16" height="11" rx="2" class="fill-tesis"/><text x="472" y="302" font-size="13">TensorRT, pesos NVFP4 (solo Thor)</text>
+</svg>
+<!--/SVG:latencia-->
+      <figcaption>Mediana de 60 llamadas (tres veces 10 de calentamiento y 20 medidas), lote 1, trozo de 40 acciones, 4 pasos de difusión y dos cámaras de 256×256 <a class="cite" data-ref="gr00trepo"></a>.</figcaption>
+    </figure>
+      <div class="callout error"><span class="tag">No confundir</span>El propio README avisa: estas cifras «do not measure closed-loop task success». Que quepa a 13 Hz no dice nada de si dobla la camiseta.</div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>Hasta la CoRL, el único VLA con latencias <strong>medidas y con método</strong> en la GPU de un robot: 3000 M de parámetros, pesos abiertos. El <span class="nw">09-11-2026</span> se sumó GR00T 2 Turbo, un «world action model» de 2000 M o menos (dos fuentes de NVIDIA no coinciden): <span class="hz">124 ms</span> en el Thor de un G1, mediana de 500 <a class="cite" data-ref="gr00t2"></a>.</li>
+        <li>Compilar importa: TensorRT es 2,4 veces más rápido que PyTorch sin compilar en Orin y 4,4 en H100; en GR00T 2 Turbo, optimizar da 5,8 en Thor.</li>
+        <li>Con NVFP4, Thor baja a <span class="hz">35,6 ms</span>: \(1/0{,}0356 = 28{,}1\) Hz, los «~28 Hz» del README; la RTX Pro 6000, <span class="hz">24,7 ms</span> = 40,5 Hz, sus «~40 Hz».</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Desplegar · parámetros frente a frecuencia</p>
+  <h2>Los modelos de miles de millones deciden a 5–45 Hz; los rápidos son pequeños</h2>
+  <div class="cols w60">
+    <div class="stack">
+    <figure class="fig">
+<!--SVG:param_freq-->
+<svg viewBox="0 0 840 362" style="max-height:330px" role="img" aria-label="Parámetros frente a frecuencia de varios modelos de robot">
+<line x1="90.0" y1="290.0" x2="560.0" y2="290.0" class="ln"/>
+<line x1="90.0" y1="20.0" x2="90.0" y2="290.0" class="ln"/>
+<line x1="199.5" y1="20.0" x2="199.5" y2="290.0" class="ln-rule"/>
+<text x="199.5" y="308.0" text-anchor="middle" font-size="13" class="t-muted">100</text>
+<line x1="356.2" y1="20.0" x2="356.2" y2="290.0" class="ln-rule"/>
+<text x="356.2" y="308.0" text-anchor="middle" font-size="13" class="t-muted">1 000</text>
+<line x1="512.8" y1="20.0" x2="512.8" y2="290.0" class="ln-rule"/>
+<text x="512.8" y="308.0" text-anchor="middle" font-size="13" class="t-muted">10 000</text>
+<line x1="90.0" y1="290.0" x2="560.0" y2="290.0" class="ln-rule"/>
+<text x="82.0" y="294.0" text-anchor="end" font-size="13" class="t-muted">2</text>
+<line x1="90.0" y1="243.3" x2="560.0" y2="243.3" class="ln-rule"/>
+<text x="82.0" y="247.3" text-anchor="end" font-size="13" class="t-muted">5</text>
+<line x1="90.0" y1="208.0" x2="560.0" y2="208.0" class="ln-rule"/>
+<text x="82.0" y="212.0" text-anchor="end" font-size="13" class="t-muted">10</text>
+<line x1="90.0" y1="172.7" x2="560.0" y2="172.7" class="ln-rule"/>
+<text x="82.0" y="176.7" text-anchor="end" font-size="13" class="t-muted">20</text>
+<line x1="90.0" y1="126.0" x2="560.0" y2="126.0" class="ln-rule"/>
+<text x="82.0" y="130.0" text-anchor="end" font-size="13" class="t-muted">50</text>
+<line x1="90.0" y1="90.6" x2="560.0" y2="90.6" class="ln-rule"/>
+<text x="82.0" y="94.6" text-anchor="end" font-size="13" class="t-muted">100</text>
+<line x1="90.0" y1="55.3" x2="560.0" y2="55.3" class="ln-rule"/>
+<text x="82.0" y="59.3" text-anchor="end" font-size="13" class="t-muted">200</text>
+<text x="325.0" y="328.0" text-anchor="middle" font-size="14" class="t-muted">parámetros (millones, escala logarítmica)</text>
+<text x="38.0" y="155.0" text-anchor="middle" font-size="14" class="t-muted" transform="rotate(-90 38.0 155.0)">Hz (1/latencia o declarada)</text>
+<line x1="90.0" y1="126.0" x2="560.0" y2="126.0" class="ln-time" stroke-dasharray="5 4"/>
+<line x1="465.7" y1="220.2" x2="465.7" y2="158.7" class="ln-accent" stroke-width="2"/>
+<line x1="430.9" y1="228.3" x2="430.9" y2="132.9" class="ln-accent" stroke-width="2"/>
+<line x1="403.3" y1="218.9" x2="403.3" y2="159.2" class="ln-accent" stroke-width="2"/>
+<line x1="488.6" y1="226.2" x2="488.6" y2="213.4" class="ln-tesis" stroke-width="2"/>
+<circle cx="128.1" cy="269.3" r="5" class="fill-accent"/>
+<circle cx="409.8" cy="185.2" r="5" class="fill-accent"/>
+<circle cx="437.4" cy="191.9" r="5" class="fill-accent"/>
+<circle cx="465.7" cy="158.7" r="5" class="fill-accent"/>
+<circle cx="465.7" cy="220.2" r="5" class="fill-accent"/>
+<circle cx="430.9" cy="228.3" r="5" class="fill-accent"/>
+<circle cx="430.9" cy="194.5" r="5" class="fill-accent"/>
+<circle cx="430.9" cy="132.9" r="5" class="fill-accent"/>
+<circle cx="488.6" cy="219.4" r="5" fill="none" class="ln-tesis" stroke-width="2"/>
+<circle cx="184.3" cy="55.3" r="5" fill="none" class="ln-tesis" stroke-width="2"/>
+<circle cx="231.5" cy="243.3" r="5" fill="none" class="ln-tesis" stroke-width="2"/>
+<circle cx="403.3" cy="218.9" r="5" class="fill-accent"/>
+<circle cx="403.3" cy="159.2" r="5" class="fill-accent"/>
+<line x1="436.9" y1="132.9" x2="568.0" y2="87.7" class="ln-rule"/>
+<text x="572.0" y="91.7" font-size="14" class="t-accent">GR00T N1.7 · H100 · 43,7 Hz</text>
+<line x1="471.7" y1="158.7" x2="568.0" y2="113.5" class="ln-rule"/>
+<text x="572.0" y="117.5" font-size="14" class="t-accent">π0.7 (38 ms) · 26,3 Hz</text>
+<line x1="409.3" y1="159.2" x2="568.0" y2="132.5" class="ln-rule"/>
+<text x="572.0" y="136.5" font-size="14" class="t-accent">GR00T 2 Turbo · RTX 5090 · 26,0 Hz</text>
+<line x1="415.8" y1="185.2" x2="568.0" y2="151.5" class="ln-rule"/>
+<text x="572.0" y="155.5" font-size="14" class="t-accent">GR00T N1 · 15,7 Hz</text>
+<line x1="443.4" y1="191.9" x2="568.0" y2="170.5" class="ln-rule"/>
+<text x="572.0" y="174.5" font-size="14" class="t-accent">π0 · 13,7 Hz</text>
+<line x1="436.9" y1="194.5" x2="568.0" y2="189.5" class="ln-rule"/>
+<text x="572.0" y="193.5" font-size="14" class="t-accent">GR00T N1.7 · Thor · 13,0 Hz</text>
+<line x1="409.3" y1="218.9" x2="568.0" y2="208.5" class="ln-rule"/>
+<text x="572.0" y="212.5" font-size="14" class="t-accent">GR00T 2 Turbo · Thor · 8,1 Hz</text>
+<line x1="494.6" y1="219.4" x2="568.0" y2="227.5" class="ln-rule"/>
+<text x="572.0" y="231.5" font-size="14" class="t-tesis">Helix S2 · 7–9 Hz</text>
+<line x1="471.7" y1="220.2" x2="568.0" y2="246.5" class="ln-rule"/>
+<text x="572.0" y="250.5" font-size="14" class="t-accent">π0.7 (127 ms) · 7,9 Hz</text>
+<line x1="436.9" y1="228.3" x2="568.0" y2="265.5" class="ln-rule"/>
+<text x="572.0" y="269.5" font-size="14" class="t-accent">GR00T N1.7 · Orin · 6,7 Hz</text>
+<text x="137.1" y="273.3" text-anchor="start" font-size="14" class="t-accent">RT-1 · 3 Hz</text>
+<text x="193.3" y="59.3" text-anchor="start" font-size="14" class="t-tesis">Helix S1 · 200 Hz</text>
+<text x="240.5" y="247.3" text-anchor="start" font-size="14" class="t-tesis">Redwood (1X) · 5 Hz</text>
+<text x="96.0" y="120.0" font-size="13" class="t-time">50 Hz: control habitual de un brazo</text>
+<circle cx="100" cy="348" r="5" class="fill-accent"/><text x="112" y="352" font-size="13">medida con método publicado (C)</text>
+<circle cx="370" cy="348" r="5" fill="none" class="ln-tesis" stroke-width="2"/><text x="382" y="352" font-size="13">frecuencia que declara la empresa (E)</text>
+</svg>
+<!--/SVG:param_freq-->
+      <figcaption>Llenos: \(1/\delta\) con latencia medida y método publicado (C); huecos: frecuencia declarada (E). Barras: un modelo en varias GPU (GR00T N1.7 y GR00T 2 Turbo) o en su mejor y peor caso (π0.7). Turbo, a 2000 M como cota. Atlas no está: su cifra es la de las acciones, no la de decisión. Fuentes: <code>figuras/datos/cifras.json</code>.</figcaption>
+    </figure>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>El <em>rate</em> de un dron va a cientos o miles de hercios (M0, A2): el <em>belief</em> y el world model vivirán en el nivel lento, como el S2 de Helix, y darán consignas al rápido.</div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>Nada por encima de 1000 M de parámetros pasa de unos <span class="hz">45 Hz</span>, y eso en una H100. En la GPU de un robot, de <span class="hz">6,7</span> a <span class="hz">28 Hz</span>.</li>
+        <li>Lo que corre a <span class="hz">200 Hz</span> es pequeño: el S1 de Helix tiene 80 M <a class="cite" data-ref="figurehelix"></a>. El LBM de Atlas (450 M) da acciones a <span class="hz">30 Hz</span>, pero ejecuta 24 de cada trozo de 48: decide cada <span class="hz">0,8 s</span> <a class="cite" data-ref="bdlbm"></a>.</li>
+        <li>Por eso todos usan dos niveles o trozos de acciones (A12b): el modelo grande decide despacio y algo pequeño, o el trozo, mantiene el ritmo.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide divider" data-section="Evaluar">
+  <p class="num">Parte 4</p>
+  <h2>Evaluar: cómo se sabe que funciona</h2>
+  <p>Cuánto dice una tasa de éxito con su \(n\), cuántos ensayos hacen falta para separar dos políticas, qué garantiza «20 de 20», y cómo evalúan TRI, RoboArena y los world models.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · notación</p>
+  <h2>Qué es cada símbolo en esta parte</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:16%">Símbolo</th><th>Qué es</th><th style="width:32%">Ejemplo</th></tr>
+      <tr><td>\(n\), \(k\)</td><td>Ensayos (episodios) de una política y cuántos acaban bien</td><td>π0: \(n = 10\) por tarea</td></tr>
+      <tr><td>\(p\), \(\hat p = k/n\)</td><td>Tasa de éxito verdadera (desconocida) y la observada</td><td>8/10 = 0,8</td></tr>
+      <tr><td>\(\mathrm{SE}\)</td><td>Error típico de \(\hat p\): cuánto varía de una tanda de \(n\) ensayos a otra</td><td>0,126 con \(n = 10\), \(p = 0{,}8\)</td></tr>
+      <tr><td>\(\alpha\)</td><td>Probabilidad de declarar una diferencia que no existe (error de tipo I)</td><td>0,05</td></tr>
+      <tr><td>\(\beta\), \(1-\beta\)</td><td>Probabilidad de no ver una diferencia que sí existe; \(1-\beta\) es la potencia</td><td>\(1-\beta = 0{,}8\)</td></tr>
+      <tr><td>\(z_q\)</td><td>Cuantil \(q\) de la normal estándar</td><td>\(z_{0{,}975} = 1{,}960\); \(z_{0{,}8} = 0{,}842\)</td></tr>
+      <tr><td>\(p_1\), \(p_2\), \(\bar p\), \(\Delta\)</td><td>Tasas de dos políticas, su media y su diferencia \(\Delta = p_2 - p_1\)</td><td>0,6; 0,7; 0,65; 0,1</td></tr>
+      <tr><td>\(p_L\)</td><td>Cota inferior de \(p\) al nivel \(1-\alpha\) cuando no hubo ningún fallo</td><td>0,861 con 20 de 20</td></tr>
+    </table>
+  </div>
+  <p class="small">\(n\) es siempre el número de ensayos <strong>por política</strong>. El intervalo de Wilson se derivó en T1b; aquí se aplica.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · el problema</p>
+  <h2>Una tasa de éxito sin su \(n\) no es un dato</h2>
+  <div class="cols w40">
+    <figure class="fig">
+      <svg viewBox="0 0 360 300" role="img" aria-label="De una política a una decisión: ensayos, éxitos, tasa e intervalo">
+        <rect x="90" y="10" width="180" height="40" rx="10" class="box-accent"/>
+        <text x="180" y="35" text-anchor="middle" font-size="16" class="t-bold">política, tasa <tspan font-style="italic">p</tspan></text>
+        <line x1="180" y1="50" x2="180" y2="72" class="ln"/>
+        <rect x="50" y="72" width="260" height="40" rx="10" class="box-time"/>
+        <text x="180" y="97" text-anchor="middle" font-size="15"><tspan font-style="italic">n</tspan> ensayos independientes</text>
+        <line x1="180" y1="112" x2="180" y2="134" class="ln"/>
+        <rect x="50" y="134" width="260" height="40" rx="10" class="box-time"/>
+        <text x="180" y="159" text-anchor="middle" font-size="15"><tspan font-style="italic">k</tspan> éxitos → <tspan font-style="italic">p̂</tspan> = <tspan font-style="italic">k</tspan>/<tspan font-style="italic">n</tspan></text>
+        <line x1="180" y1="174" x2="180" y2="196" class="ln"/>
+        <rect x="20" y="196" width="320" height="40" rx="10" class="box-soft"/>
+        <text x="180" y="221" text-anchor="middle" font-size="15">intervalo: ¿qué <tspan font-style="italic">p</tspan> son compatibles?</text>
+        <line x1="180" y1="236" x2="180" y2="256" class="ln"/>
+        <rect x="90" y="256" width="180" height="36" rx="10" class="box-tesis"/>
+        <text x="180" y="279" text-anchor="middle" font-size="16" class="t-bold">decisión</text>
+      </svg>
+    </figure>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>cada ensayo: éxito con prob. \(p\); media \(p\), varianza \(p(1-p)\)</td><td>variable de Bernoulli</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mathbb E[k] = np\), \(\mathrm{Var}[k] = np(1-p)\)</td><td>suma de \(n\) independientes (binomial)</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mathrm{Var}[\hat p] = p(1-p)/n\)</td><td>\(\hat p = k/n\): dividir por \(n\) divide la varianza por \(n^2\)</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mathrm{SE} = \sqrt{p(1-p)/n}\)</td><td>raíz de la varianza; baja como \(1/\sqrt n\)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\hat p \pm z_{0{,}975}\,\mathrm{SE}\)</td><td>con \(n\) grande, \(\hat p\) es casi normal (TCL)</td></tr>
+        </table>
+      </div>
+      <p>Con 8 de 10: \(\mathrm{SE} = \sqrt{0{,}8 \cdot 0{,}2/10} = 0{,}126\) y \(0{,}8 \pm 1{,}96 \cdot 0{,}126 = [0{,}55;\ 1{,}05]\): pasa de 1. Con \(\hat p\) cerca de 1 y \(n\) pequeño, la normal falla; por eso se usa Wilson (T1b) <a class="cite" data-ref="wilson1927"></a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · Wilson aplicado</p>
+  <h2>«96 %» puede ser cualquier cosa entre el 81 % y el 99 %: depende de \(n\)</h2>
+  <div class="cols w60">
+    <figure class="fig">
+<!--SVG:wilson-->
+<svg viewBox="0 0 640 264" style="max-height:270px" role="img" aria-label="Intervalos de Wilson al 95 por ciento de varios resultados">
+<line x1="230.0" y1="218.0" x2="610.0" y2="218.0" class="ln"/>
+<line x1="230.0" y1="10.0" x2="230.0" y2="218.0" class="ln"/>
+<line x1="230.0" y1="10.0" x2="230.0" y2="218.0" class="ln-rule"/>
+<text x="230.0" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,4</text>
+<line x1="293.3" y1="10.0" x2="293.3" y2="218.0" class="ln-rule"/>
+<text x="293.3" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,5</text>
+<line x1="356.7" y1="10.0" x2="356.7" y2="218.0" class="ln-rule"/>
+<text x="356.7" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,6</text>
+<line x1="420.0" y1="10.0" x2="420.0" y2="218.0" class="ln-rule"/>
+<text x="420.0" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,7</text>
+<line x1="483.3" y1="10.0" x2="483.3" y2="218.0" class="ln-rule"/>
+<text x="483.3" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,8</text>
+<line x1="546.7" y1="10.0" x2="546.7" y2="218.0" class="ln-rule"/>
+<text x="546.7" y="236.0" text-anchor="middle" font-size="13" class="t-muted">0,9</text>
+<line x1="610.0" y1="10.0" x2="610.0" y2="218.0" class="ln-rule"/>
+<text x="610.0" y="236.0" text-anchor="middle" font-size="13" class="t-muted">1,0</text>
+<text x="420.0" y="256.0" text-anchor="middle" font-size="14" class="t-muted">tasa de éxito (intervalo de Wilson al 95 %)</text>
+<line x1="287.1" y1="23.0" x2="574.1" y2="23.0" class="ln-accent" stroke-width="3"/>
+<circle cx="483.3" cy="23.0" r="4" class="fill-accent"/>
+<text x="222.0" y="27.0" text-anchor="end" font-size="13">π0: 8 de 10</text>
+<text x="582.1" y="27.0" font-size="11" class="t-mono" text-anchor="start">[0,49; 0,94]</text>
+<line x1="373.7" y1="49.0" x2="549.8" y2="49.0" class="ln-accent" stroke-width="3"/>
+<circle cx="483.3" cy="49.0" r="4" class="fill-accent"/>
+<text x="222.0" y="53.0" text-anchor="end" font-size="13">humanos en π0.7: 24 de 30</text>
+<text x="557.8" y="53.0" font-size="11" class="t-mono" text-anchor="start">[0,63; 0,90]</text>
+<line x1="508.0" y1="75.0" x2="610.0" y2="75.0" class="ln-time" stroke-width="3"/>
+<circle cx="610.0" cy="75.0" r="4" class="fill-time"/>
+<text x="222.0" y="79.0" text-anchor="end" font-size="13">20 de 20</text>
+<text x="500.0" y="79.0" font-size="11" class="t-mono" text-anchor="end">[0,84; 1,00]</text>
+<line x1="582.9" y1="101.0" x2="610.0" y2="101.0" class="ln-time" stroke-width="3"/>
+<circle cx="610.0" cy="101.0" r="4" class="fill-time"/>
+<text x="222.0" y="105.0" text-anchor="end" font-size="13">GEN-1: 86 seguidas</text>
+<text x="574.9" y="105.0" font-size="11" class="t-mono" text-anchor="end">[0,96; 1,00]</text>
+<line x1="486.2" y1="127.0" x2="605.5" y2="127.0" class="ln-tesis" stroke-width="3"/>
+<circle cx="584.7" cy="127.0" r="4" class="fill-tesis"/>
+<text x="222.0" y="131.0" text-anchor="end" font-size="13">«96 %» con n = 25</text>
+<text x="478.2" y="131.0" font-size="11" class="t-mono" text-anchor="end">[0,80; 0,99]</text>
+<line x1="524.8" y1="153.0" x2="603.0" y2="153.0" class="ln-tesis" stroke-width="3"/>
+<circle cx="584.7" cy="153.0" r="4" class="fill-tesis"/>
+<text x="222.0" y="157.0" text-anchor="end" font-size="13">«96 %» con n = 50</text>
+<text x="516.8" y="157.0" font-size="11" class="t-mono" text-anchor="end">[0,87; 0,99]</text>
+<line x1="547.7" y1="179.0" x2="600.1" y2="179.0" class="ln-tesis" stroke-width="3"/>
+<circle cx="584.7" cy="179.0" r="4" class="fill-tesis"/>
+<text x="222.0" y="183.0" text-anchor="end" font-size="13">«96 %» con n = 100</text>
+<text x="539.7" y="183.0" font-size="11" class="t-mono" text-anchor="end">[0,90; 0,98]</text>
+<line x1="571.4" y1="205.0" x2="593.5" y2="205.0" class="ln-tesis" stroke-width="3"/>
+<circle cx="584.7" cy="205.0" r="4" class="fill-tesis"/>
+<text x="222.0" y="209.0" text-anchor="end" font-size="13">«96 %» con n = 500</text>
+<text x="563.4" y="209.0" font-size="11" class="t-mono" text-anchor="end">[0,94; 0,97]</text>
+</svg>
+<!--/SVG:wilson-->
+      <figcaption>Intervalos de Wilson al 95 % (T1b) de resultados publicados (π0, el estudio con humanos de π0.7, la racha de GEN-1) y de un «96 %» con cuatro \(n\) posibles. Script: <code>ejemplos_r1a.py</code>, apartado 4.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li><strong>π0</strong> evalúa con 10 episodios por tarea y método <a class="cite" data-ref="black2024"></a>: un 8 de 10 deja \(p\) entre 0,49 y 0,94.</li>
+        <li><strong>π0.7</strong> compara su política con 10 teleoperadores expertos, 3 intentos cada uno: 30 ensayos humanos (80,6 % de éxito); el \(n\) de la política no se publica <a class="cite" data-ref="pi2026"></a>. Con 24 de 30, el intervalo humano ya va de 0,63 a 0,90.</li>
+        <li><strong>Gemini Robotics 2.5</strong> anuncia un 96 % empaquetando piezas con el Apollo 2 de Apptronik en Mercedes-Benz, sin \(n\) ni duración <a class="cite" data-ref="gdmgr25"></a>: con \(n = 25\), [0,81; 0,99]; con \(n = 500\), [0,94; 0,97].</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Regla práctica</span>La anchura de Wilson baja como \(1/\sqrt n\): para partirla por la mitad hay que cuadruplicar los ensayos.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · cuántos ensayos · derivación</p>
+  <h2>De dónde sale el número de ensayos para separar dos políticas</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t small">
+        <tr><th style="width:6%">#</th><th style="width:56%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(\hat\Delta = \hat p_2 - \hat p_1\), con \(n\) ensayos por política</td><td>estimador de la diferencia</td></tr>
+        <tr><td><strong>2</strong></td><td>si \(p_1 = p_2 = \bar p\): \(\sigma_0^2 = 2\bar p(1-\bar p)/n\)</td><td>varianzas de dos \(\hat p\) independientes que se suman</td></tr>
+        <tr><td><strong>3</strong></td><td>se declara diferencia si \(|\hat\Delta| > z_{1-\alpha/2}\,\sigma_0\)</td><td>falsa alarma con prob. \(\alpha\) (test bilateral)</td></tr>
+        <tr><td><strong>4</strong></td><td>si la diferencia es \(\Delta\): \(\hat\Delta \approx \mathcal N(\Delta, \sigma_1^2)\), \(\sigma_1^2 = \frac{p_1(1-p_1)+p_2(1-p_2)}{n}\)</td><td>cada \(\hat p\) con su varianza verdadera</td></tr>
+        <tr><td><strong>5</strong></td><td>potencia \(1-\beta\): \(\Delta - z_{1-\alpha/2}\sigma_0 = z_{1-\beta}\,\sigma_1\)</td><td>el umbral queda \(z_{1-\beta}\) desviaciones por debajo de \(\Delta\)</td></tr>
+        <tr style="height:84px"><td><strong>6</strong></td><td>\(n = \dfrac{\big(z_{1-\alpha/2}\sqrt{2\bar p(1-\bar p)} + z_{1-\beta}\sqrt{p_1(1-p_1)+p_2(1-p_2)}\big)^2}{\Delta^2}\)</td><td>se multiplica por \(\sqrt n\) y se despeja</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <p><strong>Ejemplo</strong> (\(p_1 = 0{,}6\), \(p_2 = 0{,}7\), \(\alpha = 0{,}05\), potencia 0,8):</p>
+      <p>\(\bar p = 0{,}65\); \(1{,}960\sqrt{2 \cdot 0{,}65 \cdot 0{,}35} = 1{,}322\); \(0{,}842\sqrt{0{,}24 + 0{,}21} = 0{,}565\)</p>
+      <p>\(n = \dfrac{(1{,}322 + 0{,}565)^2}{0{,}1^2} = \dfrac{3{,}559}{0{,}01} = 355{,}9\)</p>
+      <div class="callout clave"><span class="tag">Resultado</span><strong>356 ensayos por política</strong>, 712 en total, para separar un 60 % de un 70 % con un 80 % de probabilidad de verlo.</div>
+      <p class="xsmall muted">Script: <code>ejemplos_r1a.py</code>, apartado 5.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · cuántos ensayos · resultado</p>
+  <h2>Con 50 ensayos solo se ven diferencias de unos 28 puntos</h2>
+  <div class="cols">
+    <div class="stack">
+    <figure class="fig">
+<!--SVG:potencia-->
+<svg viewBox="0 0 560 270" style="max-height:290px" role="img" aria-label="Ensayos necesarios por política frente a la diferencia de tasas">
+<line x1="80.0" y1="214.0" x2="510.0" y2="214.0" class="ln"/>
+<line x1="80.0" y1="14.0" x2="80.0" y2="214.0" class="ln"/>
+<line x1="80.0" y1="14.0" x2="80.0" y2="214.0" class="ln-rule"/>
+<text x="80.0" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,60</text>
+<line x1="141.4" y1="14.0" x2="141.4" y2="214.0" class="ln-rule"/>
+<text x="141.4" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,65</text>
+<line x1="202.9" y1="14.0" x2="202.9" y2="214.0" class="ln-rule"/>
+<text x="202.9" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,70</text>
+<line x1="264.3" y1="14.0" x2="264.3" y2="214.0" class="ln-rule"/>
+<text x="264.3" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,75</text>
+<line x1="325.7" y1="14.0" x2="325.7" y2="214.0" class="ln-rule"/>
+<text x="325.7" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,80</text>
+<line x1="387.1" y1="14.0" x2="387.1" y2="214.0" class="ln-rule"/>
+<text x="387.1" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,85</text>
+<line x1="448.6" y1="14.0" x2="448.6" y2="214.0" class="ln-rule"/>
+<text x="448.6" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,90</text>
+<line x1="510.0" y1="14.0" x2="510.0" y2="214.0" class="ln-rule"/>
+<text x="510.0" y="232.0" text-anchor="middle" font-size="13" class="t-muted">0,95</text>
+<line x1="80.0" y1="214.0" x2="510.0" y2="214.0" class="ln-rule"/>
+<text x="72.0" y="218.0" text-anchor="end" font-size="13" class="t-muted">10</text>
+<line x1="80.0" y1="175.5" x2="510.0" y2="175.5" class="ln-rule"/>
+<text x="72.0" y="179.5" text-anchor="end" font-size="13" class="t-muted">30</text>
+<line x1="80.0" y1="133.3" x2="510.0" y2="133.3" class="ln-rule"/>
+<text x="72.0" y="137.3" text-anchor="end" font-size="13" class="t-muted">100</text>
+<line x1="80.0" y1="94.7" x2="510.0" y2="94.7" class="ln-rule"/>
+<text x="72.0" y="98.7" text-anchor="end" font-size="13" class="t-muted">300</text>
+<line x1="80.0" y1="52.5" x2="510.0" y2="52.5" class="ln-rule"/>
+<text x="72.0" y="56.5" text-anchor="end" font-size="13" class="t-muted">1000</text>
+<line x1="80.0" y1="14.0" x2="510.0" y2="14.0" class="ln-rule"/>
+<text x="72.0" y="18.0" text-anchor="end" font-size="13" class="t-muted">3000</text>
+<text x="295.0" y="252.0" text-anchor="middle" font-size="14" class="t-muted">tasa de la segunda política, p₂ (la primera, p₁ = 0,6)</text>
+<text x="28.0" y="114.0" text-anchor="middle" font-size="14" class="t-muted" transform="rotate(-90 28.0 114.0)">ensayos por política</text>
+<polyline fill="none" points="123.2,14.0 126.1,18.6 129.1,23.2 132.2,27.5 135.3,31.5 138.4,35.4 141.4,39.0 144.5,42.5 147.6,45.8 150.6,49.0 153.7,52.0 156.8,54.9 159.9,57.7 162.9,60.4 166.0,63.0 169.1,65.5 172.1,68.0 175.2,70.3 178.3,72.6 181.4,74.8 184.4,77.0 187.5,79.1 190.6,81.1 193.6,83.1 196.7,85.0 199.8,86.9 202.9,88.7 205.9,90.5 209.0,92.3 212.1,94.0 215.1,95.7 218.2,97.3 221.3,98.9 224.4,100.5 227.4,102.1 230.5,103.6 233.6,105.1 236.6,106.5 239.7,108.0 242.8,109.4 245.9,110.8 248.9,112.1 252.0,113.5 255.1,114.8 258.1,116.1 261.2,117.4 264.3,118.6 267.4,119.8 270.4,121.1 273.5,122.3 276.6,123.5 279.6,124.6 282.7,125.8 285.8,126.9 288.9,128.1 291.9,129.2 295.0,130.3 298.1,131.3 301.1,132.4 304.2,133.5 307.3,134.5 310.4,135.6 313.4,136.6 316.5,137.6 319.6,138.6 322.6,139.6 325.7,140.6 328.8,141.5 331.9,142.5 334.9,143.4 338.0,144.4 341.1,145.3 344.1,146.2 347.2,147.1 350.3,148.1 353.4,148.9 356.4,149.8 359.5,150.7 362.6,151.6 365.6,152.5 368.7,153.3 371.8,154.2 374.9,155.0 377.9,155.9 381.0,156.7 384.1,157.5 387.1,158.4 390.2,159.2 393.3,160.0 396.4,160.8 399.4,161.6 402.5,162.4 405.6,163.2 408.6,164.0 411.7,164.7 414.8,165.5 417.9,166.3 420.9,167.1 424.0,167.8 427.1,168.6 430.1,169.3 433.2,170.1 436.3,170.8 439.4,171.6 442.4,172.3 445.5,173.0 448.6,173.8 451.6,174.5 454.7,175.2 457.8,175.9 460.9,176.7 463.9,177.4 467.0,178.1 470.1,178.8 473.1,179.5 476.2,180.2 479.3,180.9 482.4,181.6 485.4,182.3 488.5,183.0 491.6,183.7 494.6,184.4 497.7,185.0 500.8,185.7 503.9,186.4 506.9,187.1 510.0,187.8" class="ln-accent" stroke-width="2.5"/>
+<circle cx="202.9" cy="88.7" r="5" class="fill-accent"/>
+<text x="211.9" y="82.7" font-size="13" class="t-accent">0,6 frente a 0,7: 356</text>
+<line x1="80.0" y1="157.6" x2="510.0" y2="157.6" class="ln-time" stroke-dasharray="5 4"/>
+<circle cx="384.2" cy="157.6" r="5" class="fill-time"/>
+<text x="374.2" y="177.6" text-anchor="end" font-size="13" class="t-time"><tspan font-style="italic">n</tspan> = 50 (TRI): solo se ve si <tspan font-style="italic">p</tspan>₂ ≥ 0,85</text>
+</svg>
+<!--/SVG:potencia-->
+      <figcaption>Ensayos por política frente a la tasa de la segunda, con la primera en 0,6 (fórmula de la hoja anterior): 1470 frente a 0,65; 152 frente a 0,75; 81 frente a 0,8; 31 frente a 0,9.</figcaption>
+    </figure>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>En simulación, 356 episodios por variante son minutos de GPU; en un dron real, 356 vuelos. Tu evaluación será sobre todo en simulación y registros, con pocos vuelos de validación.</div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>NVIDIA lo escribe en GR00T 2 (<span class="nw">11-2026</span>): con hasta 20 ensayos por tarea ve las diferencias grandes, «but not the differences that matter in deployment»; separar 95 % de 99 % pide «about 285 trials per policy». Con la fórmula de la hoja anterior, 284,3 <a class="cite" data-ref="gr00t2"></a>.</li>
+        <li>TRI usa 50 por tarea, política y condición <a class="cite" data-ref="tri2025"></a>: alrededor del 50 %, la diferencia mínima que se detecta así es de 27,7 puntos. Por eso suman muchas tareas y comparan por grupos.</li>
+        <li>1X lo dice con sus palabras: para un solo <em>checkpoint</em> hacen falta «hundreds to thousands of samples» para tener métricas significativas <a class="cite" data-ref="onexwm"></a>.</li>
+        <li>Figure da 9 % frente a 56 % sin \(n\) <a class="cite" data-ref="figh25"></a>: con 8 ensayos por brazo ya daría \(z = 2{,}0\). Ahí falta comprobarlo, no potencia.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · la regla del tres</p>
+  <h2>«20 de 20» solo garantiza un 86 %: la regla del tres</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(P(n \text{ éxitos} \mid p) = p^n\)</td><td>\(n\) ensayos independientes, ninguno falla</td></tr>
+        <tr><td><strong>2</strong></td><td>\(p_L\) cumple \(p_L^{\,n} = \alpha\)</td><td>por debajo de \(p_L\), ver \(n\) de \(n\) tendría prob. menor que \(\alpha\): se descarta</td></tr>
+        <tr><td><strong>3</strong></td><td>\(p_L = \alpha^{1/n}\)</td><td>cota exacta (Clopper–Pearson con \(k = n\), unilateral)</td></tr>
+        <tr><td><strong>4</strong></td><td>\(p_L = e^{\ln\alpha/n} \approx 1 + \dfrac{\ln\alpha}{n}\)</td><td>\(e^x \approx 1 + x\) si \(x\) es pequeño (\(n\) grande)</td></tr>
+        <tr><td><strong>5</strong></td><td>\(-\ln 0{,}05 = 2{,}996 \approx 3\)</td><td>al 95 %</td></tr>
+        <tr><td><strong>6</strong></td><td>\(p_L \approx 1 - \dfrac{3}{n}\)</td><td>la regla del tres</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th>Resultado</th><th>\(\alpha^{1/n}\)</th><th>\(1-3/n\)</th></tr>
+          <tr><td>20 de 20</td><td class="n">0,861</td><td class="n">0,850</td></tr>
+          <tr><td>30 de 30</td><td class="n">0,905</td><td class="n">0,900</td></tr>
+          <tr><td>86 seguidas (GEN-1)</td><td class="n">0,966</td><td class="n">0,965</td></tr>
+          <tr><td>300 de 300</td><td class="n">0,990</td><td class="n">0,990</td></tr>
+        </table>
+      </div>
+      <p>Para afirmar \(p \ge 0{,}99\) sin fallos: \(\ln 0{,}05/\ln 0{,}99 = 298{,}1\), es decir, 299 ensayos seguidos (300 con la regla).</p>
+      <div class="callout realidad"><span class="tag">GEN-1</span>Generalist publica rachas, no tasas con \(n\): «86 times in a row without intervention» doblando camisetas <a class="cite" data-ref="gen1"></a>. Lo que garantiza es un 96,6 %, no el 99 % de su titular.</div>
+      <p class="xsmall muted">R1b usa la misma regla en su versión por horas (\(3/T\)) para fallos de una flota de drones.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · el estándar de TRI</p>
+  <h2>Cómo evalúa TRI sus Large Behavior Models: a ciegas, en orden aleatorio y con 50 por celda</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">PROTOCOLO</span>
+      <h3>Ciego y aleatorizado</h3>
+      <p>«The evaluators did not know which policy was being tested»; en cada condición inicial, las políticas se prueban en orden aleatorio. 50 ensayos reales por tarea, política y condición; 200 en simulación <a class="cite" data-ref="tri2025"></a>.</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESTADÍSTICA</span>
+      <h3>Bayes y letras</h3>
+      <p>Posterior Beta con prior uniforme para cada tasa; test secuencial para éxitos y de Welch para el progreso; corrección de Bonferroni; y letras: dos políticas sin letra en común difieren con un 95 % de confianza.</p>
+    </div>
+    <div class="card">
+      <span class="meta">CONTROL</span>
+      <h3>Revisar al que puntúa</h3>
+      <p>Una segunda persona revisa el 27 % de los ensayos: 2,31 % de discrepancia en el éxito y 6,25 % en las preguntas de la rúbrica. Una incoherencia del propio artículo: 1800 ensayos reales en el resumen y «nearly 2,700» en la revisión.</p>
+    </div>
+  </div>
+  <div class="cols">
+    <div class="callout clave"><span class="tag">Resultado</span>Un LBM preentrenado y ajustado necesita menos del 30 % de los datos de una política desde cero en simulación; en la mesa del desayuno, con un 15 % ya la supera con significación <a class="cite" data-ref="tri2025"></a>.</div>
+    <div class="callout realidad"><span class="tag">Buenas prácticas</span>Kress-Gazit et al. piden informar de las condiciones, medir más que el éxito, hacer estadística y describir los fallos <a class="cite" data-ref="kressgazit2024"></a>. Es la vara con la que se miden las hojas que siguen.</div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · RoboArena</p>
+  <h2>RoboArena: evaluación repartida entre siete universidades, a ciegas y por parejas</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>En vez de una tarea fija, cada evaluador elige su escena y su tarea, y prueba <strong>dos políticas a ciegas</strong>: da una puntuación de progreso, una preferencia y una explicación <a class="cite" data-ref="atreya2025"></a>.</li>
+        <li>Las preferencias se juntan con un modelo de Bradley–Terry ampliado con la dificultad de cada tarea.</li>
+        <li>Primera tanda: 7 políticas generalistas, 7 universidades, 612 comparaciones por parejas y 4284 episodios con el robot de DROID.</li>
+        <li>En su análisis con cambios de distribución simulados, la correlación con la clasificación de referencia es \(r = 0{,}838\), frente a 0,692 de la evaluación convencional; y la clasificación se estabiliza en unas 100 comparaciones.</li>
+        <li>En la GTC (<span class="nw">03-2026</span>), NVIDIA dijo que GR00T N2 era el primero de RoboArena <a class="cite" data-ref="nvgtc26"></a>: una tabla independiente ya sirve de argumento comercial.</li>
+      </ul>
+    </div>
+    <div class="stack">
+    <figure class="foto" style="--foto-h:200px">
+      <img src="img/roboarena-sistema.webp" width="1600" height="534" alt="Esquema de RoboArena: servidores de políticas, evaluadores repartidos y base de datos central">
+      <figcaption>Las políticas corren en servidores remotos; los evaluadores, cada uno con su robot DROID, piden pares al servidor central, que guarda resultados y vídeos y calcula la clasificación.
+        <span class="xsmall">Figura: Atreya et al. (2025), RoboArena, Fig. 4, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, vía arXiv. Extraída de la versión HTML y redimensionada.</span></figcaption>
+    </figure>
+    <div class="callout clave"><span class="tag">Por qué funciona</span>Comparar dos políticas en la misma escena anula la dificultad de la escena, y repartir la evaluación quita a una sola empresa el control del examen.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · world models como evaluadores</p>
+  <h2>Evaluar en un world model: rápido, pero hay que medir cuánto se equivoca</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>1X</strong> entrena un modelo de vídeo que predice qué hará NEO con unas acciones y si la tarea acabará bien. Lo usa para elegir <em>checkpoints</em>, arquitecturas y casos difíciles de producción <a class="cite" data-ref="onexwm"></a>.</li>
+        <li>Su cifra: con un 70 % de acuerdo con la realidad, el modelo elige la mejor de dos políticas un 90 % de las veces cuando la diferencia real es de 15 puntos (según 1X).</li>
+        <li>Su motivo: evaluar una política de humanoide en casas lleva «days to weeks», y un sistema automático real como AutoEval llega a unos 850 episodios al día, según el mismo informe.</li>
+        <li><strong>Google DeepMind</strong> evalúa Gemini Robotics en un simulador basado en Veo <a class="cite" data-ref="gdmveo"></a>, y <strong>Waymo</strong> genera cámara y lidar con un world model sobre Genie 3 <a class="cite" data-ref="waymowwm"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout error"><span class="tag">Cautela</span>Un world model evaluador vale lo que su correlación con la realidad, y esa correlación la mide la propia empresa con pocos pares de políticas. A8b ya vio que los modelos de vídeo fallan en física básica. Úsalo para descartar rápido, no para el resultado final.</div>
+      <div class="callout realidad"><span class="tag">Con números</span><strong>NVIDIA</strong> lo mide con simulación física en GR00T 2: en 25 tareas, el simulador predice el progreso real de 14 <em>checkpoints</em> con Pearson 0,93; falta probarlo en montajes con contacto y con políticas de RL, según el informe <a class="cite" data-ref="gr00t2"></a>.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>Tu world model también puede ser tu evaluador barato. Para que cuente, tendrás que medir su acuerdo con el simulador fiel (o con registros reales) en una muestra, como el SRCC de T1b.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Evaluar · resultados publicados, recalculados</p>
+  <h2>Tres resultados reales con su \(n\), y dos que no lo tienen</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Resultado</th><th style="width:22%">Lo publicado</th><th style="width:12%">\(n\)</th><th>Lo que dice de verdad</th></tr>
+      <tr><td>π0 (2024) <a class="cite" data-ref="black2024"></a></td><td>puntuaciones por tarea</td><td>10 por tarea y método</td><td>un 8 de 10 cabe en [0,49; 0,94]: se distinguen métodos muy separados, no los parecidos</td></tr>
+      <tr><td>LBM de TRI (2025) <a class="cite" data-ref="tri2025"></a></td><td>comparaciones con letras</td><td>50 por celda</td><td>detecta unos 28 puntos por tarea; con muchas tareas sí ve el efecto agregado del preentrenamiento</td></tr>
+      <tr><td>GEN-1 (2026) <a class="cite" data-ref="gen1"></a></td><td>«86 times in a row»</td><td>86 de 86</td><td>\(p \ge 0{,}966\) al 95 %; el «99 %» necesitaría 299 seguidas</td></tr>
+      <tr><td>Helix 2.5 (2026) <a class="cite" data-ref="figh25"></a></td><td>9 % frente a 56 %, a ciegas, 30 casas</td><td>no publicado</td><td>diferencia enorme, pero sin \(n\) no se puede poner intervalo</td></tr>
+      <tr><td>Gemini Robotics 2.5 (2026) <a class="cite" data-ref="gdmgr25"></a></td><td>96 % en Mercedes-Benz; «across over 200 distinct tasks»</td><td>no publicado</td><td>entre [0,81; 0,99] y [0,94; 0,97] según \(n\); tampoco se sabe la duración</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Patrón de 2026</span>Ninguno de los blogs de 2026 de los grandes (Gemini Robotics 2 y 2.5, Helix 2.5, GEN-1, GR00T N1.7) da el número de ensayos. Lo dan los artículos académicos y los informes técnicos más antiguos.</div>
+</section>
+
+<section class="slide divider" data-section="Demo y producto">
+  <p class="num">Parte 5</p>
+  <h2>Demo frente a producto</h2>
+  <p>Cómo leer un vídeo, qué demos se han documentado como teleoperadas, qué despliegues tienen cifras y cómo se lee un anuncio con sus propios números.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Demo y producto · leer un vídeo</p>
+  <h2>Seis preguntas antes de creerte un vídeo de robot</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:4%">#</th><th style="width:30%">Pregunta</th><th>Dónde se ha visto en esta jornada</th></tr>
+      <tr><td><strong>1</strong></td><td>¿Autónomo o teleoperado? ¿Lo dice el vídeo?</td><td>Tesla en «We, Robot» y la camisa de 2024 (hoja siguiente); 1X lo declara como modo del producto</td></tr>
+      <tr><td><strong>2</strong></td><td>¿A qué velocidad está?</td><td>GEN-1 avisa: «1x speed, fully autonomous» <a class="cite" data-ref="gen1"></a>; Boston Dynamics acelera sus políticas 1,5–2× sin perder rendimiento, según ellos <a class="cite" data-ref="bdlbm"></a></td></tr>
+      <tr><td><strong>3</strong></td><td>¿Cuántos intentos y cuántos cortes?</td><td>Una racha de 86 dice cuántos seguidos, no cuántos se intentaron en total</td></tr>
+      <tr><td><strong>4</strong></td><td>¿Entorno preparado o nuevo?</td><td>Helix 2.5: 30 casas sin datos previos <a class="cite" data-ref="figh25"></a>; la camisa de Optimus: mesa fija y una sola camisa</td></tr>
+      <tr><td><strong>5</strong></td><td>¿Cuántos ensayos y cuántos fallos?</td><td>Casi nunca en los blogs de 2026 (parte 4)</td></tr>
+      <tr><td><strong>6</strong></td><td>¿Quién lo mide?</td><td>La empresa, un artículo con método o un tercero independiente (RoboArena)</td></tr>
+    </table>
+  </div>
+  <div class="callout clave"><span class="tag">Idea clave</span>Un vídeo demuestra que algo <em>puede</em> pasar al menos una vez. Una tasa con su \(n\) dice <em>cuántas veces</em> pasa. Un despliegue con horas e intervenciones dice si alguien paga por ello.</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Demo y producto · demos con salvedades</p>
+  <h2>Demos documentadas como teleoperadas o supervisadas</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <ul>
+        <li><strong>Tesla, «We, Robot» (<span class="nw">10-10-2024</span>).</strong> Bloomberg y TechCrunch contaron que humanos controlaban a distancia parte de las interacciones de los Optimus con el público; un Optimus camarero dijo estar «assisted by a human»; Axios lo resumió como «needed human help» <a class="cite" data-ref="bbgwr,tcwr,axioswr"></a>. Prensa contrastada.</li>
+        <li><strong>Tesla, la camisa (<span class="nw">15-01-2024</span>).</strong> El propio Musk añadió: «Optimus cannot yet do this autonomously» <a class="cite" data-ref="gizmodo2024,newatlas2024"></a>. Prensa contrastada.</li>
+        <li><strong>1X NEO:</strong> la página de pedido lo dice: «an Expert from 1X can remotely supervise its actions at scheduled times», y llega con «basic autonomy» <a class="cite" data-ref="onexorder"></a>.</li>
+        <li><strong>Boston Dynamics:</strong> pie de foto oficial del centro de Hyundai: «A trainer teleoperates Boston Dynamics Atlas robot» <a class="cite" data-ref="bdrmac26"></a>.</li>
+        <li><strong>Wayve en Londres:</strong> viajes con Uber desde el <span class="nw">03-09-2026</span> con un conductor con licencia de TfL a bordo «to oversee the trip» <a class="cite" data-ref="wayveldn"></a>.</li>
+      </ul>
+      <p class="small">Teleoperar no es hacer trampa: es como se recogen los datos y como se cubren los casos que la política no sabe. Lo engañoso es no decirlo.</p>
+    </div>
+    <figure class="foto" style="--foto-h:370px">
+      <img src="img/optimus-we-robot.webp" width="900" height="1310" alt="Robot Optimus de Tesla entre el público del evento We, Robot de 2024">
+      <figcaption>Un Optimus entre el público de «We, Robot», el <span class="nw">10-10-2024</span>. La foto no dice si iba teleoperado; lo dicen las fuentes de la hoja.
+        <span class="xsmall">Foto: Steve Jurvetson, <a href="https://creativecommons.org/licenses/by/2.0">CC BY 2.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Latest_Tesla_Optimus_Humanoid_Robot.jpg">Commons</a>, vía Flickr). Redimensionada.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Demo y producto · despliegues con cifras</p>
+  <h2>Lo que se ha desplegado y lo que cada empresa cuenta de ello</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:22%">Quién</th><th>Lo que publica</th><th style="width:28%">Lo que no</th></tr>
+        <tr><td>Agility en GXO (<span class="nw">10-2026</span>)</td><td>más de 100 000 cajas en Flowery Branch; más de 65 000 h en todos sus clientes; contrato de robots como servicio desde <span class="nw">06-2024</span>; dos centros más en 2027 <a class="cite" data-ref="agility26"></a></td><td>cuántos robots, disponibilidad, intervenciones</td></tr>
+        <tr><td>Figure en BMW (<span class="nw">11-2025</span>)</td><td>11 meses; 1250 h; 90 000 piezas; 30 000 X3; ciclo pedido de 84 s <a class="cite" data-ref="figbmw25"></a></td><td>éxito real e intervenciones</td></tr>
+        <tr><td>Amazon (<span class="nw">06-2025</span>)</td><td>un millón de robots en más de 300 centros; DeepFleet acorta un 10 % el tiempo de viaje <a class="cite" data-ref="amazon1m"></a></td><td>horas de datos: «millions» y «billions» en la misma entrada <a class="cite" data-ref="amazonsci"></a></td></tr>
+        <tr><td>Physical Intelligence (<span class="nw">11-2025</span>)</td><td>13 h seguidas haciendo café; más de 2 h doblando ropa en una casa nueva <a class="cite" data-ref="amin2025"></a></td><td>cuántas veces se intentó</td></tr>
+        <tr><td>Gemini Robotics 2.5 (<span class="nw">11-2026</span>)</td><td>96 % empaquetando piezas en Mercedes-Benz, con Apollo 2 <a class="cite" data-ref="gdmgr25"></a></td><td>\(n\), duración, intervenciones</td></tr>
+      </table>
+    </div>
+    <figure class="foto" style="--foto-h:250px">
+      <img src="img/amazon-drive-unit.webp" width="1200" height="900" alt="Unidad de transporte de Amazon expuesta en el centro de Swindon">
+      <figcaption>Una unidad de transporte de Amazon expuesta en su centro de Swindon (2025): el robot más desplegado del mundo no tiene brazos ni cara.
+        <span class="xsmall">Foto: Auledas, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:BRS2_Amazon_fulfilment_centre_drive_unit_robot.jpg">Commons</a>). Redimensionada.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Demo y producto · leer un anuncio con sus cifras</p>
+  <h2>Figure en BMW: 90 000 piezas en 1250 h son 150 s por ciclo, no 84</h2>
+  <div class="cols w60">
+    <div class="table-wrap">
+      <table class="t">
+        <tr><th style="width:6%">#</th><th style="width:44%">Paso</th><th>Por qué</th></tr>
+        <tr><td><strong>1</strong></td><td>\(90\,000/1250 = 72\) piezas por hora</td><td>las dos cifras que da Figure <a class="cite" data-ref="figbmw25"></a></td></tr>
+        <tr><td><strong>2</strong></td><td>\(72/3 = 24\) ciclos por hora</td><td>cada ciclo carga tres piezas de chapa</td></tr>
+        <tr><td><strong>3</strong></td><td>\(3600/24 = 150\) s por ciclo</td><td>tiempo medio por ciclo en esas horas</td></tr>
+        <tr><td><strong>4</strong></td><td>a 84 s: \(1250 \cdot 3600/84 \cdot 3 \approx 160\,700\) piezas</td><td>lo que saldría si todo el tiempo fuera a ritmo de línea</td></tr>
+        <tr><td><strong>5</strong></td><td>\(1250/10 = 125\) turnos \(= 25\) semanas \(\approx 5{,}8\) meses</td><td>turnos de 10 h, de lunes a viernes</td></tr>
+      </table>
+    </div>
+    <div class="stack">
+      <div class="callout realidad"><span class="tag">Qué se concluye</span>O el robot no cargaba todo el tiempo, o el ciclo real era más lento que el pedido: el anuncio no permite saber cuál de las dos. Y las 1250 h caben en unos seis meses de turnos, no en once: la misma entrada cuenta que entregaron los primeros robots «within 6 months» de arrancar Figure 02 y que el despliegue completo en la línea llegó «within 10 months».</div>
+      <div class="callout clave"><span class="tag">Otra que no se divide</span>Agility da más de 100 000 cajas en una planta y más de 65 000 h en todos sus clientes <a class="cite" data-ref="agility26"></a>: no salen cajas por hora, porque las horas no son de esa planta.</div>
+      <p class="xsmall muted">Script: <code>ejemplos_r1a.py</code>, apartado 8.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Demo y producto · el filtro de M0</p>
+  <h2>El filtro de credibilidad de M0, aplicado a cuatro anuncios de 2026</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:20%">Pregunta de M0</th><th>Gemini Robotics 2.5 (<span class="nw">11-2026</span>)</th><th>GEN-1 (<span class="nw">04-2026</span>)</th><th>Helix 2.5 (<span class="nw">09-2026</span>)</th><th>GR00T N1.7 (<span class="nw">04-2026</span>)</th></tr>
+      <tr><td>¿Hardware real?</td><td>sí, y piloto en fábrica</td><td>sí</td><td>sí, 30 casas</td><td>latencias en la GPU del robot; tareas sin detallar</td></tr>
+      <tr><td>¿Ensayos y fallos?</td><td>tasas sin \(n\)</td><td>medias y rachas sin \(n\)</td><td>a ciegas, sin \(n\)</td><td>mejora sin \(n\)</td></tr>
+      <tr><td>¿Latencia y Hz?</td><td>no</td><td>no</td><td>no</td><td>sí, medidas con método</td></tr>
+      <tr><td>¿Contra qué compara?</td><td>Gemini Robotics 2</td><td>GEN-0, π0, desde cero</td><td>desde cero, Helix 02</td><td>N1.6</td></tr>
+      <tr><td>¿Código y pesos?</td><td>no</td><td>no</td><td>no</td><td>sí</td></tr>
+      <tr><td>¿Quién lo evalúa?</td><td>la empresa</td><td>la empresa</td><td>la empresa</td><td>la empresa; reproducible</td></tr>
+    </table>
+  </div>
+  <p class="small">Fuentes: <a class="cite" data-ref="gdmgr25,gen1,figh25,gr00tn17,gr00trepo"></a>. El más reproducible es el único que publica pesos y latencias; el que más promete es el que menos deja comprobar.</p>
+</section>
+
+<section class="slide divider" data-section="Conducción autónoma">
+  <p class="num">Parte 6</p>
+  <h2>Conducción autónoma: el caso más maduro</h2>
+  <p>El único sector con despliegue masivo de autonomía aprendida bajo observabilidad parcial. Waymo con sus cifras, su arquitectura, su comparación de seguridad y su recall; Apollo Go y Wayve; y qué se puede llevar un dron.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · Waymo en cifras</p>
+  <h2>Waymo: 271 millones de millas sin conductor y quince ciudades</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Millas sin nadie al volante</strong> hasta junio de 2026: 271,3 M (Phoenix 92,1; Bahía de San Francisco 82,4; Los Ángeles 67,1; Austin 21,1; Atlanta 8,6) <a class="cite" data-ref="waymohub"></a>.</li>
+        <li><strong>Viajes:</strong> más de 400 000 de pago por semana en seis áreas en febrero de 2026 <a class="cite" data-ref="waymo16b"></a>; 500 000 en diez ciudades a finales de marzo (prensa contrastada) <a class="cite" data-ref="tc500k,insideevs500k"></a>. 15 millones de viajes en 2025.</li>
+        <li><strong>Ciudades y dinero:</strong> 16 000 M$ a 126 000 M$ de valoración (<span class="nw">02-2026</span>) <a class="cite" data-ref="waymo16b"></a>; la decimoquinta ciudad de EE. UU. en septiembre de 2026 <a class="cite" data-ref="waymodebt"></a>.</li>
+        <li><strong>6.ª generación</strong> sin conductor desde el <span class="nw">12-02-2026</span>, con menos de la mitad de cámaras que la 5.ª <a class="cite" data-ref="waymo6gen"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+    <figure class="foto duo prop" style="--foto-h:162px; --duo: minmax(0, 1.33fr) minmax(0, 2fr)">
+      <img src="img/waymo-ipace-2023.webp" width="1400" height="1050" alt="Jaguar I-Pace de Waymo sin conductor en San Francisco">
+      <img src="img/waymo-ojai-2026.webp" width="1400" height="700" alt="Waymo Ojai de sexta generación en Mission Street, San Francisco">
+      <figcaption>5.ª generación sobre un Jaguar I-Pace, sin nadie en el asiento del conductor (2023), y 6.ª generación sobre el Ojai fabricado por Zeekr (<span class="nw">23-07-2026</span>), en San Francisco.
+        <span class="xsmall">Fotos: Dllu, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Waymo_Jaguar_I-Pace_in_San_Francisco_2023_dllu.jpg">Commons</a>); Daniel Lu, <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Waymo_Ojai_robotaxi_on_Mission_Street_San_Francisco_2026_dllu.jpg">Commons</a>). Redimensionadas.</span></figcaption>
+    </figure>
+    <div class="callout realidad"><span class="tag">Fechas de corte</span>La misma empresa dio 127 M de millas (<span class="nw">02-2026</span>), «nearly 200 million» (<span class="nw">02-2026</span>) y 271,3 M (datos a <span class="nw">06-2026</span>): cada cifra lleva su fecha. La flota no se publica; el recall de <span class="nw">12-2025</span> afectó a 3067 vehículos con el software sin conductor de 5.ª generación <a class="cite" data-ref="nhtsa25e084"></a>.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · Waymo por dentro</p>
+  <h2>Un modelo rápido y uno lento, un profesor grande y un alumno en el coche</h2>
+  <div class="cols w60">
+    <figure class="fig">
+      <svg viewBox="0 0 600 330" role="img" aria-label="Arquitectura descrita por Waymo: codificador rápido, VLM lento, decodificador, destilación, validación a bordo, simulador y crítico">
+        <rect x="10" y="10" width="380" height="200" rx="12" class="box-soft"/>
+        <text x="200" y="32" text-anchor="middle" font-size="15" class="t-bold">Waymo Foundation Model (en la nube)</text>
+        <rect x="24" y="46" width="170" height="64" rx="10" class="box-time"/>
+        <text x="109" y="70" text-anchor="middle" font-size="14" class="t-bold">Codificador de fusión</text>
+        <text x="109" y="88" text-anchor="middle" font-size="12">cámara, lidar y radar</text>
+        <text x="109" y="104" text-anchor="middle" font-size="12" class="t-time">«think fast»</text>
+        <rect x="206" y="46" width="170" height="64" rx="10" class="box-tesis"/>
+        <text x="291" y="70" text-anchor="middle" font-size="14" class="t-bold">VLM de conducción</text>
+        <text x="291" y="88" text-anchor="middle" font-size="12">entrenado con Gemini</text>
+        <text x="291" y="104" text-anchor="middle" font-size="12" class="t-tesis">«think slow»</text>
+        <line x1="109" y1="110" x2="160" y2="134" class="ln"/>
+        <line x1="291" y1="110" x2="240" y2="134" class="ln"/>
+        <rect x="100" y="134" width="200" height="60" rx="10" class="box-accent"/>
+        <text x="200" y="156" text-anchor="middle" font-size="14" class="t-bold">Decodificador del mundo</text>
+        <text x="200" y="174" text-anchor="middle" font-size="12">predice agentes, mapa,</text>
+        <text x="200" y="188" text-anchor="middle" font-size="12">genera trayectorias</text>
+        <rect x="410" y="10" width="180" height="88" rx="10" class="box-soft"/>
+        <text x="500" y="34" text-anchor="middle" font-size="15" class="t-bold">Simulador</text>
+        <text x="500" y="54" text-anchor="middle" font-size="12">World Model sobre Genie 3:</text>
+        <text x="500" y="70" text-anchor="middle" font-size="12">genera cámara y lidar</text>
+        <text x="500" y="88" text-anchor="middle" font-size="12" class="t-muted">«billions of miles»</text>
+        <rect x="410" y="110" width="180" height="70" rx="10" class="box-soft"/>
+        <text x="500" y="134" text-anchor="middle" font-size="15" class="t-bold">Crítico</text>
+        <text x="500" y="154" text-anchor="middle" font-size="12">busca casos difíciles</text>
+        <text x="500" y="170" text-anchor="middle" font-size="12">y evalúa al conductor</text>
+        <line x1="390" y1="100" x2="410" y2="100" class="ln-dash"/>
+        <line x1="200" y1="210" x2="200" y2="236" class="ln"/>
+        <text x="212" y="230" font-size="12" class="t-muted">destilación: profesor → alumno</text>
+        <rect x="40" y="240" width="520" height="80" rx="12" class="box-accent"/>
+        <text x="300" y="262" text-anchor="middle" font-size="15" class="t-bold">En el coche (todo a bordo)</text>
+        <rect x="60" y="272" width="220" height="38" rx="8" class="box-soft"/>
+        <text x="170" y="296" text-anchor="middle" font-size="13">conductor «alumno» pequeño</text>
+        <rect x="320" y="272" width="220" height="38" rx="8" class="box-soft"/>
+        <text x="430" y="296" text-anchor="middle" font-size="13">validación independiente</text>
+        <line x1="280" y1="291" x2="320" y2="291" class="ln"/>
+      </svg>
+      <figcaption>Esquema del curso a partir de lo que describe Waymo <a class="cite" data-ref="waymowfm,waymowwm"></a>: los mismos bloques de A12b (dos sistemas) y de A8b (world model como simulador), a escala de flota.</figcaption>
+    </figure>
+    <div class="stack">
+      <ul>
+        <li>Los modelos «profesor» no caben en el coche: se destilan en «alumnos» pequeños, y una capa de validación separada comprueba cada trayectoria <a class="cite" data-ref="waymowfm"></a>.</li>
+        <li>A bordo: un chip propio de 5 nm con más de 1000 TOPS, 13 cámaras de alta resolución y un cómputo «designed like two independent engines» <a class="cite" data-ref="waymocompute"></a> (según Waymo).</li>
+      </ul>
+      <figure class="foto" style="--foto-h:210px">
+        <img src="img/waymo-sensores.webp" width="1200" height="801" alt="Paquete lateral de sensores de un Waymo Jaguar I-Pace">
+        <figcaption>Uno de los cuatro paquetes laterales de sensores del I-Pace.
+          <span class="xsmall">Foto: 9yz, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Waymo_Jaguar_I-Pace_-_Side_Sensor_Closeup.jpg">Commons</a>). Redimensionada.</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · leer la seguridad · derivación</p>
+  <h2>Tres lesiones graves en 271 millones de millas: el intervalo exacto de Poisson</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <div class="table-wrap">
+        <table class="t">
+          <tr><th style="width:6%">#</th><th style="width:46%">Paso</th><th>Por qué</th></tr>
+          <tr><td><strong>1</strong></td><td>\(x \sim \mathrm{Poisson}(\mu)\), \(\mu = \lambda M\)</td><td>eventos raros e independientes en \(M\) millones de millas</td></tr>
+          <tr><td><strong>2</strong></td><td>\(\mu_U\): \(P(X \le x \mid \mu_U) = \alpha/2\)</td><td>con más \(\mu\), ver tan pocos sería raro</td></tr>
+          <tr><td><strong>3</strong></td><td>\(\mu_L\): \(P(X \ge x \mid \mu_L) = \alpha/2\)</td><td>con menos \(\mu\), ver tantos sería raro</td></tr>
+          <tr><td><strong>4</strong></td><td>\(\mu_L = \tfrac12\chi^2_{\alpha/2,\,2x}\), \(\mu_U = \tfrac12\chi^2_{1-\alpha/2,\,2x+2}\)</td><td>la cola de la Poisson es una \(\chi^2\) (o bisección)</td></tr>
+          <tr><td><strong>5</strong></td><td>\(\lambda \in [\mu_L/M,\ \mu_U/M]\)</td><td>se pasa de eventos a tasa</td></tr>
+          <tr><td><strong>6</strong></td><td>\(RR = \lambda/\lambda_h\)</td><td>razón frente a la tasa humana de referencia</td></tr>
+        </table>
+      </div>
+      <p class="small">\(x\): eventos de Waymo; \(M\): millones de millas; \(\lambda\): tasa por millón de millas; \(\mu\): eventos esperados; \(\lambda_h\): tasa humana; \(RR\): razón de tasas.</p>
+    </div>
+    <div class="stack">
+      <p><strong>Ejemplo</strong> (lesión grave o peor, datos a junio de 2026 <a class="cite" data-ref="waymohub"></a>): la tasa publicada, 0,01106 por millón de millas, por \(M = 271{,}3\) da \(x = 3\) eventos.</p>
+      <p>\(\mu \in [0{,}619;\ 8{,}767]\), así que \(\lambda \in [0{,}00228;\ 0{,}0323]\) por millón de millas.</p>
+      <div class="callout clave"><span class="tag">Comprobación</span>El hub de Waymo publica exactamente [0,00228; 0,03231], y dice que usa el método exacto de Poisson. Lo mismo con «cualquier lesión» (183 eventos) y con los airbags (80): el script reproduce sus tres intervalos.</div>
+      <p class="xsmall muted">Script: <code>ejemplos_r1a.py</code>, apartado 7.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · leer la seguridad · resultado</p>
+  <h2>La reducción es grande y significativa; el intervalo, ancho; la referencia, ajustada</h2>
+  <div class="cols w60">
+    <div class="stack">
+    <figure class="fig">
+<!--SVG:waymo-->
+<svg viewBox="0 0 650 242" style="max-height:270px" role="img" aria-label="Tasas de incidentes por millón de millas de Waymo y de la referencia humana con intervalos al 95 por ciento">
+<line x1="20.0" y1="196.0" x2="350.0" y2="196.0" class="ln"/>
+<line x1="20.0" y1="4.0" x2="20.0" y2="196.0" class="ln"/>
+<line x1="20.0" y1="4.0" x2="20.0" y2="196.0" class="ln-rule"/>
+<text x="20.0" y="214.0" text-anchor="middle" font-size="13" class="t-muted">0,001</text>
+<line x1="102.5" y1="4.0" x2="102.5" y2="196.0" class="ln-rule"/>
+<text x="102.5" y="214.0" text-anchor="middle" font-size="13" class="t-muted">0,01</text>
+<line x1="185.0" y1="4.0" x2="185.0" y2="196.0" class="ln-rule"/>
+<text x="185.0" y="214.0" text-anchor="middle" font-size="13" class="t-muted">0,1</text>
+<line x1="267.5" y1="4.0" x2="267.5" y2="196.0" class="ln-rule"/>
+<text x="267.5" y="214.0" text-anchor="middle" font-size="13" class="t-muted">1</text>
+<line x1="350.0" y1="4.0" x2="350.0" y2="196.0" class="ln-rule"/>
+<text x="350.0" y="214.0" text-anchor="middle" font-size="13" class="t-muted">10</text>
+<text x="185.0" y="234.0" text-anchor="middle" font-size="14" class="t-muted">incidentes por millón de millas (escala logarítmica)</text>
+<text x="372.0" y="214.0" font-size="12" class="t-muted">tasa [IC al 95 %]</text>
+<text x="26.0" y="20.0" font-size="14" class="t-bold">lesión grave o peor</text>
+<line x1="49.5" y1="34.0" x2="144.5" y2="34.0" class="ln-accent" stroke-width="3"/>
+<circle cx="106.1" cy="34.0" r="4.5" class="fill-accent"/>
+<text x="372.0" y="38.5" font-size="13" class="t-mono t-accent" xml:space="preserve">Waymo   0,0111 [0,00228; 0,0323]</text>
+<line x1="211.0" y1="51.0" x2="213.3" y2="51.0" class="ln-time" stroke-width="3"/>
+<circle cx="212.2" cy="51.0" r="4.5" class="fill-time"/>
+<text x="372.0" y="55.5" font-size="13" class="t-mono t-time" xml:space="preserve">humanos 0,213 [0,206; 0,22]</text>
+<text x="26.0" y="84.0" font-size="14" class="t-bold">airbag (cualquier vehículo)</text>
+<line x1="215.4" y1="98.0" x2="231.6" y2="98.0" class="ln-accent" stroke-width="3"/>
+<circle cx="223.7" cy="98.0" r="4.5" class="fill-accent"/>
+<text x="372.0" y="102.5" font-size="13" class="t-mono t-accent" xml:space="preserve">Waymo   0,295 [0,234; 0,367]</text>
+<line x1="284.1" y1="115.0" x2="285.0" y2="115.0" class="ln-time" stroke-width="3"/>
+<circle cx="284.5" cy="115.0" r="4.5" class="fill-time"/>
+<text x="372.0" y="119.5" font-size="13" class="t-mono t-time" xml:space="preserve">humanos 1,61 [1,59; 1,63]</text>
+<text x="26.0" y="148.0" font-size="14" class="t-bold">cualquier lesión</text>
+<line x1="248.0" y1="162.0" x2="258.6" y2="162.0" class="ln-accent" stroke-width="3"/>
+<circle cx="253.4" cy="162.0" r="4.5" class="fill-accent"/>
+<text x="372.0" y="166.5" font-size="13" class="t-mono t-accent" xml:space="preserve">Waymo   0,674 [0,58; 0,78]</text>
+<line x1="314.8" y1="179.0" x2="315.3" y2="179.0" class="ln-time" stroke-width="3"/>
+<circle cx="315.1" cy="179.0" r="4.5" class="fill-time"/>
+<text x="372.0" y="183.5" font-size="13" class="t-mono t-time" xml:space="preserve">humanos 3,77 [3,74; 3,8]</text>
+</svg>
+<!--/SVG:waymo-->
+      <figcaption>Tasas por millón de millas de Waymo y de la referencia humana, con los intervalos al 95 % que publica el hub (datos a junio de 2026) <a class="cite" data-ref="waymohub"></a>.</figcaption>
+    </figure>
+      <div class="callout tesis"><span class="tag">Para tu tesis</span>Así se publica una comparación seria: método, referencia, intervalos y limitaciones a la vista. Tu tesis puede hacer lo mismo con un simulador y registros reales.</div>
+    </div>
+    <div class="stack">
+      <ul>
+        <li>Lesión grave: −94,8 %, con un intervalo de −99,2 % a −83,2 % según Waymo. Tratando la tasa humana como conocida, el curso obtiene [−98,9 %; −84,9 %]: casi lo mismo, porque la referencia (miles de eventos) apenas añade incertidumbre.</li>
+        <li>Peatones: 7 frente a 93 esperados; la razón queda entre 0,030 y 0,155.</li>
+        <li>La referencia se ajusta a dónde conduce Waymo, quita autopistas y solo en «cualquier lesión» corrige un 32 % de accidentes no denunciados.</li>
+        <li>Aun con cero lesiones graves, acotar la tasa por debajo del 10 % de la humana pediría unos 141 M de millas (regla del tres por distancia, en R1b).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · el recall 25E084</p>
+  <h2>Un cambio en la predicción de otros agentes y 3067 coches que pasaban autobuses escolares</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <figure class="fig">
+        <svg viewBox="0 0 640 150" role="img" aria-label="Cronología del recall 25E084 de Waymo, de agosto a diciembre de 2025">
+          <line x1="20" y1="70" x2="620" y2="70" class="ln"/>
+          <circle cx="40" cy="70" r="6" class="fill-accent"/>
+          <text x="40" y="50" text-anchor="middle" font-size="12" class="t-bold">20-08</text>
+          <text x="40" y="94" text-anchor="middle" font-size="11">nueva versión</text>
+          <text x="40" y="108" text-anchor="middle" font-size="11">del software</text>
+          <circle cx="165" cy="70" r="6" class="fill-time"/>
+          <text x="165" y="50" text-anchor="middle" font-size="12" class="t-bold">22-09</text>
+          <text x="165" y="94" text-anchor="middle" font-size="11">primer caso</text>
+          <text x="165" y="108" text-anchor="middle" font-size="11">conocido</text>
+          <circle cx="290" cy="70" r="6" class="fill-time"/>
+          <text x="290" y="50" text-anchor="middle" font-size="12" class="t-bold">octubre</text>
+          <text x="290" y="94" text-anchor="middle" font-size="11">análisis de</text>
+          <text x="290" y="108" text-anchor="middle" font-size="11">la flota</text>
+          <circle cx="400" cy="70" r="6" class="fill-accent"/>
+          <text x="400" y="50" text-anchor="middle" font-size="12" class="t-bold">05–17-11</text>
+          <text x="400" y="94" text-anchor="middle" font-size="11">corrección</text>
+          <text x="400" y="108" text-anchor="middle" font-size="11">a todos</text>
+          <circle cx="510" cy="70" r="6" class="fill-tesis"/>
+          <text x="510" y="50" text-anchor="middle" font-size="12" class="t-bold">02-12</text>
+          <text x="510" y="94" text-anchor="middle" font-size="11">deciden</text>
+          <text x="510" y="108" text-anchor="middle" font-size="11">el recall</text>
+          <circle cx="600" cy="70" r="6" class="fill-tesis"/>
+          <text x="600" y="50" text-anchor="middle" font-size="12" class="t-bold">10-12</text>
+          <text x="600" y="94" text-anchor="middle" font-size="11">informe</text>
+          <text x="600" y="108" text-anchor="middle" font-size="11">a NHTSA</text>
+          <text x="320" y="140" text-anchor="middle" font-size="12" class="t-muted">2025 · 12 multas entre el 25-09 y el 14-11 · ninguna colisión</text>
+        </svg>
+      </figure>
+      <ul>
+        <li><strong>Qué pasaba:</strong> parado ante un autobús escolar con las luces o el brazo de STOP, el coche arrancaba antes de tiempo <a class="cite" data-ref="nhtsa25e084"></a>.</li>
+        <li><strong>Por qué:</strong> la versión del <span class="nw">20-08-2025</span> «included changes to the method for predicting the intended behavior of other agents»; el sistema llegaba a creer que estorbaba a un vehículo prioritario y avanzaba para dejarle paso.</li>
+        <li><strong>Cómo se vio:</strong> por vigilancia de la flota y por el aumento de casos; se corrigió a todos entre el 05 y el <span class="nw">17-11-2025</span>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <figure class="foto" style="--foto-h:200px">
+        <img src="img/waymo-pantalla.webp" width="1200" height="925" alt="Pantalla de navegación dentro de un Waymo con los coches de alrededor">
+        <figcaption>Lo que el coche enseña al pasajero de lo que percibe. La intención de los demás no se ve: se predice.
+          <span class="xsmall">Foto: Votpuske, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:Waymo_in-car_navigation_screen.jpg">Commons</a>). Redimensionada.</span></figcaption>
+      </figure>
+      <div class="callout tesis"><span class="tag">Observabilidad parcial</span>El estado que importaba (qué va a hacer el autobús y si de verdad estorbas) no se observa: se infiere. Cambiar ese módulo aprendido cambió el comportamiento en un caso raro que solo apareció en la flota. Evaluar una vez no basta: hay que vigilar después de cada versión.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · Apollo Go y Wayve</p>
+  <h2>Apollo Go mide en kilómetros y viajes; Wayve, en ciudades sin mapa</h2>
+  <div class="cols w60">
+    <div class="stack">
+      <ul>
+        <li><strong>Apollo Go (Baidu):</strong> 3,2 M de viajes sin conductor en el primer trimestre de 2026, con un pico de más de 350 000 por semana en marzo, y más de 22 M acumulados en abril <a class="cite" data-ref="apolloq1"></a>. En agosto: 28 ciudades, más de 240 M de km sin conductor y servicio sin conductor en Dubái <a class="cite" data-ref="apolloq2"></a>.</li>
+        <li>Su nota del segundo trimestre ya no da viajes. 240 M de km son 149 M de millas: frente a las 271 M de Waymo, pero sin una comparación de seguridad con método publicado.</li>
+        <li><strong>Wayve:</strong> conducción de extremo a extremo con cámaras y sin mapas de alta definición; dice haber conducido sin ajuste en más de 500 ciudades y entrenar con datos de más de 70 países <a class="cite" data-ref="wayved"></a>. Desde el <span class="nw">03-09-2026</span> lleva pasajeros de Uber en Londres, con conductor de seguridad <a class="cite" data-ref="wayveldn"></a>. Su world model, GAIA-2, está en A8b.</li>
+      </ul>
+      <div class="callout clave"><span class="tag">Lección</span>Cada empresa elige su métrica: kilómetros o millas, viajes o lesiones por millón de millas, ciudades «sin ajuste» o ciudades sin conductor. Antes de comparar, pasa todo a la misma unidad y mira qué deja de publicarse.</div>
+    </div>
+    <figure class="foto" style="--foto-h:220px">
+      <img src="img/apollo-go-rt6.webp" width="1400" height="788" alt="Apollo RT6 de Apollo Go en una avenida de Wuhan">
+      <figcaption>Un Apollo RT6 en la avenida Heping de Wuhan (<span class="nw">17-12-2025</span>), con matrícula de pruebas.
+        <span class="xsmall">Foto: S5A-0043, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a> (<a href="https://commons.wikimedia.org/wiki/File:(CHN-Hubei)_Apollo_Go_Apollo_RT6_Temporary-%E9%84%82A1395%E8%AF%95_2025-12-17.jpg">Commons</a>). Redimensionada.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conducción · y el dron</p>
+  <h2>Lo que un dron puede copiar de la conducción autónoma y lo que no</h2>
+  <div class="table-wrap">
+    <table class="t">
+      <tr><th style="width:22%">Pieza</th><th>Se puede copiar</th><th>No se puede copiar (todavía)</th></tr>
+      <tr><td>Arquitectura</td><td>un nivel rápido y uno lento; destilar un profesor grande en un alumno pequeño</td><td>más de 1000 TOPS con refrigeración líquida del coche</td></tr>
+      <tr><td>Seguridad</td><td>una validación independiente de la red que genera la trayectoria (A14)</td><td>parar en el arcén: un dron que duda no puede quedarse quieto en el aire sin gastar energía</td></tr>
+      <tr><td>Datos</td><td>world model para casos raros; registros de flota para buscar fallos</td><td>271 M de millas con sensores: ninguna flota de drones publica algo parecido</td></tr>
+      <tr><td>Evaluación</td><td>tasas por exposición con intervalos exactos y referencia ajustada</td><td>una referencia humana con millones de eventos registrados por la policía</td></tr>
+      <tr><td>Regulación</td><td>recalls y avisos públicos como fuente de fallos (C7)</td><td>el marco: en drones es otro (EASA, FAA), y lo cuenta R1b</td></tr>
+    </table>
+  </div>
+  <div class="callout tesis"><span class="tag">Tu tesis</span>La conducción es el mejor ejemplo de <em>belief</em> en producción: el coche predice la intención de cada agente que ve. Un dron que busca bajo GNSS degradado tiene el mismo problema con menos sensores, menos cómputo y sin poder pararse.</div>
+</section>
+
+<section class="slide divider" data-section="¿Y los drones?">
+  <p class="num">Parte 7</p>
+  <h2>Y los drones, ¿dónde están en estos labs?</h2>
+  <p>Casi ausentes. Por qué, y dónde está la autonomía aérea que sí vuela: en R1b.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">¿Y los drones? · ausencia y motivos</p>
+  <h2>Ninguno de los grandes labs publica un modelo para drones; las razones son medibles</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li>Ni Gemini Robotics 2 ni 2.5 mencionan robots aéreos <a class="cite" data-ref="gdmgr2,gdmgr25"></a>; tampoco el anuncio de NVIDIA de GTC 2026 <a class="cite" data-ref="nvgtc26"></a> ni las plataformas de π0.7 <a class="cite" data-ref="pi2026"></a>. Lo más cerca: CrossFormer voló un Tello sin datos de cuadricóptero (A12b) <a class="cite" data-ref="doshi2024"></a>.</li>
+        <li><strong>Datos:</strong> OXE, DROID y AgiBot World son de manipulación; no hay flotas de teleoperación aérea (parte 2).</li>
+        <li><strong>Riesgo y evaluación:</strong> los 356 ensayos por política de la parte 4 son 356 vuelos; un fallo no tira una taza, estrella el dron.</li>
+        <li><strong>Latencia y cómputo:</strong> un modelo de 3000 M tarda <span class="hz">149 ms</span> en un Jetson Orin y <span class="hz">76,8 ms</span> en un Thor de 40–130 W <a class="cite" data-ref="gr00trepo,nvrefhum"></a>; el lazo de <em>rate</em> de un multirrotor va a cientos o miles de hercios (M0). La energía de llevar ese cómputo, en R1b.</li>
+      </ul>
+    </div>
+    <div class="stack">
+    <figure class="fig">
+      <svg viewBox="0 0 600 255" role="img" aria-label="Escalera de frecuencias de un dron frente a la frecuencia de un VLA a bordo">
+        <line x1="100" y1="12" x2="100" y2="248" class="ln"/>
+        <text x="90" y="24" text-anchor="end" font-size="13" class="t-muted">10 kHz</text>
+        <text x="90" y="79" text-anchor="end" font-size="13" class="t-muted">1 kHz</text>
+        <text x="90" y="134" text-anchor="end" font-size="13" class="t-muted">100 Hz</text>
+        <text x="90" y="189" text-anchor="end" font-size="13" class="t-muted">10 Hz</text>
+        <text x="90" y="244" text-anchor="end" font-size="13" class="t-muted">1 Hz</text>
+        <line x1="95" y1="20" x2="105" y2="20" class="ln"/><line x1="95" y1="75" x2="105" y2="75" class="ln"/><line x1="95" y1="130" x2="105" y2="130" class="ln"/><line x1="95" y1="185" x2="105" y2="185" class="ln"/><line x1="95" y1="240" x2="105" y2="240" class="ln"/>
+        <rect x="120" y="26" width="460" height="70" rx="8" class="box-accent"/>
+        <text x="350" y="54" text-anchor="middle" class="t-bold">lazo de rate</text>
+        <text x="350" y="78" text-anchor="middle" font-size="14">PX4: 400–800 Hz; Betaflight: 3,2–8 kHz (M0)</text>
+        <rect x="120" y="104" width="460" height="40" rx="8" class="box-soft"/>
+        <text x="350" y="129" text-anchor="middle" font-size="14">actitud y posición (A2)</text>
+        <rect x="120" y="150" width="460" height="52" rx="8" class="box-tesis"/>
+        <text x="350" y="172" text-anchor="middle" class="t-bold">VLA de 3000 M a bordo</text>
+        <text x="350" y="193" text-anchor="middle" font-size="14">Thor 13 Hz · Orin 6,7 Hz (GR00T N1.7)</text>
+        <rect x="120" y="208" width="460" height="40" rx="8" class="box-soft"/>
+        <text x="350" y="233" text-anchor="middle" font-size="14">planificar una misión, razonar (A11)</text>
+      </svg>
+      <figcaption>Escalera de frecuencias de un multirrotor (M0) frente a un modelo grande medido en la GPU de un robot (escala logarítmica, orientativa). El modelo grande solo cabe en los peldaños de abajo.</figcaption>
+    </figure>
+    <div class="callout clave"><span class="tag">Puente a R1b</span>La autonomía aérea que vuela hoy en producción no sale de estos labs, sino de empresas de drones con pilas híbridas: estimación clásica, redes para percibir y control probado. R1b las desmonta una a una.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-section="Cierre">
+  <p class="kicker">Hacia dónde va</p>
+  <h2>Lo que probablemente veremos en 2027 (previsiones, no hechos)</h2>
+  <div class="cols">
+    <div class="stack">
+      <ul>
+        <li><strong>Más datos humanos y menos de robot</strong> en la base: GEN-1 ya preentrena sin datos de robot <a class="cite" data-ref="gen1"></a>, y NVIDIA y Figure compran vídeo egocéntrico a escala <a class="cite" data-ref="gr00tn17,figindex26"></a>.</li>
+        <li><strong>World models como simulador y como examen:</strong> Waymo, 1X y Google DeepMind ya los usan <a class="cite" data-ref="waymowwm,onexwm,gdmveo"></a>; GR00T 2 (<span class="nw">09-11-2026</span>) ya es un «world action model», que predice a la vez el vídeo futuro y las acciones <a class="cite" data-ref="gr00t2"></a>.</li>
+        <li><strong>Humanoides con cliente:</strong> 25 000 Atlas planeados por Hyundai, Digit 5 a finales de 2027, Figure fabricando uno por hora <a class="cite" data-ref="bdrmac26,agility26,figramp26"></a>.</li>
+      </ul>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Previsión (no un hecho)</span>Es probable que las evaluaciones independientes (RoboArena y sucesoras) pesen más, porque los anuncios sin \(n\) ya no distinguen a nadie. Lo que no cambiará pronto: la hora de persona seguirá siendo lo más caro, y los modelos grandes no entrarán en los lazos rápidos.</div>
+      <div class="callout tesis"><span class="tag">Tu tesis</span>En drones, el hueco sigue abierto: nadie ha publicado un modelo fundacional aéreo con datos, cómputo y evaluación como los de esta jornada.</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Conexión con la tesis</p>
+  <h2>Qué haría falta para que tu resultado fuera creíble con las varas de hoy</h2>
+  <div class="cols c4 body cards-sm">
+    <div class="card">
+      <span class="meta">DATOS</span>
+      <h3>Tu pirámide</h3>
+      <p>Base: tu simulador en JAX (millones de episodios). Medio: escenas reales reconstruidas (T1b). Cima: registros públicos de PX4. Publica cuántos y de dónde, como DROID.</p>
+    </div>
+    <div class="card">
+      <span class="meta">EVALUACIÓN</span>
+      <h3>Con su \(n\)</h3>
+      <p>Del orden de 356 episodios por variante para separar 10 puntos; Wilson en cada tasa; regla del tres si no hay fallos; semillas y escenarios fijados antes, y comparación a ciegas si alguien puntúa.</p>
+    </div>
+    <div class="card">
+      <span class="meta">LATENCIA</span>
+      <h3>Medida en el hardware</h3>
+      <p>Como el README de GR00T: mediana de muchas llamadas, en la GPU que llevaría el dron, y la frecuencia que de verdad sale. El <em>belief</em> en el nivel lento.</p>
+    </div>
+    <div class="card">
+      <span class="meta">APERTURA</span>
+      <h3>Que se pueda repetir</h3>
+      <p>Código, pesos y entornos públicos. Hoy eso te pone, en drones, por delante de los grandes labs.</p>
+    </div>
+  </div>
+  <div class="callout tesis"><span class="tag">Preguntas abiertas</span>¿Qué parte de la pirámide sirve para un dron si casi no hay cima? ¿Tu world model puede ser tu evaluador barato, y cómo mides su acuerdo con la realidad? ¿Qué no puede ver un dron que un coche sí, y cómo lo representa el <em>belief</em>?</div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Resumen</p>
+  <h2>Lo que te llevas de R1a</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">DATOS Y CÓMPUTO</span>
+      <h3>La hora de persona manda</h3>
+      <p>Teleoperar rinde 35 demostraciones por hora; UMI, 111; la mano, 231. 10 000 demostraciones teleoperadas: unas 290 h y 10 000 US$ con supuestos. El único cómputo publicado (GR00T N1): unas 50 000 h de H100. GR00T N1.7 tarda 149 ms en un Orin y 77 ms en un Thor.</p>
+    </div>
+    <div class="card">
+      <span class="meta">EVALUACIÓN</span>
+      <h3>Sin \(n\) no hay dato</h3>
+      <p>356 ensayos por política para separar 60 % de 70 %; «20 de 20» garantiza un 86 %; un «96 %» sin \(n\) cabe entre 0,81 y 0,99. TRI y RoboArena enseñan cómo evaluar en serio; los blogs de 2026 no dan \(n\).</p>
+    </div>
+    <div class="card">
+      <span class="meta">REALIDAD</span>
+      <h3>Demo, piloto, producto</h3>
+      <p>Teleoperación declarada (1X) o descubierta (Tesla); despliegues con cifras incompletas (Figure, Agility). Waymo: 271 M de millas, intervalos que se pueden reproducir y un recall que enseña observabilidad parcial. Los drones, casi ausentes: R1b.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 1 de 3</p>
+  <h2>Datos y cómputo</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">1. Recoges datos teleoperando a 35 demostraciones por hora con 10 puestos. Si pasas a 20 puestos, ¿qué cambia?</p>
+      <ol class="opts">
+        <li><button type="button">Bajan a la mitad las horas de operador y los días</button></li>
+        <li><button type="button">No cambia nada: el ritmo es por operador</button></li>
+        <li><button type="button">Los días bajan a la mitad; las horas de operador, no</button></li>
+        <li><button type="button">Las horas de operador bajan a la mitad; los días, no</button></li>
+      </ol>
+      <p class="explain">\(D = N/(rRh)\) baja a la mitad, pero \(H_{\mathrm{op}} = N/r\) no depende de \(R\): paralelizar acorta el calendario, no la factura de operadores (sí sube el equipo a amortizar).</p>
+    </div>
+    <div class="quiz" data-answer="1">
+      <p class="q">2. GR00T N1.7 tarda 149 ms en un Jetson Orin. El robot ejecuta acciones a 50 Hz. ¿Cuántas acciones del trozo hay que ejecutar como mínimo antes de pedir el siguiente?</p>
+      <ol class="opts">
+        <li><button type="button">1</button></li>
+        <li><button type="button">8</button></li>
+        <li><button type="button">4</button></li>
+        <li><button type="button">50</button></li>
+      </ol>
+      <p class="explain">\(N_{\mathrm{ejec}} \ge \delta f_a = 0{,}149 \cdot 50 = 7{,}45\): al menos 8. Si se ejecutan menos, el robot se queda sin acciones antes de que llegue el trozo nuevo.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 2 de 3</p>
+  <h2>Evaluación</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="3">
+      <p class="q">3. Una política acierta 30 de 30. ¿Qué tasa de éxito puedes garantizar al 95 %?</p>
+      <ol class="opts">
+        <li><button type="button">100 %</button></li>
+        <li><button type="button">97 %</button></li>
+        <li><button type="button">99 %</button></li>
+        <li><button type="button">≈ 90 %</button></li>
+      </ol>
+      <p class="explain">\(p_L = 0{,}05^{1/30} = 0{,}905\); la regla del tres da \(1 - 3/30 = 0{,}90\). Para garantizar el 99 % harían falta 299 aciertos seguidos.</p>
+    </div>
+    <div class="quiz" data-answer="0">
+      <p class="q">4. Para separar 60 % de 70 % hacen falta unos 356 ensayos por política. ¿Cuántos, aproximadamente, para separar 60 % de 80 % (misma \(\alpha\) y potencia)?</p>
+      <ol class="opts">
+        <li><button type="button">≈ 80</button></li>
+        <li><button type="button">≈ 180</button></li>
+        <li><button type="button">≈ 356: no depende de la diferencia</button></li>
+        <li><button type="button">≈ 1400</button></li>
+      </ol>
+      <p class="explain">\(n \propto 1/\Delta^2\): con el doble de diferencia, unas cuatro veces menos. La fórmula exacta da 81 (las varianzas también cambian un poco).</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Autoevaluación · 3 de 3</p>
+  <h2>Leer la realidad</h2>
+  <div class="cols">
+    <div class="quiz" data-answer="2">
+      <p class="q">5. Waymo tiene 3 lesiones graves en 271,3 M de millas y la referencia humana, 0,213 por millón. ¿Por qué el intervalo de su reducción (de −99 % a −83 %) es tan ancho?</p>
+      <ol class="opts">
+        <li><button type="button">Porque la referencia humana tiene pocos eventos</button></li>
+        <li><button type="button">Porque se ajustó por zonas</button></li>
+        <li><button type="button">Porque con 3 eventos el intervalo de Poisson va de 0,6 a 8,8 eventos</button></li>
+        <li><button type="button">Porque se usa la normal en lugar de Poisson</button></li>
+      </ol>
+      <p class="explain">Con \(x = 3\), \(\mu \in [0{,}62;\ 8{,}77]\): la tasa puede ser 14 veces mayor que la mínima. La referencia tiene miles de eventos y aporta poca incertidumbre; el método es exacto, no normal.</p>
+    </div>
+    <div class="stack">
+      <p class="q" style="font-weight:700; font-size:18px;">6. Pregunta abierta: diseña la evaluación de tu política de búsqueda con <em>belief</em> para que pase el filtro de credibilidad de M0.</p>
+      <details class="deriv"><summary>Ver respuesta</summary>
+        <p class="small">Una respuesta razonable. Fija antes la métrica (éxito en encontrar el objetivo en un tiempo máximo y tiempo hasta encontrarlo), los escenarios y las semillas. Compara con líneas base fuertes (una política con memoria recurrente sin <em>belief</em> explícito y un planificador clásico) en el mismo simulador. Usa del orden de 350 episodios por variante si quieres separar 10 puntos, y da cada tasa con su intervalo de Wilson; si una variante no falla nunca, da su cota por la regla del tres. Mide la latencia del modelo en la GPU que llevaría el dron (mediana de muchas llamadas) y di a qué frecuencia decide. Si alguien puntúa a mano, que no sepa qué política mira y en orden aleatorio, como TRI. Valida en registros reales (T1b) o en unos pocos vuelos, sabiendo que esos pocos vuelos solo sirven para descartar sorpresas grandes. Publica código, pesos, escenarios y los fallos descritos.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Lecturas guiadas</p>
+  <h2>Tres lecturas esenciales y por dónde entrarles</h2>
+  <div class="cols c3 body cards-sm">
+    <div class="card">
+      <span class="meta">ESENCIAL 1 · 60 MIN · INFORME</span>
+      <h3>TRI, «A careful examination of large behavior models» <a class="cite" data-ref="tri2025"></a></h3>
+      <p><strong>Lee:</strong> la sección de evaluación (protocolo ciego, rúbricas, estadística) y los resultados agregados.</p>
+      <p><strong>Busca:</strong> cuándo el preentrenamiento ayuda con significación y cuándo no.</p>
+      <p><strong>Responde:</strong> ¿cuántas tareas y ensayos necesitarías tú para afirmar algo parecido de tu dron?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 2 · 40 MIN · ARTÍCULO</span>
+      <h3>RoboArena <a class="cite" data-ref="atreya2025"></a></h3>
+      <p><strong>Lee:</strong> cómo se recogen las preferencias por parejas y el modelo de Bradley–Terry ampliado.</p>
+      <p><strong>Busca:</strong> por qué comparar en la misma escena reduce los ensayos necesarios.</p>
+      <p><strong>Responde:</strong> ¿se podría montar una «arena» de políticas de drones en simulación? ¿Qué haría de escena?</p>
+    </div>
+    <div class="card">
+      <span class="meta">ESENCIAL 3 · 30 MIN · DATOS PÚBLICOS</span>
+      <h3>Hub de seguridad de Waymo y el recall 25E084 <a class="cite" data-ref="waymohub,nhtsa25e084"></a></h3>
+      <p><strong>Lee:</strong> las notas de método del hub y las cuatro páginas del recall.</p>
+      <p><strong>Busca:</strong> qué ajustes lleva la referencia humana y qué cambio del software causó el fallo.</p>
+      <p><strong>Responde:</strong> ¿qué vigilarías en una flota de drones después de cada versión?</p>
+    </div>
+  </div>
+  <p class="small"><strong>Para profundizar:</strong> la pirámide y el cómputo de GR00T N1 <a class="cite" data-ref="bjorck2025"></a>; DROID <a class="cite" data-ref="khazatsky2024"></a>; UMI <a class="cite" data-ref="chi2024"></a>; buenas prácticas de evaluación <a class="cite" data-ref="kressgazit2024"></a>; el world model de 1X como evaluador <a class="cite" data-ref="onexwm"></a>; π0.7 <a class="cite" data-ref="pi2026"></a>.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Laboratorio</p>
+  <h2>Audita los datos y las afirmaciones de un lab</h2>
+  <div class="cols">
+    <div class="stack">
+      <p>Unas 3 h, solo CPU y sin cuentas. Enunciado en <code>lab/README.md</code>.</p>
+      <ol>
+        <li><strong>Datasets:</strong> lee solo los metadatos de seis conjuntos en formato LeRobot del Hugging Face Hub (DROID, ALOHA, Bridge, Fractal, LIBERO): episodios, horas, fps, dimensión de acción. Tabla y figura de escalas.</li>
+        <li><strong>Estadística:</strong> Wilson, potencia y regla del tres para tres resultados publicados con su \(n\).</li>
+        <li><strong>Vídeos:</strong> aplica la lista de seis preguntas a dos vídeos oficiales de 2025–2026 y escribe tu veredicto.</li>
+        <li><strong>Waymo:</strong> reproduce los intervalos de Poisson del hub.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="callout clave"><span class="tag">Qué verificas</span>Los 356 ensayos por política; el 0,861 de «20 de 20»; el intervalo [0,00228; 0,0323] de Waymo; los 16,6 s por trayectoria de DROID y la diferencia entre sus 76 000 trayectorias y los episodios de la copia en Hugging Face.</div>
+      <div class="callout realidad"><span class="tag">Hardware</span>Cualquier ordenador con Python. No descargas vídeo: solo ficheros de metadatos de pocos kilobytes. Ningún conjunto del lab pide cuenta ni aceptar condiciones.</div>
+      <p class="xsmall muted">Figuras: <code>figuras/figuras_r1a.py</code>; cuentas: <code>figuras/ejemplos_r1a.py</code>; cifras y fuentes: <code>figuras/datos/cifras.json</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-section="Referencias">
+  <p class="kicker">Referencias · 1 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs">
+    <li id="ref-levine2016">Levine, S., Pastor, P., Krizhevsky, A., Quillen, D. (2016). Learning hand-eye coordination for robotic grasping with deep learning and large-scale data collection. Versión ampliada del artículo de ISER 2016. <a href="https://arxiv.org/abs/1603.02199">arXiv:1603.02199</a></li>
+    <li id="ref-kalashnikov2018">Kalashnikov, D., Irpan, A., Pastor, P., Ibarz, J., et al. (2018). QT-Opt: Scalable deep reinforcement learning for vision-based robotic manipulation. <a href="https://arxiv.org/abs/1806.10293">arXiv:1806.10293</a></li>
+    <li id="ref-brohan2023">Brohan, A., Brown, N., Carbajal, J., Chebotar, Y., Dabis, J., Finn, C., et al. (2023). RT-1: Robotics transformer for real-world control at scale. <span class="venue">Robotics: Science and Systems XIX</span>. <a href="https://doi.org/10.15607/RSS.2023.XIX.025">doi:10.15607/RSS.2023.XIX.025</a>. <a href="https://arxiv.org/abs/2212.06817">arXiv:2212.06817</a></li>
+    <li id="ref-zhao2023">Zhao, T. Z., Kumar, V., Levine, S., Finn, C. (2023). Learning fine-grained bimanual manipulation with low-cost hardware. <span class="venue">Robotics: Science and Systems XIX</span>. <a href="https://doi.org/10.15607/RSS.2023.XIX.016">doi:10.15607/RSS.2023.XIX.016</a>. <a href="https://arxiv.org/abs/2304.13705">arXiv:2304.13705</a></li>
+    <li id="ref-oxe2024">Open X-Embodiment Collaboration (O'Neill, A., Rehman, A., Maddukuri, A., et al.) (2024). Open X-Embodiment: Robotic learning datasets and RT-X models. <span class="venue">ICRA 2024</span>, 6892–6903. <a href="https://doi.org/10.1109/ICRA57147.2024.10611477">doi:10.1109/ICRA57147.2024.10611477</a>. <a href="https://arxiv.org/abs/2310.08864">arXiv:2310.08864</a> (CC BY 4.0)</li>
+    <li id="ref-khazatsky2024">Khazatsky, A., Pertsch, K., Nair, S., et al. (2024). DROID: A large-scale in-the-wild robot manipulation dataset. <span class="venue">Robotics: Science and Systems XX</span>. <a href="https://doi.org/10.15607/RSS.2024.XX.120">doi:10.15607/RSS.2024.XX.120</a>. <a href="https://arxiv.org/abs/2403.12945">arXiv:2403.12945</a> (CC BY 4.0)</li>
+    <li id="ref-chi2024">Chi, C., Xu, Z., Pan, C., Cousineau, E., Burchfiel, B., Feng, S., Tedrake, R., Song, S. (2024). Universal Manipulation Interface: In-the-wild robot teaching without in-the-wild robots. <a href="https://arxiv.org/abs/2402.10329">arXiv:2402.10329</a></li>
+    <li id="ref-black2024">Black, K., Brown, N., Driess, D., Esmail, A., Equi, M., Finn, C., et al. (2024). π0: A vision-language-action flow model for general robot control. <a href="https://arxiv.org/abs/2410.24164">arXiv:2410.24164</a> (v4, 8 de enero de 2026)</li>
+    <li id="ref-bbgwr">Bloomberg (14 de octubre de 2024). Tesla's Optimus robots were remotely operated at Cybercab event. <a href="https://www.bloomberg.com/news/articles/2024-10-14/tesla-s-optimus-robots-were-remotely-operated-at-cybercab-event">bloomberg.com</a> (prensa; de pago, leídos el titular y el resumen)</li>
+    <li id="ref-tcwr">Bellan, R. (14 de octubre de 2024). Tesla Optimus bots were controlled by humans during the 'We, Robot' event. <span class="venue">TechCrunch</span>. <a href="https://techcrunch.com/2024/10/14/tesla-optimus-bots-were-controlled-by-humans-during-the-we-robot-event">techcrunch.com</a> (prensa)</li>
+    <li id="ref-bjorck2025">NVIDIA: Bjorck, J., Castañeda, F., Cherniadev, N., et al. (2025). GR00T N1: An open foundation model for generalist humanoid robots. <a href="https://arxiv.org/abs/2503.14734">arXiv:2503.14734</a> (informe técnico; CC BY 4.0)</li>
+    <li id="ref-amazon1m">Amazon (30 de junio de 2025). Amazon deploys over 1 million robots and launches new AI foundation model. <a href="https://www.aboutamazon.com/news/operations/amazon-million-robots-ai-foundation-model">aboutamazon.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-tri2025">TRI LBM Team (Barreiros, J., Beaulieu, A., et al.; 82 autores) (2025). A careful examination of large behavior models for multitask dexterous manipulation. <a href="https://arxiv.org/abs/2507.05331">arXiv:2507.05331</a> (preprint)</li>
+    <li id="ref-figbmw25">Figure AI (19 de noviembre de 2025). F.02 contributed to the production of 30,000 cars at BMW. <a href="https://www.figure.ai/news/production-at-bmw">figure.ai/news</a> (afirmaciones de la empresa)</li>
+    <li id="ref-waymo16b">Waymo (2 de febrero de 2026). Accelerating our global growth: Waymo raises $16 billion investment round. <a href="https://waymo.com/blog/2026/02/waymo-raises-usd16-billion-investment-round/">waymo.com/blog</a> (afirmaciones de la empresa)</li>
+    <li id="ref-waymowwm">Jiang, C. M., Masotto, X., Sun, B. (6 de febrero de 2026). The Waymo World Model: A new frontier for autonomous driving simulation. <a href="https://waymo.com/blog/2026/02/the-waymo-world-model-a-new-frontier-for-autonomous-driving-simulation/">Blog de Waymo</a> (afirmaciones de la empresa)</li>
+    <li id="ref-bdces26">Boston Dynamics (5 de enero de 2026). Boston Dynamics unveils new Atlas robot to revolutionize industry. <a href="https://bostondynamics.com/blog/boston-dynamics-unveils-new-atlas-robot-to-revolutionize-industry/">bostondynamics.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-pi2026">Physical Intelligence, Ai, B., Amin, A., Aniceto, R., Balakrishna, A., Balke, G., Black, K., Bokinsky, G., et al. (2026). π0.7: A steerable generalist robotic foundation model with emergent capabilities. <a href="https://arxiv.org/abs/2604.15483">arXiv:2604.15483</a> (v2, 24 de abril de 2026; preprint)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 2 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs" start="19">
+    <li id="ref-gr00trepo">NVIDIA. Isaac-GR00T: README (GR00T N1.7, versión de disponibilidad general; commit 3b49067, 10 de noviembre de 2026) y <code>scripts/deployment/README.md</code>, «Benchmark Results» (commit 8af93e5, 6 de noviembre de 2026). <a href="https://github.com/NVIDIA/Isaac-GR00T">github.com/NVIDIA/Isaac-GR00T</a> (código Apache-2.0; medidas del fabricante con su método)</li>
+    <li id="ref-gdmgr2">Parada, C. (30 de julio de 2026). Gemini Robotics 2 brings whole-body intelligence to robots. <a href="https://deepmind.google/blog/gemini-robotics-2-brings-whole-body-intelligence-to-robots/">Blog de Google DeepMind</a> (afirmaciones de la empresa)</li>
+    <li id="ref-gdmgr25">Parada, C. (10 de noviembre de 2026). Gemini Robotics 2.5: Accelerating physical intelligence. <a href="https://deepmind.google/blog/gemini-robotics-2-5-accelerates-real-world-physical-intelligence/">Blog de Google DeepMind</a> (afirmaciones de la empresa)</li>
+    <li id="ref-wayveldn">Wayve (3 de septiembre de 2026). Wayve and Uber launch first-ever autonomous rides in the UK. <a href="https://wayve.ai/press/wayve-uber-launch-autonomous-rides/">wayve.ai/press</a> (afirmaciones de la empresa)</li>
+    <li id="ref-nvgtc26">NVIDIA (16 de marzo de 2026). NVIDIA and global robotics leaders take physical AI to the real world. <a href="https://nvidianews.nvidia.com/news/nvidia-and-global-robotics-leaders-take-physical-ai-to-the-real-world">nvidianews.nvidia.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-gen1">Generalist (2 de abril de 2026). GEN-1: Scaling embodied foundation models to mastery. <a href="https://generalistai.com/blog/apr-02-2026-GEN-1">generalistai.com/blog</a> (afirmaciones de la empresa)</li>
+    <li id="ref-skild26">Skild AI (14 de enero de 2026). Announcing Series C; y (24 de septiembre de 2025) The case for an omni-bodied robot brain. <a href="https://www.skild.ai/blogs/series-c">skild.ai/blogs</a> (afirmaciones de la empresa)</li>
+    <li id="ref-openpi">Physical Intelligence. openpi: README con los modelos publicados («[Sept 2025] We released pi05»), consultado el 12 de noviembre de 2026. <a href="https://github.com/Physical-Intelligence/openpi">github.com/Physical-Intelligence/openpi</a> (Apache-2.0)</li>
+    <li id="ref-gr00tn17">Llontop, E., Vadrevu, K. (17 de abril de 2026). NVIDIA Isaac GR00T N1.7: Open reasoning VLA model for humanoid robots. <a href="https://huggingface.co/blog/nvidia/gr00t-n1-7">Blog de NVIDIA en Hugging Face</a> (afirmaciones de la empresa)</li>
+    <li id="ref-metavjepa">Meta AI (11 de junio de 2025). Introducing the V-JEPA 2 world model and new benchmarks for physical reasoning. <a href="https://ai.meta.com/blog/v-jepa-2-world-model-benchmarks/">ai.meta.com/blog</a> (el artículo, en A8b)</li>
+    <li id="ref-bu2025">AgiBot World Contributors, Bu, Q., et al. (2025). AgiBot World Colosseo: A large-scale manipulation platform for scalable and intelligent embodied systems. <a href="https://arxiv.org/abs/2503.06669">arXiv:2503.06669</a> (v5, 20 de octubre de 2026); y el README de <a href="https://github.com/OpenDriveLab/AgiBot-World">OpenDriveLab/AgiBot-World</a> (CC BY-NC-SA 4.0)</li>
+    <li id="ref-figh25">Figure AI (17 de septiembre de 2026). Helix 2.5: Zero-shot 30-home generalization. <a href="https://www.figure.ai/news/helix-2-5-zero-shot-30-home-generalization">figure.ai/news</a> (afirmaciones de la empresa)</li>
+    <li id="ref-atreya2025">Atreya, P., Pertsch, K., Lee, T., Kim, M. J., Jain, A., Kuramshin, A., et al., Levine, S. (2025). RoboArena: Distributed real-world evaluation of generalist robot policies. <span class="venue">CoRL 2025</span>, PMLR 305, 336–364. <a href="https://arxiv.org/abs/2506.18123">arXiv:2506.18123</a> (CC BY 4.0)</li>
+    <li id="ref-bdlbm">Boston Dynamics and TRI Research Team (Cousineau, E., Kuindersma, S., Manuelli, L., Marion, P., et al.) (20 de agosto de 2025). Large behavior models and Atlas find new footing. <a href="https://bostondynamics.com/blog/large-behavior-models-atlas-find-new-footing/">bostondynamics.com</a> (afirmaciones de las empresas)</li>
+    <li id="ref-bdgdm26">Boston Dynamics (5 de enero de 2026). Boston Dynamics &amp; Google DeepMind form new AI partnership to bring foundational intelligence to humanoid robots. <a href="https://bostondynamics.com/blog/boston-dynamics-google-deepmind-form-new-ai-partnership/">bostondynamics.com</a></li>
+    <li id="ref-bdrmac26">Boston Dynamics (21 de septiembre de 2026). Boston Dynamics opens Robotics Metaplant Application Center to train humanoid robots for manufacturing tasks. <a href="https://bostondynamics.com/news/boston-dynamics-opens-robotics-metaplant-application-center-to-train-humanoid-robots-for-manufacturing-tasks/">bostondynamics.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-apptronik26">Apptronik (11 de febrero de 2026). Apptronik closes over $935 million Series A. <a href="https://www.apptronik.com/news-collection/apptronik-closes-over-935-million-series-a">apptronik.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-unitreesse">China Daily, reproducido en la web de la Bolsa de Shanghái (agosto de 2026). Unitree IPO draws spotlight to China's fast-growing humanoid robot sector. <a href="https://english.sse.com.cn/news/newsrelease/voice/c/c_20260811_10828578.shtml">english.sse.com.cn</a> (cifras del folleto de la salida a bolsa)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 3 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs" start="37">
+    <li id="ref-nvrefhum">NVIDIA (31 de mayo de 2026). NVIDIA announces NVIDIA Isaac GR00T reference humanoid robot for academic research. <a href="https://nvidianews.nvidia.com/news/nvidia-open-humanoid-robot-reference-design">nvidianews.nvidia.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-fu2024">Fu, Z., Zhao, T. Z., Finn, C. (2024). Mobile ALOHA: Learning bimanual mobile manipulation with low-cost whole-body teleoperation. <a href="https://arxiv.org/abs/2401.02117">arXiv:2401.02117</a></li>
+    <li id="ref-hoque2025">Hoque, R., Huang, P., Yoon, D. J., Sivapurapu, M., Zhang, J. (2025). EgoDex: Learning dexterous manipulation from large-scale egocentric video. <a href="https://arxiv.org/abs/2505.11709">arXiv:2505.11709</a> (v3, 9 de marzo de 2026)</li>
+    <li id="ref-grauman2022">Grauman, K., et al. (2022). Ego4D: Around the world in 3,000 hours of egocentric video. <span class="venue">CVPR 2022</span>. <a href="https://arxiv.org/abs/2110.07058">arXiv:2110.07058</a></li>
+    <li id="ref-gen0">Generalist (4 de noviembre de 2025). GEN-0: Embodied foundation models that scale with physical interaction. <a href="https://generalistai.com/blog/nov-04-2025-GEN-0">generalistai.com/blog</a> (afirmaciones de la empresa)</li>
+    <li id="ref-figindex26">Figure AI (25 de agosto de 2026). Introducing Index: Building the world's largest and most diverse physical dataset; y (3 de septiembre de 2026) Figure and Nscale sign strategic partnership for up to 100,000 GPUs on the NVIDIA Vera Rubin platform (título del índice de noticias). <a href="https://www.figure.ai/news/introducing-index">figure.ai/news</a> (afirmaciones de la empresa)</li>
+    <li id="ref-jang2025">Jang, J., Ye, S., Lin, Z., Xiang, J., Bjorck, J., et al. (2025). DreamGen: Unlocking generalization in robot learning through video world models. <a href="https://arxiv.org/abs/2505.12705">arXiv:2505.12705</a> (preprint de NVIDIA)</li>
+    <li id="ref-amin2025">Physical Intelligence: Amin, A., Aniceto, R., Balakrishna, A., et al. (2025). π*0.6: A VLA that learns from experience. <a href="https://arxiv.org/abs/2511.14759">arXiv:2511.14759</a> (preprint)</li>
+    <li id="ref-onexorder">1X Technologies. Order NEO (página de pedido y especificaciones), consultada el 12 de noviembre de 2026. <a href="https://www.1x.tech/order">1x.tech/order</a> (afirmaciones de la empresa)</li>
+    <li id="ref-onexredwood">1X Technologies (10 de junio de 2025). Redwood AI. <a href="https://www.1x.tech/discover/redwood-ai">1x.tech/discover</a> (afirmaciones de la empresa)</li>
+    <li id="ref-waymowfm">Waymo AI Team (9 de diciembre de 2025). Demonstrably safe AI for autonomous driving. <a href="https://waymo.com/blog/2025/12/demonstrably-safe-ai-for-autonomous-driving/">Blog de Waymo</a> (afirmaciones de la empresa)</li>
+    <li id="ref-gemini2025">Gemini Robotics Team, Google DeepMind (2025). Gemini Robotics: Bringing AI into the physical world. <a href="https://arxiv.org/abs/2503.20020">arXiv:2503.20020</a> (informe técnico; preprint)</li>
+    <li id="ref-waymocompute">Jeyachandran, S., Rosenband, D. (20 de agosto de 2026). A look under our trunk: What's in our compute. <a href="https://waymo.com/blog/2026/08/look-under-our-trunk/">Blog de Waymo</a> (afirmaciones de la empresa)</li>
+    <li id="ref-figurehelix">Figure AI. Helix: A vision-language-action model for generalist humanoid control. <a href="https://www.figure.ai/news/helix">figure.ai/news/helix</a> (consultada el 7 de noviembre de 2026 para A12b; afirmaciones de la empresa)</li>
+    <li id="ref-wilson1927">Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. <span class="venue">Journal of the American Statistical Association</span>, 22(158), 209–212. <a href="https://doi.org/10.1080/01621459.1927.10502953">doi:10.1080/01621459.1927.10502953</a></li>
+    <li id="ref-onexwm">1X World Model Team (Ho, D., Monas, J., Ren, J., Yu, C.). 1X World Model: Evaluating bits, not atoms. Informe técnico sin fecha, <a href="https://www.1x.tech/1x-world-model.pdf">1x.tech</a> (afirmaciones de la empresa)</li>
+    <li id="ref-kressgazit2024">Kress-Gazit, H., Hashimoto, K., Kuppuswamy, N., Shah, P., Horgan, P., Richardson, G., Feng, S., Burchfiel, B. (2024). Robot learning as an empirical science: Best practices for policy evaluation. <a href="https://arxiv.org/abs/2409.09491">arXiv:2409.09491</a></li>
+    <li id="ref-gdmveo">Gemini Robotics Team, Choromanski, K., Devin, C., Du, Y., Dwibedi, D., Gao, R., et al. (2025). Evaluating Gemini Robotics policies in a Veo world simulator. <a href="https://arxiv.org/abs/2512.10675">arXiv:2512.10675</a> (informe de Google DeepMind)</li>
+  </ol>
+</section>
+
+<section class="slide">
+  <p class="kicker">Referencias · 4 de 4</p>
+  <h2>Referencias</h2>
+  <ol class="refs" start="55">
+    <li id="ref-axioswr">Axios (17 de octubre de 2024). Tesla Optimus humanoid robot needed human help at AI event. <a href="https://www.axios.com/2024/10/17/elon-musk-tesla-optimus-humanoid-robot">axios.com</a> (prensa; leído el titular)</li>
+    <li id="ref-gizmodo2024">Ropek, L. (16 de enero de 2024). Tesla's goofy Optimus robot underwhelmingly folds a shirt. <span class="venue">Gizmodo</span>. <a href="https://gizmodo.com/elon-musk-tesla-robot-optimus-laundry-folding-shirt-humanoid-1851170890">gizmodo.com</a> (prensa)</li>
+    <li id="ref-newatlas2024">Blain, L. (15 de enero de 2024). Busted: Elon Musk admits new Optimus video isn't what it seems. <span class="venue">New Atlas</span>. <a href="https://newatlas.com/robotics/tesla-optimus-folds-shirt/">newatlas.com</a> (prensa)</li>
+    <li id="ref-agility26">Agility Robotics (26 de octubre de 2026). GXO and Agility Robotics expand partnership to accelerate deployment of humanoids in U.S. operations; y Agility Robotics highlights commercial momentum and growing enterprise demand for Digit humanoid robot. <a href="https://www.agilityrobotics.com/content/gxo-and-agility-robotics-expand-partnership-to-accelerate-deployment-of-humanoids-in-u-s-operations">agilityrobotics.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-amazonsci">Durham, J. (11 de agosto de 2025). Amazon builds first foundation model for multirobot coordination. <a href="https://www.amazon.science/blog/amazon-builds-first-foundation-model-for-multirobot-coordination">Amazon Science</a> (afirmaciones de la empresa)</li>
+    <li id="ref-waymohub">Waymo. Safety Impact: datos «Through June 2026», notas de método e intervalos de las gráficas, consultado el 12 de noviembre de 2026. <a href="https://waymo.com/safety/impact/">waymo.com/safety/impact</a> (datos de la empresa con método publicado)</li>
+    <li id="ref-tc500k">TechCrunch (27 de marzo de 2026). Waymo's skyrocketing ridership in one chart. <a href="https://techcrunch.com/2026/03/27/waymo-skyrocketing-ridership-in-one-chart/">techcrunch.com</a> (prensa)</li>
+    <li id="ref-insideevs500k">Levin, T. (26 de marzo de 2026). Waymo has doubled its weekly ridership in under a year. <span class="venue">InsideEVs</span>. <a href="https://insideevs.com/news/791245/waymo-rides-per-week-2026-doubled/">insideevs.com</a> (prensa)</li>
+    <li id="ref-waymodebt">Waymo (8 de octubre de 2026). Waymo closes $5 billion debt financing to accelerate business expansion. <a href="https://waymo.com/blog/2026/10/waymo-closes-5-billion-debt-financing/">Blog de Waymo</a></li>
+    <li id="ref-waymo6gen">Waymo (12 de febrero de 2026). Beginning fully autonomous operations with the 6th-generation Waymo Driver. <a href="https://waymo.com/blog/2026/02/ro-on-6th-gen-waymo-driver">Blog de Waymo</a> (afirmaciones de la empresa)</li>
+    <li id="ref-nhtsa25e084">Waymo LLC (10 de diciembre de 2025). Part 573 Safety Recall Report 25E084. National Highway Traffic Safety Administration. <a href="https://static.nhtsa.gov/odi/rcl/2025/RCLRPT-25E084-7732.pdf">static.nhtsa.gov</a></li>
+    <li id="ref-apolloq1">Baidu, Inc. (18 de mayo de 2026). Baidu announces first quarter 2026 results. Nota de prensa (PR Newswire). <a href="https://en.prnasia.com/releases/global/baidu-announces-first-quarter-2026-results-533381.shtml">en.prnasia.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-apolloq2">Baidu, Inc. (18 de agosto de 2026). Baidu announces second quarter 2026 results. Nota de prensa, leída en <a href="https://finviz.com/news/383055/baidu-announces-second-quarter-2026-results">finviz.com</a> (la web de inversores de Baidu no se pudo abrir; afirmaciones de la empresa)</li>
+    <li id="ref-wayved">Wayve (25 de febrero de 2026). Wayve secures $1.5B to deploy its global autonomy platform. <a href="https://wayve.ai/press/series-d/">wayve.ai/press</a> (afirmaciones de la empresa)</li>
+    <li id="ref-doshi2024">Doshi, R., Walke, H., Mees, O., Dasari, S., Levine, S. (2024). Scaling cross-embodied learning: One policy for manipulation, navigation, locomotion and aviation. <span class="venue">CoRL 2024, PMLR 270</span>, 496–512. <a href="https://arxiv.org/abs/2408.11812">arXiv:2408.11812</a></li>
+    <li id="ref-figramp26">Figure AI (29 de abril de 2026). Ramping Figure 03 production. <a href="https://www.figure.ai/news/ramping-figure-03-production">figure.ai/news</a> (afirmaciones de la empresa)</li>
+      <li id="ref-nvcorl26">Docca, S. (9 de noviembre de 2026). Practice makes precise: At CoRL, NVIDIA and partners reveal how robots rehearse delicate work in simulation. <span class="venue">NVIDIA Blog</span>. <a href="https://blogs.nvidia.com/blog/robotics-simulation-advancements-corl/">blogs.nvidia.com</a> (afirmaciones de la empresa)</li>
+    <li id="ref-gr00t2">NVIDIA (noviembre de 2026). GR00T 2: Scaling robot foundation models for generalization, dexterity, and adaptation. Informe técnico (whitepaper), §2, §3.1, §4.2, §4.5, §4.6.1, Fig. 19 y §5. <a href="https://research.nvidia.com/labs/gear/gr00t-2/">research.nvidia.com/labs/gear/gr00t-2</a> (consultado el <span class="nw">12-11-2026</span>; latencias medidas con su método; datos y resultados, afirmaciones de la empresa)</li>
+</ol>
+</section>
+
+</main>
+
+<aside id="glosario" hidden>
+<h3>Parte 2 · Los datos</h3>
+<p>Las horas de datos de la pirámide se cuentan como las publica cada fuente; «(E)» marca las que solo da la empresa.</p>
+<dl>
+<dt>\(N\)</dt><dd data-hojas="11,18">Demostraciones útiles que se quieren recoger (episodios que acaban bien y se guardan). Número entero; en el ejemplo, 10 000.</dd>
+<dt>\(r\)</dt><dd data-hojas="11,12">Ritmo de recogida: demostraciones útiles por hora y operador, contando reinicios, colocar objetos y fallos. Medido en UMI: 35/h teleoperando, 111/h con la pinza y 231/h con la mano.</dd>
+<dt>\(R\)</dt><dd data-hojas="11,17">Puestos de recogida que trabajan a la vez, cada uno con un operador.</dd>
+<dt>\(h\)</dt><dd data-hojas="11,17">Horas de recogida por día y puesto (8 en el ejemplo, supuesto del curso).</dd>
+<dt>\(H_{\mathrm{op}}\)</dt><dd data-hojas="11,17">Horas de operador pagadas, \(H_{\mathrm{op}} = N/r\); no depende de \(R\).</dd>
+<dt>\(D\)</dt><dd data-hojas="11,17">Días de calendario hasta tener las \(N\) demostraciones, \(D = N/(rRh)\).</dd>
+<dt>\(c_o\)</dt><dd data-hojas="11,18">Coste de una hora de operador, en US$/h; 30 en el ejemplo (supuesto, ningún lab lo publica).</dd>
+<dt>\(C_R\), \(A\)</dt><dd data-hojas="11,17">Coste del equipo de un puesto (US$) y días en que se amortiza (500 en el ejemplo, supuesto). ALOHA cuesta menos de 20 000 US$; la pinza de UMI, 371 US$.</dd>
+<dt>\(C\)</dt><dd data-hojas="11,17">Coste total de la recogida: operadores más la parte del equipo gastada, \(C = c_o N/r + R\,C_R\,D/A\).</dd>
+</dl>
+<h3>Parte 3 · Entrenar y desplegar</h3>
+<dl>
+<dt>\(\delta\)</dt><dd data-hojas="22,23">Latencia de una llamada completa al modelo, de la imagen a las acciones (s o ms). GR00T N1.7: 149 ms en Jetson Orin, 76,8 ms en Thor, 22,9 ms en H100.</dd>
+<dt>\(f_{\mathrm{inf}} = 1/\delta\)</dt><dd data-hojas="22,24">Frecuencia máxima de inferencia si se llama al modelo en cuanto acaba (Hz).</dd>
+<dt>\(f_a\)</dt><dd data-hojas="22,55">Frecuencia a la que el robot ejecuta acciones (Hz): 50 Hz en la mayoría de los robots de π0, 30 Hz en Atlas.</dd>
+<dt>\(H\), \(N_{\mathrm{ejec}}\)</dt><dd data-hojas="22">Longitud del trozo de acciones que da el modelo y cuántas se ejecutan antes de pedir otro (A12b). Condición: \(N_{\mathrm{ejec}} \ge \delta f_a\).</dd>
+</dl>
+<h3>Parte 4 · Evaluar</h3>
+<p>\(n\) es siempre el número de ensayos por política.</p>
+<dl>
+<dt>\(n\), \(k\)</dt><dd data-hojas="26,27">Ensayos de una política y cuántos acaban bien.</dd>
+<dt>\(p\), \(\hat p = k/n\)</dt><dd data-hojas="26,27">Tasa de éxito verdadera (desconocida, entre 0 y 1) y la observada.</dd>
+<dt>\(\mathrm{SE}\)</dt><dd data-hojas="26,27">Error típico de \(\hat p\), \(\sqrt{p(1-p)/n}\): cuánto varía \(\hat p\) de una tanda de \(n\) ensayos a otra.</dd>
+<dt>\(\alpha\)</dt><dd data-hojas="26,31">Probabilidad de error de tipo I (declarar una diferencia que no existe); 0,05 en toda la jornada. En la regla del tres, el nivel de la cota.</dd>
+<dt>\(\beta\), \(1-\beta\)</dt><dd data-hojas="26,29">Probabilidad de no ver una diferencia que existe, y la potencia (0,8).</dd>
+<dt>\(z_q\)</dt><dd data-hojas="26">Cuantil \(q\) de la normal estándar: \(z_{0{,}975} = 1{,}960\), \(z_{0{,}8} = 0{,}842\).</dd>
+<dt>\(p_1\), \(p_2\), \(\bar p\), \(\Delta\)</dt><dd data-hojas="26,29">Tasas de éxito de dos políticas, su media y su diferencia \(\Delta = p_2 - p_1\).</dd>
+<dt>\(\hat\Delta\)</dt><dd data-hojas="29">Diferencia observada, \(\hat p_2 - \hat p_1\).</dd>
+<dt>\(\sigma_0\), \(\sigma_1\)</dt><dd data-hojas="29">Desviaciones típicas de \(\hat\Delta\) si no hay diferencia y si la diferencia es \(\Delta\).</dd>
+<dt>\(p_L\)</dt><dd data-hojas="26,31">Cota inferior de \(p\) al nivel \(1-\alpha\) cuando no hubo ningún fallo: \(p_L = \alpha^{1/n} \approx 1 - 3/n\).</dd>
+</dl>
+<h3>Parte 6 · Conducción autónoma</h3>
+<dl>
+<dt>\(x\)</dt><dd data-hojas="45">Número de eventos de Waymo (por ejemplo, lesiones graves): 3 en 271,3 M de millas.</dd>
+<dt>\(M\)</dt><dd data-hojas="45">Exposición en millones de millas sin conductor: 271,3 hasta junio de 2026.</dd>
+<dt>\(\lambda\)</dt><dd data-hojas="45">Tasa de eventos por millón de millas (lo que el hub llama IPMM).</dd>
+<dt>\(\mu = \lambda M\)</dt><dd data-hojas="45">Número esperado de eventos en \(M\); \(x\) sigue una Poisson de media \(\mu\).</dd>
+<dt>\(\mu_L\), \(\mu_U\)</dt><dd data-hojas="45">Extremos del intervalo exacto de \(\mu\); con \(x = 3\), 0,619 y 8,767.</dd>
+<dt>\(\chi^2_{q,\,\nu}\)</dt><dd data-hojas="45">Cuantil \(q\) de una ji cuadrado con \(\nu\) grados de libertad; da los extremos de Poisson sin bisección.</dd>
+<dt>\(\lambda_h\)</dt><dd data-hojas="45,46">Tasa de la referencia humana, ajustada por Waymo a dónde conduce (0,213 lesiones graves por millón de millas).</dd>
+<dt>\(RR\)</dt><dd data-hojas="45,46">Razón de tasas \(\lambda/\lambda_h\); la reducción es \(RR - 1\).</dd>
+</dl>
+<h3>Siglas</h3>
+<dl>
+<dt>VLA</dt><dd data-hojas="3,24">Modelo de visión, lenguaje y acción (A12a).</dd>
+<dt>VLM</dt><dd data-hojas="44">Modelo de visión y lenguaje (A11).</dd>
+<dt>LBM</dt><dd data-hojas="16,32,35">Large behavior model: el nombre de TRI para sus políticas multitarea de difusión.</dd>
+<dt>TRI</dt><dd data-hojas="8,32">Toyota Research Institute.</dd>
+<dt>OXE</dt><dd data-hojas="7,16,51">Open X-Embodiment: datasets de 22 robots de 21 instituciones.</dd>
+<dt>DROID</dt><dd data-hojas="13">Distributed Robot Interaction Dataset: 76 000 trayectorias con una misma estación en 13 instituciones.</dd>
+<dt>UMI</dt><dd data-hojas="12">Universal Manipulation Interface: pinza con cámara que se lleva en la mano para recoger datos sin robot.</dd>
+<dt>ALOHA</dt><dd data-hojas="12">Sistema barato de teleoperación de dos brazos (A10).</dd>
+<dt>RECAP</dt><dd data-hojas="21">Método de π*0.6 para aprender de la experiencia propia y de las correcciones (A12b).</dd>
+<dt>GPU·h</dt><dd data-hojas="3">Horas de GPU: GPU usadas por horas de reloj.</dd>
+<dt>TOPS</dt><dd data-hojas="22,44,49">Billones de operaciones por segundo; la medida de cómputo que dan los fabricantes de chips.</dd>
+<dt>NVFP4</dt><dd data-hojas="23">Formato de coma flotante de 4 bits de NVIDIA para pesos y activaciones.</dd>
+<dt>TensorRT</dt><dd data-hojas="23">Compilador y motor de inferencia de NVIDIA (C5).</dd>
+<dt>RV</dt><dd data-hojas="8">Realidad virtual (gafas usadas para teleoperar).</dd>
+<dt>SLAM</dt><dd data-hojas="12">Localización y mapeo simultáneos.</dd>
+<dt>MPC</dt><dd data-hojas="8">Control predictivo basado en modelo (A3a).</dd>
+<dt>TCL</dt><dd data-hojas="27">Teorema central del límite.</dd>
+<dt>NHTSA</dt><dd data-hojas="47">National Highway Traffic Safety Administration, el regulador de seguridad vial de EE. UU.</dd>
+<dt>TfL</dt><dd data-hojas="38,48">Transport for London, que da en Londres las licencias de vehículo de alquiler con conductor.</dd>
+<dt>GNSS</dt><dd data-hojas="49">Sistemas de navegación por satélite (GPS, Galileo…).</dd>
+<dt>EASA, FAA</dt><dd data-hojas="49">Reguladores aéreos de la Unión Europea y de EE. UU. (R1b).</dd>
+<dt>API</dt><dd data-hojas="7">Interfaz de programación: acceso a un modelo como servicio, sin pesos.</dd>
+</dl>
+</aside>
+<script src="../../assets/curso.js?v=5"></script>
+</body>
+</html>

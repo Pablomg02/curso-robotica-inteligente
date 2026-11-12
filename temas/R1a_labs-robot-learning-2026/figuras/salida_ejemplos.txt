@@ -1,0 +1,105 @@
+
+==============================================================================
+1. Coste de recoger N demostraciones (parte 2)
+==============================================================================
+N = 10000 demostraciones útiles, R = 10 puestos en paralelo, h = 8 h/día (SUPUESTO),
+c_o = 30 US$/h por operador (SUPUESTO), vida del equipo A = 500 días (SUPUESTO)
+ritmos publicados (UMI, Fig. 11, demostraciones útiles por hora y operador, con reinicios y fallos):
+  teleoperacion  r =  35/h ->   285.7 h de operador, D =  3.57 días, operadores     8571 US$, equipo amortizado    1429 US$, total    10000 US$ =  1.00 US$/demo
+  umi            r = 111/h ->    90.1 h de operador, D =  1.13 días, operadores     2703 US$, equipo amortizado       8 US$, total     2711 US$ =  0.27 US$/demo
+  mano           r = 231/h ->    43.3 h de operador, D =  0.54 días, operadores     1299 US$, equipo amortizado       0 US$, total     1299 US$ =  0.13 US$/demo
+  (las horas de operador N/r no dependen de R: paralelizar acorta el calendario, no la factura de operadores)
+DROID: 76000 trayectorias, 350 h -> 16.6 s por trayectoria;
+  1520 por recolector en 12 meses = 127 al mes
+GEN-0: +10 000 h de datos por semana; si 1 h de datos = 1 h de una persona (SUPUESTO),
+  a 5 días x 8 h por semana son 250 personas o dispositivos a tiempo completo
+
+==============================================================================
+2. Cómputo publicado: GR00T N1 (parte 3)
+==============================================================================
+preentrenamiento: 50000 H100·h / 1024 GPU = 48.8 h de reloj = 2.0 días
+  a 2.0 US$/H100·h (SUPUESTO): 100 000 US$
+vídeo generado: 105000 L40·h / 3600 L40 = 29.2 h de reloj; 127 L40·h por hora de vídeo
+simulación: 6500 h de demostración equivalente en 11 h -> x591 más rápido que el tiempo real
+
+==============================================================================
+3. Latencia, frecuencia y trozos (parte 3)
+==============================================================================
+  H100          TensorRT   22.9 ms -> f_inf =  43.7 Hz; a f_a = 50 Hz pasan 1.15 periodos -> N_ejec >= 2; a 30 Hz, N_ejec >= 1
+  RTX Pro 6000  TensorRT   24.7 ms -> f_inf =  40.5 Hz; a f_a = 50 Hz pasan 1.23 periodos -> N_ejec >= 2; a 30 Hz, N_ejec >= 1
+  L40           TensorRT   35.0 ms -> f_inf =  28.6 Hz; a f_a = 50 Hz pasan 1.75 periodos -> N_ejec >= 2; a 30 Hz, N_ejec >= 2
+  DGX Spark     TensorRT  116.6 ms -> f_inf =   8.6 Hz; a f_a = 50 Hz pasan 5.83 periodos -> N_ejec >= 6; a 30 Hz, N_ejec >= 4
+  AGX Thor      TensorRT   76.8 ms -> f_inf =  13.0 Hz; a f_a = 50 Hz pasan 3.84 periodos -> N_ejec >= 4; a 30 Hz, N_ejec >= 3
+  Jetson Orin   TensorRT  149.0 ms -> f_inf =   6.7 Hz; a f_a = 50 Hz pasan 7.45 periodos -> N_ejec >= 8; a 30 Hz, N_ejec >= 5
+  AGX Thor con NVFP4 35.6 ms -> 28.1 Hz (README: «~28 Hz»)
+  RTX Pro 6000 24.7 ms -> 40.5 Hz (README: «~40 Hz»)
+  aceleración de TensorRT frente a PyTorch eager: Orin x2.4, Thor x1.4, H100 x4.4
+  Orin frente a H100 con TensorRT: x6.5 más lento
+π0 (RTX 4090): 73 ms a bordo; ejecuta 25 acciones a 50 Hz = 0,5 s entre inferencias -> margen 0,5/0,073 = 6.8
+GR00T 2 Turbo (2000 M), Jetson Thor (120 W): 123.97 ms -> 8.1 Hz; sin optimizar 720.41 ms -> x5.8 con TensorRT, FP8 y menos pasos
+GR00T 2 Turbo (2000 M), RTX 5090: 38.4 ms -> 26.0 Hz; sin optimizar 224.73 ms -> x5.9 con TensorRT, FP8 y menos pasos
+  trozo de 1,6 s planificado ~1 vez por segundo: margen 1 s / 0,124 s = 8.1; SONIC lo ejecuta a 50 Hz: 80 pasos por trozo
+
+==============================================================================
+4. Una tasa de éxito y su error (parte 4)
+==============================================================================
+n = 10, p̂ = 0.8: SE = sqrt(p(1-p)/n) = 0.126; normal ±1,96·SE = [0.552; 1.048] (pasa de 1)
+  Wilson   8/10  (π0, 10 episodios            ) -> [0.490; 0.943], anchura 0.453
+  Wilson  24/30  (humanos del estudio de π0.7 ) -> [0.627; 0.905], anchura 0.278
+  Wilson  24/25  («96 %» con n = 25           ) -> [0.805; 0.993], anchura 0.188
+  Wilson  48/50  («96 %» con n = 50           ) -> [0.865; 0.989], anchura 0.124
+  Wilson  96/100 («96 %» con n = 100          ) -> [0.902; 0.984], anchura 0.083
+  Wilson 480/500 («96 %» con n = 500          ) -> [0.939; 0.974], anchura 0.035
+  Wilson  20/20  (20/20                       ) -> [0.839; 1.000], anchura 0.161
+  Wilson  86/86  (GEN-1, 86 seguidas          ) -> [0.957; 1.000], anchura 0.043
+
+==============================================================================
+5. Cuántos ensayos para distinguir 60 % de 70 % (parte 4)
+==============================================================================
+z_(1-α/2) = 1.9600, z_(1-β) = 0.8416 (α = 0,05 bilateral, potencia 0,8)
+p̄ = 0.6499999999999999; z_a·sqrt(2p̄(1-p̄)) = 1.3221; z_b·sqrt(p1q1+p2q2) = 0.5646; suma² = 3.5594; Δ² = 0.0100
+n = 355.9 -> 356 por política (712 en total)
+  0,6 frente a 0.65: n = 1470
+  0,6 frente a 0.75: n = 152
+  0,6 frente a 0.8: n = 81
+  0,6 frente a 0.9: n = 31
+con n = 50 por política (TRI), diferencia mínima detectable alrededor del 50 %: 27.7 puntos
+con n = 50 y p1 = 0,6, la otra política tendría que llegar a 0.848
+GR00T 2 (NVIDIA, 11-2026), nota 1: «two-sided two-proportion z-test at significance level 0.05 with 80% power»
+  0.95 frente a 0.99: n = 284.3 -> 285 por política (el whitepaper: «about 285»)
+  0.99 frente a 0.999: n = 1058.9 -> 1059 por política (el whitepaper: «more than 1,000»)
+  Helix 2.5, 9 % frente a 56 % con n = 8 por brazo: z = 2.01
+  Helix 2.5, 9 % frente a 56 % con n = 15 por brazo: z = 2.75
+
+==============================================================================
+6. La regla del tres, versión binomial (parte 4; R1b la usa por horas)
+==============================================================================
+-ln α = -ln 0,05 = 2.9957 ≈ 3
+  20/20 éxitos: cota inferior exacta α^(1/n) = 0.8609; regla del tres 1 - 3/n = 0.8500
+  30/30 éxitos: cota inferior exacta α^(1/n) = 0.9050; regla del tres 1 - 3/n = 0.9000
+  86/86 éxitos: cota inferior exacta α^(1/n) = 0.9658; regla del tres 1 - 3/n = 0.9651
+  100/100 éxitos: cota inferior exacta α^(1/n) = 0.9705; regla del tres 1 - 3/n = 0.9700
+  300/300 éxitos: cota inferior exacta α^(1/n) = 0.9901; regla del tres 1 - 3/n = 0.9900
+ensayos sin fallo para afirmar p >= 0,99 al 95 %: exacto ln α/ln 0,99 = 298.1 -> 299; regla del tres 3/0,01 = 300
+
+==============================================================================
+7. Leer la comparación de seguridad de Waymo (parte 6)
+==============================================================================
+  lesión grave o peor            tasa 0.01106 × 271.3 M mi = 3.00 -> k = 3; IC exacto de Poisson [0.619; 8.767] eventos
+                                 -> [0.00228; 0.03232] por millón de millas; el hub publica [0.00228; 0.03231]
+  cualquier lesión               tasa 0.6745 × 271.3 M mi = 182.99 -> k = 183; IC exacto de Poisson [157.446; 211.520] eventos
+                                 -> [0.58034; 0.77965] por millón de millas; el hub publica [0.5803; 0.7796]
+  airbag en cualquier vehículo   tasa 0.2948 × 271.3 M mi = 79.98 -> k = 80; IC exacto de Poisson [63.435; 99.567] eventos
+                                 -> [0.23382; 0.36700] por millón de millas; el hub publica [0.2338; 0.367]
+razón de tasas, lesión grave, con la referencia humana tratada como conocida (0.21335):
+  [0.0107; 0.1515] -> reducción [-98.9 %; -84.9 %]; el hub da [-99.181, -83.16] (Clopper–Pearson con la incertidumbre de la referencia)
+peatones: 7 frente a 93 esperados; IC de 7 eventos [2.81; 14.42] -> razón [0.030; 0.155], reducción [-97.0 %; -84.5 %]
+con 0 lesiones graves, millas para acotar por debajo del 10 % de la tasa humana (Poisson, 3/T; R1b): 141 M
+Apollo Go: 240 M km sin conductor = 149.1 M millas (Waymo: 271.3 M millas a junio de 2026)
+
+==============================================================================
+8. Leer un anuncio con sus propias cifras: Figure en BMW (parte 5)
+==============================================================================
+90000 piezas / 1250 h = 72.0 piezas/h = 24.0 ciclos/h -> 150 s por ciclo (requisito: 84 s)
+si todo el tiempo fuera a 84 s por ciclo: 160 714 piezas
+1250 h / 10 h por turno = 125 turnos = 25 semanas de 5 días ≈ 5.8 meses
