@@ -48,6 +48,38 @@ Pablo pidió paralelizar siempre que no reste calidad. El reparto que la mantien
 - **Revisión independiente antes del commit, solo en temas con muchas derivaciones** (A3a, A4a y similares), limitada a derivaciones y cifras. Un agente que no ha visto el razonamiento del autor recibe el HTML, el script y el laboratorio. Rehace las derivaciones y las cuentas, contrasta con su fuente una muestra de cifras y referencias, y busca errores de física, de convenio y de texto. Solo se corrige lo que se comprueba.
 - **No se paralelizan** la redacción de temas que dependen entre sí, ni los commits: un commit por tema, en orden.
 
+#### Temas de actualidad y casos reales: dossier y punto de control (desde R1a y R1b)
+
+Cuando un tema vive de casos reales (empresas, despliegues, accidentes, regulación) y no de derivaciones, se puede encargar cada tema a un subagente propio. Así se hicieron R1a y R1b, en paralelo, el 2026-11-12, con permiso de Pablo. El agente principal prepara, revisa, integra y hace los commits. El subagente trabaja en dos fases separadas por un punto de control.
+
+1. **Encargo.** Recibe solo la orden: tema, carpeta, puerto del servidor de comprobación (8765, 8766…; uno distinto por agente, con Playwright y no con el panel del navegador, que es compartido), ruta del dossier en el scratchpad y frontera con los otros temas. No toca `assets/`, el `index.html` raíz, `00_plan/`, otros temas ni git, no lanza agentes y no borra nada fuera de su carpeta y de su dossier.
+2. **Fase 1 · Investigación**, sin escribir ninguna hoja:
+   - **Fuentes primarias primero:** papers, blogs técnicos y documentación de la empresa, informes de accidentes (NTSB, AAIB, CIAIAC, BEA), documentos regulatorios (EASA, FAA, Federal Register), *think tanks* (RUSI, CSIS) y fichas de datasets.
+   - **Actualidad obligatoria:** para cada caso, qué ha pasado en el último año y medio, con la búsqueda extendida.
+   - **Fotos candidatas** con la licencia leída en su página (§4, «Fotos»), sin descargar nada.
+   - **El dossier** en `dossiers/<ID>/`: un fichero por caso más `indice.md`. Cada dato lleva la cifra o la frase exacta, la cita completa, dónde está (sección, tabla, página, minuto), la fecha de la fuente y su estado:
+     - **C**: confirmado en la fuente primaria;
+     - **E**: según la empresa, porque solo la publica ella (los preprints de una empresa valen como C para especificaciones medidas con método, y como E para sus tasas de éxito);
+     - **P**: prensa contrastada, para un hecho sin fuente primaria accesible que publican al menos dos medios fiables e independientes, o el texto íntegro de una agencia de referencia (Reuters, AP) leído en el original o en una sindicación literal;
+     - **S**: sin confirmar.
+   - **Mínimo por caso:** una fuente primaria, al menos tres datos C o E y lo más reciente, con su fecha. Por debajo, el caso es «débil».
+   - **`indice.md`:** la tabla de casos, las cuentas con las especificaciones que usarán, los casos que propone añadir y quitar, las contradicciones entre fuentes y lo que no pudo consultar.
+3. **Punto de control** (agente principal), en cuanto llega cada dossier:
+   - contrastar con su fuente al menos dos datos por caso, empezando por los más recientes y los de empresa;
+   - comprobar la licencia de cada foto candidata en su página de origen (API `extmetadata` de Commons, página de arXiv, Crossref) y, si la foto viene de otra web, también allí;
+   - rehacer las cuentas;
+   - decidir qué casos entran, qué datos se descartan o se vuelven a comprobar y los límites de los apartados delicados;
+   - escribirlo en `dossiers/<ID>/decisiones.md` y mandárselo al subagente con `SendMessage`, para que escriba con su contexto intacto.
+4. **Fase 2 · Escritura:** solo entran en una hoja los datos C, E o P del dossier, con E y P marcados como tales. Todo dato nuevo se añade antes al dossier. Al final, una **pasada de actualidad** de las dos o tres últimas semanas.
+5. **Revisión independiente** (agente principal), al llegar el informe final:
+   - todas las fotos cotejadas con su página, con `img/CREDITOS.md` y con el pie;
+   - al menos 12 cifras y 8 referencias contrastadas con su fuente (más los identificadores de arXiv y los DOI);
+   - todas las cuentas rehechas contra el script;
+   - solapes con otros temas;
+   - las comprobaciones del navegador de §6.
+
+   Solo se corrige lo comprobado. Si el subagente se queda corto, se le continúa con `SendMessage`; no se relanza.
+
 ## 4. Estructura de cada presentación
 
 Basada en M0 y M1, entre 40 y 60 hojas según la profundidad (más si el tema es muy matemático; M1 tiene 84).
@@ -90,7 +122,23 @@ En HTML, el signo «menor que» dentro de una fórmula se escribe `\lt` (o `&lt;
 
 Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.hz`), observabilidad parcial, sim-to-real y cómputo limitado.
 
-**«Así lo hacen en la realidad»** (petición de Pablo del 2026-11-12): desde C1a, cada tema lleva al menos dos hojas sobre un sistema real (empresa, lab o despliegue) relacionado con su contenido. Cada una con cifras verificadas (las de la empresa, como afirmaciones suyas), su esquema y su foto si tiene licencia libre comprobada, y con lo que ese caso enseña del tema. Las reglas de las fotos están en `00_plan/PLAN_R1.md` §5: el repositorio es público, así que nada de fotos de prensa ni de fotogramas de vídeo; lo que no tenga licencia se enlaza. Se puede remitir a R1a y R1b en lugar de repetirlos.
+**«Así lo hacen en la realidad»** (petición de Pablo del 2026-11-12): desde C1a, cada tema lleva al menos dos hojas sobre un sistema real (empresa, lab o despliegue) relacionado con su contenido. Cada una con cifras verificadas (las de la empresa, como afirmaciones suyas), su esquema y su foto si tiene licencia libre comprobada, y con lo que ese caso enseña del tema. Ejemplos: C1b con el cómputo de Skydio y de DJI; C2b con la arquitectura de Zipline; C5 con la inferencia de un VLA en un robot de producto; C7 con un informe de accidente; B7b con un despliegue sim-to-real comercial. Se puede remitir a R1a y R1b en lugar de repetirlos.
+
+**Fotos e imágenes** (desde R1a y R1b). El repositorio es público, así que cada imagen incrustada se redistribuye:
+
+| Fuente | ¿Se incrusta? | Condición |
+|---|---|---|
+| Wikimedia Commons | Sí | Licencia leída en la página del fichero: CC0, dominio público, CC BY o CC BY-SA. Con CC BY-NC, solo anotando que el curso no es comercial. Con ND, sin modificar ni recortar. Si la foto viene de otra web, la licencia tiene que estar clara también allí (las de ArmyInform quedaron fuera porque su web dice «CC BY 4.0» y enlaza a CC BY-NC-ND). |
+| Obras del Gobierno de EE. UU. (DoD/DVIDS, NASA, FAA) | Sí | Si la página dice dominio público y no hay aviso de copyright de terceros. |
+| Figuras de papers | Sí | Solo si el paper es CC BY, CC BY-SA o CC0, comprobado en arXiv, en la revista o en Crossref. Se cita el paper y la figura. |
+| Capturas propias (SITL, Gazebo, gráficas del curso) | Sí | — |
+| Notas de prensa, webs de empresa, fotogramas de YouTube, X o LinkedIn, informes «All rights reserved» | **No** | Se enlazan («vídeo oficial: …», con fecha de consulta). |
+
+- **Formato:** `img/<slug>.webp` o `.jpg`, como mucho 1600 px de ancho, 300 KB por imagen y 6 MB por tema. Se convierte con Pillow (`uv run --with pillow`) y se comprueba con `file` que lo descargado es una imagen.
+- **Pie:** qué se ve y por qué importa, y el crédito en `span.xsmall`: «Foto: autor, licencia (enlace), vía fuente», más «recortada» o «redimensionada» si se ha modificado. Una versión modificada de una foto CC BY-SA queda bajo CC BY-SA.
+- **`img/CREDITOS.md`:** una fila por imagen con fichero, qué muestra, autor, licencia con enlace, página de origen, fecha de consulta y qué se ha modificado.
+- **Las fotos no sustituyen a los esquemas.** Cada sistema importante lleva su diagrama de arquitectura dibujado por el curso; la foto acompaña.
+- **Una foto sin licencia clara no entra**, aunque sea la mejor: se busca otra o se enlaza.
 
 ## 5. El motor de presentaciones
 

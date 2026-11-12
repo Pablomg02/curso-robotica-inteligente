@@ -97,7 +97,7 @@ Es el miniproyecto integrador y crece con los laboratorios. Al final del curso e
 >
 > Ampliada otra vez el 2026-11-10 con el **taller práctico T1** (dos jornadas al empezar la fase), también a petición de Pablo: la pila de vuelo real (PX4, Gazebo, SITL, QGroundControl, MAVLink, MAVSDK, ROS 2) montada y medida en su PC, y el estado del arte en simular la realidad. Los temas C que vienen después se apoyan en lo que el taller deja montado y medido, y no lo repiten.
 >
-> Ampliada por tercera vez el 2026-11-12 con **R1a y R1b, «Así lo hacen en la realidad»** (J36–37), a petición de Pablo: faltaba la actualidad de la industria y de los labs (DeepMind, Physical Intelligence y compañía) con casos, fotos y figuras reales. Plan completo en [`PLAN_R1.md`](PLAN_R1.md). Desde C1a, cada tema lleva además al menos dos hojas sobre un sistema real (`PLAN_R1.md` §7).
+> Ampliada por tercera vez el 2026-11-12 con **R1a y R1b, «Así lo hacen en la realidad»** (J36–37), a petición de Pablo: faltaba la actualidad de la industria y de los labs (DeepMind, Physical Intelligence y compañía) con casos, fotos y figuras reales. Su contenido mínimo está en «Contenido obligatorio del bloque C», más abajo. Desde C1a, cada tema lleva además al menos dos hojas sobre un sistema real (`CONTINUAR.md` §4, «Así lo hacen en la realidad»).
 
 | J | ID | Presentación | Profundidad | Lab |
 |---|---|---|---|---|
@@ -136,7 +136,22 @@ Cada punto se explica desde cero (Pablo es débil en la pila del robot real, `di
   - Modelos generativos del mundo (Cosmos, Genie) y su uso en drones como fábricas de datos y representaciones.
   - La red neuronal dentro de PX4 v1.17 (`mc_nn_control`): arquitectura, la cadena de la salida al motor derivada, vuelo en SITL y cómputo en la placa.
   - Medir la fidelidad: métricas por eje, SRCC y el intervalo de Wilson derivados, y la escalera de simuladores de la tesis.
-- **R1a · Los labs de robot learning en 2026** y **R1b · Drones autónomos en el mundo real.** El contenido mínimo, las cuentas obligatorias, la política de fotos y los laboratorios están en [`PLAN_R1.md`](PLAN_R1.md) §3, §5 y §6. Los temas C que vienen después retoman los casos de R1b (C1b el cómputo, C2b la arquitectura, C7 los accidentes) sin repetirlos.
+- **R1a · Así lo hacen en la realidad I: los labs de robot learning en 2026.** Cómo convierte un lab un método de las fases 3 y 4 en un robot que funciona fuera de la demo, y cómo se sabe. Las arquitecturas (π0, GR00T, Gemini Robotics, V-JEPA…) se citan con su tema, no se repiten.
+  - El mapa con fechas y tamaños: labs de grandes empresas, startups de modelos fundacionales, humanoides de producto y grupos académicos; línea temporal y quién publica pesos, código, datos y número de ensayos.
+  - Los datos: teleoperación, dispositivos de mano, vídeo humano y datos sintéticos; la pirámide con cifras; la cuenta del coste de recoger \(N\) demostraciones, derivada.
+  - Entrenar y desplegar: el cómputo publicado, el ciclo de datos del despliegue y la latencia medida en la GPU del robot (figura de parámetros frente a frecuencia).
+  - Evaluar: Wilson aplicado, ensayos para separar dos tasas (potencia) y la regla del tres binomial, derivadas; TRI, RoboArena y los world models como evaluadores; resultados publicados recalculados con su \(n\).
+  - Demo frente a producto: cómo leer un vídeo y un anuncio con sus propias cifras; despliegues reales; el filtro de M0 aplicado.
+  - Conducción autónoma, el caso más maduro (Waymo y su hub de seguridad leído con Poisson, un recall, Apollo Go, Wayve), y por qué los drones no están en estos labs.
+  - Lab: metadatos de datasets públicos, intervalos y potencia de resultados publicados, seis preguntas a dos vídeos, el intervalo de Waymo desde cero.
+- **R1b · Así lo hacen en la realidad II: drones autónomos en el mundo real.** Qué autonomía vuela hoy de verdad, con qué sensores, cómputo y enlace, y qué la limita. El hilo es la observabilidad parcial real: sin GNSS, con el enlace interferido o perdido, de noche, en interiores.
+  - El mapa del sector (aplicaciones, escala, quién hace qué, línea temporal) y la anatomía de cinco sistemas, cada uno con su diagrama de arquitectura y lo que publica y lo que calla: DJI, Skydio, Zipline, Wing y Shield AI.
+  - Investigación que llegó a la realidad (Swift sin repetirlo, MonoRace y A2RL, SPRIN-D sin GNSS) y la que no.
+  - Ucrania: la guerra electrónica como observabilidad parcial, solo a nivel de sistema y con fuentes públicas fiables, sin detalles de armamento ni de selección de blancos.
+  - Lo que falla, con informes de accidentes públicos y una tabla de causas, y cómo se demuestra que es seguro: categorías de EASA y SORA, U-space, Part 108 y la regla del tres por horas.
+  - Las cuentas de un sistema real, con especificaciones publicadas: distancia de parada frente a alcance de percepción y latencia; energía y alcance de multirrotor y de ala fija; deriva sin GNSS; J/S de un interferidor con Friis.
+  - Lab: ficha de arquitectura de un sistema real, velocidad segura, alcance, deriva, fiabilidad por horas y registros públicos de PX4 con GNSS degradado.
+  - Los temas C retoman estos casos (C1b el cómputo, C2b la arquitectura, C3b el enlace, C7 los accidentes) sin repetirlos.
 - **Qué cambia para los temas C y B5 tras el taller.** C2a explica PX4 en la placa (NuttX, drivers, hardware Pixhawk, ArduPilot) partiendo del SITL que T1a ya recorrió; C3b baja MAVLink al byte, la radio y la sincronización, sin repetir los flujos medidos en T1a; C8 profundiza en ROS 2 (executors, tf2, ros2_control, copia cero) sobre el puente que T1a dejó montado; B5 se centra en HITL y realidad mixta; B7a y B7b usan la escalera de simuladores y el SRCC de T1b.
 - **C1a · De la MCU a la GPU.**
   - Qué es un procesador por dentro: ciclo de instrucción, *pipeline*, caché y jerarquía de memoria, por qué la memoria manda más que los FLOPS.
