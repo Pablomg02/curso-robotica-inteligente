@@ -9,7 +9,7 @@ Crea los temas R1a y R1b del curso de robótica inteligente de este repositorio 
 
 1. Haz git pull. Lee, en este orden: CLAUDE.md, CONTINUAR.md, 00_plan/PLAN_R1.md (entero), 00_plan/ESTADO.md, 00_plan/TEMARIO.md (las filas y el contenido obligatorio de R1a y R1b) y 00_plan/diagnostico.md. Abre temas/M0_mapa-del-campo/index.html, temas/M1_herramientas-matematicas/index.html y temas/T1b_taller-simular-la-realidad/index.html como modelos.
 
-2. Preparación (PLAN_R1.md §4.1), hecha por ti antes de lanzar nada: marca R1a y R1b como ⏳ en ESTADO.md; añade el componente de foto (figure.foto y .foto.duo) a assets/curso.css, sube curso.css a ?v=12 en todas las páginas y documéntalo en CONTINUAR.md §5; crea las dos carpetas con img/, figuras/, lab/ y img/CREDITOS.md.
+2. Preparación (PLAN_R1.md §4.1), hecha por ti antes de lanzar nada: marca R1a y R1b como ⏳ en ESTADO.md; añade el componente de foto (figure.foto y .foto.duo) a assets/curso.css, sube curso.css a ?v=13 en todas las páginas y documéntalo en CONTINUAR.md §5; crea las dos carpetas con img/, figuras/, lab/ y img/CREDITOS.md.
 
 3. Lanza dos subagentes en el mismo mensaje, uno para R1a y otro para R1b, cada uno con la orden de encargo de PLAN_R1.md §4.2 rellenada (ruta del repositorio, carpeta, puerto 8765 o 8766, ruta absoluta del scratchpad para los dossiers). Ningún subagente lanza otros ni toca git, assets/, index.html ni 00_plan/. Mientras trabajan, no hagas tú su trabajo.
 

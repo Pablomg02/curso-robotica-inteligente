@@ -116,7 +116,7 @@ Pregunta central: **¿qué autonomía vuela hoy de verdad, con qué sensores, c�
    - `figure.foto` con `img` (`object-fit: cover` o `contain`, `max-height` controlable con `style`, bordes del tema) y `figcaption` con la línea de créditos en `.xsmall`.
    - Variante `.foto.duo` para dos fotos lado a lado.
    - Que funcione en tema claro y oscuro y en modo lectura y móvil (`max-width: 100%`).
-   - Subir `curso.css?v=11` a `v=12` en **todas** las páginas (los 35 temas, `index.html` y las nuevas). Comprobar con `grep -rL "curso.css?v=12" temas/*/index.html index.html`, que no debe listar nada.
+   - Subir `curso.css` a la versión siguiente a la que haya (el 2026-11-12 era `?v=12`, así que `?v=13`) en **todas** las páginas (los 35 temas, `index.html` y las nuevas). Comprobar con `grep -rL "curso.css?v=13" temas/*/index.html index.html`, que no debe listar nada.
    - Documentar el componente en `CONTINUAR.md` §5.
 4. Crear las carpetas `temas/R1a_labs-robot-learning-2026/` y `temas/R1b_drones-autonomos-reales/`, cada una con `img/`, `figuras/` y `lab/`, y un `img/CREDITOS.md` vacío con su cabecera (§5).
 5. Preparar las dos órdenes de encargo (§4.2) y lanzar **los dos subagentes en el mismo mensaje**, para que corran en paralelo.
@@ -131,7 +131,7 @@ Cada subagente recibe solo esto, sin el razonamiento del agente principal:
 > 2. **Trabaja solo en `temas/<carpeta>/`**. No toques `assets/`, `index.html`, `00_plan/`, otros temas ni git (nada de commit, push ni stash). El otro tema lo escribe otro agente a la vez.
 > 3. **Investiga antes de escribir** (`CONTINUAR.md` §3, paso 2). Primero las fuentes primarias: papers, blogs técnicos de cada empresa, documentación, informes de accidentes, documentos regulatorios, informes de *think tanks*. Las cifras que solo publica una empresa van como afirmaciones suyas. Guarda el dossier en `<scratchpad>/dossiers/<ID>/`, con cada cifra, su fuente exacta y su estado (confirmado o no). Nada sin confirmar entra en una hoja.
 > 4. **Fotos** según `PLAN_R1.md` §5: licencia comprobada en la página del fichero, crédito en el pie y en `img/CREDITOS.md`, comprimidas. Lo que no tenga licencia libre va como enlace.
-> 5. Escribe `index.html` (50–65 hojas, con `curso.css?v=12`), `figuras/` (script que calcula cada figura con datos y cada ejemplo numérico), `lab/README.md` (§6.1 para R1a, §6.2 para R1b), glosario y referencias, con las reglas de `CONTINUAR.md` §4.
+> 5. Escribe `index.html` (50–65 hojas, con `curso.css?v=13` y `curso.js?v=5`; la cabecera, copiada de T1b), `figuras/` (script que calcula cada figura con datos y cada ejemplo numérico), `lab/README.md` (§6.1 para R1a, §6.2 para R1b), glosario y referencias, con las reglas de `CONTINUAR.md` §4.
 > 6. **Comprueba en el navegador** según `CONTINUAR.md` §6, con un servidor en el puerto `<8765 para R1a, 8766 para R1b>`: `checkOverflow()` vacío a 1440×900 en claro y oscuro, sin desborde a 375 px, MathJax sin errores, citas completas, `verificar_glosario.py`, todas las imágenes cargadas (`[...document.images].filter(i=>!i.complete||i.naturalWidth===0)` vacío). Mira cada hoja con fotos en una captura.
 > 7. Al acabar, devuelve un informe breve: número de hojas; lista de fotos con su licencia; cifras que se quedaron fuera por no poder verificarse; afirmaciones que van como «según la empresa»; decisiones de diseño; qué enlaces dejas hacia otros temas (C1b, C2b, C5, C7, B7b, D1, D2). No devuelvas el contenido de las hojas.
 
@@ -148,7 +148,7 @@ Cada subagente recibe solo esto, sin el razonamiento del agente principal:
 3. **M0, hoja 3:** la figura del plan dice `FASE 5 · J34–46`, `FASE 6 · J47–53` y «50 presentaciones en 53 jornadas». Corregirla a `J34–48`, `J49–55` y 52 en 55, comprobando que las etiquetas no se pisan. Con `checkOverflow()` repetido en M0.
 4. **`index.html`:** R1a y R1b pasan a «disponible» con su enlace. **`ESTADO.md`:** ✅, fecha y notas (hojas, fotos, cifras sin verificar), y la revisión anotada.
 5. **Commits, en este orden:**
-   - (a) `assets` y el `?v=12` en todas las páginas, con la nota de `CONTINUAR.md`;
+   - (a) `assets` y el `?v=13` en todas las páginas, con la nota de `CONTINUAR.md`;
    - (b) R1a con `index.html` y `ESTADO.md`;
    - (c) R1b con `index.html`, `ESTADO.md` y el arreglo de M0.
 
@@ -220,6 +220,6 @@ Ejemplos: C1b con el cómputo de Skydio y de DJI; C2b con la arquitectura de Zip
 - [ ] Al menos 8 fotos con licencia libre por tema, todas en `img/CREDITOS.md` y con su crédito en el pie. Ninguna sin licencia comprobada.
 - [ ] Al menos cinco sistemas reales con su diagrama de arquitectura en R1b, y al menos cinco organizaciones con sus cifras de datos, cómputo o despliegue en R1a.
 - [ ] `checkOverflow()` vacío a 1440×900 en claro y oscuro, sin desborde a 375 px, sin errores de MathJax ni de consola, todas las imágenes cargadas y `verificar_glosario.py` sin fallos, en R1a, R1b y M0.
-- [ ] `curso.css?v=12` en todas las páginas.
+- [ ] `curso.css?v=13` en todas las páginas.
 - [ ] `index.html`, `ESTADO.md`, `TEMARIO.md` y `CONTINUAR.md` actualizados. Tres commits subidos.
 - [ ] Informe de parada a Pablo.
