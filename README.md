@@ -2,7 +2,7 @@
 
 Curso autodidacta para empezar al día un doctorado en IA para drones pensado para sim-to-real: cómo se controlan hoy los robots con IA (de PID y MPC a VLAs y world models), cómo se simulan para entrenar y validar, y con qué hardware y comunicaciones se despliegan.
 
-- **50 presentaciones HTML** en 53 jornadas, repartidas en 7 fases, con un taller práctico de dos jornadas (PX4, Gazebo, SITL, QGroundControl, MAVSDK, ROS 2 y el estado del arte en simular la realidad) al empezar la fase 5.
+- **52 presentaciones HTML** en 55 jornadas, repartidas en 7 fases, con un taller práctico de dos jornadas (PX4, Gazebo, SITL, QGroundControl, MAVSDK, ROS 2 y el estado del arte en simular la realidad) al empezar la fase 5, seguido de dos jornadas de casos reales: los labs de robot learning y los drones autónomos en producción.
 - Cada tema lleva **laboratorio**, **test de autoevaluación** y **lecturas guiadas** con referencias verificadas.
 - Un **proyecto hilo** en JAX (simulador y pipeline de dron) crece con los laboratorios.
 

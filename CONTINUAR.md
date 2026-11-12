@@ -90,6 +90,8 @@ En HTML, el signo «menor que» dentro de una fórmula se escribe `\lt` (o `&lt;
 
 Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.hz`), observabilidad parcial, sim-to-real y cómputo limitado.
 
+**«Así lo hacen en la realidad»** (petición de Pablo del 2026-11-12): desde C1a, cada tema lleva al menos dos hojas sobre un sistema real (empresa, lab o despliegue) relacionado con su contenido. Cada una con cifras verificadas (las de la empresa, como afirmaciones suyas), su esquema y su foto si tiene licencia libre comprobada, y con lo que ese caso enseña del tema. Las reglas de las fotos están en `00_plan/PLAN_R1.md` §5: el repositorio es público, así que nada de fotos de prensa ni de fotogramas de vídeo; lo que no tenga licencia se enlaza. Se puede remitir a R1a y R1b en lugar de repetirlos.
+
 ## 5. El motor de presentaciones
 
 Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `G` glosario, `T` tema) y modo lectura automático en pantallas estrechas.

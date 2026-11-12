@@ -4,8 +4,8 @@
 
 ## Cifras
 
-- **50 presentaciones** en 7 fases (algunos temas "A fondo" se parten en dos: a y b; el taller práctico T1 también).
-- **53 jornadas de 8 h** (unas 11 semanas a tiempo completo): una por presentación, más 3 dedicadas a hitos y al examen final.
+- **52 presentaciones** en 7 fases (algunos temas "A fondo" se parten en dos: a y b; el taller práctico T1 y los casos reales R1 también).
+- **55 jornadas de 8 h** (unas 11 semanas a tiempo completo): una por presentación, más 3 dedicadas a hitos y al examen final.
 - Cada jornada tipo: unas 3–4 h de presentación con derivaciones, 2–3 h de laboratorio, 1 h de lectura guiada y un test de autoevaluación al final.
 - Labs en **Python + JAX**, independientes del hardware concreto (ver "Política de hardware de los laboratorios").
 
@@ -91,27 +91,31 @@ Es el miniproyecto integrador y crece con los laboratorios. Al final del curso e
 | 32 | A13 | Arquitecturas jerárquicas y fusión de modelos | A fondo | System 2 lento + System 1 rápido con inferencia asíncrona |
 | 33 | A14 | Seguridad y garantías | Importante | Filtro de seguridad CBF sobre la política aprendida |
 
-## Fase 5 · Desplegar: hardware y sistema (13 jornadas)
+## Fase 5 · Desplegar: hardware y sistema (15 jornadas)
 
 > Ampliada el 2026-11-10 a petición de Pablo: la arquitectura de un dron real (Pixhawk, PX4, MAVLink) tiene que quedar explicada a fondo, y también el cómputo (CPU, GPU, NPU), los protocolos y todo lo demás que hace falta para desplegar. Por eso C1, C2 y C3 se parten en dos. El contenido mínimo de cada tema está en «Contenido obligatorio del bloque C», más abajo. Los temas no se quedan en esa lista: es lo mínimo que tienen que cubrir.
 >
 > Ampliada otra vez el 2026-11-10 con el **taller práctico T1** (dos jornadas al empezar la fase), también a petición de Pablo: la pila de vuelo real (PX4, Gazebo, SITL, QGroundControl, MAVLink, MAVSDK, ROS 2) montada y medida en su PC, y el estado del arte en simular la realidad. Los temas C que vienen después se apoyan en lo que el taller deja montado y medido, y no lo repiten.
+>
+> Ampliada por tercera vez el 2026-11-12 con **R1a y R1b, «Así lo hacen en la realidad»** (J36–37), a petición de Pablo: faltaba la actualidad de la industria y de los labs (DeepMind, Physical Intelligence y compañía) con casos, fotos y figuras reales. Plan completo en [`PLAN_R1.md`](PLAN_R1.md). Desde C1a, cada tema lleva además al menos dos hojas sobre un sistema real (`PLAN_R1.md` §7).
 
 | J | ID | Presentación | Profundidad | Lab |
 |---|---|---|---|---|
 | 34 | T1a | Taller I: la pila de vuelo, simulada de punta a punta | Práctico, a fondo | Contenedor con PX4 v1.17 SITL, Gazebo, ROS 2 Jazzy y MAVSDK 4; vuelos, registros y fallos medidos |
 | 35 | T1b | Taller II: simular la realidad en 2026 | Práctico, a fondo | Registros públicos de un X500 V2 frente al SITL; Gazebo más real; cámara de splats con PX4 SITL; la red de PX4; SRCC |
-| 36 | C1a | Cómputo I: de la MCU a la GPU | A fondo | Roofline de tu GPU y de tu CPU con un microbenchmark; una MLP y una CNN pequeñas situadas en él |
-| 37 | C1b | Cómputo II: NPUs, aceleradores y plataformas embarcadas | A fondo | Perfilado de latencia, memoria y energía estimada de un modelo; comparación con cifras publicadas de Jetson, NPUs y MCUs |
-| 38 | C2a | El autopiloto por dentro: Pixhawk, PX4 y ArduPilot | A fondo | Registros públicos de Pixhawk reales frente al SITL de T1a: drivers, frecuencias, estados del *commander* y *failsafes*; ArduPilot SITL al lado |
-| 39 | C2b | Arquitectura del sistema completo | A fondo | Arquitectura del dron de la tesis con presupuesto de latencias, cómputo, energía y peso |
-| 40 | C3a | Buses y protocolos a bordo | Importante | Decodificar tramas (DShot, CRSF, CAN) a partir de capturas públicas o generadas; ancho de banda y latencia calculados |
-| 41 | C3b | MAVLink, DDS, radio y sincronización | A fondo | MAVLink byte a byte (trama, CRC, firma) con pymavlink; enlace con pérdidas y retardo emulados sobre el SITL de T1a; desfase de relojes |
-| 42 | C8 | ROS 2 a fondo | A fondo | Executors, tf2, launch, rosbag2/MCAP y ros2_control sobre el puente con PX4 de T1a; rendimiento y copia cero |
-| 43 | C4 | Tiempo real en robots | A fondo | Latencia y jitter con kernel normal frente a PREEMPT_RT; executors |
-| 44 | C5 | Inferencia en el borde | A fondo | Exportar a ONNX, cuantizar y medir latencia (TensorRT si hay GPU NVIDIA) |
-| 45 | C6 | Sensores, actuadores, potencia y calibración | A fondo | Calibración cámara-IMU con un dataset público; modelo de motor-hélice a partir de datos de banco publicados |
-| 46 | C7 + H4 | Operación y experimentación real, e hito 4 | Repaso | Análisis de un ulog e integración del hito H4 |
+| 36 | R1a | Así lo hacen en la realidad I: los labs de robot learning en 2026 | A fondo | Auditar los datos y las afirmaciones de un lab: metadatos de datasets públicos, Wilson y potencia de resultados publicados, lectura de demos |
+| 37 | R1b | Así lo hacen en la realidad II: drones autónomos en el mundo real | A fondo | Un sistema real en números: ficha de arquitectura, velocidad segura, alcance, deriva sin GNSS, fiabilidad y registros públicos con GNSS degradado |
+| 38 | C1a | Cómputo I: de la MCU a la GPU | A fondo | Roofline de tu GPU y de tu CPU con un microbenchmark; una MLP y una CNN pequeñas situadas en él |
+| 39 | C1b | Cómputo II: NPUs, aceleradores y plataformas embarcadas | A fondo | Perfilado de latencia, memoria y energía estimada de un modelo; comparación con cifras publicadas de Jetson, NPUs y MCUs |
+| 40 | C2a | El autopiloto por dentro: Pixhawk, PX4 y ArduPilot | A fondo | Registros públicos de Pixhawk reales frente al SITL de T1a: drivers, frecuencias, estados del *commander* y *failsafes*; ArduPilot SITL al lado |
+| 41 | C2b | Arquitectura del sistema completo | A fondo | Arquitectura del dron de la tesis con presupuesto de latencias, cómputo, energía y peso |
+| 42 | C3a | Buses y protocolos a bordo | Importante | Decodificar tramas (DShot, CRSF, CAN) a partir de capturas públicas o generadas; ancho de banda y latencia calculados |
+| 43 | C3b | MAVLink, DDS, radio y sincronización | A fondo | MAVLink byte a byte (trama, CRC, firma) con pymavlink; enlace con pérdidas y retardo emulados sobre el SITL de T1a; desfase de relojes |
+| 44 | C8 | ROS 2 a fondo | A fondo | Executors, tf2, launch, rosbag2/MCAP y ros2_control sobre el puente con PX4 de T1a; rendimiento y copia cero |
+| 45 | C4 | Tiempo real en robots | A fondo | Latencia y jitter con kernel normal frente a PREEMPT_RT; executors |
+| 46 | C5 | Inferencia en el borde | A fondo | Exportar a ONNX, cuantizar y medir latencia (TensorRT si hay GPU NVIDIA) |
+| 47 | C6 | Sensores, actuadores, potencia y calibración | A fondo | Calibración cámara-IMU con un dataset público; modelo de motor-hélice a partir de datos de banco publicados |
+| 48 | C7 + H4 | Operación y experimentación real, e hito 4 | Repaso | Análisis de un ulog e integración del hito H4 |
 
 ### Contenido obligatorio del bloque C
 
@@ -132,6 +136,7 @@ Cada punto se explica desde cero (Pablo es débil en la pila del robot real, `di
   - Modelos generativos del mundo (Cosmos, Genie) y su uso en drones como fábricas de datos y representaciones.
   - La red neuronal dentro de PX4 v1.17 (`mc_nn_control`): arquitectura, la cadena de la salida al motor derivada, vuelo en SITL y cómputo en la placa.
   - Medir la fidelidad: métricas por eje, SRCC y el intervalo de Wilson derivados, y la escalera de simuladores de la tesis.
+- **R1a · Los labs de robot learning en 2026** y **R1b · Drones autónomos en el mundo real.** El contenido mínimo, las cuentas obligatorias, la política de fotos y los laboratorios están en [`PLAN_R1.md`](PLAN_R1.md) §3, §5 y §6. Los temas C que vienen después retoman los casos de R1b (C1b el cómputo, C2b la arquitectura, C7 los accidentes) sin repetirlos.
 - **Qué cambia para los temas C y B5 tras el taller.** C2a explica PX4 en la placa (NuttX, drivers, hardware Pixhawk, ArduPilot) partiendo del SITL que T1a ya recorrió; C3b baja MAVLink al byte, la radio y la sincronización, sin repetir los flujos medidos en T1a; C8 profundiza en ROS 2 (executors, tf2, ros2_control, copia cero) sobre el puente que T1a dejó montado; B5 se centra en HITL y realidad mixta; B7a y B7b usan la escalera de simuladores y el SRCC de T1b.
 - **C1a · De la MCU a la GPU.**
   - Qué es un procesador por dentro: ciclo de instrucción, *pipeline*, caché y jerarquía de memoria, por qué la memoria manda más que los FLOPS.
@@ -186,13 +191,13 @@ Cada punto se explica desde cero (Pablo es débil en la pila del robot real, `di
 
 | J | ID | Presentación | Profundidad | Lab |
 |---|---|---|---|---|
-| 47 | B5 | SIL, HIL y realidad mixta | A fondo | PX4 HITL con la controladora real (opcional) y SIH en la placa, frente al SITL de T1a |
-| 48 | B7a | Sim-to-real: taxonomía de gaps y técnicas | A fondo | Ablación: qué capa de realismo importa más |
-| 49 | B7b | Sim-to-real en la práctica: casos y protocolo | A fondo | Política en una Pixhawk en HIL y evaluación contra datos de vuelo públicos |
-| 50 | B8 | Diseñar tu propio simulador | A fondo | Documento de diseño del simulador de la tesis |
-| 51 | D1 | Datasets, benchmarks y evaluación | A fondo | Protocolo de evaluación de la tesis |
-| 52 | D2 | Investigar en robótica hoy | A fondo | Mapa de lecturas y plan del primer año |
-| 53 | Final | Examen final | — | Los 7 criterios de `ANALISIS.md` §3 |
+| 49 | B5 | SIL, HIL y realidad mixta | A fondo | PX4 HITL con la controladora real (opcional) y SIH en la placa, frente al SITL de T1a |
+| 50 | B7a | Sim-to-real: taxonomía de gaps y técnicas | A fondo | Ablación: qué capa de realismo importa más |
+| 51 | B7b | Sim-to-real en la práctica: casos y protocolo | A fondo | Política en una Pixhawk en HIL y evaluación contra datos de vuelo públicos |
+| 52 | B8 | Diseñar tu propio simulador | A fondo | Documento de diseño del simulador de la tesis |
+| 53 | D1 | Datasets, benchmarks y evaluación | A fondo | Protocolo de evaluación de la tesis |
+| 54 | D2 | Investigar en robótica hoy | A fondo | Mapa de lecturas y plan del primer año |
+| 55 | Final | Examen final | — | Los 7 criterios de `ANALISIS.md` §3 |
 
 ---
 
