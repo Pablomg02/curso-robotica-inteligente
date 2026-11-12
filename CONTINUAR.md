@@ -96,7 +96,7 @@ Hilos que deben aparecer en todos los temas: latencia y frecuencia (el color `.h
 
 Cada tema es un HTML que enlaza `../../assets/curso.css?v=N` y `../../assets/curso.js?v=N`, carga las fuentes de Google Fonts y MathJax 3.2.2 (ver la cabecera de M1 y copiarla tal cual). Hojas de 1280×720; modo presentación (flechas, `L` lectura, `I` índice, `G` glosario, `T` tema) y modo lectura automático en pantallas estrechas.
 
-**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=12`, `curso.js?v=5`.
+**Si cambias `assets/`**, sube el número `?v=` en **todas** las páginas que lo enlazan (los navegadores cachean). Ahora mismo: `curso.css?v=13`, `curso.js?v=5`.
 
 Componentes disponibles:
 
@@ -110,6 +110,7 @@ Componentes disponibles:
 | `.callout.clave / .realidad / .tesis / .error` con `<span class="tag">` | Avisos: idea clave, cifras reales, tu tesis, error frecuente. |
 | `.card` (`.meta`, `h3`, `p`) y `.cards-sm` en el contenedor | Tarjetas; `cards-sm` reduce la letra si no caben. |
 | `.table-wrap > table.t`, `td.n` | Tablas; `td.n` para cifras en monoespaciada. |
+| `figure.foto > img` + `figcaption` (con `span.xsmall` para el crédito) | Fotos (desde `curso.css?v=13`). Alto máximo con `style="--foto-h:280px"` en el `figure` (340 px por defecto) o `style="max-height:…"` en la `img`. Por defecto `object-fit: contain` (la foto entera); `.cubre` recorta a la caja (nunca con licencias ND) y `object-position` se ajusta con `style`. `.foto.duo`: dos `img` lado a lado a la misma altura y un solo pie (una encima de otra en móvil). La `img` lleva siempre `width`, `height` y `alt`, y nunca `loading="lazy"`: así reserva su sitio antes de cargar, `checkOverflow()` mide bien y la comprobación de imágenes cargadas de §6 no da falsos fallos. Pie: qué se ve y por qué importa, y debajo «Foto: autor, licencia (enlace), vía fuente». |
 | `figure.fig > svg` + `figcaption` | Figuras. Clases SVG: `box`, `box-accent`, `box-time`, `box-tesis`, `box-soft`, `ln`, `ln-accent`, `ln-time`, `ln-tesis`, `ln-dash`, `ln-rule`, `fill-*`, `t-mono`, `t-muted`, `t-faint`, `t-accent`, `t-time`, `t-tesis`, `t-bold`. Todo color sale de las variables del tema: así funcionan claro y oscuro. |
 | `.tl > .ev > .yr` | Línea temporal. |
 | `details.deriv > summary` | Plegable. **Solo para respuestas** de la autoevaluación y de los exámenes (desde el 2026-11-07). |
