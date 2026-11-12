@@ -1,6 +1,6 @@
 # Plan: R1a y R1b, «Así lo hacen en la realidad»
 
-> 2026-11-12. Petición de Pablo: «Echo en falta leer sobre la actualidad de la industria y el research de labs estilo DeepMind, PI, etc. […] un tema que enseñe cómo lo hacen en la realidad con ejemplos reales, fotos, figuras». El prompt para ejecutar este plan está en §9. Este fichero se borra al terminar R1b: lo que siga valiendo pasa a `CONTINUAR.md` y `TEMARIO.md` (§4.3, punto 5).
+> 2026-11-12. Petición de Pablo: «Echo en falta leer sobre la actualidad de la industria y el research de labs estilo DeepMind, PI, etc. […] un tema que enseñe cómo lo hacen en la realidad con ejemplos reales, fotos, figuras». El prompt para ejecutar este plan está en §9. Este fichero se borra al terminar R1b: lo que siga valiendo pasa a `CONTINUAR.md` y `TEMARIO.md` (§4.3, punto 6).
 
 ## 1. Por qué y qué hueco cubre
 
@@ -119,52 +119,85 @@ Pregunta central: **¿qué autonomía vuela hoy de verdad, con qué sensores, c�
    - Subir `curso.css` a la versión siguiente a la que haya (el 2026-11-12 era `?v=12`, así que `?v=13`) en **todas** las páginas (los 35 temas, `index.html` y las nuevas). Comprobar con `grep -rL "curso.css?v=13" temas/*/index.html index.html`, que no debe listar nada.
    - Documentar el componente en `CONTINUAR.md` §5.
 4. Crear las carpetas `temas/R1a_labs-robot-learning-2026/` y `temas/R1b_drones-autonomos-reales/`, cada una con `img/`, `figuras/` y `lab/`, y un `img/CREDITOS.md` vacío con su cabecera (§5).
-5. Preparar las dos órdenes de encargo (§4.2) y lanzar **los dos subagentes en el mismo mensaje**, para que corran en paralelo.
+5. Preparar las dos órdenes de encargo (§4.2) y lanzar **los dos subagentes en el mismo mensaje**, para que corran en paralelo. Cada uno hace primero **solo la fase de investigación** y se detiene.
 
 ### 4.2 Orden de encargo de cada subagente
 
-Cada subagente recibe solo esto, sin el razonamiento del agente principal:
+Cada subagente recibe solo esto, sin el razonamiento del agente principal. Trabaja en dos fases separadas por un punto de control: **no escribe ninguna hoja hasta recibir el visto bueno del dossier**.
 
-> Escribe el tema `<ID>` del curso de robótica inteligente de este repositorio (`<ruta absoluta>`).
+> Vas a preparar el tema `<ID>` del curso de robótica inteligente de este repositorio (`<ruta absoluta>`), en dos fases. Ahora haces solo la **fase 1 (investigación)**. Cuando acabes, devuelves el informe y paras. La fase 2 (escribir) llegará en un mensaje aparte con las decisiones sobre tu dossier.
 >
-> 1. Lee `CLAUDE.md`, `CONTINUAR.md` (entero), `00_plan/PLAN_R1.md` (entero, sobre todo §3 `<ID>`, §5 y §6) y `00_plan/diagnostico.md`. Usa M0 como modelo de estructura y M1 como modelo de matemática. La parte de `<ID>` en §3 es el contenido mínimo, no un índice cerrado.
-> 2. **Trabaja solo en `temas/<carpeta>/`**. No toques `assets/`, `index.html`, `00_plan/`, otros temas ni git (nada de commit, push ni stash). El otro tema lo escribe otro agente a la vez.
-> 3. **Investiga antes de escribir** (`CONTINUAR.md` §3, paso 2). Primero las fuentes primarias: papers, blogs técnicos de cada empresa, documentación, informes de accidentes, documentos regulatorios, informes de *think tanks*. Las cifras que solo publica una empresa van como afirmaciones suyas. Guarda el dossier en `<scratchpad>/dossiers/<ID>/`, con cada cifra, su fuente exacta y su estado (confirmado o no). Nada sin confirmar entra en una hoja.
-> 4. **Fotos** según `PLAN_R1.md` §5: licencia comprobada en la página del fichero, crédito en el pie y en `img/CREDITOS.md`, comprimidas. Lo que no tenga licencia libre va como enlace.
-> 5. Escribe `index.html` (50–65 hojas, con `curso.css?v=13` y `curso.js?v=5`; la cabecera, copiada de T1b), `figuras/` (script que calcula cada figura con datos y cada ejemplo numérico), `lab/README.md` (§6.1 para R1a, §6.2 para R1b), glosario y referencias, con las reglas de `CONTINUAR.md` §4.
-> 6. **Comprueba en el navegador** según `CONTINUAR.md` §6, con un servidor en el puerto `<8765 para R1a, 8766 para R1b>`: `checkOverflow()` vacío a 1440×900 en claro y oscuro, sin desborde a 375 px, MathJax sin errores, citas completas, `verificar_glosario.py`, todas las imágenes cargadas (`[...document.images].filter(i=>!i.complete||i.naturalWidth===0)` vacío). Mira cada hoja con fotos en una captura.
-> 7. Al acabar, devuelve un informe breve: número de hojas; lista de fotos con su licencia; cifras que se quedaron fuera por no poder verificarse; afirmaciones que van como «según la empresa»; decisiones de diseño; qué enlaces dejas hacia otros temas (C1b, C2b, C5, C7, B7b, D1, D2). No devuelvas el contenido de las hojas.
+> **Reglas de las dos fases**
+>
+> - Lee `CLAUDE.md`, `CONTINUAR.md` (entero), `00_plan/PLAN_R1.md` (entero, sobre todo §3 `<ID>`, §4.2, §5 y §6) y `00_plan/diagnostico.md`. La parte de `<ID>` en §3 es el contenido mínimo, no un índice cerrado: si en noviembre de 2026 hay un caso más importante que alguno de la lista, propónlo.
+> - **Trabaja solo en `temas/<carpeta>/` y en `<scratchpad>/dossiers/<ID>/`**. No toques `assets/`, `index.html`, `00_plan/`, otros temas ni git (nada de commit, push ni stash). El otro tema lo prepara otro agente a la vez.
+>
+> **Fase 1 · Investigación** (`CONTINUAR.md` §3, paso 2)
+>
+> 1. **Fuentes primarias primero:** papers, blogs técnicos y documentación de cada empresa, informes de accidentes (NTSB, AAIB, CIAIAC, BEA), documentos regulatorios (EASA, FAA), informes de *think tanks* (RUSI, CSIS…) y datasets con su ficha. La prensa solo para hechos que no publique nadie más, y marcada como fuente secundaria.
+> 2. **Actualidad obligatoria.** Para cada organización o sistema de §3, busca expresamente qué ha pasado en 2025 y 2026: modelos y productos nuevos, despliegues, cifras de flota, rondas de financiación, accidentes, cambios regulatorios. Usa la búsqueda extendida para lo reciente y lo difícil de encontrar. Cada dato lleva **la fecha de su fuente**. Si dos fuentes no coinciden, anota las dos.
+> 3. **Fotos candidatas** según §5: la página de cada fichero y su licencia leída allí. Todavía no se descarga nada.
+> 4. **El dossier**, en `<scratchpad>/dossiers/<ID>/`: un fichero por caso (`<caso>.md`) más `indice.md`.
+>    - Cada **dato**: la cifra o la frase exacta, la cita completa (autores u organización, título, fecha, URL o DOI), dónde está (sección, tabla, página, minuto del vídeo), la fecha de la fuente y su estado: **confirmado** (leído en la fuente primaria), **según la empresa** (solo lo publica ella) o **sin confirmar**.
+>    - **Mínimo por caso:** una fuente primaria, al menos tres datos confirmados o «según la empresa» y lo más reciente que se haya encontrado, con su fecha. Un caso que no llegue al mínimo se marca como «débil».
+>    - **`indice.md`:** tabla de casos (estado, n.º de datos por estado, fecha del dato más reciente, fotos candidatas con licencia), las cuentas de §3 con las especificaciones publicadas que usarán, los casos nuevos que propones y por qué, y los que propones quitar.
+> 5. **Devuelve un informe breve y para:** ruta del dossier, la tabla de `indice.md`, los casos débiles, las contradicciones entre fuentes y lo que no hayas podido consultar (páginas bloqueadas, *paywalls*). No escribas ninguna hoja.
+>
+> **Fase 2 · Escritura** (solo tras el mensaje con las decisiones del dossier)
+>
+> 6. Aplica las decisiones: casos que entran, que salen y datos que hay que volver a comprobar. **Solo entran en una hoja los datos confirmados o «según la empresa» del dossier.** Si al escribir hace falta un dato nuevo, se añade antes al dossier con el mismo formato.
+> 7. **Fotos:** descarga y comprime solo las aprobadas, con su crédito en el pie y en `img/CREDITOS.md` (§5).
+> 8. Escribe `index.html` (50–65 hojas, con `curso.css?v=13` y `curso.js?v=5`; la cabecera, copiada de T1b), `figuras/` (un script que calcula cada figura con datos y cada ejemplo numérico), `lab/README.md` (§6.1 para R1a, §6.2 para R1b), glosario y referencias, con las reglas de `CONTINUAR.md` §4. Usa M0 como modelo de estructura y M1 como modelo de matemática. Lo que dependa del momento va con la fecha de su fuente.
+> 9. **Pasada de actualidad final:** antes de dar el tema por terminado, vuelve a buscar las novedades de las dos o tres semanas anteriores para los casos principales y corrige lo que haya cambiado.
+> 10. **Comprueba en el navegador** según `CONTINUAR.md` §6, con un servidor en el puerto `<8765 para R1a, 8766 para R1b>`:
+>     - `checkOverflow()` vacío a 1440×900, en claro y en oscuro;
+>     - sin desborde horizontal a 375 px;
+>     - MathJax sin errores y todas las citas con su referencia;
+>     - `verificar_glosario.py` sin fallos;
+>     - todas las imágenes cargadas: `[...document.images].filter(i=>!i.complete||i.naturalWidth===0)` vacío;
+>     - una captura de cada hoja con fotos, mirada.
+> 11. **Devuelve un informe breve:** número de hojas; lista de fotos con su licencia; cifras que se quedaron fuera por no poder verificarse; afirmaciones que van como «según la empresa»; qué cambió en la pasada final; decisiones de diseño; qué enlaces dejas hacia otros temas (C1b, C2b, C5, C7, B7b, D1, D2). No devuelvas el contenido de las hojas.
 
 ### 4.3 Revisión, integración y commits (agente principal)
 
-1. **Revisión de cada tema al llegar su informe**, como revisor independiente: no reescribir, comprobar.
+1. **Punto de control del dossier** (al terminar la fase 1 de cada subagente, sin esperar al otro):
+   - Leer `indice.md` y los ficheros de los casos.
+   - Contrastar con su fuente al menos dos datos por caso, empezando por los más recientes y los «según la empresa».
+   - Comprobar que la licencia de cada foto candidata es la que dice el dossier.
+   - Decidir qué casos entran: los débiles se refuerzan o salen, y los propuestos se aceptan o no.
+   - Decidir qué datos se descartan o se vuelven a comprobar.
+   - Cuidar que los dos temas no se pisen (por ejemplo, Swift va en R1b y Waymo en R1a).
+   - Anotar las decisiones en `<scratchpad>/dossiers/<ID>/decisiones.md`.
+   - Mandárselas al subagente con `SendMessage`, junto con la orden de empezar la fase 2. Así conserva su contexto y no repite la investigación.
+2. **Revisión de cada tema al llegar su informe final**, como revisor independiente: no reescribir, comprobar.
    - Todas las fotos: abrir la página de la licencia de cada una y cotejarla con `CREDITOS.md` y el pie.
-   - Una muestra de al menos 12 cifras y 8 referencias por tema, contrastadas con su fuente.
-   - Rehacer a mano todas las cuentas (cuentas de §3) contra el script.
+   - Una muestra de al menos 12 cifras y 8 referencias por tema, contrastadas con su fuente, y que cada cifra de una hoja esté en el dossier.
+   - Rehacer a mano todas las cuentas de §3 contra el script.
    - Que no haya solapes con A12a, A12b, A8b ni M0, ni contenido de §3.4 fuera de los límites marcados.
    - Repetir las comprobaciones del navegador.
    - Corregir solo lo comprobado.
-2. **Coherencia entre los dos:** R1a debe acabar con el puente a R1b y R1b debe citar R1a donde toque. Las cifras compartidas (por ejemplo, las de Swift o las de cómputo a bordo) tienen que coincidir.
-3. **M0, hoja 3:** la figura del plan dice `FASE 5 · J34–46`, `FASE 6 · J47–53` y «50 presentaciones en 53 jornadas». Corregirla a `J34–48`, `J49–55` y 52 en 55, comprobando que las etiquetas no se pisan. Con `checkOverflow()` repetido en M0.
-4. **`index.html`:** R1a y R1b pasan a «disponible» con su enlace. **`ESTADO.md`:** ✅, fecha y notas (hojas, fotos, cifras sin verificar), y la revisión anotada.
-5. **Limpieza antes del último commit:**
+3. **Coherencia entre los dos:** R1a debe acabar con el puente a R1b y R1b debe citar R1a donde toque. Las cifras compartidas (por ejemplo, las de Swift o las de cómputo a bordo) tienen que coincidir.
+4. **M0, hoja 3:** la figura del plan dice `FASE 5 · J34–46`, `FASE 6 · J47–53` y «50 presentaciones en 53 jornadas». Corregirla a `J34–48`, `J49–55` y 52 en 55, comprobando que las etiquetas no se pisan. Con `checkOverflow()` repetido en M0.
+5. **`index.html`:** R1a y R1b pasan a «disponible» con su enlace. **`ESTADO.md`:** ✅, fecha y notas (hojas, fotos, cifras sin verificar), y la revisión anotada.
+6. **Limpieza antes del último commit:**
    - Pasar las reglas de fotos (§5) a `CONTINUAR.md` §4, y el componente a §5.
+   - Pasar la forma del dossier y el punto de control (§4.2 fase 1 y §4.3, punto 1) a `CONTINUAR.md` §3.1, como opción para los temas de actualidad.
    - Resumir el contenido de §3 en «Contenido obligatorio» de `TEMARIO.md`, al estilo de T1a y T1b.
    - Borrar este fichero y corregir las referencias a él: `grep -rn "PLAN_R1" .` no debe encontrar nada.
-6. **Commits, en este orden:**
+7. **Commits, en este orden:**
    - (a) `assets` y el `?v=13` en todas las páginas, con la nota de `CONTINUAR.md`;
    - (b) R1a con `index.html` y `ESTADO.md`;
-   - (c) R1b con `index.html`, `ESTADO.md`, el arreglo de M0 y la limpieza del punto 5.
+   - (c) R1b con `index.html`, `ESTADO.md`, el arreglo de M0 y la limpieza del punto 6.
 
    Push al final. Mensajes en el estilo del repositorio, por ejemplo: `Tema R1a (J36): los labs de robot learning en 2026, …`.
-7. **Parada 🛑:** informe a Pablo con lo que pide `PROMPT_CONTINUAR.md` §4 (temas y hojas, cifras no verificadas, decisiones, desviaciones), más la lista de fotos usadas y los casos que se quedaron fuera por falta de fuentes.
+8. **Parada 🛑:** informe a Pablo con lo que pide `PROMPT_CONTINUAR.md` §4 (temas y hojas, cifras no verificadas, decisiones, desviaciones), más la lista de fotos usadas y los casos que se quedaron fuera por falta de fuentes.
 
 ### 4.4 Consumo
 
-- Dos subagentes, uno por tema. Ningún subagente lanza otros.
+- Dos subagentes, uno por tema. Cada uno trabaja en dos fases, que se continúan con `SendMessage`, no con un agente nuevo. Ningún subagente lanza otros.
 - La investigación de cada subagente es parte de su encargo: no hay agentes de investigación aparte.
-- La revisión la hace el agente principal, no un tercer agente.
-- Si un subagente falla o se queda corto, el agente principal termina ese tema en lugar de relanzarlo desde cero (`SendMessage` para continuar con su contexto).
+- El punto de control y la revisión los hace el agente principal, no un tercer agente.
+- Si un subagente falla o se queda corto, el agente principal lo continúa con `SendMessage` o termina el tema él mismo, en lugar de relanzarlo desde cero.
 
 ## 5. Fotos e imágenes
 
@@ -220,6 +253,7 @@ Ejemplos: C1b con el cómputo de Skydio y de DJI; C2b con la arquitectura de Zip
 ## 8. Criterios de aceptación
 
 - [ ] `temas/R1a_…/index.html` y `temas/R1b_…/index.html` existen, con 50–65 hojas, portada, objetivos, partes, tesis, resumen, test, lecturas, laboratorio, referencias y glosario.
+- [ ] Cada tema tiene su dossier con `indice.md` y `decisiones.md`, revisado en el punto de control antes de escribir; cada cifra de una hoja está en el dossier con su fuente y su fecha.
 - [ ] Cada cuenta de §3 está derivada en su hoja (notación, tabla «paso / por qué» y ejemplo del script en `figuras/`).
 - [ ] Al menos 8 fotos con licencia libre por tema, todas en `img/CREDITOS.md` y con su crédito en el pie. Ninguna sin licencia comprobada.
 - [ ] Al menos cinco sistemas reales con su diagrama de arquitectura en R1b, y al menos cinco organizaciones con sus cifras de datos, cómputo o despliegue en R1a.
@@ -239,13 +273,15 @@ Crea los temas R1a y R1b del curso de robótica inteligente de este repositorio 
 
 2. Preparación (PLAN_R1.md §4.1), hecha por ti antes de lanzar nada: marca R1a y R1b como ⏳ en ESTADO.md; añade el componente de foto (figure.foto y .foto.duo) a assets/curso.css, sube curso.css a ?v=13 en todas las páginas y documéntalo en CONTINUAR.md §5; crea las dos carpetas con img/, figuras/, lab/ y img/CREDITOS.md.
 
-3. Lanza dos subagentes en el mismo mensaje, uno para R1a y otro para R1b, cada uno con la orden de encargo de PLAN_R1.md §4.2 rellenada (ruta del repositorio, carpeta, puerto 8765 o 8766, ruta absoluta del scratchpad para los dossiers). Ningún subagente lanza otros ni toca git, assets/, index.html ni 00_plan/. Mientras trabajan, no hagas tú su trabajo.
+3. Lanza dos subagentes en el mismo mensaje, uno para R1a y otro para R1b, cada uno con la orden de encargo de PLAN_R1.md §4.2 rellenada (ruta del repositorio, carpeta, puerto 8765 o 8766, ruta absoluta del scratchpad para los dossiers). Empiezan solo con la fase 1, la investigación: entregan su dossier y paran sin escribir ninguna hoja. Ningún subagente lanza otros ni toca git, assets/, index.html ni 00_plan/. Mientras trabajan, no hagas tú su trabajo.
 
-4. Cuando llegue cada informe, revisa ese tema como revisor independiente (PLAN_R1.md §4.3, punto 1): la licencia de todas las fotos en su página de origen, una muestra de cifras y referencias contra su fuente, todas las cuentas rehechas contra el script, los límites del apartado de Ucrania y las comprobaciones del navegador de CONTINUAR.md §6 repetidas. Corrige solo lo que compruebes. Si un subagente se queda corto, continúalo con SendMessage o termina tú el tema; no lo relances desde cero.
+4. Punto de control (PLAN_R1.md §4.3, punto 1), en cuanto llegue cada dossier y sin esperar al otro: contrasta con su fuente una muestra de datos de cada caso, empezando por los más recientes y los de empresa; comprueba las licencias de las fotos candidatas; decide qué casos entran y qué datos se descartan o se vuelven a comprobar, y anótalo en decisiones.md. Después mándale las decisiones con SendMessage para que empiece la fase 2, la escritura, con su contexto intacto.
 
-5. Integra (PLAN_R1.md §4.3, puntos 2 a 4): coherencia entre los dos temas, la figura del plan de M0 (hoja 3) con las jornadas nuevas, index.html y ESTADO.md. Comprueba los criterios de aceptación de PLAN_R1.md §8.
+   Cuando llegue cada informe final, revisa ese tema como revisor independiente (PLAN_R1.md §4.3, punto 2): la licencia de todas las fotos en su página de origen, una muestra de cifras y referencias contra su fuente y contra el dossier, todas las cuentas rehechas contra el script, los límites del apartado de Ucrania y las comprobaciones del navegador de CONTINUAR.md §6 repetidas. Corrige solo lo que compruebes. Si un subagente se queda corto, continúalo con SendMessage o termina tú el tema; no lo relances desde cero.
 
-6. Haz la limpieza de PLAN_R1.md §4.3, punto 5 (las reglas que siguen valiendo pasan a CONTINUAR.md y TEMARIO.md, y PLAN_R1.md se borra), y los tres commits del punto 6, en ese orden, y push.
+5. Integra (PLAN_R1.md §4.3, puntos 3 a 5): coherencia entre los dos temas, la figura del plan de M0 (hoja 3) con las jornadas nuevas, index.html y ESTADO.md. Comprueba los criterios de aceptación de PLAN_R1.md §8.
+
+6. Haz la limpieza de PLAN_R1.md §4.3, punto 6 (las reglas que siguen valiendo pasan a CONTINUAR.md y TEMARIO.md, y PLAN_R1.md se borra), y los tres commits del punto 7, en ese orden, y push.
 
 7. Para (🛑 de R1b) y dime: qué temas has hecho, con su número de hojas; qué fotos has usado y con qué licencia; qué cifras o referencias no pudiste verificar y qué casos se quedaron fuera por falta de fuentes; qué decisiones de diseño tomaste; cualquier desviación respecto a PLAN_R1.md y por qué. Después espera mi respuesta. Lo que pida se anota en el registro de revisiones de ESTADO.md y se aplica también a los temas siguientes.
 
