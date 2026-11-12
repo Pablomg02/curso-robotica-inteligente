@@ -1,6 +1,6 @@
 # Plan: R1a y R1b, «Así lo hacen en la realidad»
 
-> 2026-11-12. Petición de Pablo: «Echo en falta leer sobre la actualidad de la industria y el research de labs estilo DeepMind, PI, etc. […] un tema que enseñe cómo lo hacen en la realidad con ejemplos reales, fotos, figuras». El prompt para ejecutar este plan está en [`PROMPT_R1.md`](PROMPT_R1.md).
+> 2026-11-12. Petición de Pablo: «Echo en falta leer sobre la actualidad de la industria y el research de labs estilo DeepMind, PI, etc. […] un tema que enseñe cómo lo hacen en la realidad con ejemplos reales, fotos, figuras». El prompt para ejecutar este plan está en §9. Este fichero se borra al terminar R1b: lo que siga valiendo pasa a `CONTINUAR.md` y `TEMARIO.md` (§4.3, punto 5).
 
 ## 1. Por qué y qué hueco cubre
 
@@ -147,13 +147,17 @@ Cada subagente recibe solo esto, sin el razonamiento del agente principal:
 2. **Coherencia entre los dos:** R1a debe acabar con el puente a R1b y R1b debe citar R1a donde toque. Las cifras compartidas (por ejemplo, las de Swift o las de cómputo a bordo) tienen que coincidir.
 3. **M0, hoja 3:** la figura del plan dice `FASE 5 · J34–46`, `FASE 6 · J47–53` y «50 presentaciones en 53 jornadas». Corregirla a `J34–48`, `J49–55` y 52 en 55, comprobando que las etiquetas no se pisan. Con `checkOverflow()` repetido en M0.
 4. **`index.html`:** R1a y R1b pasan a «disponible» con su enlace. **`ESTADO.md`:** ✅, fecha y notas (hojas, fotos, cifras sin verificar), y la revisión anotada.
-5. **Commits, en este orden:**
+5. **Limpieza antes del último commit:**
+   - Pasar las reglas de fotos (§5) a `CONTINUAR.md` §4, y el componente a §5.
+   - Resumir el contenido de §3 en «Contenido obligatorio» de `TEMARIO.md`, al estilo de T1a y T1b.
+   - Borrar este fichero y corregir las referencias a él: `grep -rn "PLAN_R1" .` no debe encontrar nada.
+6. **Commits, en este orden:**
    - (a) `assets` y el `?v=13` en todas las páginas, con la nota de `CONTINUAR.md`;
    - (b) R1a con `index.html` y `ESTADO.md`;
-   - (c) R1b con `index.html`, `ESTADO.md` y el arreglo de M0.
+   - (c) R1b con `index.html`, `ESTADO.md`, el arreglo de M0 y la limpieza del punto 5.
 
    Push al final. Mensajes en el estilo del repositorio, por ejemplo: `Tema R1a (J36): los labs de robot learning en 2026, …`.
-6. **Parada 🛑:** informe a Pablo con lo que pide `PROMPT_CONTINUAR.md` §4 (temas y hojas, cifras no verificadas, decisiones, desviaciones), más la lista de fotos usadas y los casos que se quedaron fuera por falta de fuentes.
+7. **Parada 🛑:** informe a Pablo con lo que pide `PROMPT_CONTINUAR.md` §4 (temas y hojas, cifras no verificadas, decisiones, desviaciones), más la lista de fotos usadas y los casos que se quedaron fuera por falta de fuentes.
 
 ### 4.4 Consumo
 
@@ -221,5 +225,29 @@ Ejemplos: C1b con el cómputo de Skydio y de DJI; C2b con la arquitectura de Zip
 - [ ] Al menos cinco sistemas reales con su diagrama de arquitectura en R1b, y al menos cinco organizaciones con sus cifras de datos, cómputo o despliegue en R1a.
 - [ ] `checkOverflow()` vacío a 1440×900 en claro y oscuro, sin desborde a 375 px, sin errores de MathJax ni de consola, todas las imágenes cargadas y `verificar_glosario.py` sin fallos, en R1a, R1b y M0.
 - [ ] `curso.css?v=13` en todas las páginas.
-- [ ] `index.html`, `ESTADO.md`, `TEMARIO.md` y `CONTINUAR.md` actualizados. Tres commits subidos.
+- [ ] `index.html`, `ESTADO.md`, `TEMARIO.md` y `CONTINUAR.md` actualizados, y este fichero borrado sin referencias colgando. Tres commits subidos.
 - [ ] Informe de parada a Pablo.
+
+## 9. Prompt
+
+Se pega en Claude Code, abierto en la carpeta del repositorio.
+
+```text
+Crea los temas R1a y R1b del curso de robótica inteligente de este repositorio («Así lo hacen en la realidad»), siguiendo 00_plan/PLAN_R1.md.
+
+1. Haz git pull. Lee, en este orden: CLAUDE.md, CONTINUAR.md, 00_plan/PLAN_R1.md (entero), 00_plan/ESTADO.md, 00_plan/TEMARIO.md (las filas y el contenido obligatorio de R1a y R1b) y 00_plan/diagnostico.md. Abre temas/M0_mapa-del-campo/index.html, temas/M1_herramientas-matematicas/index.html y temas/T1b_taller-simular-la-realidad/index.html como modelos.
+
+2. Preparación (PLAN_R1.md §4.1), hecha por ti antes de lanzar nada: marca R1a y R1b como ⏳ en ESTADO.md; añade el componente de foto (figure.foto y .foto.duo) a assets/curso.css, sube curso.css a ?v=13 en todas las páginas y documéntalo en CONTINUAR.md §5; crea las dos carpetas con img/, figuras/, lab/ y img/CREDITOS.md.
+
+3. Lanza dos subagentes en el mismo mensaje, uno para R1a y otro para R1b, cada uno con la orden de encargo de PLAN_R1.md §4.2 rellenada (ruta del repositorio, carpeta, puerto 8765 o 8766, ruta absoluta del scratchpad para los dossiers). Ningún subagente lanza otros ni toca git, assets/, index.html ni 00_plan/. Mientras trabajan, no hagas tú su trabajo.
+
+4. Cuando llegue cada informe, revisa ese tema como revisor independiente (PLAN_R1.md §4.3, punto 1): la licencia de todas las fotos en su página de origen, una muestra de cifras y referencias contra su fuente, todas las cuentas rehechas contra el script, los límites del apartado de Ucrania y las comprobaciones del navegador de CONTINUAR.md §6 repetidas. Corrige solo lo que compruebes. Si un subagente se queda corto, continúalo con SendMessage o termina tú el tema; no lo relances desde cero.
+
+5. Integra (PLAN_R1.md §4.3, puntos 2 a 4): coherencia entre los dos temas, la figura del plan de M0 (hoja 3) con las jornadas nuevas, index.html y ESTADO.md. Comprueba los criterios de aceptación de PLAN_R1.md §8.
+
+6. Haz la limpieza de PLAN_R1.md §4.3, punto 5 (las reglas que siguen valiendo pasan a CONTINUAR.md y TEMARIO.md, y PLAN_R1.md se borra), y los tres commits del punto 6, en ese orden, y push.
+
+7. Para (🛑 de R1b) y dime: qué temas has hecho, con su número de hojas; qué fotos has usado y con qué licencia; qué cifras o referencias no pudiste verificar y qué casos se quedaron fuera por falta de fuentes; qué decisiones de diseño tomaste; cualquier desviación respecto a PLAN_R1.md y por qué. Después espera mi respuesta. Lo que pida se anota en el registro de revisiones de ESTADO.md y se aplica también a los temas siguientes.
+
+Entre el inicio y la parada no me preguntes nada salvo que estés bloqueado de verdad: las decisiones de profundidad y diseño son tuyas, guiadas por PLAN_R1.md y CONTINUAR.md. Nunca inventes referencias, autores ni cifras; las que solo publica una empresa van como afirmaciones suyas. Ninguna foto entra sin licencia libre comprobada: el repositorio es público.
+```
